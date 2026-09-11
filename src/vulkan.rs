@@ -10,6 +10,8 @@ const RTLD_NOW: c_int = 2;
 const LIBVULKAN: &CStr = c"libvulkan.so.1";
 // VkResult VK_SUCCESS, the one result that means the call did what was asked.
 const VK_SUCCESS: i32 = 0;
+// VkResult VK_INCOMPLETE: the second enumerate wrote some handles and the count grew after the first.
+const VK_INCOMPLETE: i32 = 5;
 // VkStructureType VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO.
 const INSTANCE_CREATE_INFO: u32 = 1;
 
@@ -45,6 +47,10 @@ type DestroyInstance = unsafe extern "C" fn(*mut c_void, *const c_void);
 const VENDOR_ID_OFFSET: usize = 8;
 const DEVICE_ID_OFFSET: usize = 12;
 const PROPERTIES_BYTES: usize = 2048;
+
+// VkPhysicalDeviceLimits contains VkDeviceSize fields, so the driver write needs 8-byte alignment.
+#[repr(C, align(8))]
+struct PropertiesBuf([u8; PROPERTIES_BYTES]);
 
 // VK_KHR_surface plus one platform surface extension, the pair Qt's Vulkan RHI presents through.
 const SURFACE: &CStr = c"VK_KHR_surface";
@@ -148,7 +154,9 @@ fn usable_with(extensions: &[&CStr]) -> Result<Vec<(u32, u32)>, String> {
         let mut handles = vec![null_mut(); devices as usize];
         let mut filled = devices;
         let listed = enumerate(instance, &mut filled, handles.as_mut_ptr());
-        let ids = match (listed == VK_SUCCESS, properties) {
+        // VK_INCOMPLETE still wrote `filled` handles; treating it as failure would drop to OpenGL.
+        let complete = listed == VK_SUCCESS || listed == VK_INCOMPLETE;
+        let ids = match (complete, properties) {
             (true, Some(get)) => handles
                 .iter()
                 .take(filled as usize)
@@ -157,7 +165,7 @@ fn usable_with(extensions: &[&CStr]) -> Result<Vec<(u32, u32)>, String> {
             _ => vec![(0, 0); devices as usize],
         };
         destroy(instance, null());
-        if listed != VK_SUCCESS {
+        if !complete {
             return Err(format!("vkEnumeratePhysicalDevices answered {listed}"));
         }
         Ok(ids)
@@ -166,11 +174,11 @@ fn usable_with(extensions: &[&CStr]) -> Result<Vec<(u32, u32)>, String> {
 
 // Sample input: a VkPhysicalDevice and vkGetPhysicalDeviceProperties, which writes vendorID then deviceID.
 fn pci_id(handle: *mut c_void, get: GetPhysicalDeviceProperties) -> (u32, u32) {
-    let mut buf = [0u8; PROPERTIES_BYTES];
-    unsafe { get(handle, buf.as_mut_ptr()) }
+    let mut buf = PropertiesBuf([0u8; PROPERTIES_BYTES]);
+    unsafe { get(handle, buf.0.as_mut_ptr()) }
     (
-        u32::from_ne_bytes(buf[VENDOR_ID_OFFSET..DEVICE_ID_OFFSET].try_into().unwrap()),
-        u32::from_ne_bytes(buf[DEVICE_ID_OFFSET..DEVICE_ID_OFFSET + 4].try_into().unwrap()),
+        u32::from_ne_bytes(buf.0[VENDOR_ID_OFFSET..DEVICE_ID_OFFSET].try_into().unwrap()),
+        u32::from_ne_bytes(buf.0[DEVICE_ID_OFFSET..DEVICE_ID_OFFSET + 4].try_into().unwrap()),
     )
 }
 
@@ -189,10 +197,11 @@ pub fn display_icd(devices: &[(u32, u32)]) -> Option<String> {
 
 fn icd_search_dirs() -> Vec<PathBuf> {
     let mut dirs = Vec::new();
-    if let Some(xdg) = std::env::var_os("XDG_CONFIG_HOME") {
-        dirs.push(PathBuf::from(xdg).join("vulkan/icd.d"));
-    } else if let Some(home) = std::env::var_os("HOME") {
-        dirs.push(PathBuf::from(home).join(".config/vulkan/icd.d"));
+    // Empty is absent, the same rule userfile::env_dir uses: an empty XDG_CONFIG_HOME is not a root.
+    if let Some(xdg) = crate::userfile::env_dir("XDG_CONFIG_HOME") {
+        dirs.push(xdg.join("vulkan/icd.d"));
+    } else if let Some(home) = crate::userfile::env_dir("HOME") {
+        dirs.push(home.join(".config/vulkan/icd.d"));
     }
     dirs.push(PathBuf::from("/etc/vulkan/icd.d"));
     dirs.push(PathBuf::from("/usr/share/vulkan/icd.d"));
@@ -354,9 +363,21 @@ mod tests {
 
     #[test]
     fn usable_lists_pci_ids_in_enumerate_order() {
-        let ids = usable().expect("vulkan is usable on this box");
-        assert!(!ids.is_empty(), "{ids:?}");
         let displays = display_pci_ids(Path::new("/sys/class/drm"));
+        if displays.is_empty() {
+            return;
+        }
+        let ids = match usable() {
+            Ok(ids) => ids,
+            Err(reason)
+                if reason.contains("libvulkan.so.1 did not load")
+                    || reason.contains("listed no device") =>
+            {
+                return;
+            }
+            Err(reason) => panic!("{reason}"),
+        };
+        assert!(!ids.is_empty(), "{ids:?}");
         assert!(
             displays.iter().any(|id| ids.contains(id)),
             "devices {ids:?} displays {displays:?}"
