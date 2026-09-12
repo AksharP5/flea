@@ -471,7 +471,7 @@ target. Renaming a file to the name it already has is not an error and is not wo
 records nothing to undo.
 
 **A rename that cannot prove the source survived whole answers `rename-kept`.** Measured mounts that cannot serve
-`RENAME_NOREPLACE` include `fuse.rclone` and `fuse.megafs` directories, which answer `EINVAL`, and a path under a
+`RENAME_NOREPLACE` include `fuse.rclone` directories and `fuse.megafs` paths, which answer `EINVAL`, and a path under a
 `/run/user/*/gvfs/dav:` WebDAV mount answers `EIO`. On those, the backend builds the new name through the same exclusive copy primitives every
 other write uses and removes the source only once that copy is complete. The copy is taken back only on proof the source
 survived whole: a source that still stats as anything but a directory after the failed removal, since

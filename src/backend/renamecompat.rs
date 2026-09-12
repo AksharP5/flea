@@ -77,12 +77,17 @@ fn needs_gvfs_webdav_fallback(from: &Path, error: &io::Error) -> bool {
 }
 
 fn needs_fuse_fallback_in(from: &Path, error: &io::Error, mountinfo: &str) -> bool {
-    error.raw_os_error() == Some(EINVAL)
-        && from
+    if error.raw_os_error() != Some(EINVAL) {
+        return false;
+    }
+    match mount_type_in(from, mountinfo).as_deref() {
+        Some("fuse.megafs") => true,
+        Some("fuse.rclone") => from
             .symlink_metadata()
             .map(|meta| meta.file_type().is_dir())
-            .unwrap_or(false)
-        && matches!(mount_type_in(from, mountinfo).as_deref(), Some("fuse.rclone" | "fuse.megafs"))
+            .unwrap_or(false),
+        _ => false,
+    }
 }
 
 // The target is built through the exclusive copy primitives, so an existing destination is refused rather than replaced.
@@ -158,7 +163,7 @@ mod tests {
     const ENOENT: i32 = 2;
 
     #[test]
-    fn copy_fallback_scope_is_only_an_einval_directory_on_a_measured_fuse_mount() {
+    fn copy_fallback_scope_matches_each_measured_fuse_mount() {
         let d = TestDir::new("fuserenamescope");
         let file = d.file("file", "body");
         let directory = d.dir("directory");
@@ -175,6 +180,7 @@ mod tests {
         let exists = io::Error::from_raw_os_error(EEXIST);
         assert!(needs_fuse_fallback_in(&directory, &invalid, &rclone));
         assert!(needs_fuse_fallback_in(&directory, &invalid, &megafs));
+        assert!(needs_fuse_fallback_in(&file, &invalid, &megafs));
         assert!(!needs_fuse_fallback_in(&file, &invalid, &rclone));
         assert!(!needs_fuse_fallback_in(&directory, &invalid, &ext4));
         assert!(!needs_fuse_fallback_in(&directory, &exists, &rclone));
