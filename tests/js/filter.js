@@ -39,19 +39,14 @@ function run(check) {
     check("with no filter both directions are the identity",
           Filter.at(null, 12) + "|" + Filter.viewOf(null, 12), "12|12")
 
-    check("the canvas's own accounting line names the rows that dropped out",
-          Filter.note(mixed, 7, "scr"), "3 rows hidden by the filter")
-    check("one hidden row is a row, not rows", Filter.note([0, 1, 2, 3, 4, 5], 7, "s"), "1 row hidden by the filter")
-    check("a filter hiding nothing says nothing, the OEM self-hide rule", Filter.note([0, 1, 2], 3, "e"), "")
-    check("no filter draws no line at all", Filter.note(null, 7, ""), "")
-    check("and nothing matching says so, in the search board's own wording",
-          Filter.note([], 7, "benchz"), "Nothing matches benchz")
-
-    // The pane holds a window around the viewport, not the directory, so on a bigger listing the
-    // filter has only seen the rows it holds and the strip has to say so.
-    check("a window holding the whole listing needs no caveat", Filter.scope(7, 7), "")
-    check("a partial window names the rows the filter actually saw",
-          Filter.scope(327, 100000), "in the 327 rows loaded")
+    // SearchFilter rules 1 and 2: one sentence, on the strip that created it, carrying its own scope.
+    check("the strip says what it kept, out of the rows it could test",
+          Filter.summary(mixed, 7, 7), "4 of 7 shown")
+    check("and names the directory those rows are a window on when it is not all of it",
+          Filter.summary(mixed, 7, 104812), "4 of 7 shown · of 104,812 in this folder")
+    check("nothing matching is a count like any other, and keeps the same scope",
+          Filter.summary([], 350, 104812), "0 of 350 shown · of 104,812 in this folder")
+    check("no filter draws no sentence at all", Filter.summary(null, 7, 7), "")
 
     check("the rows shown between two ends skip the ones the filter hid",
           Filter.between(mixed, 1, 6).join(","), "1,5,6")

@@ -7,6 +7,18 @@ var UNITS = ["B", "kB", "MB", "GB", "TB"]
 var UNIT_SPACE = " "
 
 // Below one kilobyte a fraction is noise, so bytes print whole.
+// Counts reach six figures on a real directory, so they are grouped the way the canvas draws them.
+function count(n) {
+    var digits = String(n)
+    var out = ""
+    for (var i = 0; i < digits.length; i++) {
+        if (i > 0 && (digits.length - i) % 3 === 0)
+            out += ","
+        out += digits.charAt(i)
+    }
+    return out
+}
+
 function size(bytes) {
     if (bytes < BYTES_PER_UNIT) {
         return bytes + UNIT_SPACE + UNITS[0]

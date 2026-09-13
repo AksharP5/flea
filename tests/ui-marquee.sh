@@ -135,6 +135,9 @@ marquee_interactions() {
     marquee_expect selectedIndices 0 "$label plain click marks one row"
     click_row 2 left --mods ctrl
     marquee_expect selectedIndices '0,2' "$label Ctrl-click preserves another mark"
+    # Two clicks on one row inside Qt's double-click window are one gesture, not two: measured on the
+    # box, the toggle lands every time at 2 s and never at the expect loop's own 0.1 s.
+    sleep 1
     click_row 2 left --mods ctrl
     marquee_expect selectedIndices 0 "$label Ctrl-click toggles its mark off"
     click_row 3 left --mods shift

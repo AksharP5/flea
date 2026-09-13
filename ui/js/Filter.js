@@ -1,5 +1,6 @@
 .pragma library
 
+.import "Format.js" as Format
 .import "Match.js" as Match
 .import "Thumbs.js" as Thumbs
 
@@ -44,26 +45,16 @@ function viewOf(list, row) {
     return list === null ? row : list.indexOf(row)
 }
 
-// The canvas's own line under the last row it left standing, States.dc.html "Filter active".
-function note(list, loaded, query) {
+// The strip's own sentence, SearchFilter rules 1 and 2: what the filter kept, out of the rows it
+// could test, and the directory those rows are a window on. The scope is the half that must not be
+// dropped, because zero matches among 350 loaded rows is not zero matches in a 104,812-file
+// directory; the tail goes when the window is the whole listing, which is nothing left to say.
+function summary(list, loaded, total) {
     if (list === null) {
         return ""
     }
-    if (list.length === 0) {
-        return "Nothing matches " + query
-    }
-    var dropped = loaded - list.length
-    if (dropped === 0) {
-        return ""
-    }
-    return dropped + (dropped === 1 ? " row" : " rows") + " hidden by the filter"
-}
-
-// The pane holds a window around the viewport, not the directory, so on a listing bigger than that
-// window the filter has only seen the rows it holds and the strip says which ones. Empty when the
-// window is the whole listing, which is the OEM rule of saying nothing when there is nothing to say.
-function scope(loaded, total) {
-    return total > loaded ? "in the " + loaded + " rows loaded" : ""
+    var head = list.length + " of " + loaded + " shown"
+    return total > loaded ? head + " · of " + Format.count(total) + " in this folder" : head
 }
 
 // The rows drawn between two ends, which is not the range between them: a plain index range would

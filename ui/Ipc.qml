@@ -116,9 +116,10 @@ QtObject {
                     rect: root.fleaWindow.rectOf(card), cancel: root.controlState("Cancel", card ? card.cancelItem : null)}})
         }
         function statusFooterState(): string {
+            // Every zone's x in the strip's own coordinates: the centre pair sits in a Row inside the middle slot, so its own x is relative to that Row and says nothing about zone order.
             function textState(item) {
-                return {text: item.text, visible: item.visible, x: item.x, width: item.width,
-                    implicitWidth: item.implicitWidth, truncated: item.truncated,
+                return {text: item.text, visible: item.visible, width: item.width, implicitWidth: item.implicitWidth,
+                    x: Math.round(item.mapToItem(root.bar.stripItem, 0, 0).x), truncated: item.truncated,
                     color: String(item.color), fontSize: item.font.pixelSize}
             }
             return JSON.stringify({path: root.bar.path, total: root.bar.total, selected: root.bar.selectionCount,

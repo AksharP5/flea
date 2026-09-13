@@ -1,7 +1,9 @@
 .import "../../ui/js/Search.js" as Search
 
 function run(check) {
-    check("a walk with matches names its count", Search.note(9, true, false), "9 found")
+    // Rule 6: a count that is still growing says so, beside the count.
+    check("a running walk with matches pairs the count with the state", Search.note(9, true, false), "9 found · still scanning")
+    check("and a finished one is the count alone", Search.note(9, false, false), "9 found")
     check("a running walk with nothing yet says it is working", Search.note(0, true, false), "searching")
     check("a finished walk with nothing says done", Search.note(0, false, false), "done")
     check("a cancelled walk with nothing says stopped", Search.note(0, false, true), "stopped")
@@ -9,9 +11,6 @@ function run(check) {
     check("a running walk counts what it scanned", Search.statusLine(true, 12, 4120, 300), "Searching, 4,120 scanned")
     check("a finished walk reports the whole scan", Search.statusLine(false, 0, 18204, 412), "18,204 scanned in 0.4 s")
 
-    check("a short count is not grouped", Search.grouped(653), "653")
-    check("a thousand takes one separator", Search.grouped(4120), "4,120")
-    check("a million takes two", Search.grouped(1234567), "1,234,567")
 
     check("the home prefix reads as a tilde", Search.scope("/home/gm/Work/claude/flea", "/home/gm"), "~/Work/claude/flea")
     check("home itself is the bare tilde", Search.scope("/home/gm", "/home/gm"), "~")

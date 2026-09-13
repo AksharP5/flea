@@ -1,6 +1,11 @@
 .import "../../ui/js/Format.js" as Format
 
 function run(check) {
+    // One grouping rule for every count the product prints: the search's scan and the filter's scope.
+    check("a short count is not grouped", Format.count(653), "653")
+    check("a thousand takes one separator", Format.count(4120), "4,120")
+    check("a million takes two", Format.count(1234567), "1,234,567")
+
     // The home prefix reads as the user writes it; the window chrome and the search strip share this.
     check("a path under home comes back with a tilde",
           Format.tilde("/home/gm/Documents/claude", "/home/gm"), "~/Documents/claude")

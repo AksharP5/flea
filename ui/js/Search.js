@@ -178,9 +178,11 @@ function listingState(root, total) {
 }
 
 // The strip's right edge: the running count while there is one, the terminal word when there is not.
+// SearchFilter rule 6: the count and the state that changes it read together, on the one line the
+// query is on, because a count still growing says something different from a count that has settled.
 function note(total, running, cancelled) {
     if (total > 0) {
-        return total + " found"
+        return running ? total + " found · still scanning" : total + " found"
     }
     if (running) {
         return "searching"
@@ -193,25 +195,12 @@ function scope(path, home) {
     return Format.tilde(path, home)
 }
 
-// Scanned counts reach six figures on a real subtree, so they are grouped the way the canvas draws them.
-function grouped(n) {
-    var digits = String(n)
-    var out = ""
-    for (var i = 0; i < digits.length; i++) {
-        if (i > 0 && (digits.length - i) % 3 === 0) {
-            out += ","
-        }
-        out += digits.charAt(i)
-    }
-    return out
-}
-
 // The status bar's own left half while a search is up, the two lines the canvas draws.
 function statusLine(running, total, scanned, ms) {
     if (running) {
-        return "Searching, " + grouped(scanned) + " scanned"
+        return "Searching, " + Format.count(scanned) + " scanned"
     }
-    return grouped(scanned) + " scanned in " + (ms / 1000).toFixed(1) + " s"
+    return Format.count(scanned) + " scanned in " + (ms / 1000).toFixed(1) + " s"
 }
 
 // The status bar's right half: what the keys do, which changes the moment the walk stops.

@@ -1,6 +1,7 @@
 import QtQuick
 import qs.Commons
 import "js/Format.js" as Format
+import "js/Filter.js" as Filter
 import "js/Ops.js" as Ops
 import "js/Status.js" as Status
 import "js/Transfer.js" as Transfer
@@ -136,8 +137,10 @@ Item {
             var head = root.selectionCount + " of " + root.total + " selected"
             return root.selectionBytes >= 0 ? head + " · " + Format.size(root.selectionBytes) : head
         }
+        // SearchFilter rule 2: the same sentence the strip carries, scope and all, because the count
+        // is of the rows the filter could see and those are a window on the directory, not all of it.
         if (root.shownTotal !== root.total) {
-            return root.shownTotal + " of " + root.total + " shown"
+            return Filter.summary(root.pane.shown, root.pane.rows.length, root.total)
         }
         return root.itemText()
     }
