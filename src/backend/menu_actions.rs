@@ -191,7 +191,7 @@ impl Snapshot {
                     self.cursor = cursor.map(Selected::inspect).transpose()?;
                     self.items = items;
                     self.id = id;
-                    Ok(format!(r#""count":{}"#, self.items.len()))
+                    Ok(format!(r#""count":{},"mode":{}"#, self.items.len(), self.items.first().map_or(0, |item| item.kind)))
                 })
             }
         } else if op == "close" {

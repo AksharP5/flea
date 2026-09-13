@@ -31,6 +31,9 @@ Large directories stay responsive: the window loads rows and requests thumbnails
 - **Desktop integration.** Default file manager, “Show in folder” and Open/Save dialogs.
 - **Your settings.** Omarchy text sizes, configurable menus and Default, Vim, Mac or Windows keys.
 
+Right-click Home or an XDG folder under Places to use the folder menu, including copy, rename,
+trash and Add to Favorites. Actions apply to that folder even while another directory is open.
+
 ## Install
 
 ```bash
