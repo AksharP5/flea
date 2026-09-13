@@ -34,6 +34,7 @@ FastScrollHandler 1.0 FastScrollHandler.qml
 CardScroll 1.0 CardScroll.qml
 DeviceMounts 1.0 DeviceMounts.qml
 DropboxMark 1.0 DropboxMark.qml
+HyprlandMark 1.0 HyprlandMark.qml
 DropInto 1.0 DropInto.qml
 FileDrag 1.0 FileDrag.qml
 RowDrag 1.0 RowDrag.qml

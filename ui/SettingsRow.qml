@@ -39,18 +39,24 @@ Item {
     readonly property bool isLock: root.kind === "lock"
     readonly property bool isRuler: root.kind === "ruler"
     readonly property bool hasBox: root.kind === "check" || root.kind === "master"
-    // A row that names its options draws them side by side, so it is not one the chevrons walk.
     // Length and not Array.isArray: a Repeater hands the delegate a QVariantList wrapper, on which
     // isArray reads false while typeof is "object" and length is right, so the segment never drew.
-    readonly property bool hasSegment: root.row.options !== undefined && root.row.options.length > 1
+    // Which control a choice gets, SettingsGrammar rule 1: a segment when every option fits on the row beside the label, the chevron walk when they do not, and nothing else decides it. A Row reports its own implicitWidth whether or not it is itself visible, so measuring the segment and hiding it on the answer is no loop.
+    readonly property real segmentChrome: 2 * Theme.spacing.rowPaddingX + Theme.markSize + 3 * Theme.spacing.gap
+    readonly property bool hasSegment: root.kind === "choice" && root.row.labels !== undefined && root.row.labels.length > 1
+        && segment.implicitWidth + rowLabel.implicitWidth + root.segmentChrome <= root.width
     readonly property bool hasSteps: root.kind === "choice" && !root.hasSegment
     // The hover lift ui/MenuRow.qml uses, so a settings row and a menu row read alike.
     readonly property real hoverOpacity: 0.08
+    // SettingsGrammar rule 7: a dependent greys in place while its parent is off, and the grey takes the row's handlers with it, because a control that cannot act must not answer a tap.
+    readonly property bool greyed: root.row.available === false
     // The tri-state master: all six on is a filled tick, some on a filled bar, none an empty box.
     readonly property string boxValue: root.kind === "master"
         ? (root.row.state === "all" ? "on" : (root.row.state === "some" ? "some" : "off"))
         : (root.row.on === true ? "on" : "off")
 
+    enabled: !root.greyed
+    opacity: root.greyed ? 0.5 : 1
     height: root.isGroup ? groupLabel.y + groupLabel.height + root.groupPaddingBottom
             : root.isFavourite ? favourite.implicitHeight : root.isHero ? hero.implicitHeight + 4 * Theme.spacing.rowPaddingY
             : root.isKeyPreview ? keyPreview.implicitHeight + 2 * Theme.spacing.rowPaddingY
@@ -246,6 +252,13 @@ Item {
             iconSize: Theme.markSize
             color: Theme.color.muted
         }
+
+        Flea.HyprlandMark {
+            anchors.centerIn: parent
+            visible: root.row.mark === "hyprland"
+            iconSize: Theme.markSize
+            color: Theme.color.muted
+        }
     }
 
     // A ruler is the row above it continued, so it takes the boards' own continuation indent
@@ -324,8 +337,9 @@ Item {
         }
 
         Flea.SettingsSegment {
+            id: segment
             visible: root.hasSegment
-            options: root.hasSegment ? root.row.options : []
+            options: root.row.labels !== undefined ? root.row.labels : []
             value: root.row.value || ""
             glyphs: root.row.id === "view" ? root.row.values : []
             onPicked: function (i) { root.stopPicked(i) }

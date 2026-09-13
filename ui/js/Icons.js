@@ -153,6 +153,8 @@ var PATHS = {
     "maximize": "M8 3H3v5 M16 3h5v5 M8 21H3v-5 M16 21h5v-5",
     "x": "M6 6l12 12 M18 6 6 18",
     "sliders": "M4 21v-7 M4 10V3 M12 21v-9 M12 8V3 M20 21v-5 M20 12V3 M2 14h4 M10 8h4 M18 16h4",
+    // Grid zoom's own mark, the SettingsGrammar board's arrows, lucide's move-horizontal recut sharp.
+    "move-horizontal": "M4 12h16 M8 8l-4 4 4 4 M16 8l4 4-4 4",
     // The background menu's Sort by row, Menus.html's own geometry: three rules shortening to the
     // right of a bare down arrow. IconSets.html names this mark when it caps the corner radius.
     "sort": "M11 5h10 M11 9h7 M11 13h4 M7 5v14 M7 19l-3-3 M7 19l3-3",

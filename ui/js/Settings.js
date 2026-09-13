@@ -36,9 +36,7 @@ var MENU_GROUPS = [
       ids: ["shelf", "compress", "extract", "convert", "taildrop", "dropbox", "sharelink"] }
 ]
 
-// Open and Show hidden files draw the lock mark instead of a box, and the board says why: a menu
-// that cannot open the row under the cursor is not a menu, and the hidden toggle is the one
-// background row with no keyboard-independent alternative.
+// Open and Show hidden files draw the lock mark instead of a box, and the board says why: a menu that cannot open the row under the cursor is not a menu, and the hidden toggle is the one background row with no keyboard-independent alternative.
 var LOCKED = ["open", "toggleHidden"]
 
 var LABELS = {
@@ -67,7 +65,7 @@ var GLYPHS = {
 
 // Taildrop and Dropbox are brand reproductions rather than cut glyphs, so they name a component the
 // way a menu entry does; ui/SettingsRow.qml draws the pair exactly as ui/MenuRow.qml does.
-var MARKS = { taildrop: "tailscale", dropbox: "dropbox", shelf: "flea" }
+var MARKS = { taildrop: "tailscale", dropbox: "dropbox", shelf: "flea", "display.hyprlandIcons": "hyprland" }
 
 function label(id) {
     return LABELS[id] || id
@@ -141,10 +139,11 @@ function toggleId(hidden, id) {
     return next
 }
 
-// One row per line of the panel's pane. kind decides what ui/SettingsPanel.qml draws and whether the
-// row is a focus stop: group, hint, fact and lock rows are read-only and the cursor steps over them.
-// A ruler reports the effective size while Omarchy owns it and only becomes a control on an override.
+// One row per line of the panel's pane. kind decides what ui/SettingsPanel.qml draws and whether the row is a focus stop: group, hint, fact and lock rows are read-only and the cursor steps over them. A ruler reports the effective size while Omarchy owns it and only becomes a control on an override.
 function focusable(row) {
+    // SettingsGrammar rule 7: a dependent greyed by its parent cannot be operated, so it is no stop either.
+    if (row.available === false)
+        return false
     if (row.kind === "ruler")
         return row.on === true
     return row.kind === "check" || row.kind === "master" || row.kind === "choice" || row.kind === "action" || row.kind === "favourite" || row.kind === "favouriteActions"
@@ -169,16 +168,13 @@ function rows(section, state) {
     return keyRows(state)
 }
 
-// The SettingsScale board's own division: Flea owns its text override and Omarchy owns the rest.
-// The size follows the desktop until one of TextSize's seven stops is pinned, and the monitor
-// scale and the corner rounding are the compositor's, drawn as the read-only facts they are.
+// The SettingsScale board's own division: Flea owns its text override and Omarchy owns the rest. The size follows the desktop until one of TextSize's seven stops is pinned, and the monitor scale and the corner rounding are the compositor's, drawn as the read-only facts they are.
 function displayRows(state) {
     var follows = TextSize.following(state.textSize)
     var out = [
         { kind: "group", label: "Text size" },
-        // Two named values and no more, so the board draws them side by side rather than as a walk.
         { kind: "choice", id: "textMode", label: "Text size", glyph: "type",
-          options: ["Follow Omarchy", "Override"],
+          labels: ["Follow Omarchy", "Override"],
           value: follows ? "Follow Omarchy" : "Override" },
         // The board's seven-stop ruler, the override's own control and the one place the effective
         // size is read; a size Omarchy invented that is not a stop fills to the nearest one.
@@ -197,17 +193,16 @@ function displayRows(state) {
                label: "Flea follows the compositor value and does not step or cycle it." })
     out.push({ kind: "group", label: "Appearance" })
     out.push({ kind: "check", id: "display.hyprlandIcons", label: "Hyprland-aware icons",
+               mark: MARKS["display.hyprlandIcons"],
                on: ((state.data || {}).display || {}).hyprlandIcons === true })
     return out
 }
 
-// The SettingsScale board's own cell: the word first, then the compositor's number as Hyprland writes
-// it, 1.00 and 1.25; an unanswered query says so rather
-// than reading as 1x, because a wrong number here looks exactly like a right one.
+// The compositor's own number, as Hyprland writes it: 1.00 and 1.25. An unanswered query says so rather than reading as 1x, because a wrong number here looks exactly like a right one. The row carries no control, which is what says it cannot be changed; SettingsGrammar rule 5.
 function scaleLabel(scale) {
     if (!(scale > 0))
         return "not reported"
-    return "Read-only " + (Math.round(scale * 100) / 100) + "x"
+    return (Math.round(scale * 100) / 100) + "x"
 }
 
 // The one row of this section that is not a menu action: it governs how every menu row is drawn
@@ -270,9 +265,10 @@ function keyRows(state) {
     var out = [
         { kind: "group", label: "Preset" },
         { kind: "choice", id: "preset", label: "Keybinding preset", glyph: "keyboard",
-          options: PRESETS.map(function (p) { return PRESET_LABELS[p] }),
+          labels: PRESETS.map(function (p) { return PRESET_LABELS[p] }),
           value: PRESET_LABELS[state.preset] || state.preset },
-        { kind: "hint", label: "Default \u00b7 Vim \u00b7 Mac \u00b7 Windows" },
+        // Rule 3: the hint says what the preset does, where the old one listed the same four labels the control draws.
+        { kind: "hint", label: "Keys change, actions do not." },
         { kind: "group", label: "This preset" },
         { kind: "keyPreview", id: "keyPreview", items: keyPreview(state.preset) }
     ]
@@ -296,10 +292,9 @@ function firstRow(list) {
     return list.length > 0 && focusable(list[0]) ? 0 : stepRow(list, 0, 1)
 }
 
-// Choice values are stored separately from labels so presentation never becomes a persistence format.
-function choice(id, label, glyph, values, labels, value, segmented) {
-    return { kind: "choice", id: id, label: label, glyph: glyph, values: values,
-             options: segmented ? labels : undefined, labels: labels,
+// Choice values are stored separately from labels so presentation never becomes a persistence format. Which control a choice gets is decided by fit, in ui/SettingsRow.qml, not declared here: rule 1 of the SettingsGrammar board, after two named values were a segment and three were a chevron.
+function choice(id, label, glyph, values, labels, value) {
+    return { kind: "choice", id: id, label: label, glyph: glyph, values: values, labels: labels,
              value: labels[Math.max(0, values.indexOf(value))], selected: value }
 }
 
@@ -310,13 +305,13 @@ function viewRows(state) {
     return [
         { kind: "group", label: "View" },
         choice("view", "Last-used view", undefined, ["list", "columns", "grid", "dual"],
-               ["List", "Columns", "Grid", "Dual pane"], data.view || "list", true),
+               ["List", "Columns", "Grid", "Dual pane"], data.view || "list"),
         choice("density", "Row density", "list", ["compact", "normal", "comfortable"],
                ["Compact", "Normal", "Comfortable"], data.density || "normal"),
         { kind: "action", id: "columns", label: "Columns", glyph: "columns",
           value: columns.map(function (key) { return key.charAt(0).toUpperCase() + key.slice(1) }).join(", ") },
         choice("addressBar", "Address bar", undefined, ["path", "breadcrumb"],
-               ["Path", "Breadcrumb"], data.addressBar || "breadcrumb", true),
+               ["Path", "Breadcrumb"], data.addressBar || "breadcrumb"),
         { kind: "group", label: "Sorting" },
         choice("sort.key", "Sort by", "sort", ["name", "size", "date", "kind"],
                ["Name", "Size", "Date", "Kind"], sort.key || "name"),
@@ -342,21 +337,26 @@ function viewRows(state) {
 function previewRows(state) {
     var data = (state.data || {}).preview || {}
     var load = choice("preview.loadOn", "Load", "eye", ["automatic", "manual"],
-                      ["Automatic", "Manual"], data.loadOn || "automatic", true)
+                      ["Automatic", "Manual"], data.loadOn || "automatic")
+    // Rule 7: with the column off, SelectionPreview.canRead is false and both load paths return, so Load is the one real dependent here and it greys rather than lying.
+    load.available = data.column !== false
+    // One value per row, rule 4: the figure rides each option, where "64 px  Medium" said it twice.
     var size = choice("preview.thumbSize", "Thumbnail size", "maximize", ["small", "medium", "large", "xlarge"],
-                      ["Small", "Medium", "Large", "Extra large"], data.thumbSize || "medium")
-    size.caption = [48, 64, 96, 128][Math.max(0, size.values.indexOf(size.selected))] + " px"
+                      ["Small 48 px", "Medium 64 px", "Large 96 px", "Extra large 128 px"],
+                      data.thumbSize || "medium")
     return [
         { kind: "group", label: "Preview column" },
         // Preview board rule 4: the heading names the group, so the row under it names the switch.
         { kind: "check", id: "preview.column", label: "Show the preview column", glyph: "columns", on: data.column !== false },
         load,
+        // Rule 3: a hint sits under the control it explains, not two hairlines below it in a footer.
+        { kind: "hint", label: data.loadOn === "manual" ? "Ctrl+Space loads the current selection." : "Automatic follows the cursor." },
         { kind: "group", label: "Thumbnails" },
         choice("preview.thumbnails", "Thumbnails", "image", ["off", "images", "media"],
                ["Off", "Images", "Images and video"], data.thumbnails || "media"),
         size,
-        { kind: "check", id: "preview.ctrlZoom", label: "Zoom with ctrl and scroll", on: data.ctrlZoom !== false },
-        { kind: "hint", footer: true, role: "foreground", label: data.loadOn === "manual" ? "Ctrl+Space loads the current selection." : "Automatic follows keyboard or pointer selection." }
+        // Rule 7: GridArea gates ctrl-scroll on ViewState.ctrlZoom alone and sizes the tiles from it with thumbnails off, so it is grid zoom, it is named that, and it never greys with them.
+        { kind: "check", id: "preview.ctrlZoom", label: "Zoom the grid with ctrl and scroll", glyph: "move-horizontal", on: data.ctrlZoom !== false }
     ]
 }
 
@@ -369,9 +369,9 @@ function aboutRows(facts) {
         { kind: "fact", label: "Package", value: facts.package || "Not reported" },
         { kind: "fact", label: "Licence", value: "MIT, © 2026 GM" },
         { kind: "group", label: "Language" },
-        { kind: "fact", label: "Language", glyph: "globe", value: "English · read-only" },
+        { kind: "fact", label: "Language", glyph: "globe", value: "English" },
         { kind: "group", label: "Updates" },
-        { kind: "fact", label: "Update owner", glyph: "download", value: "Omarchy · read-only" },
+        { kind: "fact", label: "Update owner", glyph: "download", value: "Omarchy" },
         { kind: "group", label: "This box" },
         { kind: "fact", label: "File manager", glyph: "folder", value: (facts.handler || "Not reported") + " · status only" },
         { kind: "action", id: "keyboardSheet", label: "Keyboard sheet", glyph: "keyboard", value: "?" },
