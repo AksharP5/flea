@@ -164,39 +164,34 @@ function facts(st, row, meta, kindName, extra) {
 }
 
 function stateRows(st, row, meta, kindName, extra) {
+    // A caller's own value wins; the probe fills only the two fields it did not supply.
     var e = extra || {}
     if (st === VIDEO || st === AUDIO) {
         var m = mediaExtra(meta)
-        e = { duration: e.duration || m.duration, rate: e.rate || m.rate,
-              pages: e.pages, entries: e.entries, unpacked: e.unpacked, owner: e.owner }
-    }
-    if (st === ARCHIVE) {
+        e = Object.assign({}, e, { duration: e.duration || m.duration, rate: e.rate || m.rate })
+    } else if (st === ARCHIVE) {
         var a = archiveExtra(meta)
-        e = { entries: e.entries || a.entries, unpacked: e.unpacked || a.unpacked,
-              duration: e.duration, rate: e.rate, pages: e.pages, owner: e.owner }
+        e = Object.assign({}, e, { entries: e.entries || a.entries, unpacked: e.unpacked || a.unpacked })
     }
+    // The three rows every ordinary settled kind opens with, so a second selection lands each answer on the line the first one used; Preview board rule 1.
+    var head = [pair("Kind", kindName), pair("Size", Format.size(row.s)),
+                pair("Modified", Format.date(row.m))]
     switch (st) {
     case IMAGE:
-        return [pair("Kind", kindName), pair("Size", Format.size(row.s)),
-                pair("Pixels", pixels(meta)), pair("Modified", Format.date(row.m))]
+        return head.concat([pair("Pixels", pixels(meta))])
     case VIDEO:
-        return [pair("Kind", kindName), pair("Duration", e.duration || ""),
-                pair("Pixels", pixels(meta)), pair("Size", Format.size(row.s))]
+        return head.concat([pair("Duration", e.duration || ""), pair("Pixels", pixels(meta))])
     case AUDIO:
-        return [pair("Kind", kindName), pair("Duration", e.duration || ""),
-                pair("Rate", e.rate || ""), pair("Size", Format.size(row.s))]
+        return head.concat([pair("Duration", e.duration || ""), pair("Rate", e.rate || "")])
     case PDF:
-        return [pair("Kind", kindName), pair("Pages", e.pages || ""),
-                pair("Size", Format.size(row.s)), pair("Modified", Format.date(row.m))]
+        return head.concat([pair("Pages", e.pages || "")])
     case TEXT:
-        return [pair("Kind", kindName), pair("Size", Format.size(row.s)),
-                pair("Lines", lineCount(meta)), pair("Modified", Format.date(row.m))]
+        return head.concat([pair("Lines", lineCount(meta))])
+    // Mode stays: columns view has no permission column, so dropping it here would remove it.
     case CODE:
-        return [pair("Kind", kindName), pair("Size", Format.size(row.s)),
-                pair("Lines", lineCount(meta)), pair("Mode", Format.permissions(row.p))]
+        return head.concat([pair("Lines", lineCount(meta)), pair("Mode", Format.permissions(row.p))])
     case ARCHIVE:
-        return [pair("Kind", kindName), pair("Entries", e.entries || ""),
-                pair("Packed", Format.size(row.s)), pair("Unpacked", e.unpacked || "")]
+        return head.concat([pair("Entries", archiveFact(e))])
     case SYMLINK:
         return [pair("Kind", "Symbolic link"), pair("Target", meta ? meta.target : ""),
                 pair("Points at", meta && meta.targetDir ? "Folder" : "File"),
@@ -208,8 +203,13 @@ function stateRows(st, row, meta, kindName, extra) {
                 pair("Mode", Format.permissions(row.p)), pair("Owner", e.owner || "")]
     }
     // Unsupported, which is also where a kind whose facts are a later plan lands until it arrives.
-    return [pair("Kind", kindName), pair("Size", Format.size(row.s)),
-            pair("Modified", Format.date(row.m)), pair("Mode", Format.permissions(row.p))]
+    return head.concat([pair("Mode", Format.permissions(row.p))])
+}
+
+// The archive's one kind fact, the board's "3, 240.8 kB out": Size already says what it weighs packed.
+function archiveFact(e) {
+    if (!e.entries) return ""
+    return e.unpacked ? e.entries + ", " + e.unpacked + " out" : String(e.entries)
 }
 
 // The multi-selection summary, which is a summary and never a collage: counts and a combined size.

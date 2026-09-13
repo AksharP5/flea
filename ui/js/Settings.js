@@ -348,7 +348,8 @@ function previewRows(state) {
     size.caption = [48, 64, 96, 128][Math.max(0, size.values.indexOf(size.selected))] + " px"
     return [
         { kind: "group", label: "Preview column" },
-        { kind: "check", id: "preview.column", label: "Preview column", glyph: "columns", on: data.column !== false },
+        // Preview board rule 4: the heading names the group, so the row under it names the switch.
+        { kind: "check", id: "preview.column", label: "Show the preview column", glyph: "columns", on: data.column !== false },
         load,
         { kind: "group", label: "Thumbnails" },
         choice("preview.thumbnails", "Thumbnails", "image", ["off", "images", "media"],

@@ -24,12 +24,11 @@ function run(check, suite) {
     check("the evening before fall back keeps the earlier day",
           Format.date(1793503800), "2026-10-31 23:30")
 
-    // The picker's compact form is the one surface that still asks which local day it is.
-    var fallNow = 1793552400
-    check("the compact form keeps the repeated hour on today",
-          Format.compactDate(1793514600, fallNow * 1000), "01:30")
-    check("the compact form puts the evening before on yesterday's stamp",
-          Format.compactDate(1793503800, fallNow * 1000), "31 Oct")
+    // The picker's compact form reads the same local day, because both are the local wall clock.
+    check("the compact form keeps the repeated hour on its own day",
+          Format.compactDate(1793514600), "2026-11-01")
+    check("and puts the evening before on the day before",
+          Format.compactDate(1793503800), "2026-10-31")
 }
 
 function runEdmonton(check) {

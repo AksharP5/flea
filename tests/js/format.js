@@ -43,46 +43,23 @@ function run(check) {
     check("the stamp is always the sixteen characters the column is cut for",
           Format.date(new Date(2026, 8, 5, 9, 4).getTime() / 1000).length, 16)
 
-    // The send picker's own column: SendPicker.html draws 11:32, 10:18, 21 Aug and 15 Aug, and the
-    // window's Format.date above is untouched. Fixed instants throughout, never Date.now().
-    check("today is the clock alone",
-          Format.compactDate(new Date(2026, 7, 21, 11, 32).getTime() / 1000,
-                             new Date(2026, 7, 21, 14, 0).getTime()), "11:32")
-    check("an earlier day this year is the bare stamp",
-          Format.compactDate(new Date(2026, 7, 21, 21, 5).getTime() / 1000,
-                             new Date(2026, 7, 27, 12, 0).getTime()), "21 Aug")
-
+    // The send picker's column holds about ten characters, so its date drops the time and keeps the
+    // date; Preview board, "One function, four surfaces". Fixed instants throughout, never Date.now().
+    check("the picker's date is the stamp without its clock",
+          Format.compactDate(new Date(2026, 7, 21, 11, 32).getTime() / 1000), "2026-08-21")
+    check("and two instants on the same day read the same",
+          Format.compactDate(new Date(2026, 7, 21, 23, 59).getTime() / 1000), "2026-08-21")
     // The local-day rollover: one minute either side of local midnight, which is where this breaks.
-    var justAfterMidnight = new Date(2026, 7, 22, 0, 1).getTime()
-    check("23:59 last night is no longer the clock",
-          Format.compactDate(new Date(2026, 7, 21, 23, 59).getTime() / 1000, justAfterMidnight), "21 Aug")
-    check("00:01 this morning is already the clock",
-          Format.compactDate(new Date(2026, 7, 22, 0, 1).getTime() / 1000, justAfterMidnight), "00:01")
-    check("23:59 tonight is still the clock at 23:59",
-          Format.compactDate(new Date(2026, 7, 21, 23, 59).getTime() / 1000,
-                             new Date(2026, 7, 21, 23, 59).getTime()), "23:59")
-
-    // The year boundary, which is the rollover and the disambiguation at once.
-    var justAfterNewYear = new Date(2026, 0, 1, 0, 1).getTime()
-    check("23:59 on new year's eve carries the year it belongs to",
-          Format.compactDate(new Date(2025, 11, 31, 23, 59).getTime() / 1000, justAfterNewYear), "31 Dec '25")
-    check("00:01 on new year's day is the clock",
-          Format.compactDate(new Date(2026, 0, 1, 0, 1).getTime() / 1000, justAfterNewYear), "00:01")
-    check("January this year drops the year again",
-          Format.compactDate(new Date(2026, 0, 1, 9, 0).getTime() / 1000,
-                             new Date(2026, 2, 1, 9, 0).getTime()), "1 Jan")
-
+    check("a minute after local midnight is already the next day",
+          Format.compactDate(new Date(2026, 7, 22, 0, 1).getTime() / 1000), "2026-08-22")
     // Two Augusts must not read as one string, which is the whole reason the year survives the trim.
-    var fromTwentySix = new Date(2026, 7, 27, 12, 0).getTime()
     check("last August carries its year",
-          Format.compactDate(new Date(2025, 7, 21, 10, 0).getTime() / 1000, fromTwentySix), "21 Aug '25")
-    check("the August before it carries a different one",
-          Format.compactDate(new Date(2024, 7, 21, 10, 0).getTime() / 1000, fromTwentySix), "21 Aug '24")
-    check("a single-digit year keeps both of its digits",
-          Format.compactDate(new Date(2005, 7, 21, 10, 0).getTime() / 1000, fromTwentySix), "21 Aug '05")
+          Format.compactDate(new Date(2025, 7, 21, 10, 0).getTime() / 1000), "2025-08-21")
+    check("and the August before it carries a different one",
+          Format.compactDate(new Date(2024, 7, 21, 10, 0).getTime() / 1000), "2024-08-21")
     // ui/Theme.qml sizes column.pickerDate at ten characters of this face, so nothing here may elide.
-    check("the widest compact form is the ten characters the column is cut for",
-          Format.compactDate(new Date(2025, 7, 21, 10, 0).getTime() / 1000, fromTwentySix).length, 10)
+    check("the compact form is always the ten characters the column is cut for",
+          Format.compactDate(new Date(2005, 7, 21, 10, 0).getTime() / 1000).length, 10)
 
     // The window keeps its own form for the same instant; the picker column is the narrower one.
     check("the window's stamp is not the picker's compact form",

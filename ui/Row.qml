@@ -361,7 +361,7 @@ Item {
         if (root.row.m === null) {
             return "--"
         }
-        return root.compactDate ? Format.compactDate(root.row.m, Date.now()) : Format.date(root.row.m)
+        return root.compactDate ? Format.compactDate(root.row.m) : Format.date(root.row.m)
     }
 
     // row.k indexes root.kindNames; an index past its bounds (a row held over from an older listing) reads as empty, never a crash.

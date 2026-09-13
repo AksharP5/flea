@@ -92,31 +92,40 @@ function run(check) {
           Kinds.isPreviewable({ d: true }) + "|" + Kinds.isPreviewable({ d: false }) + "|" + Kinds.isPreviewable(null),
           "false|true|false")
 
-    // The canvas's own four rows, in the canvas's own order, for each state it draws.
-    check("image states Kind, Size, Pixels, Modified",
+    // Preview board rule 1: eight ordinary settled kinds open with Kind, Size, Modified, five add one
+    // kind fact and stop at four rows, and video, audio and code carry two.
+    check("image states Kind, Size, Modified, Pixels",
           labels(Facts.facts("image", row("image-x-generic", 2100000), { w: 2560, h: 1440 }, "PNG image")),
-          "Kind|Size|Pixels|Modified")
+          "Kind|Size|Modified|Pixels")
     check("and its pixels read as the canvas writes them",
           valueOf(Facts.facts("image", row("image-x-generic", 2100000), { w: 2560, h: 1440 }, "PNG image"), "Pixels"),
           "2560 × 1440")
-    check("video states Kind, Duration, Pixels, Size",
+    check("video states Kind, Size, Modified, Duration, Pixels",
           labels(Facts.facts("video", row("video-x-generic", 48000000), { w: 1920, h: 1080 }, "MP4 video", { duration: "1:12" })),
-          "Kind|Duration|Pixels|Size")
-    check("audio states Kind, Duration, Rate, Size",
+          "Kind|Size|Modified|Duration|Pixels")
+    check("audio states Kind, Size, Modified, Duration, Rate",
           labels(Facts.facts("audio", row("audio-x-generic", 31000000), null, "FLAC audio", { duration: "4:05", rate: "44.1 kHz" })),
-          "Kind|Duration|Rate|Size")
-    check("pdf states Kind, Pages, Size, Modified",
+          "Kind|Size|Modified|Duration|Rate")
+    check("pdf states Kind, Size, Modified, Pages",
           labels(Facts.facts("pdf", row("application-pdf", 2300000), null, "PDF document", { pages: "51" })),
-          "Kind|Pages|Size|Modified")
-    check("text states Kind, Size, Lines, Modified",
+          "Kind|Size|Modified|Pages")
+    check("text states Kind, Size, Modified, Lines",
           labels(Facts.facts("text", row("text-x-generic", 18000), { lines: 214 }, "Markdown")),
-          "Kind|Size|Lines|Modified")
-    check("code states Kind, Size, Lines, Mode",
+          "Kind|Size|Modified|Lines")
+    // Mode stays: columns view draws no permission column, so dropping it here removes it entirely.
+    check("code states Kind, Size, Modified, Lines, Mode",
           labels(Facts.facts("code", row("text-x-script", 4200), { lines: 132 }, "Rust source")),
-          "Kind|Size|Lines|Mode")
-    check("archive states Kind, Entries, Packed, Unpacked",
+          "Kind|Size|Modified|Lines|Mode")
+    check("archive states Kind, Size, Modified, Entries",
           labels(Facts.facts("archive", row("package-x-generic", 1200000000), null, "Zstandard tar", { entries: "214", unpacked: "3.4 GB" })),
-          "Kind|Entries|Packed|Unpacked")
+          "Kind|Size|Modified|Entries")
+    // Size above already says what the archive weighs packed, so its one row carries both counts.
+    check("and the archive's one fact is the count and the unpacked total together",
+          valueOf(Facts.facts("archive", row("package-x-generic", 1200000000), null, "Zstandard tar", { entries: "214", unpacked: "3.4 GB" }), "Entries"),
+          "214, 3.4 GB out")
+    check("an archive nothing has measured unpacked still states its count",
+          valueOf(Facts.facts("archive", row("package-x-generic", 1200000000), null, "Zstandard tar", { entries: "214" }), "Entries"),
+          "214")
     check("symlink states Kind, Target, Points at, Mode",
           labels(Facts.facts("symlink", row("folder", 18, 41471), { target: "/usr/share/omarchy", targetDir: true }, "Folder")),
           "Kind|Target|Points at|Mode")
@@ -153,9 +162,8 @@ function run(check) {
 
     // Entries and the unpacked total come off the archive's own index, read without extracting it.
     check("an archive states its entries and what they weigh unpacked",
-          valueOf(Facts.facts("archive", row("package-x-generic", 1200000000), { entries: 214, unpacked: 3400000000 }, "Zstandard tar"), "Entries")
-          + "|" + valueOf(Facts.facts("archive", row("package-x-generic", 1200000000), { entries: 214, unpacked: 3400000000 }, "Zstandard tar"), "Unpacked"),
-          "214|3.4 GB")
+          valueOf(Facts.facts("archive", row("package-x-generic", 1200000000), { entries: 214, unpacked: 3400000000 }, "Zstandard tar"), "Entries"),
+          "214, 3.4 GB out")
     check("and an archive nothing has listed yet shows empty cells rather than zeroes",
           JSON.stringify(Facts.archiveExtra({ entries: 0, unpacked: 0 })), "{}")
 
@@ -163,12 +171,9 @@ function run(check) {
     // it sends, and the difference is the tile's own "+ N more" line.
     var big = { entries: 214, unpacked: 3400000000,
                 names: [{ n: "daemon", d: true }, { n: "ui", d: true }, { n: "Cargo.toml", d: false }] }
-    check("a long archive states an exact count, never a cap",
+    check("a long archive states an exact count and an exact unpacked total, never a cap",
           valueOf(Facts.facts("archive", row("package-x-generic", 1200000000), big, "Zstandard tar"), "Entries"),
-          "214")
-    check("and an exact unpacked total beside it",
-          valueOf(Facts.facts("archive", row("package-x-generic", 1200000000), big, "Zstandard tar"), "Unpacked"),
-          "3.4 GB")
+          "214, 3.4 GB out")
     check("the tile lists the names the wire carried",
           Facts.archiveEntries(big).map(function (e) { return e.n }).join("|"),
           "daemon|ui|Cargo.toml")
@@ -206,9 +211,11 @@ function run(check) {
                              { lines: 0, partial: false, linesFailed: true }, "Markdown")), "Kind|Size|Modified")
     check("and a raw image whose dimensions are unreadable draws no Pixels row",
           labels(Facts.facts("image", row("image-x-generic", 2100000), null, "Raw image")), "Kind|Size|Modified")
+    check("an archive nothing has listed draws no Entries row either",
+          labels(Facts.facts("archive", row("package-x-generic", 1200000), null, "Zip archive")), "Kind|Size|Modified")
     check("a video nothing has probed yet drops Duration and keeps the rest",
           labels(Facts.facts("video", row("video-x-generic", 48000000), { w: 1920, h: 1080 }, "MP4 video")),
-          "Kind|Pixels|Size")
+          "Kind|Size|Modified|Pixels")
     check("pixels with nothing behind them are empty rather than 0 × 0",
           Facts.pixels(null) + "|" + Facts.pixels({ w: 0, h: 0 }), "|")
 

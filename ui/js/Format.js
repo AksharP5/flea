@@ -24,15 +24,6 @@ function pad(n) {
     return n < 10 ? "0" + n : "" + n
 }
 
-var MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-var SECONDS_PER_DAY = 86400
-var MILLISECONDS_PER_MINUTE = 60000
-
-// Each instant supplies its own offset so DST transitions keep the local day boundary.
-function localDay(d) {
-    return Math.floor((d.getTime() - d.getTimezoneOffset() * MILLISECONDS_PER_MINUTE) / (SECONDS_PER_DAY * 1000))
-}
-
 // "2026-09-12 15:29", the one form every surface prints, in the machine's local wall clock.
 function stamp(d) {
     return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate())
@@ -44,17 +35,12 @@ function date(mtime) {
     return stamp(new Date(mtime * 1000))
 }
 
-// The send picker's column is SendPicker.html's 80 and not the window's 125, so its date drops the
-// prose: today is the clock alone and any earlier day is the bare stamp, as that board draws them.
-function compactDate(mtime, nowMs) {
+// The send picker's column is SendPicker.html's 80 and not the window's 125, which holds about ten
+// characters: the one place the full stamp does not fit. It drops the time and keeps the date, so it
+// is still sortable and still unambiguous. Preview board, "One function, four surfaces".
+function compactDate(mtime) {
     var d = new Date(mtime * 1000)
-    var now = new Date(nowMs)
-    if (localDay(d) === localDay(now)) {
-        return pad(d.getHours()) + ":" + pad(d.getMinutes())
-    }
-    var dayStamp = d.getDate() + " " + MONTHS[d.getMonth()]
-    // A bare "21 Aug" reads the same in every year, so an earlier one carries a two-digit year.
-    return d.getFullYear() === now.getFullYear() ? dayStamp : dayStamp + " '" + pad(d.getFullYear() % 100)
+    return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate())
 }
 
 // The low nine bits of st_mode, read three at a time.

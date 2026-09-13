@@ -2429,9 +2429,10 @@ case_columns() {
     [[ "$(ipc previewColumnState)" == "archive" ]] \
         || fail "columns: an archive previews as $(ipc previewColumnState)"
     archive_facts=$(ipc previewFacts)
-    [[ "$archive_facts" == *"Entries=3"* ]] \
+    # Preview board rule 1: Size above says what it weighs packed, so Entries carries both counts.
+    [[ "$archive_facts" == *"Entries=3, "*" out"* ]] \
         || fail "columns: the archive states $archive_facts, not the three members it holds"
-    [[ "$archive_facts" == *"Kind="*"Packed="*"Unpacked="* ]] \
+    [[ "$archive_facts" == *"Kind="*"Size="*"Modified="*"Entries="* ]] \
         || fail "columns: the archive tile's labels are wrong, got $archive_facts"
 
     seek_row_named "shot.png"
@@ -2443,7 +2444,7 @@ case_columns() {
     # glob pattern carrying the multiplication sign does not match under this suite's own locale.
     local facts
     facts=$(ipc previewFacts)
-    [[ "$(fact_labels "$facts")" == "Kind|Size|Pixels|Modified" ]] \
+    [[ "$(fact_labels "$facts")" == "Kind|Size|Modified|Pixels" ]] \
         || fail "columns: the image states $(fact_labels "$facts"), not the canvas's own four rows"
     [[ "$facts" == "Kind=PNG image|"* ]] || fail "columns: the image kind is wrong in $facts"
     [[ "$facts" == *"640"*"480"* ]] || fail "columns: the image pixels are wrong in $facts"
@@ -2454,7 +2455,7 @@ case_columns() {
     settle
     [[ "$(ipc previewColumnState)" == "text" ]] || fail "columns: notes.txt previews as $(ipc previewColumnState)"
     facts=$(ipc previewFacts)
-    [[ "$(fact_labels "$facts")" == "Kind|Size|Lines|Modified" ]] \
+    [[ "$(fact_labels "$facts")" == "Kind|Size|Modified|Lines" ]] \
         || fail "columns: the text states $(fact_labels "$facts")"
     [[ "$facts" == *"Lines=3"* ]] || fail "columns: the line count is wrong in $facts"
     printf 'COLUMNS text=%s\n' "$facts"
