@@ -33,7 +33,7 @@ var MENU_GROUPS = [
     { label: "Open and inspect", master: false,
       ids: ["openwith", "openTerminal", "moveto", "copyto", "properties", "permissions", "copypath"] },
     { label: "Extras", master: false,
-      ids: ["compress", "extract", "convert", "taildrop", "dropbox", "sharelink"] }
+      ids: ["shelf", "compress", "extract", "convert", "taildrop", "dropbox", "sharelink"] }
 ]
 
 // Open and Show hidden files draw the lock mark instead of a box, and the board says why: a menu
@@ -47,7 +47,7 @@ var LABELS = {
     delete: "Delete permanently", openwith: "Open with", moveto: "Move to", copyto: "Copy to", properties: "Properties",
     compress: "Compress", extract: "Extract",
     convert: "Convert", taildrop: "Send with Taildrop", dropbox: "Move to Dropbox",
-    sharelink: "Copy Share Link", open: "Open", toggleHidden: "Show hidden files"
+    sharelink: "Copy Share Link", open: "Open", toggleHidden: "Show hidden files", shelf: "Enable shelf"
 }
 
 // The four values of the Keys row, in SettingsKeys.html's own chooser order. The first is what a
@@ -67,7 +67,7 @@ var GLYPHS = {
 
 // Taildrop and Dropbox are brand reproductions rather than cut glyphs, so they name a component the
 // way a menu entry does; ui/SettingsRow.qml draws the pair exactly as ui/MenuRow.qml does.
-var MARKS = { taildrop: "tailscale", dropbox: "dropbox" }
+var MARKS = { taildrop: "tailscale", dropbox: "dropbox", shelf: "flea" }
 
 function label(id) {
     return LABELS[id] || id

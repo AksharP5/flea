@@ -46,7 +46,8 @@ function runInventory(check) {
     check("every switch in the Menus section is over a row the menu really builds",
           switched.filter(function (id) { return built[id] === undefined }).join(","), "")
     check("and each switch carries that row's own wording, so the two cannot drift",
-          switched.filter(function (id) { return Settings.label(id) !== built[id] }).join(","), "")
+          switched.filter(function (id) { return id !== "shelf" && Settings.label(id) !== built[id] }).join(",")
+          + "|" + Settings.label("shelf") + "|" + built["shelf"], "|Enable shelf|Add to shelf")
     // A switch wears the mark of the row it governs, which is the only way a reader can pair the two.
     check("and each row wears the mark the menu draws for that action",
           switched.concat(Settings.LOCKED).filter(function (id) {
@@ -172,7 +173,7 @@ function runRows(check) {
     check("the current menu controls include Permissions and the retained hints preference",
           menus.filter(function (r) { return r.kind === "check" })
                .map(function (r) { return r.id }).join(","),
-          "cut,copy,paste,duplicate,rename,trash,delete,openwith,openTerminal,moveto,copyto,properties,permissions,copypath,compress,extract,convert,taildrop,dropbox,sharelink,keyHints")
+          "cut,copy,paste,duplicate,rename,trash,delete,openwith,openTerminal,moveto,copyto,properties,permissions,copypath,shelf,compress,extract,convert,taildrop,dropbox,sharelink,keyHints")
     // The one check that is not a menu action: it says how every row is drawn, not whether it is.
     // GM's ruling of 2026-09-10 turns it off by default, with the rail's own detail rows, and
     // src/uischema.rs stores that default, so an absent preference reads off and not on.
@@ -267,7 +268,7 @@ function runPresets(check) {
     }
     check("preset check denominator covers all effective bindings", total > 100, true)
     var menuRows = Settings.menuRows([], true)
-    check("SettingsMenus contains exactly 20 action switches", menuRows.filter(function (r) { return r.kind === "check" && r.id !== "keyHints" }).length, 20)
+    check("SettingsMenus contains exactly 21 action switches", menuRows.filter(function (r) { return r.kind === "check" && r.id !== "keyHints" }).length, 21)
     check("Delete permanently is visually destructive", find(menuRows, "delete").role, "error")
     check("Delete permanently explains its default", find(menuRows, "delete").value, "off by default")
 }

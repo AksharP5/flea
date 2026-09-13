@@ -145,6 +145,15 @@ Item {
             iconSize: root.slotSize
             color: root.markColor
         }
+
+        // The shelf is Flea's own destination, so it carries Flea's own mark rather than a cut glyph.
+        Flea.FleaMark {
+            anchors.centerIn: parent
+            visible: root.entry.mark === "flea"
+            width: root.slotSize
+            height: root.slotSize
+            color: root.markColor
+        }
     }
 
     Text {

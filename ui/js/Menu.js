@@ -32,6 +32,9 @@ var INVENTORY = [
     ["compress", "Compress", "archive", "F", "archive"],
     ["extract", "Extract", "archive-out", "F", "archive"],
     ["convert", "Convert", "sliders", "F", "archive"],
+    // The shelf leads the send group: it is Flea's own destination and the other two are somebody
+    // else's. Governed by the Enable shelf switch in Settings, Menus, so off is absent and not grey.
+    ["shelf", "Add to shelf", "file", "F", "share", "addToShelf"],
     ["taildrop", "Send with Taildrop", "tailscale", "F", "share"],
     ["dropbox", "Move to Dropbox", "dropbox", "F", "share"],
     ["sharelink", "Copy Share Link", "network", "F", "share"],
@@ -132,6 +135,7 @@ function availableEntry(e, p, kind) {
         // widened the menu past its own frame while the providers were still being read.
         if (e.disabled && p.providersRefreshing !== true) e.errored = true
     }
+    if (e.action === "addToShelf") { e.mark = "flea"; delete e.glyph }
     if (e.action === "dropbox" || e.action === "sharelink") {
         if (!p.dropboxInstalled || (e.action === "dropbox" ? p.rowInDropbox : !p.rowInDropbox)) return false
         e.disabled = p.providersRefreshing === true || !p.dropboxPath
