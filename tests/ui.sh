@@ -1913,7 +1913,7 @@ case_background() {
         "$(ipc sortMark)" "$(ipc contextMenuSubmenuEntries)" "$(ipc contextMenuSubmenuGlyphs)"
     shot background-sort
     # Four orders, because src/backend/ordering.rs answers kind as well as the three in sort.rs.
-    [[ "$(ipc contextMenuSubmenuEntries)" == "Name|Size|Date Modified|Kind" ]] \
+    [[ "$(ipc contextMenuSubmenuEntries)" == "Name|Size|Modified|Kind" ]] \
         || fail "background: the Sort by flyout is $(ipc contextMenuSubmenuEntries)"
     [[ "$(ipc contextMenuSubmenuGlyphs)" == "sort|sort|sort|sort" ]] \
         || fail "background: the sort flyout drew $(ipc contextMenuSubmenuGlyphs)"
@@ -2917,7 +2917,7 @@ case_header() {
     mark=$(ipc sortMark)
     printf 'HEADER titles=%s mark=%s\n' "$titles" "$mark"
     shot header
-    [[ "$titles" == "Name|Mode|Size|Date Modified|Kind" ]] || fail "header: titles are $titles"
+    [[ "$titles" == "Name|Mode|Size|Modified|Kind" ]] || fail "header: titles are $titles"
     [[ "$mark" == "name:asc" ]] || fail "header: the sort mark reads $mark"
 
     # Gaps are anchored constants, so this only guards the wiring; overflow is guarded per cell in case_overflow.

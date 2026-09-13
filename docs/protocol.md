@@ -198,7 +198,7 @@ order. `sort` never emits a `rows` line on its own;
 follow it with `window` to see the reordered rows. A missing `desc` defaults to `false`.
 
 `mtime` names the same stat field that `rows` carries as `m`; the GUI labels it
-"Date Modified". `date` is also accepted as an alias for `mtime`, matching the saved
+"Modified". `date` is also accepted as an alias for `mtime`, matching the saved
 Settings value. `mode` is not a supported sort key.
 
 ### search

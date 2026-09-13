@@ -13,7 +13,7 @@ Item {
     readonly property real dateWidth: root.dualMode ? Theme.dualColumn.date : Theme.column.date
 
     // The click ui/js/Sort.js answers. The header owns no sort state, so it only says which column
-    // was hit; the key is the protocol's own, which is why Date Modified sends "mtime".
+    // was hit; the key is the protocol's own, which is why Modified sends "mtime".
     signal sortRequested(string key)
 
     // A right click over the titles opens the pane's one ContextMenu with the column toggles and
@@ -102,7 +102,7 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         visible: root.cols.date
         width: root.cols.date ? root.dateWidth : 0
-        text: root.title("Date Modified", "mtime")
+        text: root.title("Modified", "mtime")
         horizontalAlignment: Text.AlignRight
         elide: Text.ElideRight
 
@@ -148,7 +148,7 @@ Item {
 
     // What the header case reads, built from the same values the header renders.
     function titles() {
-        return "Name|Mode|Size|Date Modified|Kind"
+        return "Name|Mode|Size|Modified|Kind"
     }
 
     // What the header is drawing right now, for the seam that reads it beside a row's.

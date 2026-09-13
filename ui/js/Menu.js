@@ -162,7 +162,7 @@ function permissionsEntry(mode, count) {
 
 // The Sort by flyout, built from ui/js/Sort.js's own ORDERS so it can only ever offer an order the
 // backend really produces; a fourth key would earn a refusal instead of a listing.
-var SORT_LABELS = { name: "Name", size: "Size", mtime: "Date Modified", kind: "Kind" }
+var SORT_LABELS = { name: "Name", size: "Size", mtime: "Modified", kind: "Kind" }
 
 function sortEntries() {
     var out = []
@@ -232,7 +232,7 @@ function headerEntries(hiddenCols, showHidden) {
     var hidden = {}
     for (var h = 0; h < hiddenCols.length; h++)
         hidden[hiddenCols[h]] = true
-    var columns = [["mode", "Mode"], ["size", "Size"], ["date", "Date Modified"], ["kind", "Kind"]]
+    var columns = [["mode", "Mode"], ["size", "Size"], ["date", "Modified"], ["kind", "Kind"]]
     var glyphs = { mode: "lock", size: "drive", date: "download", kind: "type" }
     for (var i = 0; i < columns.length; i++) {
         var key = columns[i][0]
