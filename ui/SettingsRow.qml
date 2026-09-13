@@ -56,7 +56,7 @@ Item {
         : (root.row.on === true ? "on" : "off")
 
     enabled: !root.greyed
-    opacity: root.greyed ? 0.5 : 1
+    opacity: root.greyed ? Theme.disabledOpacity : 1
     height: root.isGroup ? groupLabel.y + groupLabel.height + root.groupPaddingBottom
             : root.isFavourite ? favourite.implicitHeight : root.isHero ? hero.implicitHeight + 4 * Theme.spacing.rowPaddingY
             : root.isKeyPreview ? keyPreview.implicitHeight + 2 * Theme.spacing.rowPaddingY
