@@ -42,6 +42,7 @@ function run(check) {
     check("saved directory displays a disabled Favorited row with a filled star",
           [favourited.label, favourited.glyph, favourited.filled, favourited.disabled].join("|"), "Favorited|star|true|true")
     check("saved background folder also displays Favorited", entry(Menu.backgroundEntries(state({ favourited: true })), "addFavourite").label, "Favorited")
+    check("Favorites waits for the captured path", entry(Menu.listingEntries(state({ rowMode: 0o040755, favouritePending: true })), "addFavourite").disabled, true)
     check("new folders retain the outline star", entry(Menu.listingEntries(state({ rowMode: 0o040755 })), "addFavourite").filled, undefined)
     check("multi-selection never claims every row is favorited", entry(Menu.listingEntries(state({ selectionCount: 2, favourited: true })), "addFavourite").label, "Add to Favorites")
     check("empty Trash retains both disabled actions", actions(Menu.trashEntries(0, false)), "open,restoreAll,emptyTrash")

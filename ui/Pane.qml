@@ -583,7 +583,7 @@ FocusScope {
             ? root.backend.extraction.sevenZip : root.backend.extraction.archive
         rowMode: root.permissionSelection() ? root.permissionSelection().p : 0
         selectionCount: Ops.targetIndices(root).length
-        favouritePath: menu.hasRow ? (root.permissionSelection() ? root.join(root.path, root.permissionSelection().n) : "") : root.path
+        backgroundPath: root.path
         openWithApps: menuActions.openWithApps
         openWithLoaded: menuActions.openWithLoaded
         selectionIdentity: root.menuSelectionIdentity
