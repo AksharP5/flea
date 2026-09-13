@@ -282,9 +282,7 @@ Item {
                         primary: modelData.index === root.picker.filterIndex
                         available: !root.picker.backendUnavailable && !root.picker.submitting
                         onActiveFocusChanged: if (activeFocus) types.reveal(this)
-                        // The chosen chip is accent ink over the accent wash, which makes it the same
-                        // control the Settings segmented chooser already draws; its recessed plane
-                        // went with the frames.
+                        // The chosen chip is the picker's own primary: a foreground label in an accent frame.
                         onPressed: root.chipChosen(modelData.index)
                     }
                 }

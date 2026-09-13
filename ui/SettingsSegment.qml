@@ -1,10 +1,9 @@
 import QtQuick
-import qs.Commons
 import "." as Flea
 
-// The Display board's two-value control: both names side by side with the accent on the current one,
-// rather than the chevron walk a longer list needs. ui/SettingsRow.qml draws it for any row whose
-// model names its options, and the row above owns the writer, so nothing here holds state.
+// The Display board's two-value control: both names side by side, the current one bright, rather than
+// the chevron walk a longer list needs. ui/SettingsRow.qml draws it for any row whose model names its
+// options, and the row above owns the writer, so nothing here holds state.
 Row {
     id: root
 
@@ -32,8 +31,12 @@ Row {
             width: segment.glyph ? Math.max(Theme.hitMin, Theme.railIconSize + 2 * (Theme.spacing.gap - Theme.spacing.hairline))
                                  : name.implicitWidth + 2 * Theme.spacing.gap
             height: Theme.hitMin
-            // selectedAccentFill already carries the theme's own selected alpha, as ui/MenuRow.qml has it.
-            color: segment.current ? Style.selectedAccentFill : "transparent"
+            // Containers rule 4: a segmented cell is never filled, so the choice reads as brightness.
+            color: "transparent"
+            // Rule 3: words in a set are Tier B and every member wears the box; glyphs in a strip are
+            // Tier A, where a box around four marks would be furniture.
+            border.width: segment.glyph ? 0 : Theme.spacing.hairline
+            border.color: segment.current ? Theme.color.foreground : Theme.color.muted
             Accessible.role: Accessible.Button
             Accessible.name: String(segment.modelData)
             Accessible.onPressAction: root.picked(segment.index)
@@ -44,7 +47,7 @@ Row {
                 width: Theme.railIconSize
                 height: width
                 name: segment.glyph || "file"
-                color: segment.current ? Theme.color.accent : Theme.color.foreground
+                color: segment.current ? Theme.color.foreground : Theme.color.muted
             }
 
             Text {
@@ -52,7 +55,7 @@ Row {
                 visible: segment.glyph.length === 0
                 anchors.centerIn: parent
                 text: segment.modelData
-                color: segment.current ? Theme.color.accent : Theme.color.foreground
+                color: segment.current ? Theme.color.foreground : Theme.color.muted
                 font.family: Theme.font.family
                 font.pixelSize: Theme.font.caption
                 textFormat: Text.PlainText
