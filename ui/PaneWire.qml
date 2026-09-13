@@ -389,10 +389,10 @@ Item {
             }
         }
 
-        // A refused listing never moved the base the backend statfs's and Nav.js already moved pane.path, so a failed hop's answer describes the directory we did not leave; responses arrive in order, so the verdict is in.
-        function onFsInfo(fs, free) {
-            var reached = pane.listingState !== "error" && pane.listingState !== "locked"
-            pane.fsName = reached ? fs : ""; pane.fsFree = reached ? free : 0
+        // The backend statfs's its own base, which only moves when a listing succeeds, and Nav.js moves pane.path before one does: a failed hop's figures are of the directory we never left, while a failed refresh's are still of what is on screen.
+        function onFsInfo(fs, free, path) {
+            var ours = path.length === 0 || path === pane.path
+            pane.fsName = ours ? fs : ""; pane.fsFree = ours ? free : 0
         }
 
         // The answer to Ops.clip's askPaths; nothing reaches the clipboard until this lands.
@@ -456,10 +456,10 @@ Item {
             }
             if (terminal || where === "scan" || pane.listingState === "loading") {
                 pane.listingState = Errors.listingState(where, message)
-                pane.lockedMode = mode
-                pane.stateMessage = text
+                pane.lockedMode = mode; pane.stateMessage = text  // a pane state is said once, in the block; States rule 1
+            } else {
+                pane.message(text, true)
             }
-            pane.message(text, true)
             // The copy is whole and only the name it came from is unknown, so re-read the listing and select nothing.
             if (where === "rename-kept")
                 pane.refresh("")

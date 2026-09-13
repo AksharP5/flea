@@ -105,19 +105,6 @@ function notYours(mode) {
     return (mode & OWNER_CAN_LIST) === OWNER_CAN_LIST ? " · not yours" : ""
 }
 
-// The whole line a failed listing puts on the pane. Locked draws the directory's own mode string and
-// falls back to the sentence when the backend could not stat it either, so the surface is never a
-// mark with nothing under it.
-function paneLine(state, message, mode) {
-    // Named for what it is rather than "sentence", which is this file's own function one scope out.
-    var fallback = message === null || message === undefined ? "" : String(message)
-    if (state !== "locked") {
-        return fallback
-    }
-    var modeLine = lockedLine(mode)
-    return modeLine.length > 0 ? modeLine : fallback
-}
-
 // The one sentence a credentialed mount reaches the user as, lifted here in the 0.1.4 composition
 // so ui/NetworkMounts.qml keeps its budget. "timeout" answers 124 for its own deadline and the shell
 // answers 126 or 127 for a helper it could not run at all; every other code is the server refusing,

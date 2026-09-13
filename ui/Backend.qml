@@ -42,7 +42,7 @@ Item {
     signal metaResult(var message)
     property int metaToken: 0
     signal meta(int row, int w, int h, real durationMs, int sampleRate, int entries, real unpacked, bool archiveFailed, var names, real lines, bool partial, bool linesFailed, string target, bool targetDir, string owner)
-    signal fsInfo(string fs, real free)
+    signal fsInfo(string fs, real free, string path)
     // The one line no request asked for: the directory the current listing came from changed under
     // it. path is that directory, so a pane that has since moved can ignore it; see docs/protocol.md.
     signal changed(string path)
@@ -358,7 +358,7 @@ Item {
             root.metaResult(message)
             root.meta(message.row, message.w, message.h, message.ms, message.rate, message.entries, message.unpacked, message.afailed, message.names, message.lines, message.partial, message.lfailed === true, message.target, message.targetdir, message.owner || "")
         } else if (message.t === "fsinfo") {
-            root.fsInfo(message.fs, message.free)
+            root.fsInfo(message.fs, message.free, message.path || "")
         } else if (message.t === "changed") {
             root.changed(message.path || "")
         } else if (message.t === "peeked") {

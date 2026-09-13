@@ -2,10 +2,10 @@ import QtQuick
 import qs.Commons
 import "js/Errors.js" as Errors
 
-// The one thing a pane shows instead of rows. States.dc.html draws each of these as a mark over a
-// line: Error is the alert in the error role over the sentence, Locked is the lock in the muted role
-// over the directory's own mode string. The empty state has its own overlay in ui/shell.qml, so this
-// yields to it there, and a state that is not a failure draws no mark at all.
+// The one thing a pane shows instead of rows, and it carries all three parts the States board gives
+// a pane state: the mark, then one sentence, then the detail the system can prove. The sentence used
+// to live in the status bar about 1300px away while the mode string sat here alone. The empty state
+// has its own overlay in ui/shell.qml, so this yields to it there.
 Item {
     id: root
 
@@ -19,9 +19,11 @@ Item {
 
     readonly property bool locked: root.listingState === "locked"
     readonly property bool failed: root.locked || root.listingState === "error"
-    readonly property string line: Errors.paneLine(root.listingState, root.message, root.lockedMode)
+    // The detail is the directory's own mode, which only a locked state has and only when the
+    // backend could stat it; everything else proves nothing extra and draws nothing.
+    readonly property string detail: root.locked ? Errors.lockedLine(root.lockedMode) : ""
 
-    visible: root.active && root.total === 0 && root.line.length > 0 && root.listingState !== "empty"
+    visible: root.active && root.total === 0 && root.message.length > 0 && root.listingState !== "empty"
 
     Column {
         anchors.centerIn: parent
@@ -37,17 +39,29 @@ Item {
             width: Theme.stateMarkSize
             height: Theme.stateMarkSize
             name: root.locked ? "lock" : "alert"
-            color: root.locked ? Theme.color.muted : Theme.color.error
+            // Only a failure takes the urgent role, and only on the mark; the sentence stays readable.
+            color: Theme.color.error
         }
 
         Text {
             width: root.width
-            text: root.line
-            color: root.locked ? Theme.color.muted : Theme.color.foreground
+            text: root.message
+            color: Theme.color.foreground
             font.family: Theme.font.family
             font.pixelSize: Theme.font.body
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.Wrap
+            textFormat: Text.PlainText
+        }
+
+        Text {
+            width: root.width
+            visible: root.detail.length > 0
+            text: root.detail
+            color: Theme.color.muted
+            font.family: Theme.font.family
+            font.pixelSize: Theme.font.caption
+            horizontalAlignment: Text.AlignHCenter
             textFormat: Text.PlainText
         }
     }

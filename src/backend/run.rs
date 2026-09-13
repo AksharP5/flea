@@ -319,7 +319,7 @@ fn handle_line(
             line.insert_str(line.len() - 1, &format!(r#", "id":{},"providers":{}"#, id, super::providers::facts()));
             say(out, &line);
         }
-        Request::FsInfo => say(out, &fsinfo_line(&read_fsinfo(&st.base))),
+        Request::FsInfo => say(out, &fsinfo_line(&read_fsinfo(&st.base), &st.base.to_string_lossy())),
         // One row, only when a client asked: the same no-sweep rule thumb and dirsize already follow.
         Request::Meta { row, text, media, archive, token } => {
             if row < st.listing.len() {

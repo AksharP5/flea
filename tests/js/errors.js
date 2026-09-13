@@ -132,19 +132,8 @@ function run(check) {
     check("and a mode that never arrived draws none either",
           Errors.lockedLine(undefined), "")
 
-    // The whole line the pane draws, which is where the mode string and the sentence meet. A denial
-    // whose directory the backend could not stat either has no mode string, and a surface that drew
-    // nothing at all there would be the blank-frame defect wearing a lock.
-    var deniedSentence = "Permission denied"
-    check("a locked pane draws the mode string when there is one",
-          Errors.paneLine("locked", deniedSentence, 0o40750), "rwxr-x--- · not yours")
-    check("and falls back to the sentence when the stat failed too",
-          Errors.paneLine("locked", deniedSentence, 0), deniedSentence)
-    check("a mode never leaks into a state that is not locked",
-          Errors.paneLine("error", "That directory could not be read: gone", 0o40750),
-          "That directory could not be read: gone")
-    check("nothing to say stays nothing, so the surface hides rather than draws a bare mark",
-          Errors.paneLine("locked", null, 0), "")
+    // The pane block draws the sentence and the mode as two lines now, so the only thing left to
+    // decide is whether there is a mode to draw at all; States board rule 3.
 
     // The credentialed mount's own sentences, lifted out of ui/NetworkMounts.qml in the 0.1.4
     // composition: the two codes "timeout" and the shell own, then the two the server owns.
