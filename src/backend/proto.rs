@@ -171,10 +171,10 @@ pub fn located_many_line(directory: &str, id: usize, transfer_id: usize, matches
         escape(directory), id, transfer_id, matches.join(","), error.is_none(), escape(error.unwrap_or_default()))
 }
 
-pub fn listed_line(n: usize, read_ms: f64, sort_ms: f64, dev: u64) -> String {
+pub fn listed_line(n: usize, read_ms: f64, sort_ms: f64, dev: u64, path: &str) -> String {
     format!(
-        r#"{{"t":"listed","n":{},"read":{:.3},"sort":{:.3},"v":{}}}"#,
-        n, read_ms, sort_ms, dev
+        r#"{{"t":"listed","n":{},"read":{:.3},"sort":{:.3},"v":{},"path":"{}"}}"#,
+        n, read_ms, sort_ms, dev, escape(path)
     )
 }
 
@@ -360,9 +360,9 @@ mod tests {
     }
 
     #[test]
-    fn emits_a_listed_line() {
-        let s = listed_line(100000, 26.4, 2.5, 56);
-        assert_eq!(s, r#"{"t":"listed","n":100000,"read":26.400,"sort":2.500,"v":56}"#);
+    fn emits_a_listed_line_naming_the_directory_it_listed() {
+        let s = listed_line(100000, 26.4, 2.5, 56, "/home/gm");
+        assert_eq!(s, r#"{"t":"listed","n":100000,"read":26.400,"sort":2.500,"v":56,"path":"/home/gm"}"#);
     }
 
     #[test]

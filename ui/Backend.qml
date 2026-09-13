@@ -5,7 +5,7 @@ import QtQuick
 Item {
     id: root
 
-    signal listed(int total, real readMs, real sortMs)
+    signal listed(int total, real readMs, real sortMs, string path)
     // The listing directory's filesystem, straight off the listed line: a drag compares it against
     // the dropped-on folder's own to tell a move within one volume from a copy across two.
     property var dirDev: 0
@@ -306,7 +306,7 @@ Item {
         }
         if (message.t === "listed") {
             root.dirDev = message.v || 0
-            root.listed(message.n, message.read, message.sort)
+            root.listed(message.n, message.read, message.sort, message.path || "")
         } else if (message.t === "rows") {
             root.rows(message.start, message.rows, message.ms, message.kinds || [])
         } else if (message.t === "error") {

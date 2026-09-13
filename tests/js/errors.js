@@ -1,16 +1,22 @@
 .import "../../ui/js/Errors.js" as Errors
 
 function run(check) {
-    // StatusBar board rule 4: the sentence drops advice the reader cannot act on, and the breadcrumb
-    // already names the directory the refused listing moved onto.
-    check("a permission denial is the refusal and nothing else",
-          Errors.sentence("scan", "Permission denied (os error 13)"),
+    // StatusBar board rule 4, both refusal lanes: a refused hop names the directory that refused,
+    // and a refusal of the directory already on screen names nothing, because the breadcrumb does.
+    check("a refused hop names the directory that refused",
+          Errors.sentence("scan", "Permission denied (os error 13)", "inner"),
+          "Permission denied on inner")
+    check("and a refusal of the path on screen is the refusal and nothing else",
+          Errors.sentence("scan", "Permission denied (os error 13)", ""),
           "Permission denied")
     // The backend's own wording is arbitrary, so the match is case folded before it is looked for.
     check("and it is found whatever case the backend used",
-          Errors.sentence("scan", "PERMISSION DENIED"),
-          "Permission denied")
-    check("any other scan failure is the generic directory sentence, without the advice",
+          Errors.sentence("scan", "PERMISSION DENIED", "inner"),
+          "Permission denied on inner")
+    check("any other refused hop names its directory too",
+          Errors.sentence("scan", "No such file or directory", "gone"),
+          "That directory could not be read: gone")
+    check("and the bare sentence is what is left without one",
           Errors.sentence("scan", "No such file or directory"),
           "That directory could not be read.")
     // Size and mtime are real orders now, so the one refusal left is a key the wire never defined.

@@ -32,7 +32,9 @@ function pane() {
     p.message = function (text, isError) { p.said.push(text) }
     p.listArea = { primeSettle: function () {} }
     p.backend = {
-        list: function (path, first, hidden) { p.sent.push("list " + path) },
+        // A listing that answers is what moves the pane: ui/PaneWire.qml onListed takes the path off
+        // the answer, because Nav.js no longer writes it before the backend has agreed.
+        list: function (path, first, hidden) { p.sent.push("list " + path); if (!p.refuses) p.path = path },
         askFsInfo: function () { p.sent.push("fsinfo") }
     }
     return p
@@ -77,6 +79,14 @@ function targets(list) {
 }
 
 function run(check) {
+    // StatusBar board rule 4's first lane: a refused hop leaves the breadcrumb where it was, which is
+    // what taking the path off the answer buys. Nothing else in this suite can tell the two apart.
+    var refused = browsing(["/home/gm"])
+    refused.refuses = true
+    Nav.open(refused, "/home/gm/Work/inner")
+    check("a refused hop asks for the directory", refused.sent.join("|"), "list /home/gm/Work/inner|fsinfo")
+    check("and leaves the pane standing where it was", refused.path, "/home/gm/Work")
+
     var travel = browsing(["/home/gm"])
     Nav.back(travel)
     check("back preserves the departed directory for forward", travel.forwardHistory.join("|"), "/home/gm/Work")

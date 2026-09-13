@@ -2,15 +2,15 @@
 
 .import "Format.js" as Format
 
-// Errors reach the user as one sentence, never a raw path or errno. StatusBar board rule 4 drops the
-// advice: the breadcrumb already names the directory a refused listing was standing on, and neither
-// "check access" nor "check the path" is something the reader can act on.
-function sentence(where, message) {
+// Errors reach the user as one sentence, never a raw path or errno. StatusBar board rule 4: the
+// sentence names the input and drops advice nobody can act on. named is the failing directory's own
+// leaf, empty when the breadcrumb is already standing on it and there is nothing to add.
+function sentence(where, message, named) {
     if (where === "scan") {
         if (denied(where, message)) {
-            return "Permission denied"
+            return named ? "Permission denied on " + named : "Permission denied"
         }
-        return "That directory could not be read."
+        return named ? "That directory could not be read: " + named : "That directory could not be read."
     }
     if (where === "sort") {
         // Size and mtime are real orders, so the one refusal left is a key the wire never defined.

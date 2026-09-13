@@ -45,7 +45,7 @@ fn write_to_tmp(path: &str, first: usize, dest: &Path, tmp: &Path) -> Result<(),
         .map_err(|e| from_io("prewarm", &tmp.display().to_string(), &e))?;
     let mut out = BufWriter::new(file);
 
-    writeln!(out, "{}", listed_line(listing.len(), read_ms, sort_ms, dev_of(&PathBuf::from(path))))
+    writeln!(out, "{}", listed_line(listing.len(), read_ms, sort_ms, dev_of(&PathBuf::from(path)), path))
         .map_err(|e| from_io("prewarm", &tmp.display().to_string(), &e))?;
     let (metas, ms) = stat_range(&PathBuf::from(path), &listing, 0, first);
     // Its own copy: prewarm is one shot, so there is no loop to hoist the load out of.

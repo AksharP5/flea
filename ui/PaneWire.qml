@@ -146,7 +146,7 @@ Item {
     Connections {
         target: pane.backend
 
-        function onListed(total, readMs, sortMs) {
+        function onListed(total, readMs, sortMs, path) {
             if (!pane.dualMode && !pane.listInFlight && pane.searchMode.length === 0) {
                 ViewState.changeLeaf("sort", { key: pane.backend.sortBy === "mtime" ? "date" : pane.backend.sortBy,
                                              reverse: pane.backend.sortDesc })
@@ -162,10 +162,9 @@ Item {
                 pane.stateMessage = ""
                 return
             }
+            if (path.length > 0) pane.path = path  // the listing landed, so this is where the pane moves
             pane.listingState = total === 0 ? "empty" : "ready"
-            pane.stateMessage = total === 0
-                    ? "This directory is empty; add a file to see it here."
-                    : ""
+            pane.stateMessage = total === 0 ? "This directory is empty; add a file to see it here." : ""
             pane.opened(pane.path)
         }
 
@@ -403,7 +402,8 @@ Item {
         function onFailed(where, input, message, mode) {
             // A listing that failed cannot seat the row a peeked right click asked for, so its menu intent dies here.
             pane.pendingMenu = false
-            var text = Errors.sentence(where, message)
+            if (pane.path.length === 0 && input.length > 0) pane.path = input
+            var text = Errors.sentence(where, message, input && input !== pane.path ? Ops.leaf(input) : "")
             var terminal = where === "backend" || where === "read"
             var request = pane.renameRequest
             var renamePath = request && (input === request.source || input === request.destination
@@ -456,10 +456,9 @@ Item {
             }
             if (terminal || where === "scan" || pane.listingState === "loading") {
                 pane.listingState = Errors.listingState(where, message)
-                pane.lockedMode = mode; pane.stateMessage = text  // a pane state is said once, in the block; States rule 1
-            } else {
-                pane.message(text, true)
+                pane.lockedMode = mode; pane.stateMessage = text
             }
+            pane.message(text, true)  // GM's ruling: the centre lane carries the refusal, both StatusBar lanes
             // The copy is whole and only the name it came from is unknown, so re-read the listing and select nothing.
             if (where === "rename-kept")
                 pane.refresh("")

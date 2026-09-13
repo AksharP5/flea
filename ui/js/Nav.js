@@ -78,7 +78,9 @@ function openWithoutHistory(pane, newPath) {
     }
     pane.listInFlight = true
     pane.listedSeen = false
-    pane.path = newPath
+    // The path is not written here. A refused listing never answers a listed line, so leaving the
+    // pane's own path alone is what keeps a refused hop from moving the breadcrumb onto a directory
+    // nobody could read; ui/PaneWire.qml onListed takes it from the answer instead.
     pane.total = 0
     pane.held = 0
     pane.rows = []

@@ -58,7 +58,7 @@ pub fn answer(
     st.listing = l;
     forget_rows(st, pool);
     // The sort figure is always zero: nothing here is sorted, see docs/protocol.md "listpaths".
-    writeln!(out, "{}", listed_line(st.listing.len(), read_ms, 0.0, dev_of(&st.base))).ok();
+    writeln!(out, "{}", listed_line(st.listing.len(), read_ms, 0.0, dev_of(&st.base), &st.base.to_string_lossy())).ok();
     // Rides along unasked, the same first-paint saving a list makes.
     write_window(out, st, 0, first, tb);
     out.flush().ok();
