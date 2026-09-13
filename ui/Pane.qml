@@ -509,6 +509,7 @@ FocusScope {
     Connections {
         target: columnsLoader.item
         function onThumbsApplied(work) { root.thumbState = Thumbs.applied(root.thumbState, work) }
+        function onDirSizesApplied(ask) { root.dirSizeState = DirSizes.applied(root.dirSizeState, ask) }
     }
 
     Connections {

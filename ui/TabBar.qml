@@ -105,11 +105,13 @@ Item {
                     color: tab.current ? Theme.color.background : "transparent"
                 }
 
+                // Flush on the strip's own bottom edge, replacing it rather than sitting inside the
+                // plate: rendered in Quickshell on a low-chroma theme, an inset edge vanishes.
                 Rectangle {
                     anchors.bottom: parent.bottom
                     anchors.left: parent.left
                     anchors.right: parent.right
-                    height: Theme.spacing.hairline * 2
+                    height: Theme.accentEdge
                     color: Theme.color.accent
                     visible: tab.current
                 }
@@ -145,13 +147,17 @@ Item {
                     width: Theme.hitMin
                     height: parent.height
 
+                    // The mark never moves and its target never shrinks; only the ink answers, so a
+                    // crowded strip is no harder to hit than a tidy one.
                     Flea.Glyph {
                         anchors.centerIn: parent
                         width: Theme.chromeMarkSize
                         height: Theme.chromeMarkSize
                         name: "x"
-                        color: Theme.color.muted
+                        color: tab.current || closeHover.hovered ? Theme.color.foreground : Theme.color.muted
                     }
+
+                    HoverHandler { id: closeHover }
                 }
 
                 TapHandler {

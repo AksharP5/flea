@@ -154,6 +154,8 @@ Singleton {
     readonly property real washHover: 0.08
     readonly property real washActive: 0.14
     readonly property real disabledOpacity: 0.55
+    // An accent edge is 2px along a tall side and 3px flush along a short one, measured in Quickshell.
+    readonly property int accentEdge: 3
     // "rwxrwxrwx", Format.permissions is always exactly this wide.
     readonly property int modeChars: 9
     // "1000.0 kB": the SI ladder's tier-boundary rounding is one char wider than "999.9 kB".

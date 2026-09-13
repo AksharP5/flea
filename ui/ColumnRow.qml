@@ -24,6 +24,10 @@ Item {
     property bool selected: false
     // The same row in an ancestor column: the cursor trail, lifted like a hover rather than accented.
     property bool lifted: false
+    // The active column draws a size; a peek column cannot ask for one and leaves this false.
+    property bool showSize: false
+    // The recursive size of a directory row, resolved by index the way the list resolves it.
+    property var dirSize: null
     // An ancestor column that is not on the trail reads back, so its text drops to muted.
     property bool dim: false
     property bool hovered: false
@@ -100,8 +104,8 @@ Item {
     Text {
         anchors.left: markSlot.right
         anchors.leftMargin: Theme.spacing.gap
-        anchors.right: chevronSlot.left
-        anchors.rightMargin: Theme.spacing.gap
+        anchors.right: sizeCell.left
+        anchors.rightMargin: root.showSize ? Theme.spacing.gap : 0
         anchors.verticalCenter: parent.verticalCenter
         text: root.row ? root.row.n : ""
         color: root.ink
@@ -109,6 +113,32 @@ Item {
         font.pixelSize: Theme.font.body
         textFormat: Text.PlainText
         elide: Text.ElideRight
+    }
+
+    // Only the active column carries a number: a peeked row is never stat'd and dirsize resolves
+    // against the active listing, so a neighbour has no row to ask about. ColumnsTabs board rule 3.
+    Text {
+        id: sizeCell
+        anchors.right: chevronSlot.left
+        anchors.rightMargin: root.showSize ? Theme.spacing.gap : 0
+        anchors.verticalCenter: parent.verticalCenter
+        visible: root.showSize && !root.dropTarget
+        width: visible ? Theme.column.size : 0
+        text: root.showSize && root.row ? root.sizeText() : ""
+        color: root.ink
+        horizontalAlignment: Text.AlignRight
+        font.family: Theme.font.family
+        font.pixelSize: Theme.font.caption
+        textFormat: Text.PlainText
+        elide: Text.ElideRight
+    }
+
+    // The list's own cell text, so a size reads the same wherever it is drawn.
+    function sizeText() {
+        if (Format.isSymlink(root.row.p)) return "link"
+        if (!root.row.d) return Format.size(root.row.s)
+        if (!root.dirSize) return "·"
+        return (root.dirSize.partial ? ">" : "") + Format.size(root.dirSize.bytes)
     }
 
     // Only a chosen directory carries it: it says the column to the right is showing what is inside.

@@ -4,6 +4,7 @@ import "." as Flea
 import "js/Filter.js" as Filter
 import "js/Tap.js" as Tap
 import "js/Thumbs.js" as Thumbs
+import "js/DirSizes.js" as DirSizes
 
 // One Miller column: a scrolling list of ColumnRows over either a peeked directory or the pane's
 // own listing window. It owns no state; the area above it decides which row is which.
@@ -39,6 +40,7 @@ Item {
     signal neighbourMenuRequested(string name)
     // The thumbnail plan for this column's viewport, computed here and written by the pane, the grid's own contract.
     signal thumbsApplied(var work)
+    signal dirSizesApplied(var ask)
 
     // The listArea contract ui/ColumnsArea.qml drives the middle column through; the view is private.
     function positionViewAtIndex(index, mode) { view.positionViewAtIndex(index, mode) }
@@ -90,6 +92,22 @@ Item {
         root.thumbsApplied(work)
     }
 
+    // The same viewport plan the list runs, over this column's own scroll position. Only the active
+    // column can ask: dirsize resolves against st.listing, which a peeked row has no index in.
+    function requestDirSizes() {
+        if (root.pane === null || !root.visible || root.pane.total === 0 || root.pane.listInFlight)
+            return
+        var range = root.visibleRange()
+        var span = Filter.span(root.pane.shown, range.first, range.last)
+        var ask = Filter.keep(DirSizes.plan(root.pane.dirSizeState, root.pane.rows, root.pane.held,
+            span.first, span.last, ViewState.thumbnailMode), root.pane.shown)
+        if (ask.length > 0) {
+            root.pane.backend.dirsize(ask)
+            settle.interval = root.pane.settleMs
+        }
+        root.dirSizesApplied(ask)
+    }
+
     Connections {
         target: ViewState
         function onThumbnailModeChanged() { if (root.visible) settle.restart() }
@@ -106,7 +124,7 @@ Item {
         id: settle
         interval: root.pane ? root.pane.settleMs : 120
         repeat: false
-        onTriggered: root.requestThumbs()
+        onTriggered: { root.requestThumbs(); root.requestDirSizes() }
     }
     onRowsChanged: if (root.pane !== null) settle.restart()
     onVisibleChanged: if (root.visible && root.pane !== null) { coalesce.restart(); settle.restart() }
@@ -173,6 +191,8 @@ Item {
             // hands that back as undefined; every row reader in the tree tests against a real null.
             row: root.pane ? root.pane.rowFor(listingIndex) : root.rows[index] !== undefined ? root.rows[index] : null
             thumb: root.pane !== null && Thumbs.allowed(row, ViewState.thumbnailMode) ? root.pane.thumbFor(listingIndex) : ""
+            showSize: root.pane !== null
+            dirSize: root.pane !== null ? DirSizes.sizeFor(root.pane.dirSizeState, listingIndex) : null
             cursor: root.selectedIndex >= 0 && listingIndex === root.selectedIndex
             // The list and the grid both mark a selection member apart from the cursor; so does this.
             selected: root.pane !== null && root.pane.isSelected(listingIndex)
