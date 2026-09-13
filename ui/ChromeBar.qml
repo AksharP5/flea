@@ -415,7 +415,7 @@ Item {
             delegate: Flea.ChromeButton {
                 required property string modelData
                 glyph: modelData
-                active: root.viewMode === modelData
+                restingColor: Theme.color.muted; active: root.viewMode === modelData  // one choice, so an unchosen mode stays muted
                 onActivated: root.viewChosen(modelData)
             }
         }

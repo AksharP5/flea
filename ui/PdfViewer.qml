@@ -141,8 +141,6 @@ Item {
                 id: zoomOut
                 glyph: "minus"
                 accessName: "Zoom out"
-                restingColor: Theme.color.foreground
-                disabledOpacity: 0.55
                 keyboardFocused: root.activeFocus && root.pdfControlIndex === 2
                 enabled: root.pageCount > 0 && root.zoom > root.minZoom
                 onActivated: root.zoomBy(-1)
@@ -152,8 +150,6 @@ Item {
                 id: zoomIn
                 glyph: "plus"
                 accessName: "Zoom in"
-                restingColor: Theme.color.foreground
-                disabledOpacity: 0.55
                 keyboardFocused: root.activeFocus && root.pdfControlIndex === 3
                 enabled: root.pageCount > 0 && root.zoom < root.maxZoom
                 onActivated: root.zoomBy(1)
@@ -163,7 +159,6 @@ Item {
                 id: expand
                 glyph: "maximize"
                 accessName: "Expand"
-                restingColor: Theme.color.foreground
                 keyboardFocused: root.activeFocus && root.pdfControlIndex === 4
                 active: root.expanded
                 onActivated: root.toggleExpand()
@@ -173,7 +168,6 @@ Item {
                 id: close
                 glyph: "x"
                 accessName: "Close"
-                restingColor: Theme.color.foreground
                 keyboardFocused: root.activeFocus && root.pdfControlIndex === 5
                 onActivated: root.closed()
             }
@@ -267,8 +261,6 @@ Item {
                 glyph: "chevron-left"
                 accessName: "Previous page"
                 implicitHeight: Theme.hitMin
-                restingColor: Theme.color.foreground
-                disabledOpacity: 0.55
                 keyboardFocused: root.activeFocus && root.pdfControlIndex === 0
                 enabled: root.page > 0
                 onActivated: root.turn(-1)
@@ -288,8 +280,6 @@ Item {
                 glyph: "chevron-right"
                 accessName: "Next page"
                 implicitHeight: Theme.hitMin
-                restingColor: Theme.color.foreground
-                disabledOpacity: 0.55
                 keyboardFocused: root.activeFocus && root.pdfControlIndex === 1
                 enabled: root.page + 1 < root.pageCount
                 onActivated: root.turn(1)

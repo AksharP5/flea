@@ -153,6 +153,7 @@ Singleton {
     // active segment already take, so a control under the keyboard reads at the same strength.
     readonly property real washHover: 0.08
     readonly property real washActive: 0.14
+    readonly property real disabledOpacity: 0.55
     // "rwxrwxrwx", Format.permissions is always exactly this wide.
     readonly property int modeChars: 9
     // "1000.0 kB": the SI ladder's tier-boundary rounding is one char wider than "999.9 kB".

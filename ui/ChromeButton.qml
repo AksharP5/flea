@@ -2,20 +2,20 @@ import QtQuick
 import qs.Commons
 import "." as Flea
 
-// Chrome uses muted ink; active and focused controls use the accent.
+// A live chrome control inks in foreground; active and focused ones use the accent.
 Item {
     id: root
 
     property string glyph: "file"
     property bool active: false
     property bool keyboardFocused: false
-    property color restingColor: Theme.color.muted
+    property color restingColor: Theme.color.foreground
     property real glyphSize: Theme.chromeMarkSize
 
     signal activated()
 
-    // A control with nowhere to go still occupies its slot, so the bar never reflows as history changes.
-    property real disabledOpacity: 1
+    // A control with nowhere to go keeps its slot so the bar never reflows, and says so by dimming.
+    property real disabledOpacity: Theme.disabledOpacity
 
     property string accessName: {
         if (root.glyph === "arrow-left")
