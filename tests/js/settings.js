@@ -191,6 +191,12 @@ function runPresets(check) {
 function runCompletionRows(check) {
     var places = Settings.rows("places", {})
     check("Places spells the manager group Favorites", places[0].label, "Favorites")
+    // SettingsRest rules 3 and 4: Add rides the heading it governs, and nothing floats under the list.
+    check("Add rides the Favorites heading and is a focus stop there",
+          [places[0].action, places[0].value, Settings.focusable(places[0])].join("|"),
+          "addFavourite|Add this folder|true")
+    check("and the two buttons under the list are gone",
+          places.filter(function (row) { return row.kind === "favouriteActions" }).length, 0)
     check("optional rail details default off", [find(places, "places.driveSize").on, find(places, "places.trashCount").on].join(","), "false,false")
     check("the Rail controls follow the ruled order", places.slice(-5, -2).map(function (row) { return row.label }).join("|"), "Show drive size|Show Trash count|Sidebar width")
     // The 30 day sweep's own row, at the foot of Places under its own eyebrow. Off unless ui.json says otherwise, which is the whole of GM's opt-in ruling as the panel sees it.

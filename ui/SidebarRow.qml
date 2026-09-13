@@ -101,7 +101,8 @@ Item {
         color: root.modelData.error ? Theme.color.error : Theme.color.foreground
         font.family: Theme.font.family
         font.pixelSize: Theme.font.body
-        elide: Text.ElideRight
+        // SettingsRest rule 5: a share reads "minipc · nvme-share" and the tail is the half that names it, so a label too long for the rail loses its middle rather than the end that identifies it.
+        elide: Text.ElideMiddle
         textFormat: Text.PlainText
     }
 

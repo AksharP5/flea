@@ -17,6 +17,7 @@ Flickable {
     signal activated(int index)
     signal pointerMoved(int index)
     signal favouriteMoved(int index, int to)
+    signal favouriteRemoved(int index)
     signal stepped(int index, int direction)
     signal stopPicked(int index, int stop)
 
@@ -110,6 +111,7 @@ Flickable {
                     onActivated: root.activated(index)
                     onPointerMoved: root.pointerMoved(index)
                     onFavouriteMoved: function (to) { root.favouriteMoved(index, to) }
+                    onFavouriteRemoved: root.favouriteRemoved(index)
                     onStepped: function (direction) { root.stepped(index, direction) }
                     onStopPicked: function (stop) { root.stopPicked(index, stop) }
                 }

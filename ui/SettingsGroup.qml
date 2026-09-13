@@ -17,8 +17,10 @@ Item {
     readonly property real paddingTop: Math.round((root.first ? 12 : 15) * root.insetScale)
     readonly property real paddingBottom: Math.round(4 * root.insetScale)
     readonly property bool hasMaster: root.row.master === true
+    // SettingsRest rule 3: a group whose one action governs the whole list carries it here instead.
+    readonly property bool hasAction: (root.row.action || "") !== ""
 
-    implicitHeight: label.y + Math.max(label.height, root.hasMaster ? box.implicitHeight : 0) + root.paddingBottom
+    implicitHeight: label.y + Math.max(label.height, root.hasMaster || root.hasAction ? box.implicitHeight : 0) + root.paddingBottom
 
     Text {
         id: label
@@ -37,6 +39,32 @@ Item {
         font.capitalization: Font.AllUppercase
         font.letterSpacing: Theme.font.caption * 0.14
         textFormat: Text.PlainText
+    }
+
+    Row {
+        visible: root.hasAction
+        anchors.right: parent.right
+        anchors.rightMargin: Theme.spacing.rowPaddingX
+        anchors.verticalCenter: label.verticalCenter
+        spacing: Theme.spacing.gap - Theme.spacing.hairline
+
+        Flea.Glyph {
+            anchors.verticalCenter: parent.verticalCenter
+            width: Theme.font.caption
+            height: width
+            name: "plus"
+            color: Theme.color.foreground
+        }
+
+        Text {
+            height: box.implicitHeight
+            verticalAlignment: Text.AlignVCenter
+            text: root.row.value || ""
+            color: Theme.color.foreground
+            font.family: Theme.font.family
+            font.pixelSize: Theme.font.caption
+            textFormat: Text.PlainText
+        }
     }
 
     Row {

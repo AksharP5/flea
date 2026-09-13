@@ -5,9 +5,7 @@ import "." as Flea
 import "js/Keymap.js" as Keymap
 import "js/Settings.js" as Settings
 
-// The settings panel the Settings board draws: one floating surface, a fixed rail of sections and a
-// pane that scrolls inside the work-area clamp. A plain overlay and not a QQC Popup, the call
-// ui/ContextMenu.qml already made, because the one Controls import cost 10 ms of warm startup.
+// The settings panel the Settings board draws: one floating surface, a fixed rail of sections and a pane that scrolls inside the work-area clamp. A plain overlay and not a QQC Popup, the call ui/ContextMenu.qml already made, because the one Controls import cost 10 ms of warm startup.
 Item {
     id: root
 
@@ -17,7 +15,6 @@ Item {
     property string section: "view"
     property int cursor: 0
     property int selectedFavourite: -1
-    property int favouriteActionIndex: 0
     property int favouriteMoveTarget: -1
     property bool favouriteActionPending: false
     // "rail" or "pane", which side Tab last gave the cursor to.
@@ -45,7 +42,6 @@ Item {
         home: Quickshell.env("HOME"),
         favouriteStatuses: Favourites.statuses,
         selectedFavourite: root.selectedFavourite,
-        favouriteAction: root.favouriteActionIndex,
         about: aboutFacts.facts,
         saveStatus: ViewState.saveStatus,
         textSize: ViewState.textSize,
@@ -104,12 +100,14 @@ Item {
             if (root.focusHolder && root.focusHolder.sidebar) root.focusHolder.sidebar.openFavourite(row.favouriteIndex)
             return
         }
-        if (row.kind === "favouriteActions") { root.favouriteAction(root.favouriteActionIndex); return }
-        // SettingsMenus rule 3: the only heading the cursor can reach is one carrying its group's master.
-        if (row.kind === "group") { ViewState.toggleMenuGroup(row.ids); return }
+        // The only headings the cursor can reach: the one carrying its group's master, and the one carrying Places' own Add.
+        if (row.kind === "group") {
+            if (row.action === "addFavourite") root.addFavourite()
+            else ViewState.toggleMenuGroup(row.ids)
+            return
+        }
         if (row.id === "columns") { root.showSection("columns"); return }
-        // The folder the panel was opened over, which is the pane behind it: the same folder the
-        // Places section's own "Add current folder" row takes, and the only one on screen to mean.
+        // The folder the panel was opened over, which is the pane behind it: the same folder Places' own "Add this folder" takes, and the only one on screen to mean.
         if (row.id === "startFolder") {
             if (root.focusHolder) ViewState.setStartFolder(root.focusHolder.path)
             return
@@ -146,9 +144,6 @@ Item {
         var row = root.rows[index]
         if (!row || !Settings.focusable(row))
             return
-        if (row.kind === "favouriteActions") {
-            root.favouriteActionIndex = Math.max(0, Math.min(1, root.favouriteActionIndex + direction)); return
-        }
         if (row.id === "textMode") {
             ViewState.toggleTextFollow()
             return
@@ -171,25 +166,26 @@ Item {
         ViewState.setKeysPreset(Settings.PRESETS[next])
     }
 
-    // A tick on the ruler names a stop outright. It lands in the same ViewState writer stepTextSize
-    // itself calls, so a click, an h and a Ctrl+Shift+Plus cannot leave two different sizes stored.
-    function favouriteAction(action) {
-        if (action === 0 && root.focusHolder) {
-            var path = root.focusHolder.path
-            var label = path.substring(path.lastIndexOf("/") + 1) || path
-            root.favouriteActionPending = Favourites.add(path, label)
-        } else if (action === 1 && root.selectedFavourite >= 0) {
-            root.favouriteActionPending = Favourites.remove(root.selectedFavourite)
-        }
+    // The folder the panel was opened over, which is the pane behind it: SettingsRest rule 3 puts this on the Favorites heading, where it governs the whole list.
+    function addFavourite() {
+        if (!root.focusHolder)
+            return
+        var path = root.focusHolder.path
+        root.favouriteActionPending = Favourites.add(path, path.substring(path.lastIndexOf("/") + 1) || path)
+    }
+
+    // Rule 4: removal is addressed by the row it acts on, from the row's own mark or from the x key on it.
+    function removeFavourite(index) {
+        var row = root.rows[index]
+        if (row && row.kind === "favourite")
+            root.favouriteActionPending = Favourites.remove(row.favouriteIndex)
     }
 
     function pickRowStop(index, stop) {
         var row = root.rows[index]
         if (!row || !Settings.focusable(row))
             return
-        if (row.kind === "favouriteActions") { root.favouriteAction(stop); return }
-        // A segment names the value it was clicked on where the ruler names a stop, so both arrive
-        // here addressed by index and the row decides which writer that index belongs to.
+        // A segment names the value it was clicked on where a ruler tick names a stop outright, so both arrive here addressed by index, the row decides which writer that index belongs to, and a tick lands in the same ViewState writer stepTextSize itself calls: a click, an h and a Ctrl+Shift+Plus cannot leave two different sizes stored.
         if (row.id === "textMode") {
             ViewState.toggleTextFollow()
             return
@@ -409,6 +405,7 @@ Item {
                     root.side = "pane"; root.cursor = index
                     if (root.rows[index].kind === "favourite") root.selectedFavourite = root.rows[index].favouriteIndex
                 }
+                onFavouriteRemoved: function (index) { root.removeFavourite(index) }
                 onFavouriteMoved: function (index, to) {
                     if (Favourites.move(root.rows[index].favouriteIndex, to)) root.favouriteMoveTarget = to
                 }
@@ -428,9 +425,7 @@ Item {
             root.favouriteActionPending = false
             if (root.opened && root.section === "places") {
                 if (wasFavourite) {
-                    for (var i = 0; i < root.rows.length; i++) {
-                        if (root.rows[i].id === "favouriteActions") root.cursor = i
-                    }
+                    root.cursor = Settings.firstRow(root.rows)
                 } else if (root.cursor > previousCount + 1) {
                     root.cursor += Favourites.records.length - previousCount
                 }
@@ -442,10 +437,8 @@ Item {
                 root.favouriteActionPending = false
                 root.selectedFavourite = Math.min(root.selectedFavourite, Favourites.records.length - 1)
                 if (root.opened && root.section === "places") {
-                    // Adding or removing a row moves the buttons; keep their keyboard focus by identity.
-                    for (var i = 0; i < root.rows.length; i++) {
-                        if (root.rows[i].id === "favouriteActions") root.cursor = i
-                    }
+                    // Adding or removing a row moves every row under it, so the cursor takes the heading that carries Add rather than whatever slid into its index.
+                    root.cursor = Settings.firstRow(root.rows)
                     root.showCursor()
                 }
             }
@@ -481,6 +474,12 @@ Item {
                 var direction = event.key === Qt.Key_J ? 1 : -1
                 var to = Math.max(0, Math.min(Favourites.records.length - 1, row.favouriteIndex + direction))
                 if (to !== row.favouriteIndex && Favourites.move(row.favouriteIndex, to)) root.favouriteMoveTarget = to
+                return
+            }
+            // SettingsRest rule 4: the row's own mark is x, so x on the cursor row is the same action.
+            if (root.side === "pane" && row && row.kind === "favourite"
+                    && (event.text === "x" || event.key === Qt.Key_Delete)) {
+                root.removeFavourite(root.cursor)
                 return
             }
             if (event.key === Qt.Key_Down || event.text === "j") {

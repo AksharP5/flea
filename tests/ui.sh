@@ -6625,14 +6625,14 @@ case_settings() {
     settings_open_key
     settle
     settings_section display
-    [[ "$(ipc settingsRows)" == *"ruler|Effective|${pinned_base}px"* ]] \
+    [[ "$(ipc settingsRows)" == *"fact|Effective|${pinned_base} px"* ]] \
         || fail "settings: a restart brought the panel back on a different stop"
     # A new process opens on View; the explicit Display selection above reads the pinned size, while
     # the master row is not reachable until the rail has been walked. The master is derived from the
     # stored set, so a restart that read only menu.hidden must still draw the five of six the panel
     # left behind, and the six rows under it must agree with it.
     settings_section menus
-    [[ "$(ipc settingsRows)" == *"master|All basic file actions|5 of 6"* ]] \
+    [[ "$(ipc settingsRows)" == *"group|Basic file actions|5 of 6"* ]] \
         || fail "settings: a restart did not derive the master back to five of six, got $(ipc settingsRows)"
     key -k Escape >/dev/null
     settle
@@ -6792,22 +6792,21 @@ settings_places() {
     settings_open_key; settle
     settings_section places
     settings_wait_value '.places.favourites == []'
-    settings_focus_row favouriteActions
+    settings_focus_row addFavourite
     key -k Return >/dev/null; settle
     settings_wait_value '.places.favourites | length == 1'
     key -k Return >/dev/null; settle
     settings_wait_value '.places.favourites | length == 2'
     ipc uiSettings | jq -e --arg path "$dir" '.places.favourites | length == 2 and all(.[]; .path == $path)' >/dev/null \
-        || fail "settings: Add current folder did not preserve duplicate paths"
+        || fail "settings: Add this folder did not preserve duplicate paths"
     settings_focus_row favourite:0
     key -M shift -k j -m shift >/dev/null; settle
     [[ "$(ipc settingsCursor)" == "2" ]] || fail "settings: Shift+J did not keep focus on the moved favourite"
-    settings_focus_row favouriteActions
-    key l >/dev/null; key -k Return >/dev/null; settle
+    # SettingsRest rule 4: x on the row is the same action its own mark performs.
+    key x >/dev/null; settle
     settings_wait_value '.places.favourites | length == 1'
     settings_focus_row favourite:0
-    settings_focus_row favouriteActions
-    key -k Return >/dev/null; settle
+    key -k Delete >/dev/null; settle
     settings_wait_value '.places.favourites == []'
     for flag in showHome showNetwork showDevices showTrash; do
         settings_click_control "places.$flag"
@@ -6847,7 +6846,7 @@ settings_about() {
     settings_section about
     local rows
     rows=$(ipc settingsModel)
-    printf '%s' "$rows" | jq -e 'any(.[]; .kind == "fact" and .label == "Language" and .value == "English · read-only")' >/dev/null \
+    printf '%s' "$rows" | jq -e 'any(.[]; .kind == "fact" and .label == "Language" and .value == "English")' >/dev/null \
         || fail "settings: About language is not passive metadata"
     printf '%s' "$rows" | jq -e 'any(.[]; .id == "support" and .kind == "action") and any(.[]; .id == "reportIssue" and .kind == "action")' >/dev/null \
         || fail "settings: About omitted support routes"
@@ -7047,7 +7046,7 @@ settings_display() {
     omarchy_base=$(token_of baseSize)
     [[ "$(ipc settingsRows)" == *"choice|Text size|Follow Omarchy"* ]] \
         || fail "settings: Display did not open on Follow Omarchy, got $(ipc settingsRows)"
-    [[ "$(ipc settingsRows)" == *"ruler|Effective|${omarchy_base}px"* ]] \
+    [[ "$(ipc settingsRows)" == *"fact|Effective|${omarchy_base} px"* ]] \
         || fail "settings: the ruler does not report Omarchy's own ${omarchy_base}px"
     # Read-only means read-only: the compositor's two rows are facts, and no control sits on them.
     [[ "$(ipc settingsRows)" == *"fact|Scale|"* ]] \
@@ -7065,7 +7064,7 @@ settings_display() {
     settle
     [[ "$(ipc settingsRows)" == *"choice|Text size|Override"* ]] \
         || fail "settings: Enter on the mode row did not reach Override, got $(ipc settingsRows)"
-    [[ "$(ipc settingsRows)" == *"ruler|Effective|${omarchy_base}px"* ]] \
+    [[ "$(ipc settingsRows)" == *"fact|Effective|${omarchy_base} px"* ]] \
         || fail "settings: the override did not start on Omarchy's own stop"
     [[ "$(ipc metrics)" == "$before" ]] \
         || fail "settings: switching to Override moved the type before any step, $before then $(ipc metrics)"
@@ -7095,7 +7094,7 @@ settings_display() {
     settle
     [[ "$(ipc settingsRows)" == *"choice|Text size|Follow Omarchy"* ]] \
         || fail "settings: the mode row did not go back to Follow Omarchy"
-    [[ "$(ipc settingsRows)" == *"ruler|Effective|${omarchy_base}px"* ]] \
+    [[ "$(ipc settingsRows)" == *"fact|Effective|${omarchy_base} px"* ]] \
         || fail "settings: following Omarchy again left the ruler on the override's stop"
     [[ "$(ipc metrics)" == "$before" ]] \
         || fail "settings: following Omarchy again did not put the type back, $before then $(ipc metrics)"
@@ -7128,7 +7127,7 @@ settings_chord_alias() {
         || fail "settings: the chord did not announce its stop, got $(ipc lastMessage)"
     settings_open_key
     settle
-    [[ "$(ipc settingsRows)" == *"ruler|Effective|${grown}px"* ]] \
+    [[ "$(ipc settingsRows)" == *"fact|Effective|${grown} px"* ]] \
         || fail "settings: the panel does not show the stop the chord set, got $(ipc settingsRows)"
     key -k Escape >/dev/null
     settle
@@ -7192,7 +7191,7 @@ assert_monitor_scale_row() {
     live=$(hyprctl monitors -j | jq -r 'map(select(.focused)) | .[0].scale // empty')
     [[ -n "$live" ]] || fail "settings: hyprctl reports no focused monitor, so the row has no contract"
     shown=$(awk -v s="$live" 'BEGIN { printf "%g", s + 0 }')
-    [[ "$(ipc settingsRows)" == *"fact|Scale|Read-only ${shown}x"* ]] \
+    [[ "$(ipc settingsRows)" == *"fact|Scale|${shown}x"* ]] \
         || fail "settings: the Scale row does not show the compositor's ${shown}x, got $(ipc settingsRows)"
 }
 
@@ -7204,7 +7203,7 @@ settings_menus() {
     settings_section menus
     [[ "$(ipc settingsTitleCentre)" == "$settings_title_on_display" ]] \
         || fail "settings: the card moved when Menus came up, title at $(ipc settingsTitleCentre) against $settings_title_on_display"
-    [[ "$(ipc settingsRows)" == *"master|All basic file actions|6 of 6"* ]] \
+    [[ "$(ipc settingsRows)" == *"group|Basic file actions|6 of 6"* ]] \
         || fail "settings: the master row does not start at six of six, got $(ipc settingsRows)"
     shot settings-menus
 
@@ -7213,7 +7212,7 @@ settings_menus() {
     settle
     key -k Space >/dev/null
     settle
-    [[ "$(ipc settingsRows)" == *"master|All basic file actions|5 of 6"* ]] \
+    [[ "$(ipc settingsRows)" == *"group|Basic file actions|5 of 6"* ]] \
         || fail "settings: switching one action off did not read as five of six"
     key -k Escape >/dev/null
     settle
@@ -7228,11 +7227,11 @@ settings_menus() {
     settle
     key -k Space >/dev/null
     settle
-    [[ "$(ipc settingsRows)" == *"master|All basic file actions|6 of 6"* ]] \
+    [[ "$(ipc settingsRows)" == *"group|Basic file actions|6 of 6"* ]] \
         || fail "settings: activating the partial master did not switch all six on"
     key -k Space >/dev/null
     settle
-    [[ "$(ipc settingsRows)" == *"master|All basic file actions|0 of 6"* ]] \
+    [[ "$(ipc settingsRows)" == *"group|Basic file actions|0 of 6"* ]] \
         || fail "settings: activating the checked master did not switch all six off"
     key -k Escape >/dev/null
     settle
@@ -7258,7 +7257,7 @@ settings_menus() {
     key j >/dev/null; key j >/dev/null; key j >/dev/null
     key -k Space >/dev/null
     settle
-    [[ "$(ipc settingsRows)" == *"master|All basic file actions|5 of 6"* ]] \
+    [[ "$(ipc settingsRows)" == *"group|Basic file actions|5 of 6"* ]] \
         || fail "settings: the panel did not end the Menus block with Paste alone switched off"
     key -k Escape >/dev/null
     settle

@@ -16,6 +16,7 @@ Item {
     signal activated()
     signal pointerMoved()
     signal favouriteMoved(int to)
+    signal favouriteRemoved()
     // Every steppable row steps the same way, so h/l and the two chevrons fire one signal, never two.
     signal stepped(int direction)
     // The ruler's own way in: the same writer a step reaches, addressed by stop instead of direction.
@@ -26,15 +27,15 @@ Item {
     readonly property bool firstGroup: root.isGroup && root.firstRow
     readonly property bool isHint: root.kind === "hint"
     readonly property bool isFooter: root.isHint && root.row.footer === true
-    readonly property bool isFavourite: root.kind === "favourite" || root.kind === "favouriteActions"
+    readonly property bool isFavourite: root.kind === "favourite"
     readonly property Item favouriteItem: favourite
     readonly property bool isHero: root.kind === "hero"
     readonly property bool isKeyPreview: root.kind === "keyPreview"
     readonly property bool isLock: root.kind === "lock"
     readonly property bool isRuler: root.kind === "ruler"
     readonly property bool hasBox: root.kind === "check"
-    // SettingsMenus rule 3: a heading that carries its group's master is operated like any other control.
-    readonly property bool isMasterGroup: root.isGroup && root.row.master === true
+    // SettingsMenus rule 3 and SettingsRest rule 3: a heading carrying its group's master or its one action is operated like any other control.
+    readonly property bool isGroupControl: root.isGroup && (root.row.master === true || (root.row.action || "") !== "")
     // Length and not Array.isArray: a Repeater hands the delegate a QVariantList wrapper, on which
     // isArray reads false while typeof is "object" and length is right, so the segment never drew.
     // Which control a choice gets, SettingsGrammar rule 1: a segment when every option fits on the row beside the label, the chevron walk when they do not, and nothing else decides it. A Row reports its own implicitWidth whether or not it is itself visible, so measuring the segment and hiding it on the answer is no loop.
@@ -127,8 +128,8 @@ Item {
         visible: root.isFavourite
         row: root.row
         onActivated: root.activated()
-        onActionPicked: function (action) { root.stopPicked(action) }
         onMoved: function (to) { root.favouriteMoved(to) }
+        onRemoved: root.favouriteRemoved()
     }
 
     Column {
@@ -372,7 +373,7 @@ Item {
 
     HoverHandler {
         id: pointer
-        enabled: root.hasBox || root.isMasterGroup || root.kind === "choice" || root.kind === "action" || root.isFavourite
+        enabled: root.hasBox || root.isGroupControl || root.kind === "choice" || root.kind === "action" || root.isFavourite
         property bool armed: false
         property point restingAt
         onHoveredChanged: pointer.armed = false
@@ -394,7 +395,7 @@ Item {
     // A segment and a ruler each own their own targets, so the row behind them must not also fire:
     // a tap on the option already showing would otherwise toggle the very setting it names.
     TapHandler {
-        enabled: (root.hasBox || root.isMasterGroup || root.kind === "action") && !root.isLock && !root.hasSteps
+        enabled: (root.hasBox || root.isGroupControl || root.kind === "action") && !root.isLock && !root.hasSteps
                  && !root.hasSegment && !root.isRuler
         acceptedButtons: Qt.LeftButton
         gesturePolicy: TapHandler.ReleaseWithinBounds

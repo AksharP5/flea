@@ -303,8 +303,7 @@ QtObject {
             var row = root.settingsPanel ? root.settingsPanel.rowItemForId(id) : null
             if (!row || !row.isFavourite) return ""
             var item = part === "drag" ? row.favouriteItem.dragItem
-                     : part === "add" ? row.favouriteItem.actionItem(0)
-                     : part === "remove" ? row.favouriteItem.actionItem(1) : null
+                     : part === "remove" ? row.favouriteItem.removeItem : null
             return item && item.visible ? root.fleaWindow.centreOf(item) : ""
         }
         function uiSettings(): string { return JSON.stringify(ViewState.state) }

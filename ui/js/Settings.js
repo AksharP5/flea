@@ -139,12 +139,12 @@ function focusable(row) {
     // SettingsGrammar rule 7: a dependent greyed by its parent cannot be operated, so it is no stop either.
     if (row.available === false)
         return false
-    // SettingsMenus rule 3: a heading that carries its group's master is a control, and one without stays a heading.
+    // SettingsMenus rule 3 and SettingsRest rule 3: a heading carrying its group's master or its one action is a control, and one carrying neither stays a heading.
     if (row.kind === "group")
-        return row.master === true
+        return row.master === true || row.action !== undefined
     if (row.kind === "ruler")
         return row.on === true
-    return row.kind === "check" || row.kind === "choice" || row.kind === "action" || row.kind === "favourite" || row.kind === "favouriteActions"
+    return row.kind === "check" || row.kind === "choice" || row.kind === "action" || row.kind === "favourite"
 }
 
 // state: { textSize, hidden, keyHints, preset, baseSize, monitorScale, cornerRadius, presetKeys }
@@ -394,13 +394,12 @@ function columnRows(state) {
 function placesRows(state) {
     var data = (state.data || {}).places || {}
     var entries = Places.storedEntries(data.favourites || [], state.home || "")
-    var rows = [{ kind: "group", label: "Favorites" }]
+    // SettingsRest rule 3: the one action that governs the whole group rides its heading, the slot the Menus master takes.
+    var rows = [{ kind: "group", label: "Favorites", id: "addFavourite", action: "addFavourite", value: "Add this folder" }]
     for (var i = 0; i < entries.length; i++) {
         rows.push({ kind: "favourite", id: "favourite:" + i, label: entries[i].label,
             value: entries[i].storedPath, glyph: entries[i].glyph, error: entries[i].error || (state.favouriteStatuses || {})[i] || "", favouriteIndex: i })
     }
-    rows.push({ kind: "favouriteActions", id: "favouriteActions", label: "Add current folder", value: "Remove",
-        actionIndex: state.favouriteAction || 0, canRemove: state.selectedFavourite >= 0 && state.selectedFavourite < entries.length })
     rows.push({ kind: "group", label: "Built in" })
     var builtins = [["showHome", "Home", "house"], ["showNetwork", "Network", "network"],
                     ["showDevices", "Devices", "drive"], ["showTrash", "Trash", "trash"]]

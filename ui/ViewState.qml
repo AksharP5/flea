@@ -135,7 +135,7 @@ QtObject {
     }
 
     // The chosen folder is set from the folder the panel was opened over, which is the same idiom the
-    // Places section's "Add current folder" uses; choosing one is also what selects that mode.
+    // Places section's "Add this folder" uses; choosing one is also what selects that mode.
     function setStartFolder(path) {
         root.changeKey("startIn", "folder")
         root.changeKey("startFolder", String(path || ""))
