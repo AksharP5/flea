@@ -46,8 +46,7 @@ Item {
 
         signal pressed()
 
-        readonly property color ink: !control.available ? Theme.color.muted
-            : control.primary ? Theme.color.accent : Theme.color.foreground
+        readonly property color ink: control.available ? Theme.color.foreground : Theme.color.muted
 
         implicitWidth: control.glyph.length > 0 ? Theme.hitMin : caption.implicitWidth + 2 * Theme.spacing.gap
         implicitHeight: Theme.hitMin
@@ -71,13 +70,14 @@ Item {
         // The primary control carries its wash at rest, because it is the one action the request is
         // asking for; every other control earns one under the pointer or the keyboard.
         readonly property real wash: !control.available ? 0
-            : (control.activeFocus || press.pressed) ? Theme.washActive
-            : hover.hovered ? Theme.washHover
-            : control.primary ? Theme.washActive : 0
+            : (control.activeFocus || press.pressed || control.primary) ? Theme.washActive
+            : hover.hovered ? Theme.washHover : 0
+        // The wash carries the role now that the label does not, so only a primary's is accent.
+        readonly property color washInk: control.primary ? Theme.color.accent : Theme.color.foreground
 
         Rectangle {
             anchors.fill: parent
-            color: Qt.alpha(control.ink, control.wash)
+            color: Qt.alpha(control.washInk, control.wash)
             border.width: Theme.spacing.hairline
             border.color: control.frame
         }
