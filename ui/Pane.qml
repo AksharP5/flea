@@ -25,6 +25,9 @@ FocusScope {
     // Set with pendingSelect by a right click on a peeked column row: the menu opens on the row once it is the cursor.
     property bool pendingMenu: false
     property int total: 0
+    // The longest name this listing holds, off the backend's own listed line: the Name column is one
+    // width per listing, so the metadata follows the name rather than the pane's right edge.
+    property int longestName: 0
     property int cursorIndex: 0
     property string listingState: "loading"
     property string stateMessage: ""
@@ -85,8 +88,8 @@ FocusScope {
     property Item overlayParent: null
     readonly property alias trash: trashHost
     readonly property alias menuActions: menuActions
-    readonly property alias emptyState: emptyState
-    readonly property alias stateMessageItem: paneMessage
+    readonly property var emptyState: paneStates.emptyItem
+    readonly property var stateMessageItem: paneStates.messageItem
     readonly property alias retrySelectionText: wire.retrySelectionText
     readonly property string menuSelectionIdentity: JSON.stringify([root.path, root.held, root.rows,
         root.selectionVersion, root.cursorIndex, root.total, root.listInFlight])
@@ -447,6 +450,7 @@ FocusScope {
         sortDesc: root.backend.sortDesc
         dualMode: root.dualMode
         hiddenCols: root.dualMode ? ["mode", "kind"].concat(ViewState.hiddenCols) : ViewState.hiddenCols
+        longestName: root.longestName
         onSortRequested: function (key) { Sort.column(root, key) }
         onMenuRequested: function (pos) { menu.openForHeader(pos) }
         searchMode: root.searchMode
@@ -612,28 +616,10 @@ FocusScope {
     // are read off it directly, so a new reader costs the seam a line and this file none.
     function contextMenu() { return menu }
 
-    Flea.EmptyState {
-        id: emptyState
-        // The hero belongs over the listing that is empty, which in the columns view is the active
-        // column and not the whole area right of the parent. Measured on this box, spanning the
-        // active column and the child slot together centred the mark at 1755 against the list
-        // view's 1364: the animation jumped a third of the window on a view switch and landed on
-        // the divider between the two slots. Over the active column it lands at 1363, so all three
-        // views draw it in the same place and none of them draws it on a rule.
-        x: root.listSlot.x + (root.viewMode === "columns" && root.columnsArea ? root.columnsArea.columnWidth : 0)
-        y: root.listSlot.y
-        width: root.viewMode === "columns" && root.columnsArea
-               ? root.columnsArea.columnWidth : root.listSlot.width
-        height: root.listSlot.height
-        visible: !trashHost.opened && root.listingState === "empty"
-        caption: root.searchMode === "results" ? "Nothing matches " + root.searchQuery : ""
-        mark: "search"
-        hint: root.searchMode === "results" ? "Press Escape to clear."
-            : ViewState.keyHints ? "Press Ctrl+Shift+N for a new folder." : ""
-    }
-    Flea.LoadingState {
-        anchors.fill: root.listSlot
-        visible: !trashHost.opened && root.listingState === "loading"
+    Flea.PaneStates {
+        id: paneStates
+        pane: root
+        trashOpen: trashHost.opened
     }
 
     function openConvert(menuId) { Ops.openConvert(root, menuId) }
@@ -647,17 +633,5 @@ FocusScope {
 
     // The keyboard's own entrance to the row menu; the placement itself is ui/js/Menu.js's.
     function openCursorMenu() { return Menu.openAtCursor(root, menu, Theme.spacing.rowPaddingX) }
-
-    Flea.StateMessage {
-        id: paneMessage
-        active: !trashHost.opened
-        anchors.fill: root.listSlot
-        anchors.leftMargin: Theme.spacing.rowPaddingX
-        anchors.rightMargin: Theme.spacing.rowPaddingX
-        message: root.stateMessage
-        listingState: root.listingState
-        lockedMode: root.lockedMode
-        total: root.total
-    }
 
 }
