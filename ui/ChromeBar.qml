@@ -159,7 +159,7 @@ Item {
 
     // A test drives these by coordinate, because a glyph button carries no text to find on screen.
     function buttonFor(glyph) {
-        var groups = [nav, views]
+        var groups = [nav, views, modes]
         for (var g = 0; g < groups.length; g++) {
             var kids = groups[g].children
             for (var i = 0; i < kids.length; i++) {
@@ -244,7 +244,8 @@ Item {
                         id: crumb
                         required property var modelData
                         text: crumb.modelData.text
-                        color: crumb.modelData.last ? Theme.color.foreground : Theme.color.muted
+                        // Only the current folder is lit at rest; an ancestor lights under the pointer, one at a time, which is the one sign a crumb answers a click.
+                        color: crumb.modelData.last || crumbHover.hovered ? Theme.color.foreground : Theme.color.muted
                         font.family: Theme.font.family
                         font.pixelSize: Theme.font.caption
                         textFormat: Text.PlainText
@@ -255,6 +256,7 @@ Item {
                         verticalAlignment: Text.AlignVCenter
 
                         HoverHandler {
+                            id: crumbHover
                             cursorShape: crumb.modelData.last ? Qt.IBeamCursor : Qt.PointingHandCursor
                         }
 
@@ -410,14 +412,10 @@ Item {
             onActivated: root.sortRequested()
         }
 
-        Repeater {
-            model: ["list", "columns", "grid", "dual"]
-            delegate: Flea.ChromeButton {
-                required property string modelData
-                glyph: modelData
-                restingColor: Theme.color.muted; active: root.viewMode === modelData  // one choice, so an unchosen mode stays muted
-                onActivated: root.viewChosen(modelData)
-            }
+        Flea.ChromeModes {
+            id: modes
+            viewMode: root.viewMode
+            onChosen: function (mode) { root.viewChosen(mode) }
         }
 
         // Row owns horizontal placement; the short Settings divider stays vertically centered.
