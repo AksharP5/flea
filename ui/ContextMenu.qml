@@ -18,7 +18,7 @@ Item {
     property bool opened: false
     // Driven from ui/Pane.qml's own state, so this file owns no hidden-file logic itself.
     property bool showHidden: false
-    // The application name ui/Opener.qml resolved for the cursor row, shown muted beside "Open".
+    property string favouritePath: ""
     // [{id, label}], the reachable Taildrop targets; installed providers keep their disabled reason.
     property var taildropPeers: []
     property bool taildropInstalled: false
@@ -136,13 +136,12 @@ Item {
             openWithLoaded: root.openWithLoaded,
             rowMode: root.rowMode,
             selectionCount: root.selectionCount,
-            // The Menus settings section's stored set; ui/js/Menu.js applyHidden is what reads it.
+            favourited: Favourites.contains(root.favouritePath),
             hiddenActions: ViewState.menuHidden
         })
     }
 
-    // The row item at an index, for ui/Ipc.qml: a driven test clicks a menu row without deriving
-    // its geometry from a row count the Menus settings can now change under it.
+    // IPC uses the actual menu row geometry, including user-configured visibility.
     function itemFor(index) { return menuRows.itemAt(index) }
     function submenuItemFor(index) { return subRows.itemAt(index) }
     readonly property var frameItem: frame
@@ -305,6 +304,7 @@ Item {
         root.submenuCursor = selection.submenuCursor
         Qt.callLater(function() { if (root.opened) scroll.reveal(menuRows.itemAt(root.cursor)) })
     }
+    Connections { target: Favourites; function onRecordsChanged() { root.refreshProviderRows() } }
 
     // Rebuild only to validate; rows stay fixed while the menu is open under the pointer.
     function validateChoice(action, subId) {
