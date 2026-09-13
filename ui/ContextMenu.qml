@@ -424,7 +424,6 @@ Item {
         }
     }
 
-    // The flyout: a second frame beside whichever row opened it, only while one has.
     Rectangle {
         id: flyout
         visible: root.submenuOpen
