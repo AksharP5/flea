@@ -221,7 +221,7 @@ Item {
         id: markSlot
         visible: !root.isGroup && !root.isHint && !root.isHero && !root.isFavourite && !root.isKeyPreview
         anchors.left: parent.left
-        anchors.leftMargin: root.row.indented === true ? Theme.settings.indent - Theme.spacing.rowPaddingX : Theme.spacing.rowPaddingX
+        anchors.leftMargin: Theme.spacing.rowPaddingX
         anchors.verticalCenter: parent.verticalCenter
         width: Theme.markSize
         height: Theme.markSize

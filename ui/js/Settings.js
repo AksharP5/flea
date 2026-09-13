@@ -330,7 +330,7 @@ function viewRows(state) {
                ["Home", "Last folder", "Chosen folder"], data.startIn || "home"),
         // The action writes the folder the panel was opened over and selects the mode with it, so the
         // row above never names a chosen folder that was never chosen. The value is the path itself.
-        { kind: "action", id: "startFolder", label: "Chosen folder", glyph: "folder", indented: true,
+        { kind: "action", id: "startFolder", label: "Chosen folder", glyph: "folder",
           value: data.startFolder || "Use this folder" },
         choice("newTab", "New tabs open in", "columns", ["current", "home", "start"],
                ["Current folder", "Home", "Start folder"], data.newTab || "current"),
@@ -343,10 +343,8 @@ function previewRows(state) {
     var data = (state.data || {}).preview || {}
     var load = choice("preview.loadOn", "Load", "eye", ["automatic", "manual"],
                       ["Automatic", "Manual"], data.loadOn || "automatic", true)
-    load.indented = true
     var size = choice("preview.thumbSize", "Thumbnail size", "maximize", ["small", "medium", "large", "xlarge"],
                       ["Small", "Medium", "Large", "Extra large"], data.thumbSize || "medium")
-    size.indented = true
     size.caption = [48, 64, 96, 128][Math.max(0, size.values.indexOf(size.selected))] + " px"
     return [
         { kind: "group", label: "Preview column" },
@@ -356,7 +354,7 @@ function previewRows(state) {
         choice("preview.thumbnails", "Thumbnails", "image", ["off", "images", "media"],
                ["Off", "Images", "Images and video"], data.thumbnails || "media"),
         size,
-        { kind: "check", id: "preview.ctrlZoom", label: "Zoom with ctrl and scroll", indented: true, on: data.ctrlZoom !== false },
+        { kind: "check", id: "preview.ctrlZoom", label: "Zoom with ctrl and scroll", on: data.ctrlZoom !== false },
         { kind: "hint", footer: true, role: "foreground", label: data.loadOn === "manual" ? "Ctrl+Space loads the current selection." : "Automatic follows keyboard or pointer selection." }
     ]
 }

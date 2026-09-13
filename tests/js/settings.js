@@ -325,9 +325,8 @@ function runCompletionRows(check) {
     check("all four thumbnail display stops remain available", find(preview, "preview.thumbSize").values.join(","), "small,medium,large,xlarge")
     check("thumbnail source policy remains separate", find(preview, "preview.thumbnails").selected, "off")
     check("ctrl zoom can be disabled", find(preview, "preview.ctrlZoom").on, false)
-    check("only dependent preview controls are indented", preview.filter(function (row) { return row.indented }).map(function (row) {
-        return row.id
-    }).join(","), "preview.loadOn,preview.thumbSize,preview.ctrlZoom")
+    // HANDOFF rule 3: nothing is indented, so no row carries the flag that stepped its mark right.
+    check("no preview row is indented", preview.filter(function (row) { return row.indented }).length, 0)
     var sizes = ["small", "medium", "large", "xlarge"]
     check("thumbnail pixels are live captions separate from each named stop", sizes.map(function (size) {
         var row = find(Settings.rows("preview", { data: { preview: { thumbSize: size } } }), "preview.thumbSize")
