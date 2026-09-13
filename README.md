@@ -27,12 +27,10 @@ Large directories stay responsive: the window loads rows and requests thumbnails
 - **Three views.** List, columns and grid, with tabs and natural filename sorting.
 - **Quick Look.** Press Space for images, PDFs, text, media and archive contents.
 - **File operations.** Copy, move, rename, trash, compress and extract, with an undo journal.
+  Right-click Home or an XDG folder under Places to act on that folder, including Add to Favorites.
 - **Network and sharing.** SMB, SFTP, FTPS, WebDAV, NFS, Dropbox and Taildrop.
 - **Desktop integration.** Default file manager, “Show in folder” and Open/Save dialogs.
 - **Your settings.** Omarchy text sizes, configurable menus and Default, Vim, Mac or Windows keys.
-
-Right-click Home or an XDG folder under Places to use the folder menu, including copy, rename,
-trash and Add to Favorites. Actions apply to that folder even while another directory is open.
 
 ## Install
 

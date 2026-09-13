@@ -269,8 +269,6 @@ Loader {
             }
             if (message.op === "snapshot") {
                 root.ready = message.ok === true && root.identity === root.selectionIdentity
-                if (root.targetPath) root.pane.contextMenu().targetMode = message.ok ? message.mode : 0
-                root.pane.contextMenu().refreshProviderRows()
                 if (!root.ready) {
                     root.pendingAction = ""
                     root.pendingActivation = false
@@ -285,6 +283,8 @@ Loader {
                     // No installed flag: the flyout draws the registry alone, and asking for the
                     // whole catalogue here walked every applications directory on every right-click.
                     root.pane.backend.send({c: "menuaction", op: "applications", id: root.requestId})
+                root.pane.contextMenu().snapshot = root.ready ? message : ({})
+                root.pane.contextMenu().refreshProviderRows()
                 root.finishProviders()
                 return
             }

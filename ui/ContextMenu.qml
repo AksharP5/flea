@@ -16,15 +16,12 @@ Item {
     signal snapshotRequested()
 
     property bool opened: false
-    // Driven from ui/Pane.qml's own state, so this file owns no hidden-file logic itself.
+    property var snapshot: ({})
     property bool showHidden: false
-    // The application name ui/Opener.qml resolved for the cursor row, shown muted beside "Open".
-    // [{id, label}], the reachable Taildrop targets; installed providers keep their disabled reason.
     property var taildropPeers: []
     property bool taildropInstalled: false
     property string taildropReason: ""
     property bool providersRefreshing: false
-    // The archive formats this box actually probed, and whether a converter is installed at all.
     property var archiveFormats: []
     property bool canConvert: false
     property bool canExtract: false
@@ -49,7 +46,6 @@ Item {
     property string selectionIdentity: ""
     property string openedIdentity: ""
     property string targetPath: ""
-    property int targetMode: 0
     readonly property string targetIdentity: root.targetPath || root.selectionIdentity
     // The owner intersects the live monitor work area with this application's viewport.
     property rect workArea: Qt.rect(0, 0, root.width, root.height)
@@ -132,8 +128,8 @@ Item {
             clipboardAvailable: root.clipboardAvailable,
             openWithApps: root.openWithApps,
             openWithLoaded: root.openWithLoaded,
-            rowMode: root.targetPath ? root.targetMode : root.rowMode,
-            selectionCount: root.targetPath ? 1 : root.selectionCount,
+            rowMode: root.targetPath ? (root.snapshot.mode || 0) : root.rowMode,
+            selectionCount: root.targetPath ? (root.snapshot.count || 0) : root.selectionCount,
             // The Menus settings section's stored set; ui/js/Menu.js applyHidden is what reads it.
             hiddenActions: ViewState.menuHidden
         })
@@ -179,7 +175,6 @@ Item {
     // Takes a point in scene coordinates and keeps the whole menu inside the pane it belongs to.
     function openAt(scenePoint, path) {
         root.targetPath = path || ""
-        root.targetMode = 0
         root.clearRail()
         root.forHeader = false
         root.hasRow = true
@@ -237,6 +232,7 @@ Item {
         var point = root.mapFromItem(null, scenePoint)
         root.placeX = point.x
         root.placeY = point.y
+        root.snapshot = ({})
         root.entries = root.buildEntries()
         root.openedIdentity = root.targetIdentity
         scroll.contentY = 0
