@@ -348,10 +348,7 @@ FocusScope {
                     color: Theme.color.foreground
                     font { family: Theme.font.family; pixelSize: Theme.font.caption }
                 }
-                // Emptying the Trash was reachable only by right-clicking the rail row. It addresses
-                // the whole Trash, which is what the count beside it describes, so it belongs here.
-                // It opens the confirmation the menu row opens: the boundary is unchanged and no key
-                // is bound to it. Disabled exactly where ui/js/Menu.js disables the row.
+                // Emptying the Trash was reachable only by right-clicking the rail row. It addresses the whole Trash, which is what the count beside it describes, so it belongs here. It opens the confirmation the menu row opens: the boundary is unchanged and no key is bound to it. Disabled exactly where ui/js/Menu.js disables the row.
                 Flea.ChromeAction {
                     id: emptyAction
                     anchors.verticalCenter: parent.verticalCenter
@@ -430,7 +427,8 @@ FocusScope {
                 readonly property bool selected: item && root.isSelected(item.uri)
                 width: listing.width
                 height: Theme.fileRowHeight
-                color: selected ? Qt.alpha(Theme.color.accent, 0.14) : hover.hovered ? Style.hoverFill : "transparent"
+                // HANDOFF rule 7: a marked row takes the OEM's own selection rung, the one ui/Row.qml draws in every listing, rather than an accent wash this surface mixed for itself.
+                color: selected ? Style.selectionFill : hover.hovered ? Style.hoverFill : "transparent"
                 Rectangle { width: Theme.spacing.hairline * 2; height: parent.height; visible: itemRow.selected; color: Theme.color.accent }
                 Row {
                     anchors.fill: parent

@@ -139,7 +139,9 @@ Item {
         }
         // SearchFilter rule 2: the same sentence the strip carries, scope and all, because the count
         // is of the rows the filter could see and those are a window on the directory, not all of it.
-        if (root.shownTotal !== root.total) {
+        // The trash view and the picker both draw this strip with no pane behind it, so the filter's
+        // sentence is asked for only where there is a listing to have filtered.
+        if (root.pane && root.shownTotal !== root.total) {
             return Filter.summary(root.pane.shown, root.pane.rows.length, root.total)
         }
         return root.itemText()

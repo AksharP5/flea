@@ -13,8 +13,11 @@ Item {
     // region and stays one. There is deliberately no mark here: one beside the word was a third
     // species, and at the chrome mark size it outweighed the caption it stood next to.
     property string label: ""
-    // plain is the neutral control, accent the one action a surface is asking for, error a permanent
-    // deletion. The role is the ink, at every state; only the wash under it moves.
+    // plain is the neutral control and error a permanent deletion; the role is the ink at every
+    // state and only the wash under it moves. There was an accent branch here for "the one action a
+    // surface is asking for" and no surface ever asked: ui/TrashView.qml is the only caller in the
+    // tree and it draws a deletion, so the branch shipped dead and inked a label in accent, which is
+    // the defect HANDOFF rule 18 names. A surface that needs it can add it back with a caller.
     property string role: "plain"
     property bool available: true
     // A primary control carries its wash at rest, because it is the thing the surface wants read
@@ -24,17 +27,14 @@ Item {
     signal activated()
 
     readonly property color ink: !root.available ? Theme.color.muted
-        : root.role === "accent" ? Theme.color.accent
         : root.role === "error" ? Theme.color.error
         : Theme.color.foreground
     // Every control rests in a muted frame, the role ThemeRoles.html gives an inactive control, and
-    // the frame rises to the control's own ink under the pointer or the keyboard. The exception is
-    // the primary control, which frames in accent at rest because it is the one action a surface is
-    // asking for. A destructive control therefore rests exactly as the confirm dialog draws it, a
-    // plain frame carrying error text, and earns the error frame only when it is reached for: an
-    // error frame at rest is louder than anything else Flea draws, and it was.
+    // the frame rises to the control's own ink under the pointer or the keyboard. A destructive
+    // control therefore rests exactly as the confirm dialog draws it, a plain frame carrying error
+    // text, and earns the error frame only when it is reached for: an error frame at rest is louder
+    // than anything else Flea draws, and it was. A primary control still carries its wash at rest.
     readonly property color frame: !root.available ? Theme.color.muted
-        : root.role === "accent" ? Theme.color.accent
         : (root.activeFocus || hover.hovered || tap.pressed) ? root.ink
         : Theme.color.muted
     readonly property real wash: !root.available ? 0

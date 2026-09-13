@@ -727,16 +727,24 @@ case_trash() {
     else trash_stale_confirmations; fi
     if [[ "$trash_case_label" == stale ]]; then trash_cleanup 0; fi
 
+    local locked_backing
     key -k Backspace >/dev/null
     trash_guard "$payload/good.txt"
     trash_guard "$payload/locked"
     printf 'delete this\n' > "$payload/good.txt"
     mkdir "$payload/locked"
     printf 'survive failed delete\n' > "$payload/locked/child.txt"
-    chmod 0555 "$payload/locked"
     wait_listing 3
     trash_move good.txt 0 2
     trash_move locked 1 1
+    # The lock goes on where the permanent delete will meet it, which is the trash's own backing copy.
+    # gio refuses to trash a directory it cannot write at all: measured on the box, "Unable to trash
+    # file ...: Permission denied", so locking it before the move left the row in the listing and this
+    # block never reached the failure it exists to prove.
+    locked_backing=$(trash_backing "$(/usr/bin/gio trash --list | grep -F "/locked" | cut -f1)") \
+        || fail "trash: missing locked backing"
+    trash_guard "$locked_backing"
+    chmod 0555 "$locked_backing"
     trash_rail
     trash_wait '.total == 2 and (.busy == false)'
     key -M ctrl -k a -m ctrl >/dev/null || fail "trash: Ctrl+A delivery failed"
