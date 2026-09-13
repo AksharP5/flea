@@ -199,7 +199,7 @@ fn handle_line(
                     if watch.refused() {
                         eprintln!("flea: {} will not follow outside changes, inotify refused a watch on it", path);
                     }
-                    writeln!(out, "{}", listed_line(st.listing.len(), read_ms + pass_ms, sort_ms, dev_of(&st.base), &st.base.to_string_lossy(), st.listing.longest_name())).ok();
+                    writeln!(out, "{}", listed_line(st.listing.len(), read_ms + pass_ms, sort_ms, dev_of(&st.base), &st.base.to_string_lossy())).ok();
                     // Rides along unasked: asking costs a 60 ms round trip at first paint.
                     write_window(out, st, 0, first, tb);
                 }
@@ -232,7 +232,7 @@ fn handle_line(
             watch.stop();
             forget_rows(st, pool);
             // The client is told at once that its old rows are gone, then the count grows as matches arrive.
-            writeln!(out, "{}", listed_line(0, 0.0, 0.0, dev_of(&st.base), &st.base.to_string_lossy(), st.listing.longest_name())).ok();
+            writeln!(out, "{}", listed_line(0, 0.0, 0.0, dev_of(&st.base), &st.base.to_string_lossy())).ok();
             st.search = Some(Search::new(&path, &query, hidden));
             st.search_reported = Instant::now();
             out.flush().ok();
@@ -255,7 +255,7 @@ fn handle_line(
                 }
                 Ok((pass_ms, sort_ms)) => {
                     forget_rows(st, pool);
-                    writeln!(out, "{}", listed_line(st.listing.len(), pass_ms, sort_ms, dev_of(&st.base), &st.base.to_string_lossy(), st.listing.longest_name())).ok();
+                    writeln!(out, "{}", listed_line(st.listing.len(), pass_ms, sort_ms, dev_of(&st.base), &st.base.to_string_lossy())).ok();
                 }
             }
             out.flush().ok();

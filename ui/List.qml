@@ -58,7 +58,6 @@ ListView {
         paneFocused: root.pane.paneFocused
         dualMode: root.pane.dualMode
         hiddenCols: root.pane.dualMode ? ["mode", "kind"].concat(ViewState.hiddenCols) : ViewState.hiddenCols
-        longestName: root.pane.longestName
         hovered: hover.hovered
         thumb: root.thumbFor(listingIndex)
         selected: root.pane.isSelected(listingIndex)

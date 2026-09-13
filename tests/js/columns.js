@@ -8,14 +8,14 @@
 // This box's own resolved tokens, read off the running app's tokens() seam at base-size 14:
 //   rowPaddingX=14 gap=9 iconSize=23 columnMode=70 columnSize=70 columnDate=125 columnKind=130
 // nameMin is 20 characters of the same 7.8125 px advance the fixed columns are sized from.
-var BOX = { rowPaddingX: 14, gap: 9, iconSize: 23, nameMin: 156, charWidth: 7.8125, mode: 70, size: 70, date: 125, kind: 130 }
+var BOX = { rowPaddingX: 14, gap: 9, iconSize: 23, nameMin: 156, mode: 70, size: 70, date: 125, kind: 130 }
 
 // A second set that shares no number with the first, so nothing here can pass on a constant.
-var OTHER = { rowPaddingX: 6, gap: 4, iconSize: 16, nameMin: 100, charWidth: 5, mode: 40, size: 50, date: 80, kind: 60 }
+var OTHER = { rowPaddingX: 6, gap: 4, iconSize: 16, nameMin: 100, mode: 40, size: 50, date: 80, kind: 60 }
 
 // The chooser's own tokens: BOX with Theme.column.pickerDate in place of the window's date, which
 // the seam resolves to 80 at base-size 14, SendPicker.html's own slot.
-var PICKER = { rowPaddingX: 14, gap: 9, iconSize: 23, nameMin: 156, charWidth: 7.8125, mode: 70, size: 70, date: 80, kind: 130 }
+var PICKER = { rowPaddingX: 14, gap: 9, iconSize: 23, nameMin: 156, mode: 70, size: 70, date: 80, kind: 130 }
 
 // The chooser's list area on this box: Hyprland floats the picker at 875 px and ui/PickerPlaces.qml
 // takes Theme.space(150), 175 px of it, measured off the window Hyprland reported for flea --pick.
@@ -33,56 +33,6 @@ function nameSlot(width, s, t) {
 }
 
 function run(check) {
-    // ListView board rule 1, as overseer directive 7 reads it: the Name column is one width per
-    // listing, the floor or the longest name it holds, and the metadata follows it rather than the
-    // row's right edge. The names are monospace, so the width is a character count.
-    var wide = 2000
-    var full = Columns.set(wide, BOX, [])
-    var meta = BOX.mode + BOX.size + BOX.date + BOX.kind + 4 * BOX.gap
-    var chrome = 2 * BOX.rowPaddingX + BOX.iconSize + BOX.gap
-    check("a listing of short names holds the name at its floor",
-          Columns.nameWidth(wide, BOX, full, 4), BOX.nameMin)
-    check("and gives the rest of the row back rather than spending it on a gap",
-          Columns.trailingGap(wide, BOX, [], 4), wide - chrome - BOX.nameMin - meta)
-    // 40 characters at 7.8125 is 312.5, which ceils to 313 and is well past the 156 floor. Ceil and
-    // not round, because a name is drawn at body and half a pixel short of it is an elide.
-    check("a longer name takes the width it needs",
-          Columns.nameWidth(wide, BOX, full, 40), 313)
-    check("and the gap shrinks by exactly what the name took",
-          Columns.trailingGap(wide, BOX, [], 40), wide - chrome - 313 - meta)
-    // The one case rule 1 allows an elide: the row has no more room to give.
-    check("a name longer than the row can spare stops at what is left",
-          Columns.nameWidth(wide, BOX, full, 4000), wide - chrome - meta)
-    check("and there is nothing left to give back",
-          Columns.trailingGap(wide, BOX, [], 4000), 0)
-    // The floor still wins over a listing whose longest name is one character.
-    check("a listing of one-character names still holds the floor",
-          Columns.nameWidth(wide, BOX, full, 1), BOX.nameMin)
-    // The invariant across every width: the row is its chrome, the name, the columns that survived
-    // and the gap, and the name never drops below its floor however narrow the row gets.
-    var widths = [200, 305, 400, 659, 900, 1400, 2536]
-    var broken = []
-    for (var w = 0; w < widths.length; w++) {
-        var width = widths[w]
-        var cols = Columns.set(width, BOX, [])
-        var used = 2 * BOX.rowPaddingX + BOX.iconSize + BOX.gap
-        var keys = ["mode", "size", "date", "kind"]
-        for (var k = 0; k < keys.length; k++) {
-            if (cols[keys[k]]) used += BOX[keys[k]] + BOX.gap
-        }
-        var name = Columns.nameWidth(width, BOX, cols, 40)
-        var gap = Columns.trailingGap(width, BOX, [], 40)
-        if (name < BOX.nameMin) broken.push(width + ":name " + name)
-        if (gap < 0) broken.push(width + ":gap " + gap)
-        if (width > used + BOX.nameMin && used + name + gap !== width) broken.push(width + ":sum " + (used + name + gap))
-    }
-    check("every width is its chrome, its name, its surviving columns and the gap", broken.join("|"), "")
-    // Nothing here is a constant: the second token set has to give the same answers from its own numbers.
-    var otherFull = Columns.set(wide, OTHER, [])
-    check("the second token set holds its own floor",
-          Columns.nameWidth(wide, OTHER, otherFull, 3), OTHER.nameMin)
-    check("and sizes its own longest name from its own advance",
-          Columns.nameWidth(wide, OTHER, otherFull, 40), 200)
 
     var dual = {rowPaddingX: 14, gap: 9, iconSize: 13 * 1.45, nameMin: 180, size: 70, date: 125}
     check("dual date fits the board's 431px floor", Columns.names(Columns.dualSet(431, dual, [])), "name,size,date")

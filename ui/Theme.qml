@@ -226,13 +226,11 @@ Singleton {
     // dateWidth lets the picker afford the date at column.pickerDate, the width it actually draws.
     readonly property var columnTokens: ({
         rowPaddingX: root.spacing.rowPaddingX, gap: root.spacing.gap, iconSize: root.iconSize,
-        nameMin: root.column.nameMin, charWidth: bodyGlyphMetrics.advanceWidth, mode: root.column.mode,
+        nameMin: root.column.nameMin, mode: root.column.mode,
         size: root.column.size, date: root.column.date, kind: root.column.kind
     })
     function columnSet(dateWidth) { return dateWidth === undefined ? root.columnTokens : Object.assign({}, root.columnTokens, {date: dateWidth}); }
     function columns(width, hidden, dateWidth) { return Columns.set(width, root.columnSet(dateWidth), hidden); }
-    // What the metadata gives back by following the name instead of the row's right edge.
-    function nameGap(width, hidden, dateWidth, longestChars) { return Columns.trailingGap(width, root.columnSet(dateWidth), hidden, longestChars); }
 
     // The same set as one string, which is what the seam in ui/Ipc.qml compares across the two.
     function columnNames(width, hidden, dateWidth) {

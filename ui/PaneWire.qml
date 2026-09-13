@@ -146,7 +146,7 @@ Item {
     Connections {
         target: pane.backend
 
-        function onListed(total, readMs, sortMs, path, longest) {
+        function onListed(total, readMs, sortMs, path) {
             if (!pane.dualMode && !pane.listInFlight && pane.searchMode.length === 0) {
                 ViewState.changeLeaf("sort", { key: pane.backend.sortBy === "mtime" ? "date" : pane.backend.sortBy,
                                              reverse: pane.backend.sortDesc })
@@ -163,7 +163,6 @@ Item {
                 return
             }
             if (path.length > 0) pane.path = path  // the listing landed, so this is where the pane moves
-            pane.longestName = longest
             pane.listingState = total === 0 ? "empty" : "ready"
             pane.stateMessage = total === 0 ? "This directory is empty; add a file to see it here." : ""
             pane.opened(pane.path)

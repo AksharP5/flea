@@ -25,9 +25,6 @@ FocusScope {
     // Set with pendingSelect by a right click on a peeked column row: the menu opens on the row once it is the cursor.
     property bool pendingMenu: false
     property int total: 0
-    // The longest name this listing holds, off the backend's own listed line: the Name column is one
-    // width per listing, so the metadata follows the name rather than the pane's right edge.
-    property int longestName: 0
     property int cursorIndex: 0
     property string listingState: "loading"
     property string stateMessage: ""
@@ -450,7 +447,6 @@ FocusScope {
         sortDesc: root.backend.sortDesc
         dualMode: root.dualMode
         hiddenCols: root.dualMode ? ["mode", "kind"].concat(ViewState.hiddenCols) : ViewState.hiddenCols
-        longestName: root.longestName
         onSortRequested: function (key) { Sort.column(root, key) }
         onMenuRequested: function (pos) { menu.openForHeader(pos) }
         searchMode: root.searchMode

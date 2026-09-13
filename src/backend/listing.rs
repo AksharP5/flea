@@ -51,12 +51,6 @@ impl Listing {
         self.spans[i].is_dir
     }
 
-    // The longest name this listing holds, in characters. The client sizes its Name column from this
-    // once per listing rather than measuring rows, and the face is monospace so a count is a width.
-    pub fn longest_name(&self) -> usize {
-        (0..self.len()).map(|i| self.name(i).chars().count()).max().unwrap_or(0)
-    }
-
     pub fn len(&self) -> usize {
         self.spans.len()
     }

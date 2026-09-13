@@ -44,35 +44,6 @@ function set(width, t, hidden) {
     }
 }
 
-// The name's own width for this listing: its floor, or the longest name the listing holds, whichever
-// is larger, and never more than the row can spare once the metadata has its columns. The face is
-// monospace, so a character count is a width and nothing here measures a row. charWidth is the
-// advance at body, the size a name is drawn at, not the bodySmall the fixed columns are sized from;
-// ceil for the same reason the trash date column takes one. ListView board rule 1.
-function nameWidth(width, t, cols, longestChars) {
-    var taken = 2 * t.rowPaddingX + t.iconSize + t.gap
-    for (var i = 0; i < DROP_ORDER.length; i++) {
-        if (cols[DROP_ORDER[i]]) {
-            taken += t[DROP_ORDER[i]] + t.gap
-        }
-    }
-    var room = Math.max(t.nameMin, width - taken)
-    return Math.min(room, Math.max(t.nameMin, Math.ceil(longestChars * t.charWidth)))
-}
-
-// What the metadata gives back by following the name instead of fleeing to the row's right edge. A
-// name and its size 1670 pixels apart are two facts and not one row, which is the defect this closes.
-function trailingGap(width, t, hidden, longestChars) {
-    var cols = set(width, t, hidden)
-    var taken = 2 * t.rowPaddingX + t.iconSize + t.gap + nameWidth(width, t, cols, longestChars)
-    for (var i = 0; i < DROP_ORDER.length; i++) {
-        if (cols[DROP_ORDER[i]]) {
-            taken += t[DROP_ORDER[i]] + t.gap
-        }
-    }
-    return Math.max(0, width - taken)
-}
-
 // DualPane protects its name floor without reserving absent Mode and Kind columns.
 function dualSet(width, t, hidden) {
     var base = 2 * t.rowPaddingX + t.iconSize + t.gap + t.nameMin

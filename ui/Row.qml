@@ -31,7 +31,6 @@ Item {
     property var dirSize: null
     // The picker's rows start one slot further in for its check; the window's own leave this at zero.
     property real leadingSlot: 0
-    property int longestName: 0  // the longest name in this listing, which is what sizes the Name column; see Columns.js
     // The picker's second difference: SendPicker.html's narrow date column and its compact form.
     property bool compactDate: false
     property bool foregroundMetadata: false
@@ -62,8 +61,6 @@ Item {
 
     // The columns this row's width affords. A column that is not drawn takes neither its width nor its gap, so the chain collapses onto its right neighbour.
     readonly property var cols: root.dualMode ? Theme.dualColumns(root.width, root.hiddenCols) : Theme.columns(root.width, root.hiddenCols, root.dateWidth)
-    // The metadata follows the name; dual pane and the picker have their own narrow slots and keep the edge.
-    readonly property real trailingGap: root.dualMode || root.compactDate ? 0 : Theme.nameGap(root.width, root.hiddenCols, root.dateWidth, root.longestName)
     readonly property bool modeShown: !root.searching && root.cols.mode
     // The search column set keeps Size and drops the other three, so only this one ignores searching.
     readonly property bool sizeShown: root.cols.size
@@ -279,7 +276,7 @@ Item {
     Text {
         id: kind
         anchors.right: parent.right
-        anchors.rightMargin: Theme.spacing.rowPaddingX + root.trailingGap
+        anchors.rightMargin: Theme.spacing.rowPaddingX
         anchors.verticalCenter: parent.verticalCenter
         visible: root.kindShown && !root.dropTarget
         width: root.kindShown ? Theme.column.kind : 0

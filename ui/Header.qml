@@ -38,12 +38,7 @@ Item {
     // ui/Row.qml resolves its own from a width anchoring keeps
     // equal to this one, so the header can never head a column no row below it is drawing.
     property var hiddenCols: ViewState.hiddenCols
-    // The longest name in this listing; the head follows the rows so the two cannot disagree.
-    property int longestName: 0
     readonly property var cols: root.dualMode ? Theme.dualColumns(root.width, root.hiddenCols) : Theme.columns(root.width, root.hiddenCols)
-    // The head follows the rows: what the name does not use is given back rather than spent on a gap.
-    readonly property real trailingGap: root.dualMode ? 0
-        : Theme.nameGap(root.width, root.hiddenCols, undefined, root.longestName)
 
     implicitHeight: Theme.chromeHeight
 
@@ -117,7 +112,7 @@ Item {
     PanelSectionHeader {
         id: headerKind
         anchors.right: parent.right
-        anchors.rightMargin: Theme.spacing.rowPaddingX + root.trailingGap
+        anchors.rightMargin: Theme.spacing.rowPaddingX
         anchors.verticalCenter: parent.verticalCenter
         visible: root.cols.kind
         width: root.cols.kind ? Theme.column.kind : 0
