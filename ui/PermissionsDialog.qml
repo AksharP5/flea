@@ -237,7 +237,6 @@ FocusScope {
                                 height: permissionRow.height
                                 activeFocusOnTab: true
                                 enabled: root.editable
-                                opacity: root.editable ? 1 : 0.45
                                 Accessible.role: Accessible.CheckBox
                                 Accessible.name: permissionRow.modelData + " " + ["read", "write", root.facts.directory ? "enter" : "execute"][index]
                                 Accessible.checked: checked
@@ -247,14 +246,12 @@ FocusScope {
                                 Keys.onSpacePressed: toggle()
                                 Keys.onTabPressed: function(event) { root.stepFocus((event.modifiers & Qt.ShiftModifier) !== 0) }
                                 Keys.onBacktabPressed: root.stepFocus(true)
-                                Rectangle {
+                                Flea.CheckBox {
                                     anchors.centerIn: parent
-                                    width: Theme.font.bodySmall * 16 / 13
-                                    height: width
-                                    color: "transparent"
-                                    border.width: Theme.spacing.hairline * 2
-                                    border.color: checkbox.checked || checkbox.activeFocus ? Theme.color.accent : Theme.color.muted
-                                    Flea.Glyph { anchors.centerIn: parent; width: Theme.font.bodySmall * 10 / 13; height: width; strokeWidth: 3; name: "check"; visible: checkbox.checked; color: Theme.color.accent }
+                                    value: checkbox.checked ? "on" : "off"
+                                    focused: checkbox.activeFocus
+                                    // A disabled row stays checked, so the box dims and keeps its value.
+                                    available: root.editable
                                 }
                                 TapHandler { onTapped: checkbox.toggle() }
                             }

@@ -46,10 +46,10 @@ Item {
     readonly property bool hasSteps: root.kind === "choice" && !root.hasSegment
     // The hover lift ui/MenuRow.qml uses, so a settings row and a menu row read alike.
     readonly property real hoverOpacity: 0.08
-    // The tri-state master: all six on is a check, some on is a dash, none is an empty box.
-    readonly property string boxGlyph: root.kind === "master"
-        ? (root.row.state === "all" ? "check" : (root.row.state === "some" ? "minus" : ""))
-        : (root.row.on === true ? "check" : "")
+    // The tri-state master: all six on is a filled tick, some on a filled bar, none an empty box.
+    readonly property string boxValue: root.kind === "master"
+        ? (root.row.state === "all" ? "on" : (root.row.state === "some" ? "some" : "off"))
+        : (root.row.on === true ? "on" : "off")
 
     height: root.isGroup ? groupLabel.y + groupLabel.height + root.groupPaddingBottom
             : root.isFavourite ? favourite.implicitHeight : root.isHero ? hero.implicitHeight + 4 * Theme.spacing.rowPaddingY
@@ -355,24 +355,10 @@ Item {
             color: Theme.color.muted
         }
 
-        Rectangle {
+        Flea.CheckBox {
             visible: root.hasBox
-            // The boards frame a 14px interior at bodySmall 13 with two 2px borders.
-            width: root.hasBox ? height : 0
-            height: Math.round(14 * Theme.font.bodySmall / 13) + 2 * border.width
-            color: "transparent"
-            border.width: 2 * Theme.spacing.hairline
-            border.color: root.boxGlyph.length > 0 ? Theme.color.accent : Theme.color.muted
-
-            Flea.Glyph {
-                anchors.centerIn: parent
-                width: Theme.font.bodySmall * 10 / 13
-                height: width
-                strokeWidth: 3
-                visible: root.boxGlyph.length > 0
-                name: root.boxGlyph
-                color: Theme.color.accent
-            }
+            width: root.hasBox ? implicitWidth : 0
+            value: root.boxValue
         }
     }
 
