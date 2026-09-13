@@ -77,6 +77,40 @@ function run(check) {
     check("a plain notice still yields to the search",
           Status.centreText(noticeWhileSearching), "esc cancels")
 
+    // StatusBar board rule 3: the byte total appears only when every selected row is held and every
+    // size is known and complete, and nothing here starts a sweep to fill a gap.
+    function pane(over) {
+        var p = {
+            held: 0,
+            rows: [{ s: 1000 }, { s: 2000 }, { d: true }, { s: 4000 }],
+            dirSizeState: { file: { 2: { bytes: 8000, partial: false } }, order: [2] },
+            picked: [0, 1]
+        }
+        for (var k in over) { p[k] = over[k] }
+        p.selection = { count: function () { return p.picked.length },
+                        indices: function () { return p.picked } }
+        return p
+    }
+    check("two held files add up", Status.selectionBytes(pane({})), 3000)
+    check("a directory with a finished walk counts too",
+          Status.selectionBytes(pane({ picked: [0, 2] })), 9000)
+    check("a directory whose walk is still partial removes the total",
+          Status.selectionBytes(pane({ picked: [0, 2],
+              dirSizeState: { file: { 2: { bytes: 8000, partial: true } }, order: [2] } })), -1)
+    check("a directory nothing has walked removes the total",
+          Status.selectionBytes(pane({ picked: [0, 2], dirSizeState: { file: {}, order: [] } })), -1)
+    check("a directory asked about and still waiting removes the total",
+          Status.selectionBytes(pane({ picked: [0, 2],
+              dirSizeState: { file: { 2: null }, order: [2] } })), -1)
+    check("a selected row outside the held window removes the total",
+          Status.selectionBytes(pane({ picked: [0, 9] })), -1)
+    check("a selection wider than the window is refused before it is walked",
+          Status.selectionBytes(pane({ picked: [0, 1, 2, 3, 4] })), -1)
+    check("an empty selection has no total to state", Status.selectionBytes(pane({ picked: [] })), -1)
+    // The window is not always at row zero, so the row lookup has to go through held.
+    check("a held window further down the listing still resolves its rows",
+          Status.selectionBytes(pane({ held: 100, picked: [100, 101] })), 3000)
+
     check("errorHere is the one test for an unacknowledged failure",
           Status.errorHere(failed), true)
     check("and a plain notice is not one", Status.errorHere(noticeWhileSearching), false)

@@ -49,9 +49,10 @@ operations_footer_geometry() {
 operations_idle_footer() {
     local total="$1" selected="$2" label="$3" items="$1 items"
     [[ "$total" == 1 ]] && items="1 item"
-    [[ "$selected" == 0 ]] || items+=" · $selected selected"
+    # The left zone answers the selection when there is one, and may carry a byte total after it.
+    [[ "$selected" == 0 ]] || items="$selected of $total selected"
     # Three zones: the disk owns its own and an idle centre is empty rather than borrowing it.
-    menus_expect statusFooterState ".total == $total and .selected == $selected and .filesystem != \"unknown\" and .left.text == \"$items\" and .disk.text == .filesystem and .disk.width > 0 and .disk.color == .left.color and .disk.fontSize == .left.fontSize and .centre.text == \"\" and .disk.x >= .left.x + .left.width" "$label"
+    menus_expect statusFooterState ".total == $total and .selected == $selected and .filesystem != \"unknown\" and (.left.text | startswith(\"$items\")) and .disk.text == .filesystem and .disk.width > 0 and .disk.color == .left.color and .disk.fontSize == .left.fontSize and .centre.text == \"\" and .disk.x >= .left.x + .left.width" "$label"
     menus_equal "$label foreground" "$(ipc themeForeground)" "$(ipc statusColor)"
     operations_footer_geometry "$label"
 }
@@ -695,7 +696,7 @@ case_footerstates() (
     permissions_viewport 880 620
     click_row "$(row_index_of photo.heic)" left
     operations_idle_footer 10 1 'ten-item selected idle specimen'
-    operations_footer_capture idle '.total == 10 and .selected == 1 and .left.text == "10 items · 1 selected" and .disk.text == .filesystem and .centre.text == "" and .secondary.text == ""'
+    operations_footer_capture idle '.total == 10 and .selected == 1 and (.left.text | startswith("1 of 10 selected")) and .disk.text == .filesystem and .centre.text == "" and .secondary.text == ""'
     for name in a.txt b.txt y.txt z.txt; do
         seek_row_named "$name"
         key v >/dev/null || fail "footer: cannot add $name to the selection"
@@ -704,10 +705,10 @@ case_footerstates() (
     operations_copy_to "$menu_box/destination"
     menus_expect statusActivityState '.errors == 1 and (.activities | length) == 0 and (.notice | contains("Copied 4 of 5 · 1 failed"))' 'mixed specimen records its actual completed outcome'
     menus_expect selectionCount '. == 1' 'mixed specimen retains the failed original for retry'
-    operations_footer_capture error-collision '.left.text == "10 items · 1 selected" and .centre.text == "Copy failed: photo.heic · already exists" and .secondary.text == " · esc dismisses"'
+    operations_footer_capture error-collision '(.left.text | startswith("1 of 10 selected")) and .centre.text == "Copy failed: photo.heic · already exists" and .secondary.text == " · esc dismisses"'
     key -k Escape >/dev/null || fail 'footer: collision acknowledgement failed'
     menus_expect statusActivityState '.errors == 0 and .undoAvailable' 'acknowledgement reveals the actual undoable completion'
-    operations_footer_capture completed-collision '.left.text == "10 items · 1 selected" and .centre.text == "Copied 4 of 5 · 1 failed" and .secondary.text == " · z undoes · photo.heic selected for retry"'
+    operations_footer_capture completed-collision '(.left.text | startswith("1 of 10 selected")) and .centre.text == "Copied 4 of 5 · 1 failed" and .secondary.text == " · z undoes · photo.heic selected for retry"'
     for name in a.txt b.txt y.txt z.txt; do menus_same_file "committed $name" "$menu_box/payload/$name" "$menu_box/destination/$name"; done
     menus_same_file 'failed destination remains intact' <(printf 'retained collision\n') "$menu_box/destination/photo.heic"
     printf 'FOOTER_LITERAL_GAP error=real-collision-not-ENOSPC completed=4-of-5,1-failed,0-skipped undo-and-retry-retained=true\n'
@@ -739,7 +740,7 @@ case_footertransfer() (
     (( before_bytes > 0 && before_bytes < operations_bytes )) || fail 'footer: transfer finished before capture pause'
     click_row "$(row_index_of photo.heic)" left
     menus_expect selectionCount '. == 1' 'transfer specimen displays one native selection'
-    operations_footer_capture transfer '.left.text == "10 items · 1 selected" and .centre.text == "Copying 2 of 5 · photo.heic" and .secondary.text == " · esc cancels"'
+    operations_footer_capture transfer '(.left.text | startswith("1 of 10 selected")) and .centre.text == "Copying 2 of 5 · photo.heic" and .secondary.text == " · esc cancels"'
     after_bytes=$(stat -c '%s' "$menu_box/destination/photo.heic") || fail 'footer: captured partial disappeared'
     menus_equal 'controlled capture keeps the same incomplete copy' "$before_bytes" "$after_bytes"
     printf 'FOOTER_TRANSFER controlled_pause=true bytes=%s total=%s unpaused_proof=existing-operationslive\n' "$after_bytes" "$operations_bytes"
@@ -926,7 +927,7 @@ case_footerdiskfull() (
     error_color=$(ipc palette | cut -d' ' -f6) || fail 'footerdiskfull: semantic error role unavailable'
     [[ -n "$error_color" ]] || fail 'footerdiskfull: semantic error role is empty'
     menus_equal 'only the failure sentence uses the error role' "$error_color" "$(ipc statusColor)"
-    operations_footer_capture disk-full '.left.text == "10 items · 1 selected" and .centre.text == "Copy failed: photo.heic · disk full" and (.centre.text | contains("(os error") | not) and .secondary.text == " · esc dismisses"'
+    operations_footer_capture disk-full '(.left.text | startswith("1 of 10 selected")) and .centre.text == "Copy failed: photo.heic · disk full" and (.centre.text | contains("(os error") | not) and .secondary.text == " · esc dismisses"'
     key -k Escape >/dev/null || fail 'footerdiskfull: native error acknowledgement failed'
     menus_expect statusActivityState '.errors == 0 and (.activities | length) == 0 and (.notice | contains("Copied 0 of 1 · 1 failed"))' 'Escape acknowledges ENOSPC and reveals the truthful outcome'
     operations_footer_full_mount

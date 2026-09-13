@@ -293,8 +293,8 @@ ShellRoot {
                 anchors.bottom: parent.bottom
                 path: view.currentPane.trash.opened ? "Trash" : view.currentPane.path
                 total: view.currentPane.trash.opened ? view.currentPane.trash.total : view.currentPane.total
-                cursorIndex: view.currentPane.cursorIndex
                 listingState: view.currentPane.listingState
+                pane: view.currentPane.trash.opened ? null : view.currentPane
                 selectionCount: view.currentPane.trash.opened ? view.currentPane.trash.selectedCount : view.currentPane.selectionCount()
                 fsName: view.currentPane.fsName
                 fsFree: view.currentPane.fsFree

@@ -9,8 +9,13 @@ Item {
 
     property string path: ""
     property int total: 0
-    property int cursorIndex: 0
     property string listingState: "loading"
+    // The pane whose listing this strip is counting, or null while the trash view owns the pane.
+    property var pane: null
+    readonly property int shownTotal: root.pane ? root.pane.shownTotal : root.total
+    // selectionVersion is read here so a selection mutated in place still re-runs this binding.
+    readonly property real selectionBytes: root.pane && root.pane.selectionVersion >= 0
+        ? Status.selectionBytes(root.pane) : -1
     property int selectionCount: 0
     property string fsName: ""
     property real fsFree: 0
@@ -118,10 +123,20 @@ Item {
         return root.total + (root.total === 1 ? " item" : " items")
     }
 
+    // The left zone answers the question the view raises: the selection if there is one, what the
+    // filter left standing if there is one, and otherwise the directory. StatusBar board rule 3.
     function countText() {
-        var base = root.itemText()
-        return root.listingState === "ready" && root.selectionCount > 0
-            ? base + " · " + root.selectionCount + " selected" : base
+        if (root.listingState !== "ready") {
+            return root.itemText()
+        }
+        if (root.selectionCount > 0) {
+            var head = root.selectionCount + " of " + root.total + " selected"
+            return root.selectionBytes >= 0 ? head + " · " + Format.size(root.selectionBytes) : head
+        }
+        if (root.shownTotal !== root.total) {
+            return root.shownTotal + " of " + root.total + " shown"
+        }
+        return root.itemText()
     }
 
     // The one fact on this strip a result or an error may not evict, so a pane with no answer for

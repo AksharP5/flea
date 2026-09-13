@@ -123,7 +123,7 @@ marquee_four() {
     marquee_expect selectedIndices '0,1,2,3' "$label marks four intersections before release"
     local footer
     footer=$(ipc statusFooterState) || fail "marquee: footer observation failed"
-    jq -e '.selected == 4 and (.counts | contains("4 selected"))' <<< "$footer" >/dev/null \
+    jq -e '.selected == 4 and (.counts | test("^4 of [0-9]+ selected"))' <<< "$footer" >/dev/null \
         || fail "marquee: four live marks do not reach the footer: $footer"
     shot "marquee-$label-four-held"
     printf 'MARQUEE_SHOT_REQUIRES_INSPECTION %s\n' "$label-four-held"
