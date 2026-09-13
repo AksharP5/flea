@@ -4758,7 +4758,9 @@ EOS
     key -k Tab >/dev/null
     key a >/dev/null
     settle
-    [[ "$(ipc networkTitle)" == "SMB share" ]] || fail "networkauth: wrong SMB title"
+    # Dialogs rule 6: the title says the task, so it is the same sentence under every chip below.
+    [[ "$(ipc networkTitle)" == "Add a network share" ]] \
+        || fail "networkauth: the add dialog does not name its own task, got $(ipc networkTitle)"
     [[ "$(ipc networkFields)" == "Label|Host|Port|Share|Domain|Username|Password" ]] \
         || fail "networkauth: SMB fields are $(ipc networkFields)"
     [[ "$(ipc networkHostPortWidths)" == *"|"* ]] || fail "networkauth: no Host/Port geometry"
@@ -4770,22 +4772,22 @@ EOS
     [[ "$(ipc networkDialogMetrics)" == "$(ipc networkDialogMetricTargets)" ]] \
         || fail "networkauth: card padding/gap $(ipc networkDialogMetrics) differs from scaled 16/12 target $(ipc networkDialogMetricTargets)"
 
-    local title_case want_protocol want_title want_fields
+    local title_case want_protocol want_fields
     for title_case in \
-        "SFTP|SFTP host|Label|Host|Port|Path|Username|Password" \
-        "FTPS|FTPS|Label|Host|Port|Path|Username|Password|TLS" \
-        "WebDAV|WebDAV endpoint|Label|Host|Port|Path|Username|Password|TLS"; do
-        IFS='|' read -r want_protocol want_title want_fields <<< "$title_case"
+        "SFTP|Label|Host|Port|Path|Username|Password" \
+        "FTPS|Label|Host|Port|Path|Username|Password|TLS" \
+        "WebDAV|Label|Host|Port|Path|Username|Password|TLS"; do
+        IFS='|' read -r want_protocol want_fields <<< "$title_case"
         click_chip "$want_protocol"
-        [[ "$(ipc networkTitle)" == "$want_title" ]] \
-            || fail "networkauth: $want_protocol title is $(ipc networkTitle)"
+        [[ "$(ipc networkTitle)" == "Add a network share" ]] \
+            || fail "networkauth: $want_protocol moved the title to $(ipc networkTitle)"
         [[ "$(ipc networkFields)" == "$want_fields" ]] \
             || fail "networkauth: $want_protocol fields are $(ipc networkFields)"
     done
 
     click_chip NFS
     settle
-    [[ "$(ipc networkTitle)" == "NFS export" ]] || fail "networkauth: wrong NFS title"
+    [[ "$(ipc networkTitle)" == "Add a network share" ]] || fail "networkauth: NFS moved the title"
     [[ "$(ipc networkFields)" == "Label|Host|Port|Export" ]] || fail "networkauth: NFS fields are $(ipc networkFields)"
     [[ "$(ipc networkNote)" == "No credentials: NFS trusts the client host" ]] \
         || fail "networkauth: NFS note is $(ipc networkNote)"
@@ -4965,8 +4967,9 @@ EOS
     : > "$state/fail"
     key -k Return >/dev/null
     wait_network_result failed
-    [[ "$(ipc dialogOpen)" == "true" && "$(ipc networkTitle)" == "FTPS, failed connect" ]] \
-        || fail "networkauth: failure did not reopen approved FTPS artifact"
+    # Rule 6 again: a reopen after a failed connect is a connect, not an add, and it says which failed.
+    [[ "$(ipc dialogOpen)" == "true" && "$(ipc networkTitle)" == "Connect to a network share, failed connect" ]] \
+        || fail "networkauth: failure did not reopen approved FTPS artifact, title $(ipc networkTitle)"
     [[ "$(ipc networkStatus)" == "Connect failed: host refused the TLS handshake" ]] \
         || fail "networkauth: failure said $(ipc networkStatus)"
     [[ "$(ipc networkAction)" == "Retry" && "$(ipc networkPasswordState)" == "masked|set" ]] \

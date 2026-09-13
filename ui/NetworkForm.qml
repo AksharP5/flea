@@ -342,17 +342,8 @@ Column {
     Column {
         width: parent.width
         spacing: Theme.spacing.hairline * 2
-        // HANDOFF rule 19: an unfilled form has no URI to show, so the heading goes with it.
+        // HANDOFF rule 19: an unfilled form has no URI to show, so the sentence goes with it.
         visible: root.uri.length > 0
-
-        Text {
-            text: "MOUNTS AS"
-            color: Theme.color.muted
-            font.family: Theme.font.family
-            font.pixelSize: Theme.font.caption
-            font.letterSpacing: Theme.font.caption * 0.1
-            textFormat: Text.PlainText
-        }
 
         Item {
             width: parent.width
@@ -361,18 +352,34 @@ Column {
 
             Flickable {
                 anchors.fill: parent
-                contentWidth: uriText.implicitWidth
-                contentHeight: uriText.implicitHeight
+                contentWidth: sentence.implicitWidth
+                contentHeight: sentence.implicitHeight
                 flickableDirection: Flickable.HorizontalFlick
                 boundsBehavior: Flickable.StopAtBounds
 
-                Text {
-                    id: uriText
-                    text: root.uri
-                    color: Theme.color.muted
-                    font.family: Theme.font.family
-                    font.pixelSize: Theme.font.caption
-                    textFormat: Text.PlainText
+                // Dialogs rule 3: one sentence rather than an eyebrow over a value, and it says the
+                // whole answer, because Protocols.uri() has one as soon as the host and port validate:
+                // an empty Share is the server root, which is a real and mountable place.
+                Row {
+                    id: sentence
+                    spacing: Theme.spacing.gap / 2
+
+                    Text {
+                        text: "Mounts as"
+                        color: Theme.color.muted
+                        font.family: Theme.font.family
+                        font.pixelSize: Theme.font.caption
+                        textFormat: Text.PlainText
+                    }
+
+                    Text {
+                        id: uriText
+                        text: root.uri
+                        color: Theme.color.foreground
+                        font.family: Theme.font.family
+                        font.pixelSize: Theme.font.caption
+                        textFormat: Text.PlainText
+                    }
                 }
             }
 
@@ -380,7 +387,7 @@ Column {
                 anchors.right: parent.right
                 anchors.top: parent.top
                 anchors.bottom: parent.bottom
-                visible: uriText.implicitWidth > parent.width
+                visible: sentence.implicitWidth > parent.width
                 width: Theme.space(36)
                 gradient: Gradient {
                     orientation: Gradient.Horizontal

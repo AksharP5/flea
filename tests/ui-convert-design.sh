@@ -54,9 +54,12 @@ convert_backend_death() {
         convert_pause_backend "$pid"
         menus_control convertState Convert
         menus_expect convertState '.busy and (.canConvert | not)' 'controlled pending conversion reached the paused backend'
-        expected='(.error | contains("outcome is unknown") and contains("inspect the output"))'
+        # ui/ConvertDialog.qml's own two sentences, which is what the operator reads: a conversion
+        # that was in flight when the backend died has an unknown outcome, and one that never
+        # started simply cannot start now.
+        expected='(.error | contains("conversion outcome unknown") and contains("Check the output"))'
     else
-        expected='(.error | contains("Conversion is unavailable") and contains("restart Flea"))'
+        expected='(.error | contains("Backend stopped") and contains("reopen Flea to convert"))'
     fi
     request=$(ipc convertState | jq -er .requestId)
     permissions_backend_owned "$pid" || fail "convert: backend identity changed before the failure signal"

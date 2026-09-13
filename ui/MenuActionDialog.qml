@@ -186,12 +186,9 @@ FocusScope {
             Column {
                 width: body.width
                 spacing: Theme.spacing.gap
-                Text {
+                Flea.DialogTitle {
                     width: parent.width
                     text: root.title
-                    textFormat: Text.PlainText
-                    color: Theme.color.foreground
-                    font { family: Theme.font.family; pixelSize: Theme.font.body; bold: true }
                 }
                 Rectangle { width: parent.width; height: Theme.spacing.hairline; color: Theme.color.muted; opacity: 0.4 }
                 Text {

@@ -157,14 +157,15 @@ FocusScope {
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: Theme.spacing.gap
                 Flea.Glyph { width: Theme.chromeMarkSize; height: title.height; name: "lock"; color: Theme.color.accent }
-                Text {
-                    id: title
-                    text: "Permissions"
-                    color: Theme.color.foreground
-                    font { family: Theme.font.family; pixelSize: Theme.font.caption; bold: true }
-                    textFormat: Text.PlainText
-                }
+                Text { id: title; text: "Permissions"; color: Theme.color.foreground; textFormat: Text.PlainText; font { family: Theme.font.family; pixelSize: Theme.font.caption; bold: true } }
             }
+            // Dialogs rule 7: the way out is named beside the mark that performs it, the settings panel's own corner.
+            Flea.EscapeHint {
+                anchors.right: closeMark.left
+                anchors.rightMargin: Theme.spacing.gap
+                anchors.verticalCenter: closeMark.verticalCenter
+            }
+
             Flea.ChromeButton {
                 id: closeMark
                 anchors.right: parent.right

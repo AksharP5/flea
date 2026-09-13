@@ -3,8 +3,7 @@ import qs.Commons
 import "." as Flea
 import "js/Convert.js" as Convert
 
-// The one popup in the whole design. Every other operation answers in the status bar; this one asks
-// two questions first, so it is the exception the operations design names rather than a pattern.
+// The one popup in the whole design. Every other operation answers in the status bar; this one asks two questions first, so it is the exception the operations design names rather than a pattern.
 Item {
     id: root
 
@@ -220,19 +219,20 @@ Item {
             width: parent.width
             spacing: Theme.spacing.gap / 2
 
-            Text {
+            Item {
                 id: title
                 width: parent.width
-                leftPadding: Theme.spacing.rowPaddingX
-                rightPadding: Theme.spacing.rowPaddingX
-                bottomPadding: Theme.spacing.gap
-                text: "Convert " + root.name
-                color: Theme.color.foreground
-                font.family: Theme.font.family
-                font.pixelSize: Theme.font.body
-                font.bold: true
-                textFormat: Text.PlainText
-                elide: Text.ElideMiddle
+                height: header.implicitHeight + Theme.spacing.gap
+
+                Flea.DialogTitle {
+                    id: header
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.margins: Theme.spacing.rowPaddingX
+                    text: "Convert " + root.name
+                    elide: Text.ElideMiddle
+                }
+
                 Rectangle {
                     anchors.bottom: parent.bottom
                     width: parent.width

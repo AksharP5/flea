@@ -18,6 +18,8 @@ ConvertDialog 1.0 ConvertDialog.qml
 DialogButton 1.0 DialogButton.qml
 ProtocolChip 1.0 ProtocolChip.qml
 DialogField 1.0 DialogField.qml
+DialogTitle 1.0 DialogTitle.qml
+EscapeHint 1.0 EscapeHint.qml
 ContextMenu 1.0 ContextMenu.qml
 KeymapSheet 1.0 KeymapSheet.qml
 SettingsPanel 1.0 SettingsPanel.qml
