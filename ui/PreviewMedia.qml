@@ -84,8 +84,9 @@ Item {
 
     Flea.Glyph {
         anchors.centerIn: parent
-        width: Theme.markSize
-        height: Theme.markSize
+        maxSize: Theme.stateMarkSize
+        width: Theme.stateMarkSize
+        height: Theme.stateMarkSize
         visible: root.poster
         name: "play"
         color: Theme.color.muted
@@ -103,8 +104,9 @@ Item {
 
         Flea.Glyph {
             anchors.verticalCenter: parent.verticalCenter
-            width: Theme.markSize
-            height: Theme.markSize
+            maxSize: Theme.stateMarkSize
+            width: Theme.stateMarkSize
+            height: Theme.stateMarkSize
             name: "music"
             color: Theme.color.muted
             opacity: 0.7
@@ -115,7 +117,7 @@ Item {
             // Whatever the pane's own padding leaves beside the mark, so a long name elides here
             // instead of pushing the mark off the surface.
             width: Math.max(0, root.width - 2 * Theme.spacing.rowPaddingX
-                               - Theme.markSize - audioPane.spacing)
+                               - Theme.stateMarkSize - audioPane.spacing)
             spacing: 0
 
             // corner: a filename is arbitrary text, so PlainText, the same rule every name on this surface follows.
@@ -151,8 +153,9 @@ Item {
 
         Flea.Glyph {
             anchors.horizontalCenter: parent.horizontalCenter
-            width: Theme.markSize
-            height: Theme.markSize
+            maxSize: Theme.stateMarkSize
+            width: Theme.stateMarkSize
+            height: Theme.stateMarkSize
             name: "alert"
             color: Theme.color.error
         }
