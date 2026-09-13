@@ -35,7 +35,13 @@ Item {
     property var activities: []
     property var dragFeedbackOwner: null
     readonly property var activity: root.activities.length ? root.activities[0] : null
-    readonly property string sticky: root.activity ? root.activity.text : ""
+    // Operations rule 1: one operation reports at one rate. A transfer's line is rebuilt from the
+    // card's published sample rather than the text the wire pushed, because the wire's byte heartbeat
+    // is 150 ms and the card publishes every 250 ms, so on anything small the two named two different
+    // files in the same frame. The card's beat was already chosen for the eye; this reads it.
+    readonly property string sticky: !root.activity ? ""
+        : root.barTransfer.running && root.barTransfer.id === root.transfer.id
+          ? Ops.progressLine(root.barTransfer) : root.activity.text
     readonly property var transfer: root.activity ? root.activity.transfer : Ops.emptyTransfer()
     readonly property var transferOwner: root.activity ? root.activity.owner : null
     // The card samples every 250 ms and publishes it; the strip's own hairline reads that sample.
@@ -230,7 +236,10 @@ Item {
         id: centre
         anchors.horizontalCenter: middle.horizontalCenter
         anchors.verticalCenter: strip.verticalCenter
-        readonly property real room: Math.max(0, middle.width - 2 * Theme.spacing.gap)
+        // The hairline takes its own width out of the room the two texts share, or the pair clamps to
+        // a middle the bar is not in and the centre grows past its third: StatusBar rule 1 is that the
+        // three zones never trade places, and a running transfer was the one state that broke it.
+        readonly property real room: Math.max(0, middle.width - 2 * Theme.spacing.gap - bar.width)
 
         Text {
             id: primary
