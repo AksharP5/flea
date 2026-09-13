@@ -296,7 +296,8 @@ Item {
 
             // The head that ran off the left, marked where the elided Text drew its own ellipsis; the
             // fill behind it is the chrome's own colour, because the crumbs slide underneath it. It
-            // is the marker's box, and that box is the strip's height for the same reason a crumb's is.
+            // keeps the root in front of the ellipsis, so a long path still reads as its root, one
+            // collapsed crumb and the segments nearest you rather than starting mid-path.
             Rectangle {
                 visible: elision.visible
                 anchors.fill: elision
@@ -319,7 +320,7 @@ Item {
                 anchors.top: parent.top
                 anchors.bottom: parent.bottom
                 verticalAlignment: Text.AlignVCenter
-                text: "\u2026"
+                text: (crumbs.model.length > 0 ? crumbs.model[0].text : "") + "\u2026"
                 color: Theme.color.muted
                 font.family: Theme.font.family
                 font.pixelSize: Theme.font.caption
