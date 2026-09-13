@@ -12,8 +12,7 @@ function slot(over) {
         searching: false,
         searchKeys: "",
         stickyHere: false,
-        sticky: "",
-        fsText: "btrfs · 412 GB free"
+        sticky: ""
     }
     for (var k in over) {
         s[k] = over[k]
@@ -22,27 +21,26 @@ function slot(over) {
 }
 
 function run(check) {
+    // The disk facts have a zone of their own now, so an idle centre says nothing at all.
     var quiet = slot({})
-    check("an idle bar says what the filesystem is", Status.rightText(quiet), "btrfs · 412 GB free")
-    check("idle filesystem text keeps the board's foreground role", Status.rightRole(quiet), "foreground")
-    check("idle counts without filesystem information keep foreground contrast",
-          Status.rightRole(slot({ fsText: "" })), "foreground")
+    check("an idle centre is empty rather than borrowing the disk's zone", Status.centreText(quiet), "")
+    check("and an empty centre keeps the board's foreground role", Status.centreRole(quiet), "foreground")
 
     var searching = slot({ searching: true, searchKeys: "esc cancels" })
-    check("a search on its own owns the slot", Status.rightText(searching), "esc cancels")
-    check("a running search uses foreground text", Status.rightRole(searching), "foreground")
+    check("a search on its own owns the slot", Status.centreText(searching), "esc cancels")
+    check("a running search uses foreground text", Status.centreRole(searching), "foreground")
 
     var working = slot({ stickyHere: true, sticky: "Compressing 2 of 5" })
-    check("a running operation owns the slot", Status.rightText(working), "Compressing 2 of 5")
-    check("and reads at full contrast", Status.rightRole(working), "foreground")
+    check("a running operation owns the slot", Status.centreText(working), "Compressing 2 of 5")
+    check("and reads at full contrast", Status.centreRole(working), "foreground")
 
     var both = slot({ searching: true, searchKeys: "esc cancels", stickyHere: true, sticky: "Copying 2 of 5" })
-    check("transfer precedes search", Status.rightText(both), "Copying 2 of 5")
-    check("transfer retains foreground during search", Status.rightRole(both), "foreground")
+    check("transfer precedes search", Status.centreText(both), "Copying 2 of 5")
+    check("transfer retains foreground during search", Status.centreRole(both), "foreground")
 
     var failed = slot({ transient: "Copy failed: photo.heic · disk full", transientIsError: true })
-    check("a failure owns the slot", Status.rightText(failed), "Copy failed: photo.heic · disk full")
-    check("and takes the error role", Status.rightRole(failed), "error")
+    check("a failure owns the slot", Status.centreText(failed), "Copy failed: photo.heic · disk full")
+    check("and takes the error role", Status.centreRole(failed), "error")
 
     // The defect this suite was written for. Operations.html's third specimen draws exactly this
     // pair: the failure holds the slot and the walk is reduced to a secondary count.
@@ -53,9 +51,9 @@ function run(check) {
         searchKeys: "esc cancels"
     })
     check("a search never hides an unacknowledged error",
-          Status.rightText(failedWhileSearching), "Copy failed: photo.heic · disk full")
+          Status.centreText(failedWhileSearching), "Copy failed: photo.heic · disk full")
     check("and the error keeps its role rather than painting the search keys red",
-          Status.rightRole(failedWhileSearching), "error")
+          Status.centreRole(failedWhileSearching), "error")
 
     // The same rule against a running operation, which the board ranks below a failure for the same
     // reason: the operation will end on its own and the error will not.
@@ -66,9 +64,9 @@ function run(check) {
         sticky: "Converting 1 of 3"
     })
     check("a running operation never hides an unacknowledged error",
-          Status.rightText(failedWhileWorking), "Convert failed: no encoder")
+          Status.centreText(failedWhileWorking), "Convert failed: no encoder")
     check("and it is drawn as an error, not as the operation",
-          Status.rightRole(failedWhileWorking), "error")
+          Status.centreRole(failedWhileWorking), "error")
 
     // An ordinary result is not an error, so it stays behind activity and times out on its own.
     var noticeWhileSearching = slot({
@@ -77,13 +75,13 @@ function run(check) {
         searchKeys: "esc cancels"
     })
     check("a plain notice still yields to the search",
-          Status.rightText(noticeWhileSearching), "esc cancels")
+          Status.centreText(noticeWhileSearching), "esc cancels")
 
     check("errorHere is the one test for an unacknowledged failure",
           Status.errorHere(failed), true)
     check("and a plain notice is not one", Status.errorHere(noticeWhileSearching), false)
     check("a completion notice uses the board's running-text role",
-          Status.rightRole(slot({transient: "Moved 4 items to Trash"})), "foreground")
+          Status.centreRole(slot({transient: "Moved 4 items to Trash"})), "foreground")
 
     var left = {}, right = {}
     var transfer = { id: 1, running: true }

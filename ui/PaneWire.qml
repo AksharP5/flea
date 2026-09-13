@@ -389,10 +389,10 @@ Item {
             }
         }
 
-        // One statfs per directory, so the status bar's right half is refreshed by navigation alone.
+        // A refused listing never moved the base the backend statfs's and Nav.js already moved pane.path, so a failed hop's answer describes the directory we did not leave; responses arrive in order, so the verdict is in.
         function onFsInfo(fs, free) {
-            pane.fsName = fs
-            pane.fsFree = free
+            var reached = pane.listingState !== "error" && pane.listingState !== "locked"
+            pane.fsName = reached ? fs : ""; pane.fsFree = reached ? free : 0
         }
 
         // The answer to Ops.clip's askPaths; nothing reaches the clipboard until this lands.

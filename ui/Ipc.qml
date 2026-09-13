@@ -99,8 +99,8 @@ QtObject {
                 })})
         }
         function lastMessage(): string { return root.bar.transient_ }
-        function statusPrimary(): string { return root.bar.rightText() }
-        function statusColor(): string { return String(root.bar.rightColor()) }
+        function statusPrimary(): string { return root.bar.centreText() }
+        function statusColor(): string { return String(root.bar.centreColor()) }
         function statusSecondary(): string { return root.bar.secondaryText }
         function statusError(): bool { return root.bar.transientIsError }
         function statusDetail(): string { return root.bar.errorDetail }
@@ -124,9 +124,9 @@ QtObject {
             return JSON.stringify({path: root.bar.path, total: root.bar.total, selected: root.bar.selectionCount,
                 listingState: root.bar.listingState, filesystem: root.bar.fsText(), counts: root.bar.countText(),
                 frame: root.fleaWindow.rectOf(root.bar.stripItem), borderWidth: root.bar.stripItem.border.width,
-                slotWidth: root.bar.slotWidth, hintWidth: root.bar.hintWidth,
-                left: textState(root.bar.countsItem), right: textState(root.bar.primaryItem),
-                secondary: textState(root.bar.secondaryItem)})
+                zoneWidth: root.bar.zoneWidth, hintWidth: root.bar.hintWidth,
+                left: textState(root.bar.countsItem), centre: textState(root.bar.primaryItem),
+                secondary: textState(root.bar.secondaryItem), disk: textState(root.bar.diskItem)})
         }
         function selectionBandState(): string {
             var band = root.pane.selectionBand

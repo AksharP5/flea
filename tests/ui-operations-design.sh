@@ -36,11 +36,13 @@ operations_footer_geometry() {
     muted=$(ipc palette | cut -d' ' -f4)
     [[ -n "$muted" ]] || fail "operations: muted role unavailable"
     menus_expect statusFooterState ".borderWidth == 0 and (.frame | split(\" \") | map(tonumber) | .[2] == 880 and .[3] == 27)
-        and .left.x == $inset and .left.fontSize == $caption and .right.fontSize == $caption
+        and .left.x == $inset and .left.fontSize == $caption and .centre.fontSize == $caption
+        and .disk.fontSize == $caption
         and .secondary.fontSize == $caption and .secondary.color == \"$muted\"
         and (.secondary.text == \"\" or (.secondary.text | startswith(\" · \")))
         and (.secondary.text | contains(\"|\") | not)
-        and .right.x >= .left.x + .left.width" "$1 matches informational footer geometry and semantic roles"
+        and .centre.x >= .left.x + .left.width
+        and .disk.x >= .centre.x + .centre.width" "$1 matches the three zones and their semantic roles"
     printf 'OPERATIONS_FOOTER label=%q state=%s\n' "$1" "$(ipc statusFooterState)"
 }
 
@@ -48,13 +50,14 @@ operations_idle_footer() {
     local total="$1" selected="$2" label="$3" items="$1 items"
     [[ "$total" == 1 ]] && items="1 item"
     [[ "$selected" == 0 ]] || items+=" · $selected selected"
-    menus_expect statusFooterState ".total == $total and .selected == $selected and .filesystem != \"\" and .left.text == \"$items\" and .right.text == .filesystem and .right.width > 0 and .right.color == .left.color and .right.fontSize == .left.fontSize and .right.x >= .left.x + .left.width" "$label"
+    # Three zones: the disk owns its own and an idle centre is empty rather than borrowing it.
+    menus_expect statusFooterState ".total == $total and .selected == $selected and .filesystem != \"unknown\" and .left.text == \"$items\" and .disk.text == .filesystem and .disk.width > 0 and .disk.color == .left.color and .disk.fontSize == .left.fontSize and .centre.text == \"\" and .disk.x >= .left.x + .left.width" "$label"
     menus_equal "$label foreground" "$(ipc themeForeground)" "$(ipc statusColor)"
     operations_footer_geometry "$label"
 }
 
 operations_counts_footer() {
-    menus_expect statusFooterState '.left.text == .counts and .left.text != .path and .right.text != .filesystem and .right.x >= .left.x + .left.width' "$1 retains counts beside activity"
+    menus_expect statusFooterState '.left.text == .counts and .left.text != .path and .centre.text != .filesystem and .disk.text == .filesystem and .centre.x >= .left.x + .left.width' "$1 retains counts and the disk beside activity"
     operations_footer_geometry "$1"
 }
 
@@ -64,9 +67,9 @@ operations_missing_footer() {
     [[ ! -e "$missing" && ! -L "$missing" ]] || fail "operations: missing-path fixture already exists"
     launch "$missing"
     permissions_viewport 880 620
-    menus_expect statusFooterState '.listingState == "error" and .filesystem == ""' "missing directory has no filesystem information"
+    menus_expect statusFooterState '.listingState == "error" and .filesystem == "unknown"' "missing directory says unknown rather than the filesystem it did not reach"
     menus_acknowledge
-    menus_expect statusFooterState '.left.text == "unavailable" and .right.text == ""' "missing filesystem reports unavailable on the left without invented capacity"
+    menus_expect statusFooterState '.left.text == "unavailable" and .disk.text == "unknown" and .centre.text == ""' "missing filesystem reports unavailable on the left and unknown on the right"
     menus_equal "missing filesystem fallback foreground" "$(ipc themeForeground)" "$(ipc statusColor)"
     shot operations-no-filesystem
     kill_flea
@@ -98,7 +101,7 @@ operations_loading_footer() (
     trap 'permissions_resume_stopped "$operations_stopped"' EXIT
     operations_pause_backend
     key -M ctrl -k l -m ctrl "$destination" -k Return >/dev/null
-    menus_expect statusFooterState '.listingState == "loading" and .filesystem != "" and .left.text == "" and .left.text == .counts and .right.text == .filesystem' "native refresh clears stale counts while the backend cannot reply"
+    menus_expect statusFooterState '.listingState == "loading" and .filesystem != "unknown" and .left.text == "" and .left.text == .counts and .disk.text == .filesystem' "native refresh clears stale counts while the backend cannot reply"
     shot operations-loading-footer
     permissions_resume_stopped "$operations_stopped" || fail "operations: listing backend could not resume"
     operations_stopped=""
@@ -118,7 +121,7 @@ operations_search_footer() (
     key f >/dev/null
     key c.txt -k Return >/dev/null
     menus_expect keyDeliveryState '.searchMode == "results" and .searchQuery == "c.txt" and .searchRunning' "native Search submits while its owned backend is stopped"
-    menus_expect statusFooterState '.listingState == "loading" and .left.text == .counts and .left.text == "" and .right.text == "Search: 0 scanned"' "submitted search displays its actual initial scanned count"
+    menus_expect statusFooterState '.listingState == "loading" and .left.text == .counts and .left.text == "" and .centre.text == "Search: 0 scanned"' "submitted search displays its actual initial scanned count"
     operations_secondary " · esc cancels" "initial Search names its native cancellation key"
     operations_footer_geometry "initial search progress"
     shot operations-search-submitted
@@ -126,7 +129,7 @@ operations_search_footer() (
     operations_stopped=""
     menus_expect keyDeliveryState '.searchMode == "results" and .searchQuery == "c.txt" and (.searchRunning | not)' "resumed backend completes the real native search"
     wait_listing 1
-    menus_expect statusFooterState '.left.text == "1 item" and (.right.text | test("^Search: 5 scanned in [0-9]+\\.[0-9] s$"))' "completed search reports one result from its five scanned fixture files"
+    menus_expect statusFooterState '.left.text == "1 item" and (.centre.text | test("^Search: 5 scanned in [0-9]+\\.[0-9] s$"))' "completed search reports one result from its five scanned fixture files"
     [[ "$(ipc rowAt 0)" == c.txt\|file\|* ]] || fail "operations: Search returned another fixture identity"
     shot operations-search-completed
     key -k Escape >/dev/null
@@ -178,7 +181,7 @@ operations_mixed() {
     selected=$(ipc selectedIndices)
     [[ "$selected" == "$(row_index_of c.txt)" ]] || fail "operations: retry selected a different source"
     operations_secondary " · esc dismisses" "unacknowledged error names only its dismissal key"
-    menus_expect statusFooterState '(.right.text | startswith("Copy failed: c.txt · ")) and (.right.text | contains("(os error") | not)' "error is a plain sentence with a named cause"
+    menus_expect statusFooterState '(.centre.text | startswith("Copy failed: c.txt · ")) and (.centre.text | contains("(os error") | not)' "error is a plain sentence with a named cause"
     for name in a.txt b.txt d.txt e.txt; do menus_same_file "committed copy $name" "$source/$name" "$destination/$name"; done
     [[ "$(cat "$destination/c.txt")" == 'existing collision' ]] || fail "operations: collision was overwritten"
     shot operations-mixed-error
@@ -272,7 +275,7 @@ operations_long_error() {
     menus_error "Copy failed: $name" 'long-name error retains the exact failed source identity'
     menus_equal 'long-name retry selects the original row' "$(row_index_of "$name")" "$(ipc selectedIndices)"
     operations_secondary " · esc dismisses" "long-name error keeps the short dismissal hint visible"
-    menus_expect statusFooterState '.right.visible and .right.width > 0 and .right.truncated and .right.implicitWidth > .right.width
+    menus_expect statusFooterState '.centre.visible and .centre.width > 0 and .centre.truncated and .centre.implicitWidth > .centre.width
         and .secondary.visible and .secondary.width > 0 and (.secondary.truncated | not) and .secondary.implicitWidth <= .secondary.width
         and .hintWidth > 0 and .secondary.width >= ([.hintWidth, .slotWidth] | min)' \
         "long error elides while its complete dismissal hint stays visible"
@@ -282,7 +285,7 @@ operations_long_error() {
         || fail "operations: long-name collision changed source or existing destination"
     shot operations-long-name-error
     menus_acknowledge
-    menus_expect statusFooterState '(.right.text | startswith("Copied 0 of 1")) and .right.width > 0 and (.right.truncated | not) and .secondary.truncated' \
+    menus_expect statusFooterState '(.centre.text | startswith("Copied 0 of 1")) and .centre.width > 0 and (.centre.truncated | not) and .secondary.truncated' \
         "acknowledging the long-name error leaves its complete short outcome ahead of the elided retry"
     shot operations-long-name-acknowledged
     kill_flea
@@ -588,7 +591,7 @@ PY
     jq -e --arg query "$query" --argjson count "$directory_count" '.searchMode == "results" and .searchQuery == $query and .searchRunning and (.searchCancelled | not) and .searchScanned == $count' <<< "$state" >/dev/null \
         || fail "operations: Search did not expose the real positive scan before deadline: $state"
     footer=$(ipc statusFooterState) || fail "operations: live Search footer unavailable"
-    if ! jq -e '.right.text == "Search: 100,000 scanned" and .secondary.text == " · esc cancels"' <<< "$footer" >/dev/null; then
+    if ! jq -e '.centre.text == "Search: 100,000 scanned" and .secondary.text == " · esc cancels"' <<< "$footer" >/dev/null; then
         state=$(ipc keyDeliveryState) || fail "operations: Search state unavailable after footer mismatch"
         if jq -e '.searchMode == "results" and (.searchRunning | not)' <<< "$state" >/dev/null; then
             operations_missed_window search-footer "$state footer=$footer"
@@ -692,7 +695,7 @@ case_footerstates() (
     permissions_viewport 880 620
     click_row "$(row_index_of photo.heic)" left
     operations_idle_footer 10 1 'ten-item selected idle specimen'
-    operations_footer_capture idle '.total == 10 and .selected == 1 and .left.text == "10 items · 1 selected" and .right.text == .filesystem and .secondary.text == ""'
+    operations_footer_capture idle '.total == 10 and .selected == 1 and .left.text == "10 items · 1 selected" and .disk.text == .filesystem and .centre.text == "" and .secondary.text == ""'
     for name in a.txt b.txt y.txt z.txt; do
         seek_row_named "$name"
         key v >/dev/null || fail "footer: cannot add $name to the selection"
@@ -701,10 +704,10 @@ case_footerstates() (
     operations_copy_to "$menu_box/destination"
     menus_expect statusActivityState '.errors == 1 and (.activities | length) == 0 and (.notice | contains("Copied 4 of 5 · 1 failed"))' 'mixed specimen records its actual completed outcome'
     menus_expect selectionCount '. == 1' 'mixed specimen retains the failed original for retry'
-    operations_footer_capture error-collision '.left.text == "10 items · 1 selected" and .right.text == "Copy failed: photo.heic · already exists" and .secondary.text == " · esc dismisses"'
+    operations_footer_capture error-collision '.left.text == "10 items · 1 selected" and .centre.text == "Copy failed: photo.heic · already exists" and .secondary.text == " · esc dismisses"'
     key -k Escape >/dev/null || fail 'footer: collision acknowledgement failed'
     menus_expect statusActivityState '.errors == 0 and .undoAvailable' 'acknowledgement reveals the actual undoable completion'
-    operations_footer_capture completed-collision '.left.text == "10 items · 1 selected" and .right.text == "Copied 4 of 5 · 1 failed" and .secondary.text == " · z undoes · photo.heic selected for retry"'
+    operations_footer_capture completed-collision '.left.text == "10 items · 1 selected" and .centre.text == "Copied 4 of 5 · 1 failed" and .secondary.text == " · z undoes · photo.heic selected for retry"'
     for name in a.txt b.txt y.txt z.txt; do menus_same_file "committed $name" "$menu_box/payload/$name" "$menu_box/destination/$name"; done
     menus_same_file 'failed destination remains intact' <(printf 'retained collision\n') "$menu_box/destination/photo.heic"
     printf 'FOOTER_LITERAL_GAP error=real-collision-not-ENOSPC completed=4-of-5,1-failed,0-skipped undo-and-retry-retained=true\n'
@@ -736,7 +739,7 @@ case_footertransfer() (
     (( before_bytes > 0 && before_bytes < operations_bytes )) || fail 'footer: transfer finished before capture pause'
     click_row "$(row_index_of photo.heic)" left
     menus_expect selectionCount '. == 1' 'transfer specimen displays one native selection'
-    operations_footer_capture transfer '.left.text == "10 items · 1 selected" and .right.text == "Copying 2 of 5 · photo.heic" and .secondary.text == " · esc cancels"'
+    operations_footer_capture transfer '.left.text == "10 items · 1 selected" and .centre.text == "Copying 2 of 5 · photo.heic" and .secondary.text == " · esc cancels"'
     after_bytes=$(stat -c '%s' "$menu_box/destination/photo.heic") || fail 'footer: captured partial disappeared'
     menus_equal 'controlled capture keeps the same incomplete copy' "$before_bytes" "$after_bytes"
     printf 'FOOTER_TRANSFER controlled_pause=true bytes=%s total=%s unpaused_proof=existing-operationslive\n' "$after_bytes" "$operations_bytes"
@@ -774,7 +777,7 @@ PY
     menus_expect keyDeliveryState '.searchMode == "results" and .searchRunning and .searchScanned == 100010 and (.searchCancelled | not)' 'real Search scans its populated root while descendant work remains'
     wait_listing 10
     [[ "$(ipc rowAt 0)" == "$query-"* ]] || fail 'footer: populated Search has not delivered an actual fixture match'
-    operations_footer_capture search '.listingState == "ready" and .total == 10 and .selected == 0 and .left.text == "10 items" and .right.text == "Search: 100,010 scanned" and .secondary.text == " · esc cancels"'
+    operations_footer_capture search '.listingState == "ready" and .total == 10 and .selected == 0 and .left.text == "10 items" and .centre.text == "Search: 100,010 scanned" and .secondary.text == " · esc cancels"'
     state=$(ipc keyDeliveryState) || fail 'footer: captured Search state unavailable'
     jq -e '.searchRunning and (.searchCancelled | not)' <<< "$state" >/dev/null || fail 'footer: Search finished during its capture'
     key -k Escape >/dev/null || fail 'footer: Search cancellation failed'
@@ -811,7 +814,7 @@ case_footertrash() (
     wait_listing 10
     trash_wait '.count == 4 and (.busy | not)' 'four originals reach the private Trash provider'
     trash_guard_store 4
-    operations_footer_capture trash '.left.text == "10 items" and .right.text == "Moved 4 items to Trash" and .secondary.text == " · z undoes"'
+    operations_footer_capture trash '.left.text == "10 items" and .centre.text == "Moved 4 items to Trash" and .secondary.text == " · z undoes"'
     trash_guard_store 4
     key z >/dev/null || fail 'footer: native Trash Undo failed'
     wait_listing 14
@@ -923,7 +926,7 @@ case_footerdiskfull() (
     error_color=$(ipc palette | cut -d' ' -f6) || fail 'footerdiskfull: semantic error role unavailable'
     [[ -n "$error_color" ]] || fail 'footerdiskfull: semantic error role is empty'
     menus_equal 'only the failure sentence uses the error role' "$error_color" "$(ipc statusColor)"
-    operations_footer_capture disk-full '.left.text == "10 items · 1 selected" and .right.text == "Copy failed: photo.heic · disk full" and (.right.text | contains("(os error") | not) and .secondary.text == " · esc dismisses"'
+    operations_footer_capture disk-full '.left.text == "10 items · 1 selected" and .centre.text == "Copy failed: photo.heic · disk full" and (.centre.text | contains("(os error") | not) and .secondary.text == " · esc dismisses"'
     key -k Escape >/dev/null || fail 'footerdiskfull: native error acknowledgement failed'
     menus_expect statusActivityState '.errors == 0 and (.activities | length) == 0 and (.notice | contains("Copied 0 of 1 · 1 failed"))' 'Escape acknowledges ENOSPC and reveals the truthful outcome'
     operations_footer_full_mount

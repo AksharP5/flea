@@ -23,6 +23,7 @@ Item {
     readonly property var countsItem: counts
     readonly property var primaryItem: primary
     readonly property var secondaryItem: secondary
+    readonly property var diskItem: disk
     readonly property bool transientIsError: root.errors.length > 0
     property var activities: []
     property var dragFeedbackOwner: null
@@ -51,8 +52,10 @@ Item {
         (root.transientIsError || root.stickyHere) && root.searching ? root.searchText() : "",
         root.transientIsError ? "" : root.retryLine]
         .filter(function (s) { return s.length > 0 }).map(function (s) { return " · " + s }).join("")
-    readonly property real slotWidth: Math.max(0, root.width - Theme.spacing.rowPaddingX
-        - counts.x - counts.width - 3 * Theme.spacing.gap - root.spiralSize)
+    // Three zones that never trade places: the board fixes the outer two at a third of the strip
+    // each, so the centre stays put however long the count or the disk line gets.
+    readonly property real zoneSpan: Math.max(0, root.width - 2 * Theme.spacing.rowPaddingX)
+    readonly property real zoneWidth: Math.round(root.zoneSpan / 3)
     readonly property real hintWidth: hintMetrics.width
     signal transferCancelRequested(int id)
     implicitHeight: Theme.chromeHeight + detailView.height
@@ -121,8 +124,10 @@ Item {
             ? base + " · " + root.selectionCount + " selected" : base
     }
 
+    // The one fact on this strip a result or an error may not evict, so a pane with no answer for
+    // it says unknown rather than describing the filesystem the pane just failed to leave.
     function fsText() {
-        return root.fsName.length ? root.fsName + " · " + Format.size(root.fsFree) + " free" : ""
+        return root.fsName.length ? root.fsName + " · " + Format.size(root.fsFree) + " free" : "unknown"
     }
 
     function searchText() { return "Search: " + root.searchLine.replace(/^Searching, /, "") }
@@ -130,14 +135,14 @@ Item {
     function slot() {
         return { transient: root.transient_, transientIsError: root.transientIsError,
                  searching: root.searching, searchKeys: root.searchText(),
-                 stickyHere: root.stickyHere, sticky: root.sticky, fsText: root.fsText() }
+                 stickyHere: root.stickyHere, sticky: root.sticky }
     }
 
-    function rightText() {
-        var text = Status.rightText(root.slot())
+    function centreText() {
+        var text = Status.centreText(root.slot())
         return root.hasUndo ? text.replace(Ops.UNDO_HINT, "") : text
     }
-    function rightColor() { return Theme.color[Status.rightRole(root.slot())] }
+    function centreColor() { return Theme.color[Status.centreRole(root.slot())] }
 
     Timer { id: clear; interval: root.messageMs; onTriggered: root.notice = "" }
 
@@ -158,12 +163,13 @@ Item {
         opacity: root.ruleOpacity
     }
 
+    // Left: what is in front of you.
     Text {
         id: counts
         anchors.left: parent.left
         anchors.leftMargin: Theme.spacing.rowPaddingX
         anchors.verticalCenter: strip.verticalCenter
-        width: Math.min(implicitWidth, root.width / 4)
+        width: root.zoneWidth
         text: root.countText()
         color: Theme.color.foreground
         font.family: Theme.font.family
@@ -172,19 +178,59 @@ Item {
         textFormat: Text.PlainText
     }
 
+    // Right: the disk, which no result and no error may take the space of.
     Text {
-        id: secondary
+        id: disk
         anchors.right: parent.right
         anchors.rightMargin: Theme.spacing.rowPaddingX
         anchors.verticalCenter: strip.verticalCenter
-        width: Math.min(implicitWidth, Math.max(0, root.slotWidth
-            - Math.min(primary.implicitWidth, Math.max(0, root.slotWidth - hintMetrics.width))))
-        text: root.secondaryText
-        color: Theme.color.muted
+        width: root.zoneWidth
+        horizontalAlignment: Text.AlignRight
+        text: root.fsText()
+        color: Theme.color.foreground
         font.family: Theme.font.family
         font.pixelSize: Theme.font.caption
         elide: Text.ElideRight
         textFormat: Text.PlainText
+    }
+
+    // Centre: what just happened, bounded by the two standing zones and centred in what is left.
+    Item {
+        id: middle
+        anchors.left: counts.right
+        anchors.right: disk.left
+        anchors.verticalCenter: strip.verticalCenter
+        height: strip.height
+    }
+
+    Row {
+        id: centre
+        anchors.horizontalCenter: middle.horizontalCenter
+        anchors.verticalCenter: strip.verticalCenter
+        readonly property real room: Math.max(0, middle.width - 2 * Theme.spacing.gap)
+
+        Text {
+            id: primary
+            text: root.centreText()
+            color: root.centreColor()
+            width: Math.min(implicitWidth, Math.max(0, centre.room - secondary.width))
+            font.family: Theme.font.family
+            font.pixelSize: Theme.font.caption
+            elide: Text.ElideMiddle
+            textFormat: Text.PlainText
+        }
+
+        Text {
+            id: secondary
+            text: root.secondaryText
+            color: Theme.color.muted
+            width: Math.min(implicitWidth, Math.max(0, centre.room - Math.min(primary.implicitWidth,
+                Math.max(0, centre.room - hintMetrics.width))))
+            font.family: Theme.font.family
+            font.pixelSize: Theme.font.caption
+            elide: Text.ElideRight
+            textFormat: Text.PlainText
+        }
     }
 
     TextMetrics {
@@ -194,22 +240,9 @@ Item {
             + (root.secondaryText !== " · " + root.keyHint ? " · …" : "") : ""
     }
 
-    Text {
-        id: primary
-        anchors.right: secondary.left
-        anchors.verticalCenter: strip.verticalCenter
-        width: Math.min(implicitWidth, Math.max(0, root.slotWidth - secondary.width))
-        text: root.rightText()
-        color: root.rightColor()
-        font.family: Theme.font.family
-        font.pixelSize: Theme.font.caption
-        elide: Text.ElideMiddle
-        textFormat: Text.PlainText
-    }
-
     Spinner {
         visible: !root.transientIsError && (root.stickyHere || root.searchRunning)
-        anchors.right: primary.left
+        anchors.right: centre.left
         anchors.rightMargin: Theme.spacing.gap
         anchors.verticalCenter: strip.verticalCenter
         width: root.spiralSize

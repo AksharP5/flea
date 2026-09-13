@@ -1,22 +1,24 @@
 .pragma library
 
-// Sample input: { transient: "Copy failed", transientIsError: true, searching: true, searchKeys: "esc cancels", stickyHere: true, sticky: "Copying 2 of 5", fsText: "btrfs" }
+// Sample input: { transient: "Copy failed", transientIsError: true, searching: true, searchKeys: "esc cancels", stickyHere: true, sticky: "Copying 2 of 5" }
 function errorHere(slot) {
     return slot.transient.length > 0 && slot.transientIsError
 }
 
+// The centre zone is what just happened, and nothing else. The disk facts have a zone of their own,
+// so this no longer falls back to them: an idle bar's centre is empty. StatusBar board rule 1.
 // GM's ordering: acknowledged errors leave the slot; activity cannot displace them.
-function rightText(slot) {
+function centreText(slot) {
     if (errorHere(slot))
         return slot.transient
     if (slot.stickyHere)
         return slot.sticky
     if (slot.searching)
         return slot.searchKeys
-    return slot.transient.length > 0 ? slot.transient : slot.fsText
+    return slot.transient
 }
 
-function rightRole(slot) {
+function centreRole(slot) {
     return errorHere(slot) ? "error" : "foreground"
 }
 
