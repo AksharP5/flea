@@ -55,6 +55,7 @@ Item {
     height: root.isGroup ? groupHead.implicitHeight
             : root.isFavourite ? favourite.implicitHeight : root.isHero ? hero.implicitHeight + 4 * Theme.spacing.rowPaddingY
             : root.isKeyPreview ? keyPreview.implicitHeight + 2 * Theme.spacing.rowPaddingY
+            : root.isRuler ? ruler.implicitHeight + 2 * Theme.spacing.rowPaddingY
             : root.isHint ? hint.y + hint.implicitHeight + (root.isFooter
                 ? Theme.settings.railPaddingY + 2 * Theme.spacing.hairline : Theme.spacing.rowPaddingY) : Theme.rowHeight
 
@@ -256,13 +257,14 @@ Item {
     // A ruler is the row above it continued, so it takes the boards' own continuation indent
     // rather than the label column: five settings boards draw both it and a hint at that inset.
     Flea.SettingsRuler {
+        id: ruler
         visible: root.isRuler
         anchors.left: parent.left
         anchors.leftMargin: Theme.settings.indent
-        anchors.right: trailing.left
-        anchors.rightMargin: Theme.spacing.gap
+        anchors.right: parent.right
+        anchors.rightMargin: Theme.spacing.rowPaddingX
         anchors.verticalCenter: parent.verticalCenter
-        height: Theme.markSize
+        height: ruler.implicitHeight
         stops: root.row.stops !== undefined ? root.row.stops : []
         index: root.row.index !== undefined ? root.row.index : -1
         active: root.row.on === true
@@ -278,7 +280,8 @@ Item {
         anchors.rightMargin: Theme.spacing.gap
         anchors.verticalCenter: parent.verticalCenter
         text: root.row.label || ""
-        color: root.isUrgent ? Theme.color.error : root.isLock ? Theme.color.muted : Theme.color.foreground
+        color: root.isUrgent ? Theme.color.error
+             : root.isLock || root.kind === "fact" ? Theme.color.muted : Theme.color.foreground
         font.family: Theme.font.family
         font.pixelSize: Theme.font.body
         textFormat: Text.PlainText
@@ -292,7 +295,8 @@ Item {
         anchors.rightMargin: Theme.spacing.gap + Theme.settings.railPaddingY
         anchors.verticalCenter: parent.verticalCenter
         text: root.row.caption || ""
-        color: Theme.color.foreground
+        // A caption explains the row rather than stating its value, so it takes the muted weight every board draws it at.
+        color: Theme.color.muted
         font.family: Theme.font.family
         font.pixelSize: Theme.font.caption
         textFormat: Text.PlainText
@@ -311,20 +315,19 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         spacing: Theme.spacing.gap
 
-        // A choice's name, a fact's value and the caption a check row carries are all one thing: the value the row currently holds, drawn on the right the way the boards draw it. A ruler has no label of its own on the left, so it carries the board's "Effective 14px" reading here instead.
+        // A choice's name, a fact's value and the caption a check row carries are all one thing: the value the row currently holds, drawn on the right the way the boards draw it. SettingsRest rule 6 mutes a fact whole, and the one fact reporting a live number keeps the foreground for it; rule 5 takes the head off a value whose identity is in its tail.
         Text {
-            visible: root.kind === "fact" || root.kind === "action" || root.hasSteps || root.isRuler
+            visible: root.kind === "fact" || root.kind === "action" || root.hasSteps
                      || (root.hasBox && (root.row.value || "") !== "")
             height: Theme.markSize
             verticalAlignment: Text.AlignVCenter
-            text: root.isRuler ? (root.row.label || "") + " " + (root.row.value || "")
-                               : (root.row.value || "")
-            color: root.hasSteps || root.isRuler ? Theme.color.foreground : Theme.color.muted
+            text: root.row.value || ""
+            color: root.hasSteps || root.row.role === "live" ? Theme.color.foreground : Theme.color.muted
             font.family: Theme.font.family
-            font.pixelSize: root.isRuler ? Theme.font.caption : Theme.font.body
+            font.pixelSize: Theme.font.body
             textFormat: Text.PlainText
             width: Math.min(implicitWidth, root.width * 0.56)
-            elide: Text.ElideRight
+            elide: root.row.elide === "head" ? Text.ElideLeft : Text.ElideRight
         }
 
         Flea.SettingsSegment {

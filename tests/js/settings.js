@@ -33,35 +33,43 @@ function runRows(check) {
     var display = Settings.rows("display", displayState(TextSize.follow(), 14))
     // The board's Display card: the text-size mode over its effective size, then the compositor's two read-only facts. No monitor-scale control, because Flea does not step or cycle that one.
     check("the Display section is text size, then Scale, then Appearance",
-          kinds(display), "group|choice|ruler|hint|group|fact|hint|group|check")
+          kinds(display), "group|choice|ruler|hint|fact|group|fact|hint|group|check")
     check("its one control opens on Follow Omarchy", find(display, "textMode").value,
           "Follow Omarchy")
     // The board draws the mode as both names side by side, so the row names them rather than leaving ui/SettingsRow.qml to invent a second list that could disagree with the writer.
     check("and it names both its values, in the board's own order",
           find(display, "textMode").labels.join("|"), "Follow Omarchy|Override")
-    check("the ruler reports Omarchy's own size", display[2].value, "14px")
-    check("and fills to that stop, five of the seven", display[2].index, 4)
-    // An Omarchy size that is not one of the seven still fills the ruler, at the nearest stop below.
-    check("a size between two stops fills to the nearer one",
-          Settings.rows("display", displayState(TextSize.follow(), 13))[2].index, 3)
-    check("the hint names every stop the override can take",
-          display[3].label.indexOf("9, 10, 11, 12, 14, 16, 20 px") >= 0, true)
-    check("the monitor scale is the compositor's own number, and the row carries no control", display[5].value, "1x")
+    // SettingsRest rule 2: the ruler carries the seven numbers, so it states the stop it marks and the hint keeps only the chords.
+    check("the ruler stands for the stops themselves", display[2].stops.join(","), "9,10,11,12,14,16,20")
+    check("and marks the one in force, five of the seven", display[2].index, 4)
+    // An Omarchy size that is not one of the seven still marks a stop, the nearest one.
+    var between = Settings.rows("display", displayState(TextSize.follow(), 13))
+    check("a size between two stops marks the nearer one", between[2].index, 3)
+    check("the hint is down to the two chords", display[3].label,
+          "Ctrl+Shift +/- walks them. Ctrl+Shift+0 follows Omarchy again.")
+    // And Effective stays, because in Follow it is the size running and the ruler's mark is not.
+    check("Effective reports the size actually running", display[4].label + "|" + display[4].value + "|" + display[4].role,
+          "Effective|14 px|live")
+    check("and says so when the ruler cannot state it", between[4].value + "|" + between[4].caption,
+          "13 px|Omarchy's own size. The ruler marks 12, the nearest stop.")
+    check("a size that is a stop needs no such sentence", display[4].caption, "Omarchy's own size.")
+    check("the monitor scale is the compositor's own number, and the row carries no control", display[6].value, "1x")
     check("a fractional one keeps its fraction",
-          Settings.rows("display", displayState(TextSize.follow(), 14, 1.25))[5].value, "1.25x")
+          Settings.rows("display", displayState(TextSize.follow(), 14, 1.25))[6].value, "1.25x")
     check("and an unanswered query says so rather than claiming 1x",
-          Settings.rows("display", displayState(TextSize.follow(), 14, 0))[5].value, "not reported")
+          Settings.rows("display", displayState(TextSize.follow(), 14, 0))[6].value, "not reported")
     check("its hint is the board's own sentence, so no reader expects a control",
-          display[6].label, "Flea follows the compositor value and does not step or cycle it.")
-    check("the board icon override defaults off", display[8].id + "|" + display[8].on, "display.hyprlandIcons|false")
+          display[7].label, "Flea follows the compositor value and does not step or cycle it.")
+    check("the board icon override defaults off", display[9].id + "|" + display[9].on, "display.hyprlandIcons|false")
 
     // Switching to Override adds the stop row, and nothing else about the section moves.
     var pinned = Settings.rows("display", displayState({ mode: 16 }, 16))
     check("an override adds no row, it turns the ruler into the control", pinned.length,
           display.length)
     check("the mode row says which mode it is in", find(pinned, "textMode").value, "Override")
-    check("the ruler carries the pinned size", find(pinned, "textStop").value, "16px")
-    check("and fills one stop further along", pinned[2].index, 5)
+    check("Effective carries the pinned size, and names whose it is",
+          find(pinned, "textEffective").value + "|" + find(pinned, "textEffective").caption, "16 px|Your override.")
+    check("and the ruler marks one stop further along", pinned[2].index, 5)
     check("the ruler is live only while the override is", find(pinned, "textStop").on, true)
     check("and while following it reports rather than sets",
           find(display, "textStop").on, false)
@@ -134,12 +142,12 @@ function runCursor(check) {
     check("the Display section's only control is where its cursor opens",
           Settings.firstRow(display), 1)
     check("and no read-only fact below it takes the cursor",
-          Settings.stepRow(display, 1, 1), 8)
+          Settings.stepRow(display, 1, 1), 9)
     var pinned = Settings.rows("display", displayState({ mode: 16 }, 16))
     check("an override gives the cursor a second stop to walk to",
           Settings.stepRow(pinned, 1, 1), 2)
     check("and the compositor's rows still take none",
-          Settings.stepRow(pinned, 2, 1), 8)
+          Settings.stepRow(pinned, 2, 1), 9)
 }
 
 // SettingsKeys.html's four-value chooser over the one key table. Each row the Keys section lists is resolved back through the generated overlay, so a listed chord cannot advertise a binding the preset lacks, and every one of the four claims a chord rather than drawing a heading over nothing.
@@ -249,7 +257,12 @@ function runCompletionRows(check) {
     check("grid zoom and thumbnail size depend on nothing, and zoom is named for what it resizes",
           [find(shown, "preview.ctrlZoom").available === undefined, find(shown, "preview.thumbSize").available === undefined, find(shown, "preview.ctrlZoom").label].join("|"),
           "true|true|Zoom the grid with ctrl and scroll")
-    var about = Settings.rows("about", { about: { version: "0.1.6", handler: "flea.desktop" } })
+    var about = Settings.rows("about", { about: { version: "0.1.6", handler: "com.thisisgm.flea.desktop" } })
+    // Rules 5 and 6: a fact is muted whole, so no row writes "status only" on itself, and the handler keeps the tail that identifies it.
+    check("the handler row states the handler and nothing else",
+          about.filter(function (row) { return row.label === "File manager"; })
+               .map(function (row) { return row.value + "|" + row.elide; }).join(""),
+          "com.thisisgm.flea.desktop|head")
     check("About version comes from supplied binary facts", about[1].value, "0.1.6")
     check("unreported builds never repeat a specimen commit", about[2].value, "Not recorded in this build")
     check("passive About metadata takes no focus", Settings.focusable(about[1]), false)

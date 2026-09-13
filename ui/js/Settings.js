@@ -166,6 +166,13 @@ function rows(section, state) {
     return keyRows(state)
 }
 
+// The sentence beside Effective has a job only while the ruler cannot state the running size: in Follow the two differ whenever Omarchy's size is not one of the seven, and an override is always a stop.
+function effectiveNote(follows, baseSize) {
+    var nearest = TextSize.nearest(baseSize)
+    return !follows ? "Your override." : nearest === baseSize ? "Omarchy's own size."
+        : "Omarchy's own size. The ruler marks " + nearest + ", the nearest stop."
+}
+
 // The SettingsScale board's own division: Flea owns its text override and Omarchy owns the rest. The size follows the desktop until one of TextSize's seven stops is pinned, and the monitor scale and the corner rounding are the compositor's, drawn as the read-only facts they are.
 function displayRows(state) {
     var follows = TextSize.following(state.textSize)
@@ -174,15 +181,15 @@ function displayRows(state) {
         { kind: "choice", id: "textMode", label: "Text size", glyph: "type",
           labels: ["Follow Omarchy", "Override"],
           value: follows ? "Follow Omarchy" : "Override" },
-        // The board's seven-stop ruler, the override's own control and the one place the effective size is read; a size Omarchy invented that is not a stop fills to the nearest one.
-        { kind: "ruler", id: "textStop", label: "Effective", value: state.baseSize + "px",
-          stops: TextSize.STOPS, on: !follows,
+        // The board's seven-stop ruler, the override's own control, now carrying the numbers it stands for; a size Omarchy invented that is not a stop marks the nearest one.
+        { kind: "ruler", id: "textStop", stops: TextSize.STOPS, on: !follows,
           index: TextSize.STOPS.indexOf(TextSize.nearest(state.baseSize)) }
     ]
-    out.push({ kind: "hint", label: "Omarchy owns the size until you override it, and an override "
-                                    + "takes one of its own stops, " + TextSize.STOPS.join(", ")
-                                    + " px. Ctrl+Shift+Plus and Ctrl+Shift+Minus walk them, and "
-                                    + "Ctrl+Shift+0 follows Omarchy again." })
+    // SettingsRest rule 2: the stops name themselves now, so the paragraph keeps only the chords.
+    out.push({ kind: "hint", label: "Ctrl+Shift +/- walks them. Ctrl+Shift+0 follows Omarchy again." })
+    // And Effective stays: it is state.baseSize, the size actually running, where the ruler marks TextSize.nearest() and a tie takes the smaller stop, so a base of 13 marks 12.
+    out.push({ kind: "fact", id: "textEffective", label: "Effective", role: "live",
+               value: state.baseSize + " px", caption: effectiveNote(follows, state.baseSize) })
     out.push({ kind: "group", label: "Scale" })
     out.push({ kind: "fact", label: "Scale", glyph: "maximize",
                value: scaleLabel(state.monitorScale) })
@@ -365,7 +372,8 @@ function aboutRows(facts) {
         { kind: "group", label: "Updates" },
         { kind: "fact", label: "Update owner", glyph: "download", value: "Omarchy" },
         { kind: "group", label: "This box" },
-        { kind: "fact", label: "File manager", glyph: "folder", value: (facts.handler || "Not reported") + " · status only" },
+        // Rule 5: the identity is in the tail, so a handler too long for the row loses its head instead.
+        { kind: "fact", label: "File manager", glyph: "folder", elide: "head", value: facts.handler || "Not reported" },
         { kind: "action", id: "keyboardSheet", label: "Keyboard sheet", glyph: "keyboard", value: "?" },
         { kind: "action", id: "reportIssue", label: "Report an issue", glyph: "network", value: "Open" },
         { kind: "action", id: "support", label: "Support Flea", glyph: "star", value: "buymeacoffee" }
