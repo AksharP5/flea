@@ -342,6 +342,8 @@ Column {
     Column {
         width: parent.width
         spacing: Theme.spacing.hairline * 2
+        // HANDOFF rule 19: an unfilled form has no URI to show, so the heading goes with it.
+        visible: root.uri.length > 0
 
         Text {
             text: "MOUNTS AS"

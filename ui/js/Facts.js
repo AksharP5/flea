@@ -75,6 +75,18 @@ function pair(label, value) {
     return { label: label, value: value }
 }
 
+// HANDOFF rule 19: a label with no value is not drawn. Every surface here already refuses to invent
+// a value, so the row goes rather than printing a label with nothing after it.
+function filled(rows) {
+    var out = []
+    for (var i = 0; i < rows.length; i++) {
+        if (rows[i].value !== undefined && rows[i].value !== null && String(rows[i].value).length > 0) {
+            out.push(rows[i])
+        }
+    }
+    return out
+}
+
 // A count the backend had to stop early is a floor, marked the way a partial directory size is.
 function lineCount(meta) {
     // A file the backend could not open has no count at all, and its zero would print as "Lines: 0".
@@ -148,6 +160,10 @@ function archiveMore(meta, shown) {
 
 // The rows the canvas draws for each state, in its own order, with the labels it uses verbatim.
 function facts(st, row, meta, kindName, extra) {
+    return filled(stateRows(st, row, meta, kindName, extra))
+}
+
+function stateRows(st, row, meta, kindName, extra) {
     var e = extra || {}
     if (st === VIDEO || st === AUDIO) {
         var m = mediaExtra(meta)
@@ -217,9 +233,9 @@ function multiFacts(rows, selectionCount) {
         if (oldest === 0 || r.m < oldest) { oldest = r.m }
     }
     var floor = (selectionCount !== undefined && selectionCount > counted) ? "> " : ""
-    return [pair("Kinds", kindSummary(groups, floor)), pair("Combined", floor + Format.size(bytes)),
+    return filled([pair("Kinds", kindSummary(groups, floor)), pair("Combined", floor + Format.size(bytes)),
             pair("Newest", newest > 0 ? floor + Format.date(newest) : ""),
-            pair("Oldest", oldest > 0 ? floor + Format.date(oldest) : "")]
+            pair("Oldest", oldest > 0 ? floor + Format.date(oldest) : "")])
 }
 
 // The distinct kinds in a selection, in the order they were met, each carrying the mark its own

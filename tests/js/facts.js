@@ -200,9 +200,15 @@ function run(check) {
           Facts.lineCount({ lines: 0, partial: false, linesFailed: true }), "")
     check("and a file that really is empty still states its zero",
           Facts.lineCount({ lines: 0, partial: false, linesFailed: false }), "0")
-    check("the Lines cell of an unreadable text file is the empty one",
-          valueOf(Facts.facts("text", row("text-x-generic", 18000),
-                              { lines: 0, partial: false, linesFailed: true }, "Markdown"), "Lines"), "")
+    // HANDOFF rule 19: a label with no value is not drawn, so the row goes rather than the value.
+    check("an unreadable text file draws no Lines row at all",
+          labels(Facts.facts("text", row("text-x-generic", 18000),
+                             { lines: 0, partial: false, linesFailed: true }, "Markdown")), "Kind|Size|Modified")
+    check("and a raw image whose dimensions are unreadable draws no Pixels row",
+          labels(Facts.facts("image", row("image-x-generic", 2100000), null, "Raw image")), "Kind|Size|Modified")
+    check("a video nothing has probed yet drops Duration and keeps the rest",
+          labels(Facts.facts("video", row("video-x-generic", 48000000), { w: 1920, h: 1080 }, "MP4 video")),
+          "Kind|Pixels|Size")
     check("pixels with nothing behind them are empty rather than 0 × 0",
           Facts.pixels(null) + "|" + Facts.pixels({ w: 0, h: 0 }), "|")
 
@@ -215,8 +221,8 @@ function run(check) {
           valueOf(Facts.multiFacts(many), "Kinds"), "2 images, 1 video, 1 text")
     check("the combined size is every selected row added up",
           valueOf(Facts.multiFacts(many), "Combined"), "15.0 kB")
-    check("an empty selection summarises to nothing rather than throwing",
-          labels(Facts.multiFacts([])), "Kinds|Combined|Newest|Oldest")
+    check("an empty selection states only the row it can fill, rather than throwing",
+          labels(Facts.multiFacts([])), "Combined")
     check("a hole in the selection is skipped rather than counted",
           valueOf(Facts.multiFacts([null, row("image-x-generic", 1000)]), "Kinds"), "1 image")
 
