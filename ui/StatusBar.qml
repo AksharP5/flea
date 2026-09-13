@@ -3,6 +3,7 @@ import qs.Commons
 import "js/Format.js" as Format
 import "js/Ops.js" as Ops
 import "js/Status.js" as Status
+import "js/Transfer.js" as Transfer
 
 Item {
     id: root
@@ -36,6 +37,8 @@ Item {
     readonly property string sticky: root.activity ? root.activity.text : ""
     readonly property var transfer: root.activity ? root.activity.transfer : Ops.emptyTransfer()
     readonly property var transferOwner: root.activity ? root.activity.owner : null
+    // The card samples every 250 ms and publishes it; the strip's own hairline reads that sample.
+    readonly property var barTransfer: cardLoader.item ? cardLoader.item.shown : root.transfer
     readonly property bool stickyHere: root.sticky.length > 0
     property string searchLine: ""
     property string searchKeys: ""
@@ -233,6 +236,33 @@ Item {
             font.pixelSize: Theme.font.caption
             elide: Text.ElideMiddle
             textFormat: Text.PlainText
+        }
+
+        // The board's own hairline beside the count. It reads the card's published sample rather than
+        // the live transfer, so the strip and the card can never report different progress.
+        Item {
+            id: bar
+            visible: root.transfer.running
+            width: visible ? Math.round(Theme.column.kind / 2) + 2 * Theme.spacing.gap : 0
+            height: strip.height
+
+            Rectangle {
+                anchors.centerIn: parent
+                width: Math.round(Theme.column.kind / 2)
+                height: Math.round(Theme.font.caption / 2)
+
+                Rectangle {
+                    anchors.fill: parent
+                    color: Theme.color.muted
+                    opacity: 0.25
+                }
+
+                Rectangle {
+                    width: parent.width * Transfer.fraction(root.barTransfer)
+                    height: parent.height
+                    color: Theme.color.accent
+                }
+            }
         }
 
         Text {
