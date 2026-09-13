@@ -24,12 +24,6 @@ Item {
     readonly property string kind: root.row.kind || "fact"
     readonly property bool isGroup: root.kind === "group"
     readonly property bool firstGroup: root.isGroup && root.firstRow
-    // Settings headings scale their resolved 12/15/4/8 insets once from the boards' bodySmall 13 anchor.
-    readonly property real groupScale: Theme.font.bodySmall / 13
-    readonly property real groupGap: root.firstGroup ? 0 : Math.round(8 * root.groupScale)
-    readonly property real groupPaddingTop: Math.round((root.firstGroup ? 12 : 15) * root.groupScale)
-    readonly property real groupPaddingBottom: Math.round(4 * root.groupScale)
-    readonly property real groupLineHeight: Theme.font.caption * 1.6
     readonly property bool isHint: root.kind === "hint"
     readonly property bool isFooter: root.isHint && root.row.footer === true
     readonly property bool isFavourite: root.kind === "favourite" || root.kind === "favouriteActions"
@@ -38,7 +32,9 @@ Item {
     readonly property bool isKeyPreview: root.kind === "keyPreview"
     readonly property bool isLock: root.kind === "lock"
     readonly property bool isRuler: root.kind === "ruler"
-    readonly property bool hasBox: root.kind === "check" || root.kind === "master"
+    readonly property bool hasBox: root.kind === "check"
+    // SettingsMenus rule 3: a heading that carries its group's master is operated like any other control.
+    readonly property bool isMasterGroup: root.isGroup && root.row.master === true
     // Length and not Array.isArray: a Repeater hands the delegate a QVariantList wrapper, on which
     // isArray reads false while typeof is "object" and length is right, so the segment never drew.
     // Which control a choice gets, SettingsGrammar rule 1: a segment when every option fits on the row beside the label, the chevron walk when they do not, and nothing else decides it. A Row reports its own implicitWidth whether or not it is itself visible, so measuring the segment and hiding it on the answer is no loop.
@@ -50,14 +46,13 @@ Item {
     readonly property real hoverOpacity: 0.08
     // SettingsGrammar rule 7: a dependent greys in place while its parent is off, and the grey takes the row's handlers with it, because a control that cannot act must not answer a tap.
     readonly property bool greyed: root.row.available === false
-    // The tri-state master: all six on is a filled tick, some on a filled bar, none an empty box.
-    readonly property string boxValue: root.kind === "master"
-        ? (root.row.state === "all" ? "on" : (root.row.state === "some" ? "some" : "off"))
-        : (root.row.on === true ? "on" : "off")
+    readonly property string boxValue: root.row.on === true ? "on" : "off"
+    // SettingsMenus rule 5: the one row that can destroy a file carries the urgent role the model already gives it.
+    readonly property bool isUrgent: root.row.role === "error" && !root.isHint
 
     enabled: !root.greyed
     opacity: root.greyed ? Theme.disabledOpacity : 1
-    height: root.isGroup ? groupLabel.y + groupLabel.height + root.groupPaddingBottom
+    height: root.isGroup ? groupHead.implicitHeight
             : root.isFavourite ? favourite.implicitHeight : root.isHero ? hero.implicitHeight + 4 * Theme.spacing.rowPaddingY
             : root.isKeyPreview ? keyPreview.implicitHeight + 2 * Theme.spacing.rowPaddingY
             : root.isHint ? hint.y + hint.implicitHeight + (root.isFooter
@@ -174,7 +169,7 @@ Item {
 
     Rectangle {
         anchors.top: parent.top
-        anchors.topMargin: root.isFooter ? Theme.settings.railPaddingY : root.groupGap
+        anchors.topMargin: root.isFooter ? Theme.settings.railPaddingY : groupHead.gap
         width: parent.width
         height: Theme.spacing.hairline
         visible: root.isFooter || root.isGroup && !root.firstGroup
@@ -182,26 +177,14 @@ Item {
         opacity: 0.4
     }
 
-    // A heading and a hint are the only two rows that are not a label and a control, so they draw
-    // instead of the pair below rather than beside it.
-    Text {
-        id: groupLabel
+    // A heading and a hint are the only two rows that are not a label and a control on one line, so
+    // they draw instead of the pair below rather than beside it.
+    Flea.SettingsGroup {
+        id: groupHead
         visible: root.isGroup
-        anchors.left: parent.left
-        anchors.leftMargin: Theme.spacing.rowPaddingX
-        y: root.groupGap + (root.firstGroup ? 0 : Theme.spacing.hairline) + root.groupPaddingTop
-        height: root.groupLineHeight + topPadding
-        topPadding: Math.ceil(font.pixelSize * 0.15)
-        verticalAlignment: Text.AlignVCenter
-        text: root.row.label || ""
-        color: Theme.color.muted
-        font.family: Theme.font.family
-        font.pixelSize: Theme.font.caption
-        font.bold: true
-        // The canvas sets every group eyebrow in small caps, the same treatment the rail's own headings take.
-        font.capitalization: Font.AllUppercase
-        font.letterSpacing: Theme.font.caption * 0.14
-        textFormat: Text.PlainText
+        width: parent.width
+        row: root.row
+        first: root.firstGroup
     }
 
     Text {
@@ -236,7 +219,7 @@ Item {
             anchors.fill: parent
             visible: root.row.glyph !== undefined && root.row.mark === undefined
             name: root.row.glyph !== undefined ? root.row.glyph : "file"
-            color: Theme.color.muted
+            color: root.isUrgent ? Theme.color.error : Theme.color.muted
         }
 
         Flea.TailscaleMark {
@@ -257,6 +240,15 @@ Item {
             anchors.centerIn: parent
             visible: root.row.mark === "hyprland"
             iconSize: Theme.markSize
+            color: Theme.color.muted
+        }
+
+        // The shelf is Flea's own destination, so its switch carries Flea's own mark, the way ui/MenuRow.qml draws the row it governs.
+        Flea.FleaMark {
+            anchors.centerIn: parent
+            visible: root.row.mark === "flea"
+            width: Theme.markSize
+            height: Theme.markSize
             color: Theme.color.muted
         }
     }
@@ -286,7 +278,7 @@ Item {
         anchors.rightMargin: Theme.spacing.gap
         anchors.verticalCenter: parent.verticalCenter
         text: root.row.label || ""
-        color: root.isLock ? Theme.color.muted : Theme.color.foreground
+        color: root.isUrgent ? Theme.color.error : root.isLock ? Theme.color.muted : Theme.color.foreground
         font.family: Theme.font.family
         font.pixelSize: Theme.font.body
         textFormat: Text.PlainText
@@ -319,11 +311,10 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         spacing: Theme.spacing.gap
 
-        // The master's count, a choice's name and a fact's value are all one thing: the value the
-        // row currently holds, drawn on the right the way the boards draw it. A ruler has no label
-        // of its own on the left, so it carries the board's "Effective 14px" reading here instead.
+        // A choice's name, a fact's value and the caption a check row carries are all one thing: the value the row currently holds, drawn on the right the way the boards draw it. A ruler has no label of its own on the left, so it carries the board's "Effective 14px" reading here instead.
         Text {
-            visible: root.kind === "fact" || root.kind === "action" || root.hasSteps || root.kind === "master" || root.isRuler
+            visible: root.kind === "fact" || root.kind === "action" || root.hasSteps || root.isRuler
+                     || (root.hasBox && (root.row.value || "") !== "")
             height: Theme.markSize
             verticalAlignment: Text.AlignVCenter
             text: root.isRuler ? (root.row.label || "") + " " + (root.row.value || "")
@@ -378,7 +369,7 @@ Item {
 
     HoverHandler {
         id: pointer
-        enabled: root.hasBox || root.kind === "choice" || root.kind === "action" || root.isFavourite
+        enabled: root.hasBox || root.isMasterGroup || root.kind === "choice" || root.kind === "action" || root.isFavourite
         property bool armed: false
         property point restingAt
         onHoveredChanged: pointer.armed = false
@@ -400,7 +391,7 @@ Item {
     // A segment and a ruler each own their own targets, so the row behind them must not also fire:
     // a tap on the option already showing would otherwise toggle the very setting it names.
     TapHandler {
-        enabled: (root.hasBox || root.kind === "action") && !root.isLock && !root.hasSteps
+        enabled: (root.hasBox || root.isMasterGroup || root.kind === "action") && !root.isLock && !root.hasSteps
                  && !root.hasSegment && !root.isRuler
         acceptedButtons: Qt.LeftButton
         gesturePolicy: TapHandler.ReleaseWithinBounds

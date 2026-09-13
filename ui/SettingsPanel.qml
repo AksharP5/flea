@@ -105,6 +105,8 @@ Item {
             return
         }
         if (row.kind === "favouriteActions") { root.favouriteAction(root.favouriteActionIndex); return }
+        // SettingsMenus rule 3: the only heading the cursor can reach is one carrying its group's master.
+        if (row.kind === "group") { ViewState.toggleMenuGroup(row.ids); return }
         if (row.id === "columns") { root.showSection("columns"); return }
         // The folder the panel was opened over, which is the pane behind it: the same folder the
         // Places section's own "Add current folder" row takes, and the only one on screen to mean.
@@ -134,8 +136,6 @@ Item {
             ViewState.toggleKeyHints()
         else if (row.kind === "check")
             ViewState.toggleMenuAction(row.id)
-        else if (row.kind === "master")
-            ViewState.toggleMenuBasic()
         else
             root.stepRowValue(index, 1)
     }
@@ -157,7 +157,7 @@ Item {
             ViewState.stepTextSize(direction)
             return
         }
-        // A check or a master is toggled by activate(), never walked, so h and l stop here.
+        // A check or a group's master is toggled by activate(), never walked, so h and l stop here.
         if (row.kind !== "choice")
             return
         if (row.values !== undefined) {
@@ -507,7 +507,7 @@ Item {
                 if (root.side === "rail")
                     root.side = "pane"
                 else if (event.key !== Qt.Key_Space || (root.rows[root.cursor] &&
-                         (root.rows[root.cursor].kind === "check" || root.rows[root.cursor].kind === "master")))
+                         (root.rows[root.cursor].kind === "check" || root.rows[root.cursor].kind === "group")))
                     root.activate(root.cursor)
             }
             // Every other key stops here: an open panel that let one through would move the cursor

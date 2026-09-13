@@ -23,16 +23,16 @@ function sectionIndex(id) {
     return 0
 }
 
-// The six SettingsMenus.html puts under one master row, and the ids ui/js/Menu.js gives those rows.
+// The six SettingsMenus.html puts under the Basic file actions heading, and the ids ui/js/Menu.js gives those rows.
 var BASIC = ["cut", "copy", "paste", "duplicate", "rename", "trash"]
 
-// Storage ids remain stable while the action dispatcher uses descriptive verbs.
+// Storage ids remain stable while the action dispatcher uses descriptive verbs. SettingsMenus rule 3: the master rides its group's heading, so a group is its own id here and a group of one row has no master to ride it, which is why Destructive carries neither box nor count.
 var MENU_GROUPS = [
-    { label: "Basic file actions", master: true, ids: BASIC },
-    { label: "Destructive", master: false, ids: ["delete"] },
-    { label: "Open and inspect", master: false,
+    { id: "basic", label: "Basic file actions", ids: BASIC },
+    { id: "destructive", label: "Destructive", ids: ["delete"] },
+    { id: "openInspect", label: "Open and inspect",
       ids: ["openwith", "openTerminal", "moveto", "copyto", "properties", "permissions", "copypath"] },
-    { label: "Extras", master: false,
+    { id: "extras", label: "Extras",
       ids: ["shelf", "compress", "extract", "convert", "taildrop", "dropbox", "sharelink"] }
 ]
 
@@ -48,13 +48,11 @@ var LABELS = {
     sharelink: "Copy Share Link", open: "Open", toggleHidden: "Show hidden files", shelf: "Enable shelf"
 }
 
-// The four values of the Keys row, in SettingsKeys.html's own chooser order. The first is what a
-// missing or unrecognised stored name resolves to, which that board says is Default.
+// The four values of the Keys row, in SettingsKeys.html's own chooser order. The first is what a missing or unrecognised stored name resolves to, which that board says is Default.
 var PRESETS = ["default", "vim", "mac", "windows"]
 var PRESET_LABELS = { "default": "Default", vim: "Vim", mac: "Mac", windows: "Windows" }
 
-// Every board row carries a left mark, and a switch wears the mark of the row it governs: these are
-// ui/js/Menu.js's own glyphs by action id, which tests/js/settings.js asserts the two agree on.
+// Every board row carries a left mark, and a switch wears the mark of the row it governs: these are ui/js/Menu.js's own glyphs by action id, which tests/js/settings.js asserts the two agree on.
 var GLYPHS = {
     cut: "scissors", copy: "copy", paste: "clipboard", duplicate: "file-plus", rename: "rename",
     trash: "trash", openTerminal: "terminal", copypath: "file-text", permissions: "lock", compress: "archive",
@@ -63,8 +61,7 @@ var GLYPHS = {
     convert: "sliders", sharelink: "network", open: "folder-open", toggleHidden: "eye"
 }
 
-// Taildrop and Dropbox are brand reproductions rather than cut glyphs, so they name a component the
-// way a menu entry does; ui/SettingsRow.qml draws the pair exactly as ui/MenuRow.qml does.
+// Taildrop and Dropbox are brand reproductions rather than cut glyphs, so they name a component the way a menu entry does; ui/SettingsRow.qml draws the pair exactly as ui/MenuRow.qml does.
 var MARKS = { taildrop: "tailscale", dropbox: "dropbox", shelf: "flea", "display.hyprlandIcons": "hyprland" }
 
 function label(id) {
@@ -88,37 +85,35 @@ function isHidden(hidden, id) {
 }
 
 // GM's ruling: the count is of ENABLED actions, so "5 of 6" means one of the six is switched off.
-function basicEnabled(hidden) {
+function basicEnabled(hidden, list) {
     var on = 0
-    for (var i = 0; i < BASIC.length; i++) {
-        if (!isHidden(hidden, BASIC[i]))
+    for (var i = 0; i < list.length; i++) {
+        if (!isHidden(hidden, list[i]))
             on += 1
     }
     return on
 }
 
-// All, some and none are read off the six ids, which is the tri-state the SettingsMenus board draws.
-// The master is derived here and never stored, so there is no second value that could disagree.
-function masterState(hidden) {
-    var on = basicEnabled(hidden)
-    if (on === BASIC.length)
+// All, some and none are read off the group's own ids, which is the tri-state the SettingsMenus board draws. A master is derived here and never stored, so there is no second value that could disagree.
+function masterState(hidden, list) {
+    var on = basicEnabled(hidden, list)
+    if (on === list.length)
         return "all"
     return on === 0 ? "none" : "some"
 }
 
-// Activating a checked master switches all six off; an unchecked or partial one switches all six on,
-// so the recovering move is always the one keystroke. Unrelated hidden ids are preserved either way.
-function toggleMaster(hidden) {
-    var enable = masterState(hidden) !== "all"
+// Activating a checked master switches its whole group off; an unchecked or partial one switches the group on, so the recovering move is always the one keystroke. Ids outside the group are preserved either way.
+function toggleMaster(hidden, list) {
+    var enable = masterState(hidden, list) !== "all"
     var next = []
     for (var i = 0; hidden && i < hidden.length; i++) {
-        if (!enable || !contains(BASIC, hidden[i]))
+        if (!enable || !contains(list, hidden[i]))
             next.push(hidden[i])
     }
     if (!enable) {
-        for (var b = 0; b < BASIC.length; b++) {
-            if (!contains(next, BASIC[b]))
-                next.push(BASIC[b])
+        for (var b = 0; b < list.length; b++) {
+            if (!contains(next, list[b]))
+                next.push(list[b])
         }
     }
     return next
@@ -144,9 +139,12 @@ function focusable(row) {
     // SettingsGrammar rule 7: a dependent greyed by its parent cannot be operated, so it is no stop either.
     if (row.available === false)
         return false
+    // SettingsMenus rule 3: a heading that carries its group's master is a control, and one without stays a heading.
+    if (row.kind === "group")
+        return row.master === true
     if (row.kind === "ruler")
         return row.on === true
-    return row.kind === "check" || row.kind === "master" || row.kind === "choice" || row.kind === "action" || row.kind === "favourite" || row.kind === "favouriteActions"
+    return row.kind === "check" || row.kind === "choice" || row.kind === "action" || row.kind === "favourite" || row.kind === "favouriteActions"
 }
 
 // state: { textSize, hidden, keyHints, preset, baseSize, monitorScale, cornerRadius, presetKeys }
@@ -176,8 +174,7 @@ function displayRows(state) {
         { kind: "choice", id: "textMode", label: "Text size", glyph: "type",
           labels: ["Follow Omarchy", "Override"],
           value: follows ? "Follow Omarchy" : "Override" },
-        // The board's seven-stop ruler, the override's own control and the one place the effective
-        // size is read; a size Omarchy invented that is not a stop fills to the nearest one.
+        // The board's seven-stop ruler, the override's own control and the one place the effective size is read; a size Omarchy invented that is not a stop fills to the nearest one.
         { kind: "ruler", id: "textStop", label: "Effective", value: state.baseSize + "px",
           stops: TextSize.STOPS, on: !follows,
           index: TextSize.STOPS.indexOf(TextSize.nearest(state.baseSize)) }
@@ -205,18 +202,15 @@ function scaleLabel(scale) {
     return (Math.round(scale * 100) / 100) + "x"
 }
 
-// The one row of this section that is not a menu action: it governs how every menu row is drawn
-// rather than whether it exists, so it sits in its own group and never in MENU_GROUPS.
+// The one row of this section that is not a menu action: it governs how every menu row is drawn rather than whether it exists, so it sits in its own group and never in MENU_GROUPS.
 function menuRows(hidden, keyHints) {
     var out = []
     for (var g = 0; g < MENU_GROUPS.length; g++) {
         var group = MENU_GROUPS[g]
-        out.push({ kind: "group", label: group.label })
-        if (group.master) {
-            out.push({ kind: "master", id: "basic", label: "All basic file actions", glyph: "list",
-                       state: masterState(hidden),
-                       value: basicEnabled(hidden) + " of " + BASIC.length })
-        }
+        var master = group.ids.length > 1
+        out.push({ kind: "group", label: group.label, id: master ? group.id : "", master: master,
+                   ids: group.ids, state: master ? masterState(hidden, group.ids) : "",
+                   value: master ? basicEnabled(hidden, group.ids) + " of " + group.ids.length : "" })
         for (var i = 0; i < group.ids.length; i++) {
             out.push({ kind: "check", id: group.ids[i], label: label(group.ids[i]),
                        glyph: GLYPHS[group.ids[i]], mark: MARKS[group.ids[i]],
@@ -276,8 +270,7 @@ function keyRows(state) {
     return out
 }
 
-// A read-only row is never the cursor, so both key steps and the opening cursor skip over one; the
-// same shape ui/ContextMenu.qml's stepCursor uses, because a settings row and a menu row step alike.
+// A read-only row is never the cursor, so both key steps and the opening cursor skip over one; the same shape ui/ContextMenu.qml's stepCursor uses, because a settings row and a menu row step alike.
 function stepRow(list, from, delta) {
     var i = from + delta
     while (i >= 0 && i < list.length) {
@@ -323,8 +316,7 @@ function viewRows(state) {
         { kind: "group", label: "Opening" },
         choice("startIn", "Flea opens in", "house", ["home", "last", "folder"],
                ["Home", "Last folder", "Chosen folder"], data.startIn || "home"),
-        // The action writes the folder the panel was opened over and selects the mode with it, so the
-        // row above never names a chosen folder that was never chosen. The value is the path itself.
+        // The action writes the folder the panel was opened over and selects the mode with it, so the row above never names a chosen folder that was never chosen. The value is the path itself.
         { kind: "action", id: "startFolder", label: "Chosen folder", glyph: "folder",
           value: data.startFolder || "Use this folder" },
         choice("newTab", "New tabs open in", "columns", ["current", "home", "start"],

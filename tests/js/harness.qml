@@ -35,6 +35,7 @@ import "scroll.js" as ScrollSuite
 import "search.js" as SearchSuite
 import "selection.js" as SelectionSuite
 import "settings.js" as SettingsSuite
+import "settingsmenus.js" as SettingsMenusSuite
 import "sort.js" as SortSuite
 import "startup.js" as StartupSuite
 import "status.js" as StatusSuite
@@ -81,7 +82,7 @@ Item {
             ["recent", RecentSuite],
             ["renderer", RendererSuite],
             ["scroll", ScrollSuite], ["search", SearchSuite],
-            ["selection", SelectionSuite], ["settings", SettingsSuite],
+            ["selection", SelectionSuite], ["settings", SettingsSuite], ["settingsmenus", SettingsMenusSuite],
             ["sort", SortSuite], ["startup", StartupSuite], ["trashdates", TrashDatesSuite], ["permissions", PermissionsSuite], ["status", StatusSuite], ["taildrop", TaildropSuite], ["textsize", TextSizeSuite],
             ["trash", TrashSuite], ["tap", TapSuite], ["marquee", MarqueeSuite], ["tabs", TabsSuite],
             ["thumbs", ThumbsSuite], ["uistate", UiStateSuite],

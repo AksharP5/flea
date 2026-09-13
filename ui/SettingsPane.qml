@@ -52,6 +52,23 @@ Flickable {
         flickable: root
     }
 
+    // SettingsMenus rule 4: a section taller than the viewport fades at its lower edge instead of
+    // slicing a row, so the cut says that more follows. parent: root keeps it off the content item,
+    // which is what scrolls; a fully transparent stop is written in the ground's own channels,
+    // because "transparent" is black at zero alpha and ramps through grey on the way there.
+    Rectangle {
+        parent: root
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        height: Math.round(Theme.rowHeight * 0.7)
+        visible: root.contentHeight - root.contentY - root.height > Theme.spacing.hairline
+        gradient: Gradient {
+            GradientStop { position: 0; color: Qt.rgba(Theme.color.surface.r, Theme.color.surface.g, Theme.color.surface.b, 0) }
+            GradientStop { position: 1; color: Theme.color.surface }
+        }
+    }
+
     // The row item at an index of the chosen section, or null before the columns exist.
     function rowItem(index) { return root.current ? root.current.rows.itemAt(index) : null }
 

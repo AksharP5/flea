@@ -180,8 +180,7 @@ QtObject {
                          ? TextSize.pin(root.textSize, root.omarchyBase) : TextSize.follow())
     }
 
-    // The Menus section's own two writers. Both write the hidden set alone, because the master row
-    // over the six basic actions is Settings.masterState of that set rather than a value of its own.
+    // The Menus section's own two writers. Both write the hidden set alone, because a group's master is Settings.masterState of that set rather than a value of its own.
     function setMenuHidden(hidden) {
         root.changeLeaf("menu", { hidden: hidden })
     }
@@ -190,8 +189,8 @@ QtObject {
         root.setMenuHidden(Settings.toggleId(root.menuHidden, id))
     }
 
-    function toggleMenuBasic() {
-        root.setMenuHidden(Settings.toggleMaster(root.menuHidden))
+    function toggleMenuGroup(ids) {
+        root.setMenuHidden(Settings.toggleMaster(root.menuHidden, ids))
     }
 
     function toggleKeyHints() {

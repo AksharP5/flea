@@ -24,6 +24,7 @@ SettingsPanel 1.0 SettingsPanel.qml
 SettingsPane 1.0 SettingsPane.qml
 SettingsRail 1.0 SettingsRail.qml
 SettingsRow 1.0 SettingsRow.qml
+SettingsGroup 1.0 SettingsGroup.qml
 SettingsRuler 1.0 SettingsRuler.qml
 SettingsSegment 1.0 SettingsSegment.qml
 MediaStrip 1.0 MediaStrip.qml

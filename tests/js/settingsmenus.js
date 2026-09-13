@@ -1,0 +1,106 @@
+.import "../../ui/js/Settings.js" as Settings
+.import "../../ui/js/Menu.js" as Menu
+
+// The Menus section of the settings panel: the switch inventory it is built from, and the per-group masters SettingsMenus rule 3 puts on the headings. Split out of tests/js/settings.js when that suite outgrew its budget; the rest of the panel stays there.
+
+function run(check) {
+    runInventory(check)
+    runMaster(check)
+}
+
+// No mock controls: every id the Menus section can switch is an action ui/js/Menu.js really builds, and every row it builds that is not locked or background-only has a switch. Two menus are unioned because Move to Dropbox and Copy share link cannot appear on one row and Extract needs an archive.
+function runInventory(check) {
+    var built = {}
+    var builtMark = {}
+    var shapes = [
+        { rowInDropbox: false, rowIsArchive: true, rowIsImage: true },
+        { rowInDropbox: true, rowIsArchive: false, rowIsImage: false }
+    ]
+    for (var s = 0; s < shapes.length; s++) {
+        var rows = Menu.listingEntries({
+            showHidden: false, hasRow: true, dropboxPath: "/home/jw/Dropbox",
+            taildropPeers: [{ id: "x", label: "Box" }], taildropInstalled: true, dropboxInstalled: true,
+            archiveFormats: ["zip"], canConvert: true, canExtract: true, selectionCount: 1, rowMode: 0o100644,
+            rowInDropbox: shapes[s].rowInDropbox, rowIsArchive: shapes[s].rowIsArchive,
+            rowIsImage: shapes[s].rowIsImage, hiddenActions: []
+        })
+        for (var i = 0; i < rows.length; i++) {
+            if (rows[i].separator === true)
+                continue
+            built[rows[i].id || rows[i].action] = rows[i].label
+            builtMark[rows[i].id || rows[i].action] = rows[i].glyph !== undefined ? rows[i].glyph : rows[i].mark
+        }
+    }
+    var switched = []
+    for (var g = 0; g < Settings.MENU_GROUPS.length; g++)
+        switched = switched.concat(Settings.MENU_GROUPS[g].ids)
+    check("every switch in the Menus section is over a row the menu really builds",
+          switched.filter(function (id) { return built[id] === undefined }).join(","), "")
+    check("and each switch carries that row's own wording, so the two cannot drift",
+          switched.filter(function (id) { return id !== "shelf" && Settings.label(id) !== built[id] }).join(",")
+          + "|" + Settings.label("shelf") + "|" + built["shelf"], "|Enable shelf|Add to shelf")
+    // A switch wears the mark of the row it governs, which is the only way a reader can pair the two.
+    check("and each row wears the mark the menu draws for that action",
+          switched.concat(Settings.LOCKED).filter(function (id) {
+              var mine = Settings.GLYPHS[id] !== undefined ? Settings.GLYPHS[id] : Settings.MARKS[id]
+              return mine === undefined || mine !== builtMark[id]
+          }).join(","), "")
+    // SettingsPlaces section 02 adds the listing Favorite action; SettingsMenus keeps its 20 switches and Menus' New folder has none.
+    var reachable = switched.concat(Settings.LOCKED).concat(["newFolder", "addFavourite"])
+    check("no other menu action is omitted from the board's switch inventory",
+          Object.keys(built).filter(function (id) { return reachable.indexOf(id) < 0 }).join(","), "")
+}
+
+// GM's ruling, and it is easy to get backwards: menu.hidden stores what is HIDDEN, and a master's count is of ENABLED actions, so one id in the set reads "5 of 6".
+function runMaster(check) {
+    var BASIC = Settings.BASIC
+    check("nothing hidden is all six enabled", Settings.basicEnabled([], BASIC), 6)
+    check("and the master reads all", Settings.masterState([], BASIC), "all")
+    check("one hidden id is five enabled", Settings.basicEnabled(["paste"], BASIC), 5)
+    check("and the master is partial", Settings.masterState(["paste"], BASIC), "some")
+    check("all six hidden is none enabled", Settings.basicEnabled(BASIC, BASIC), 0)
+    check("and the master is unchecked", Settings.masterState(BASIC, BASIC), "none")
+    // An unrelated id in the set must not be counted as one of the six, in either direction.
+    check("an unrelated hidden id does not change the count",
+          Settings.basicEnabled(["copypath", "compress"], BASIC), 6)
+
+    check("activating a checked master switches all six off",
+          Settings.toggleMaster([], BASIC).sort().join(","), BASIC.slice().sort().join(","))
+    check("activating a partial master switches all six on, which is the recovering keystroke",
+          Settings.toggleMaster(["paste"], BASIC).length, 0)
+    check("activating an unchecked master switches all six on too",
+          Settings.toggleMaster(BASIC, BASIC).length, 0)
+    check("switching all six on preserves an unrelated hidden id",
+          Settings.toggleMaster(["paste", "copypath"], BASIC).join(","), "copypath")
+    check("and switching all six off preserves it as well",
+          Settings.toggleMaster(["copypath"], BASIC).indexOf("copypath") >= 0, true)
+
+    check("an individual toggle adds its own id and nothing else",
+          Settings.toggleId([], "paste").join(","), "paste")
+    check("and toggling it again takes only that id back out",
+          Settings.toggleId(["paste", "copypath"], "paste").join(","), "copypath")
+    check("the master recomputes off the individual toggle at once",
+          Settings.masterState(Settings.toggleId([], "cut"), BASIC) + " "
+          + Settings.basicEnabled(Settings.toggleId([], "cut"), BASIC), "some 5")
+
+    // menu.hidden is the sole state, so a master is a reading of that set and never a value beside it: there is no fold to apply here, and nothing a hand edit could leave the two disagreeing on.
+    check("the model exports no stored master to read", typeof Settings.effectiveHidden, "undefined")
+    check("a set with no master in it still draws one",
+          Settings.rows("menus", { hidden: ["paste"] })[0].state, "some")
+    check("and the master survives a round trip through the set it derives from",
+          Settings.masterState(Settings.toggleMaster(Settings.toggleMaster([], BASIC), BASIC), BASIC), "all")
+
+    // SettingsMenus rule 3: each group's own master, on its own heading, counting its own ids alone.
+    var groups = Settings.rows("menus", { hidden: ["moveto", "copyto", "properties", "permissions"] })
+        .filter(function (row) { return row.kind === "group" })
+    check("every heading reports the group it governs, and a group of one row has no master at all",
+          groups.map(function (row) { return row.label + "|" + (row.master ? row.value + "|" + row.state : "no master") }).join(", "),
+          "Basic file actions|6 of 6|all, Destructive|no master, Open and inspect|3 of 7|some, "
+          + "Extras|7 of 7|all, Shortcuts|no master, Always shown|no master")
+    var inspect = groups[2]
+    check("a heading with a master is a focus stop and one without is not",
+          Settings.focusable(inspect) + "|" + Settings.focusable(groups[1]), "true|false")
+    check("and it switches its own ids only, never another group's",
+          Settings.toggleMaster(["moveto", "copyto", "properties", "permissions", "paste"], inspect.ids).sort().join(","),
+          "paste")
+}

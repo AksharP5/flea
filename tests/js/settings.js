@@ -1,60 +1,14 @@
 .import "../../ui/js/Settings.js" as Settings
 .import "../../ui/js/Keymap.js" as Keymap
-.import "../../ui/js/Menu.js" as Menu
 .import "../../ui/js/TextSize.js" as TextSize
 
 // The settings panel's model. ui/SettingsPanel.qml only paints what rows() returns, so every row a section can draw, and every value a control can hold, is assertable here without a window.
 
 function run(check) {
-    runMaster(check)
     runRows(check)
     runCursor(check)
     runPresets(check)
-    runInventory(check)
     runCompletionRows(check)
-}
-
-// No mock controls: every id the Menus section can switch is an action ui/js/Menu.js really builds, and every row it builds that is not locked or background-only has a switch. Two menus are unioned because Move to Dropbox and Copy share link cannot appear on one row and Extract needs an archive.
-function runInventory(check) {
-    var built = {}
-    var builtMark = {}
-    var shapes = [
-        { rowInDropbox: false, rowIsArchive: true, rowIsImage: true },
-        { rowInDropbox: true, rowIsArchive: false, rowIsImage: false }
-    ]
-    for (var s = 0; s < shapes.length; s++) {
-        var rows = Menu.listingEntries({
-            showHidden: false, hasRow: true, dropboxPath: "/home/jw/Dropbox",
-            taildropPeers: [{ id: "x", label: "Box" }], taildropInstalled: true, dropboxInstalled: true,
-            archiveFormats: ["zip"], canConvert: true, canExtract: true, selectionCount: 1, rowMode: 0o100644,
-            rowInDropbox: shapes[s].rowInDropbox, rowIsArchive: shapes[s].rowIsArchive,
-            rowIsImage: shapes[s].rowIsImage, hiddenActions: []
-        })
-        for (var i = 0; i < rows.length; i++) {
-            if (rows[i].separator === true)
-                continue
-            built[rows[i].id || rows[i].action] = rows[i].label
-            builtMark[rows[i].id || rows[i].action] = rows[i].glyph !== undefined ? rows[i].glyph : rows[i].mark
-        }
-    }
-    var switched = []
-    for (var g = 0; g < Settings.MENU_GROUPS.length; g++)
-        switched = switched.concat(Settings.MENU_GROUPS[g].ids)
-    check("every switch in the Menus section is over a row the menu really builds",
-          switched.filter(function (id) { return built[id] === undefined }).join(","), "")
-    check("and each switch carries that row's own wording, so the two cannot drift",
-          switched.filter(function (id) { return id !== "shelf" && Settings.label(id) !== built[id] }).join(",")
-          + "|" + Settings.label("shelf") + "|" + built["shelf"], "|Enable shelf|Add to shelf")
-    // A switch wears the mark of the row it governs, which is the only way a reader can pair the two.
-    check("and each row wears the mark the menu draws for that action",
-          switched.concat(Settings.LOCKED).filter(function (id) {
-              var mine = Settings.GLYPHS[id] !== undefined ? Settings.GLYPHS[id] : Settings.MARKS[id]
-              return mine === undefined || mine !== builtMark[id]
-          }).join(","), "")
-    // SettingsPlaces section 02 adds the listing Favorite action; SettingsMenus keeps its 20 switches and Menus' New folder has none.
-    var reachable = switched.concat(Settings.LOCKED).concat(["newFolder", "addFavourite"])
-    check("no other menu action is omitted from the board's switch inventory",
-          Object.keys(built).filter(function (id) { return reachable.indexOf(id) < 0 }).join(","), "")
 }
 
 // The Display state ui/SettingsPanel.qml passes in: the stored mode, the size ui/Theme.qml resolved from it, and the two numbers Flea reads off the compositor and never writes.
@@ -73,45 +27,6 @@ function find(rows, id) {
             return rows[i]
     }
     return {}
-}
-
-// GM's ruling, and it is easy to get backwards: menu.hidden stores what is HIDDEN, and the master's count is of ENABLED actions, so one id in the set reads "5 of 6".
-function runMaster(check) {
-    check("nothing hidden is all six enabled", Settings.basicEnabled([]), 6)
-    check("and the master reads all", Settings.masterState([]), "all")
-    check("one hidden id is five enabled", Settings.basicEnabled(["paste"]), 5)
-    check("and the master is partial", Settings.masterState(["paste"]), "some")
-    check("all six hidden is none enabled", Settings.basicEnabled(Settings.BASIC), 0)
-    check("and the master is unchecked", Settings.masterState(Settings.BASIC), "none")
-    // An unrelated id in the set must not be counted as one of the six, in either direction.
-    check("an unrelated hidden id does not change the count",
-          Settings.basicEnabled(["copypath", "compress"]), 6)
-
-    check("activating a checked master switches all six off",
-          Settings.toggleMaster([]).sort().join(","), Settings.BASIC.slice().sort().join(","))
-    check("activating a partial master switches all six on, which is the recovering keystroke",
-          Settings.toggleMaster(["paste"]).length, 0)
-    check("activating an unchecked master switches all six on too",
-          Settings.toggleMaster(Settings.BASIC).length, 0)
-    check("switching all six on preserves an unrelated hidden id",
-          Settings.toggleMaster(["paste", "copypath"]).join(","), "copypath")
-    check("and switching all six off preserves it as well",
-          Settings.toggleMaster(["copypath"]).indexOf("copypath") >= 0, true)
-
-    check("an individual toggle adds its own id and nothing else",
-          Settings.toggleId([], "paste").join(","), "paste")
-    check("and toggling it again takes only that id back out",
-          Settings.toggleId(["paste", "copypath"], "paste").join(","), "copypath")
-    check("the master recomputes off the individual toggle at once",
-          Settings.masterState(Settings.toggleId([], "cut")) + " "
-          + Settings.basicEnabled(Settings.toggleId([], "cut")), "some 5")
-
-    // menu.hidden is the sole state, so the master is a reading of that set and never a value beside it: there is no fold to apply here, and nothing a hand edit could leave the two disagreeing on.
-    check("the model exports no stored master to read", typeof Settings.effectiveHidden, "undefined")
-    check("a set with no master in it still draws one",
-          Settings.rows("menus", { hidden: ["paste"] })[1].state, "some")
-    check("and the master survives a round trip through the set it derives from",
-          Settings.masterState(Settings.toggleMaster(Settings.toggleMaster([]))), "all")
 }
 
 function runRows(check) {
@@ -152,13 +67,18 @@ function runRows(check) {
           find(display, "textStop").on, false)
 
     var menus = Settings.rows("menus", { hidden: ["paste"] })
-    check("the Menus section leads with the master row under its own heading",
-          kinds(menus).indexOf("group|master|check") === 0, true)
-    check("the master's count is drawn beside it", menus[1].value, "5 of 6")
+    check("the Menus section leads with the heading its master rides, and the rows follow it",
+          kinds(menus).indexOf("group|check|check") === 0, true)
+    check("the master's count is drawn on that heading", menus[0].value, "5 of 6")
     // The mirror of the same ruling: five ids in the set is one action left ON, never "5 of 6".
     check("and five hidden ids read as one enabled, not five",
-          Settings.rows("menus", { hidden: ["cut", "copy", "paste", "duplicate", "rename"] })[1].value,
+          Settings.rows("menus", { hidden: ["cut", "copy", "paste", "duplicate", "rename"] })[0].value,
           "1 of 6")
+    // Rule 5: the row that can destroy a file carries the urgent role and the caption the model gives it.
+    check("Delete permanently is the one row drawn urgent, and it says it is off by default",
+          menus.filter(function (r) { return r.role === "error" })
+               .map(function (r) { return r.id + "|" + r.value + "|" + r.on }).join(","),
+          "delete|off by default|true")
     check("a hidden action's row is drawn unchecked, not dropped",
           find(menus, "paste").on, false)
     check("and an enabled one is checked", find(menus, "copy").on, true)
@@ -199,16 +119,16 @@ function runRows(check) {
 
 function runCursor(check) {
     var menus = Settings.rows("menus", { hidden: [] })
-    check("a heading is never a focus stop", Settings.focusable(menus[0]), false)
-    check("so the opening cursor lands on the master row below it", Settings.firstRow(menus), 1)
+    check("a heading with no master is never a focus stop", Settings.focusable(menus[7]), false)
+    check("so the opening cursor lands on the master heading the section leads with", Settings.firstRow(menus), 0)
     check("a check row is a focus stop", Settings.focusable(menus[2]), true)
     check("a locked row is not", Settings.focusable(menus[menus.length - 1]), false)
     // Stepping past the last focus stop keeps the cursor where it is, the way the context menu's own stepCursor does, so the two locked rows at the bottom cannot swallow it.
     check("stepping down off the end holds the cursor on the last control",
           Settings.stepRow(menus, menus.length - 3, 1), menus.length - 3)
-    check("stepping up off the top holds it on the first", Settings.stepRow(menus, 1, -1), 1)
-    check("a step down crosses the heading between two groups",
-          Settings.focusable(menus[Settings.stepRow(menus, 7, 1)]), true)
+    check("stepping up off the top holds it on the first", Settings.stepRow(menus, 0, -1), 0)
+    check("a step down crosses the heading of a group that has no master",
+          Settings.focusable(menus[Settings.stepRow(menus, 6, 1)]), true)
 
     var display = Settings.rows("display", displayState(TextSize.follow(), 14))
     check("the Display section's only control is where its cursor opens",

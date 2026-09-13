@@ -32,7 +32,6 @@ src/uistore.rs 483
 tests/js/focus.js 374
 tests/js/mounts.js 383
 tests/js/ops.js 384
-tests/js/settings.js 346
 ui/Backend.qml 435
 ui/ChromeBar.qml 448
 ui/ContextMenu.qml 534

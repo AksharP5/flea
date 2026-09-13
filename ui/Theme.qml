@@ -47,7 +47,7 @@ Singleton {
         readonly property color foreground: Color.foreground
         property color muted: Qt.darker(Color.foreground, 1.4)
         readonly property color accent: Color.accent
-        readonly property color error: Color.urgent
+        property color error: Color.urgent
         property color surface: root.fallbackColor.surface
         property color symlink: root.fallbackColor.symlink
         property color executable: root.fallbackColor.executable
@@ -301,6 +301,8 @@ Singleton {
             Palette.pick(found, ["cyan", "color6"], root.fallbackColor.symlink), bg, 4.5);
         root.color.executable = Contrast.ensureRatio(
             Palette.pick(found, ["green", "color2"], root.fallbackColor.executable), bg, 4.5);
+        // Urgent is the palette's own red: seven of the 23 installed themes leave it under 4.5:1 on their own ground, so it is lifted the way symlink and executable are, and the three whose red carries no chroma at all (solitude, white, vantablack) fall back to the foreground, because a destructive row drawn in the same grey as an unavailable one reads as switched off rather than as dangerous.
+        root.color.error = Color.urgent.hsvSaturation > 0.2 ? Contrast.ensureRatio(Color.urgent, bg, 4.5) : String(Color.foreground);
         // A body that parsed to nothing left every role on its fallback, so the flag says so rather
         // than reporting that the read happened: text() returns "" for a file that is not there.
         root.ready = Palette.isPalette(found);
