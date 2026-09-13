@@ -20,6 +20,7 @@ Item {
     property var pane: null
     property string path: ""
     property string iconName: ""
+    property string kindName: ""
     property int size: 0
     property string kind: ""
     readonly property bool isMedia: root.kind === "audio" || root.kind === "video"
@@ -63,6 +64,7 @@ Item {
 
     property string pendingPath: ""
     property string pendingIcon: ""
+    property string pendingKind: ""
     property int pendingSize: 0
     // The settle idiom Pane's own thumbnail request reuses: a held j/k costs zero reloads until the cursor rests.
     readonly property int followSettleMs: 120
@@ -120,15 +122,16 @@ Item {
     }
 
     // Space opens on the cursor row; this is immediate, follow() below is the held-key j/k path.
-    function open(newPath, newIcon, newSize) {
+    function open(newPath, newIcon, newSize, newKind) {
         followSettle.stop()
-        root.load(newPath, newIcon, newSize)
+        root.load(newPath, newIcon, newSize, newKind)
     }
 
-    function follow(newPath, newIcon, newSize) {
+    function follow(newPath, newIcon, newSize, newKind) {
         root.pendingPath = newPath
         root.pendingIcon = newIcon
         root.pendingSize = newSize
+        root.pendingKind = newKind
         followSettle.restart()
     }
 
@@ -146,10 +149,12 @@ Item {
         if (root.pane) root.pane.listArea.forceActiveFocus()
     }
 
-    function load(newPath, newIcon, newSize) {
+    function load(newPath, newIcon, newSize, newKind) {
         root.path = newPath
         root.iconName = newIcon
         root.size = newSize
+        // MediaPdf rule 6: the overlay is the bigger surface, so it says at least what the column says, and the kind is the caller's because the backend named it for that row.
+        root.kindName = newKind || ""
         root.kind = Kinds.quickLookKind(newIcon, newPath)
         root.active = true
         mediaLoader.source = root.isMedia ? "PreviewMedia.qml" : ""
@@ -185,7 +190,7 @@ Item {
         id: followSettle
         interval: root.followSettleMs
         repeat: false
-        onTriggered: root.load(root.pendingPath, root.pendingIcon, root.pendingSize)
+        onTriggered: root.load(root.pendingPath, root.pendingIcon, root.pendingSize, root.pendingKind)
     }
 
     Timer {
@@ -272,6 +277,7 @@ Item {
                 item.path = Qt.binding(function () { return root.path })
                 item.kind = Qt.binding(function () { return root.kind })
                 item.size = Qt.binding(function () { return root.size })
+                item.kindName = Qt.binding(function () { return root.kindName })
             }
         }
 

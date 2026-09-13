@@ -36,7 +36,7 @@ function pdfAction(action, viewer) {
 function open(root) {
     var row = root.rowFor(root.cursorIndex)
     if (row && !row.d)
-        root.preview.open(root.join(root.path, row.n), row.i, row.s)
+        root.preview.open(root.join(root.path, row.n), row.i, row.s, root.kindNames[row.k] || "")
 }
 
 // Preview open: j/k move the cursor and the preview follows; escape always closes, and so does a
@@ -79,5 +79,5 @@ function act(action, root) {
 function follow(root) {
     var row = root.rowFor(root.cursorIndex)
     if (row && !row.d)
-        root.preview.follow(root.join(root.path, row.n), row.i, row.s)
+        root.preview.follow(root.join(root.path, row.n), row.i, row.s, root.kindNames[row.k] || "")
 }

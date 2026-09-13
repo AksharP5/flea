@@ -170,7 +170,7 @@ function openCursor(pane, opener) {
     }
     // Handing an archive on opens another file manager, and this is ui/Preview.qml's own classifier.
     if (Kinds.quickLookKind(row.i, path) === Kinds.ARCHIVE) {
-        pane.preview.open(path, row.i, row.s)
+        pane.preview.open(path, row.i, row.s, pane.kindNames[row.k] || "")
         return
     }
     opener.open(path)

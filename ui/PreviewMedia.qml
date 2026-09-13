@@ -10,6 +10,8 @@ Item {
     property string path: ""
     property string kind: "audio"
     property int size: 0
+    // What the backend called this row, which the column draws and the overlay is opened from.
+    property string kindName: ""
     // The Quick Look starts playing on open, which is its whole job. The preview column does not:
     // arrowing down a folder of clips must not start any of them.
     property bool autoStart: true
@@ -34,16 +36,19 @@ Item {
             || player.mediaStatus === MediaPlayer.BufferedMedia
             || player.mediaStatus === MediaPlayer.EndOfMedia)
 
-    // The canvas's second line under an audio name is "31 MB · flac · 44.1 kHz". Qt carries no
-    // sample-rate key at all (QMediaMetaData::Key, Qt 6.11) and the backend probe's own rate is not
-    // routed to this overlay, so this states the size and the format and stops at two parts.
+    // MediaPdf rule 6: the overlay says at least what the column says, so the kind the backend named
+    // this row leads, the duration comes off the transport a few hundred pixels below, and the size
+    // ends the line. The sample rate is the one part still missing: Qt carries no sample-rate key at
+    // all (QMediaMetaData::Key, Qt 6.11) and the backend probe's rate reaches the column's own
+    // askMeta answer, which no caller of this overlay holds.
     readonly property string facts: {
         var name = root.path.substring(root.path.lastIndexOf("/") + 1)
         var dot = name.lastIndexOf(".")
         var suffix = dot > 0 ? name.substring(dot + 1).toLowerCase() : ""
-        var bytes = root.size > 0 ? Format.size(root.size) : ""
-        if (bytes.length === 0) return suffix
-        return suffix.length === 0 ? bytes : bytes + " · " + suffix
+        var parts = [root.kindName.length > 0 ? root.kindName : suffix]
+        if (player.duration > 0) parts.push(Format.duration(player.duration))
+        if (root.size > 0) parts.push(Format.size(root.size))
+        return parts.filter(function (part) { return part.length > 0 }).join(" · ")
     }
 
     readonly property alias position: player.position
