@@ -80,12 +80,17 @@ Singleton {
         text: "0"
     }
 
+    // Trash draws its Deleted cell at body, and body/bodySmall is not one ratio across the size stops.
+    TextMetrics { id: bodyGlyphMetrics; font.family: Style.font.family; font.pixelSize: root.font.body; text: "0" }
+
     // The header and every row read these, so the two cannot drift apart.
     readonly property QtObject column: QtObject {
         // mode is a permanent column per the operator's ruling; Row and Header both read this width.
         readonly property int mode: Math.round(root.modeChars * glyphMetrics.advanceWidth)
         readonly property int size: Math.round(root.sizeChars * glyphMetrics.advanceWidth)
         readonly property int date: Math.round(root.dateChars * glyphMetrics.advanceWidth)
+        // Trash's Deleted column: the same sixteen characters in the size that draws them, ceil because a rounded width elides at base 14.
+        readonly property int trashDate: Math.ceil(root.dateChars * bodyGlyphMetrics.advanceWidth)
         // The send picker's own, anchored the way kind below it is rather than counted in characters.
         readonly property int pickerDate: Math.round(root.pickerDateBaseWidth * root.font.bodySmall / root.pickerDateBaseBodySmall)
         // Kind text varies too much for a character count, so its base is a pixel width scaled by the same ratio bodySmall already is.
@@ -152,7 +157,7 @@ Singleton {
     readonly property int modeChars: 9
     // "1000.0 kB": the SI ladder's tier-boundary rounding is one char wider than "999.9 kB".
     readonly property int sizeChars: 9
-    // "Yesterday, 23:16", the widest of Format.date's four forms.
+    // "2026-09-12 15:29", the one form Format.date prints.
     readonly property int dateChars: 16
     // SendPicker.html draws the chooser's date in an 80px slot, on a board whose base size is 14 and whose bodySmall is therefore 13.
     readonly property int pickerDateBaseWidth: 80

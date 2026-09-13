@@ -233,7 +233,7 @@ FocusScope {
                         ["Path", root.facts.path],
                         ["Type", root.facts.kind],
                         ["Size", Format.size(root.facts.bytes) + " (" + root.facts.bytes + " bytes)"],
-                        ["Modified", Format.date(root.facts.modified, Date.now())],
+                        ["Modified", Format.date(root.facts.modified)],
                         ["Permissions", root.facts.mode],
                         ["Owner", (root.facts.owner || "Unknown") + " (uid " + root.facts.uid + ")"],
                         ["Group", "gid " + root.facts.gid]

@@ -1,11 +1,15 @@
 .import "../../ui/js/TrashDates.js" as Trash
 function run(check) {
-    var now = new Date(2026, 8, 8, 12).getTime()
-    check("today", Trash.deleted("2026-09-08T01:00:00", now), "today")
-    check("yesterday", Trash.deleted("2026-09-07T23:00:00", now), "yesterday")
-    check("older day", Trash.deleted("2026-08-30T12:00:00", now), "Aug 30")
-    check("older year", Trash.deleted("2025-08-30T12:00:00", now), "Aug 30 2025")
-    check("missing date is honest", Trash.deleted("", now), "Unknown")
+    // One stamp, whatever the day, so the trash queue sorts against the file list.
+    check("this morning", Trash.deleted("2026-09-08T01:00:00"), "2026-09-08 01:00")
+    check("last night", Trash.deleted("2026-09-07T23:00:00"), "2026-09-07 23:00")
+    check("an older day", Trash.deleted("2026-08-30T12:00:00"), "2026-08-30 12:00")
+    check("an older year", Trash.deleted("2025-08-30T12:00:00"), "2025-08-30 12:00")
+    // Every stamp is the width TrashView.qml's Deleted column is cut for.
+    check("the stamp is always sixteen characters",
+          Trash.deleted("2026-09-08T01:00:00").length, 16)
+    check("missing date is honest", Trash.deleted(""), "Unknown")
+    check("an unreadable date is honest too", Trash.deleted("not a date"), "Unknown")
     check("home child location", Trash.location("/home/gm/Pictures/photo.png", "/home/gm"), "~/Pictures")
     check("home file location", Trash.location("/home/gm/photo.png", "/home/gm"), "~")
     check("similar home prefix stays absolute", Trash.location("/home/gm-other/photo.png", "/home/gm"), "/home/gm-other")
@@ -45,7 +49,7 @@ function run(check) {
 
     // The same defect in the label above the sweep: new Date(null) is the epoch, so an item with no
     // date read as a day in 1970 rather than as Unknown.
-    check("a null date has no label either", Trash.deleted(null, sweepNow), "Unknown")
-    check("an absent date has no label", Trash.deleted(undefined, sweepNow), "Unknown")
-    check("an empty date has no label", Trash.deleted("", sweepNow), "Unknown")
+    check("a null date has no label either", Trash.deleted(null), "Unknown")
+    check("an absent date has no label", Trash.deleted(undefined), "Unknown")
+    check("an empty date has no label", Trash.deleted(""), "Unknown")
 }

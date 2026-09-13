@@ -28,17 +28,20 @@ function run(check) {
     check("a terabyte", Format.size(1000000000000), "1.0 TB")
 
     // Local constructors keep these wall-clock expectations valid in every non-UTC test zone.
-    var midnightNow = new Date(2026, 0, 1, 0, 15).getTime()
-    check("today follows the local midnight",
-          Format.date(new Date(2026, 0, 1, 0, 10).getTime() / 1000, midnightNow), "Today, 00:10")
-    check("yesterday crosses the local year boundary",
-          Format.date(new Date(2025, 11, 31, 23, 55).getTime() / 1000, midnightNow), "Yesterday, 23:55")
-    check("a past year carries it and drops the time",
-          Format.date(new Date(2025, 11, 30, 22, 0).getTime() / 1000, midnightNow), "30 Dec 2025")
-
-    var currentYearNow = new Date(2026, 7, 27, 12, 0).getTime()
-    check("this year omits the year",
-          Format.date(new Date(2026, 6, 28, 0, 27).getTime() / 1000, currentYearNow), "28 Jul, 00:27")
+    check("the stamp is the local wall clock",
+          Format.date(new Date(2026, 0, 1, 0, 10).getTime() / 1000), "2026-01-01 00:10")
+    check("the minute before local midnight keeps its own day",
+          Format.date(new Date(2025, 11, 31, 23, 55).getTime() / 1000), "2025-12-31 23:55")
+    check("an older instant is the same form, never a shorter one",
+          Format.date(new Date(2025, 11, 30, 22, 0).getTime() / 1000), "2025-12-30 22:00")
+    check("this year is the same form too",
+          Format.date(new Date(2026, 6, 28, 0, 27).getTime() / 1000), "2026-07-28 00:27")
+    // Single-digit months and days pad, which is what makes the column sortable as text.
+    check("a single-digit month and day both pad",
+          Format.date(new Date(2026, 8, 5, 9, 4).getTime() / 1000), "2026-09-05 09:04")
+    // ui/Theme.qml sizes column.date at dateChars, so no instant may be wider than that.
+    check("the stamp is always the sixteen characters the column is cut for",
+          Format.date(new Date(2026, 8, 5, 9, 4).getTime() / 1000).length, 16)
 
     // The send picker's own column: SendPicker.html draws 11:32, 10:18, 21 Aug and 15 Aug, and the
     // window's Format.date above is untouched. Fixed instants throughout, never Date.now().
@@ -81,9 +84,9 @@ function run(check) {
     check("the widest compact form is the ten characters the column is cut for",
           Format.compactDate(new Date(2025, 7, 21, 10, 0).getTime() / 1000, fromTwentySix).length, 10)
 
-    // The window keeps its own form for the same instant; the picker column is the only thing that moved.
-    check("the window's date is untouched by the picker's",
-          Format.date(new Date(2025, 7, 21, 10, 0).getTime() / 1000, fromTwentySix), "21 Aug 2025")
+    // The window keeps its own form for the same instant; the picker column is the narrower one.
+    check("the window's stamp is not the picker's compact form",
+          Format.date(new Date(2025, 7, 21, 10, 0).getTime() / 1000), "2025-08-21 10:00")
 
     check("a regular file 644", Format.permissions(33188), "rw-r--r--")
     check("a directory 755", Format.permissions(16877), "rwxr-xr-x")

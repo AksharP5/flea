@@ -147,7 +147,7 @@ function archiveMore(meta, shown) {
 }
 
 // The rows the canvas draws for each state, in its own order, with the labels it uses verbatim.
-function facts(st, row, meta, kindName, nowMs, extra) {
+function facts(st, row, meta, kindName, extra) {
     var e = extra || {}
     if (st === VIDEO || st === AUDIO) {
         var m = mediaExtra(meta)
@@ -162,7 +162,7 @@ function facts(st, row, meta, kindName, nowMs, extra) {
     switch (st) {
     case IMAGE:
         return [pair("Kind", kindName), pair("Size", Format.size(row.s)),
-                pair("Pixels", pixels(meta)), pair("Modified", Format.date(row.m, nowMs))]
+                pair("Pixels", pixels(meta)), pair("Modified", Format.date(row.m))]
     case VIDEO:
         return [pair("Kind", kindName), pair("Duration", e.duration || ""),
                 pair("Pixels", pixels(meta)), pair("Size", Format.size(row.s))]
@@ -171,10 +171,10 @@ function facts(st, row, meta, kindName, nowMs, extra) {
                 pair("Rate", e.rate || ""), pair("Size", Format.size(row.s))]
     case PDF:
         return [pair("Kind", kindName), pair("Pages", e.pages || ""),
-                pair("Size", Format.size(row.s)), pair("Modified", Format.date(row.m, nowMs))]
+                pair("Size", Format.size(row.s)), pair("Modified", Format.date(row.m))]
     case TEXT:
         return [pair("Kind", kindName), pair("Size", Format.size(row.s)),
-                pair("Lines", lineCount(meta)), pair("Modified", Format.date(row.m, nowMs))]
+                pair("Lines", lineCount(meta)), pair("Modified", Format.date(row.m))]
     case CODE:
         return [pair("Kind", kindName), pair("Size", Format.size(row.s)),
                 pair("Lines", lineCount(meta)), pair("Mode", Format.permissions(row.p))]
@@ -193,14 +193,14 @@ function facts(st, row, meta, kindName, nowMs, extra) {
     }
     // Unsupported, which is also where a kind whose facts are a later plan lands until it arrives.
     return [pair("Kind", kindName), pair("Size", Format.size(row.s)),
-            pair("Modified", Format.date(row.m, nowMs)), pair("Mode", Format.permissions(row.p))]
+            pair("Modified", Format.date(row.m)), pair("Mode", Format.permissions(row.p))]
 }
 
 // The multi-selection summary, which is a summary and never a collage: counts and a combined size.
 // selectionCount is the true size of the selection; rows is only what the held window actually
 // carries. A selection wider than that window cannot be summed without a metadata sweep, which this
 // codebase refuses everywhere, so the numbers become floors and say so rather than undercounting.
-function multiFacts(rows, nowMs, selectionCount) {
+function multiFacts(rows, selectionCount) {
     var groups = kindGroups(rows)
     var bytes = 0
     var newest = 0
@@ -218,8 +218,8 @@ function multiFacts(rows, nowMs, selectionCount) {
     }
     var floor = (selectionCount !== undefined && selectionCount > counted) ? "> " : ""
     return [pair("Kinds", kindSummary(groups, floor)), pair("Combined", floor + Format.size(bytes)),
-            pair("Newest", newest > 0 ? floor + Format.date(newest, nowMs) : ""),
-            pair("Oldest", oldest > 0 ? floor + Format.date(oldest, nowMs) : "")]
+            pair("Newest", newest > 0 ? floor + Format.date(newest) : ""),
+            pair("Oldest", oldest > 0 ? floor + Format.date(oldest) : "")]
 }
 
 // The distinct kinds in a selection, in the order they were met, each carrying the mark its own

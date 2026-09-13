@@ -380,7 +380,7 @@ FocusScope {
                 color: Theme.color.foreground
                 font { family: Theme.font.family; pixelSize: Theme.font.caption }
             }
-            // TrashSidebar's fixed columns are 210/110 at bodySmall 13, then clamp to preserve the name.
+            // The location column is 210 at bodySmall 13; Deleted takes its own body-measured token. Both clamp to preserve the name.
             Text {
                 id: locationTitle
                 width: Math.min(Math.round(210 * Theme.font.bodySmall / 13), root.width * 0.35)
@@ -394,7 +394,7 @@ FocusScope {
             }
             Text {
                 id: deletedTitle
-                width: Math.min(Math.round(110 * Theme.font.bodySmall / 13), root.width * 0.2)
+                width: Math.min(Theme.column.trashDate, root.width * 0.2)
                 anchors.verticalCenter: parent.verticalCenter
                 horizontalAlignment: Text.AlignRight
                 text: "Deleted"
@@ -440,7 +440,7 @@ FocusScope {
                     Flea.Glyph { width: Theme.markSize; height: parent.height; name: itemRow.item ? (itemRow.item.directory ? "folder" : Icons.glyphFor(itemRow.item.icon)) : "file"; color: Theme.color.foreground }
                     Text { width: Math.max(0, parent.width - Theme.markSize - original.width - deleted.width - 3 * parent.spacing); anchors.verticalCenter: parent.verticalCenter; text: itemRow.item ? itemRow.item.original.split("/").pop() : ""; textFormat: Text.PlainText; elide: Text.ElideRight; color: Theme.color.foreground; font { family: Theme.font.family; pixelSize: Theme.font.body } }
                     Text { id: original; width: locationTitle.width; anchors.verticalCenter: parent.verticalCenter; text: itemRow.item ? Trash.location(itemRow.item.original, root.home) : ""; textFormat: Text.PlainText; elide: Text.ElideLeft; horizontalAlignment: Text.AlignRight; color: Theme.color.foreground; font { family: Theme.font.family; pixelSize: Theme.font.body } }
-                    Text { id: deleted; width: deletedTitle.width; anchors.verticalCenter: parent.verticalCenter; text: itemRow.item ? Trash.deleted(itemRow.item.deleted, Date.now()) : ""; textFormat: Text.PlainText; elide: Text.ElideRight; horizontalAlignment: Text.AlignRight; color: Theme.color.foreground; font { family: Theme.font.family; pixelSize: Theme.font.body } }
+                    Text { id: deleted; width: deletedTitle.width; anchors.verticalCenter: parent.verticalCenter; text: itemRow.item ? Trash.deleted(itemRow.item.deleted) : ""; textFormat: Text.PlainText; elide: Text.ElideRight; horizontalAlignment: Text.AlignRight; color: Theme.color.foreground; font { family: Theme.font.family; pixelSize: Theme.font.body } }
                 }
                 HoverHandler { id: hover }
                 Accessible.role: Accessible.ListItem

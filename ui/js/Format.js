@@ -33,24 +33,15 @@ function localDay(d) {
     return Math.floor((d.getTime() - d.getTimezoneOffset() * MILLISECONDS_PER_MINUTE) / (SECONDS_PER_DAY * 1000))
 }
 
-// Never all-numeric; the stamp and Today/Yesterday boundary follow the machine's local wall clock.
-function date(mtime, nowMs) {
-    var d = new Date(mtime * 1000)
-    var now = new Date(nowMs)
-    var clock = pad(d.getHours()) + ":" + pad(d.getMinutes())
-    var day = localDay(d)
-    var today = localDay(now)
-    if (day === today) {
-        return "Today, " + clock
-    }
-    if (day === today - 1) {
-        return "Yesterday, " + clock
-    }
-    var stamp = d.getDate() + " " + MONTHS[d.getMonth()]
-    // The distant past omits the time, per Material's second table.
-    return d.getFullYear() === now.getFullYear()
-        ? stamp + ", " + clock
-        : stamp + " " + d.getFullYear()
+// "2026-09-12 15:29", the one form every surface prints, in the machine's local wall clock.
+function stamp(d) {
+    return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate())
+        + " " + pad(d.getHours()) + ":" + pad(d.getMinutes())
+}
+
+// One form, sortable and unambiguous, so no surface has to invent a relative word for a time.
+function date(mtime) {
+    return stamp(new Date(mtime * 1000))
 }
 
 // The send picker's column is SendPicker.html's 80 and not the window's 125, so its date drops the
@@ -61,9 +52,9 @@ function compactDate(mtime, nowMs) {
     if (localDay(d) === localDay(now)) {
         return pad(d.getHours()) + ":" + pad(d.getMinutes())
     }
-    var stamp = d.getDate() + " " + MONTHS[d.getMonth()]
+    var dayStamp = d.getDate() + " " + MONTHS[d.getMonth()]
     // A bare "21 Aug" reads the same in every year, so an earlier one carries a two-digit year.
-    return d.getFullYear() === now.getFullYear() ? stamp : stamp + " '" + pad(d.getFullYear() % 100)
+    return d.getFullYear() === now.getFullYear() ? dayStamp : dayStamp + " '" + pad(d.getFullYear() % 100)
 }
 
 // The low nine bits of st_mode, read three at a time.

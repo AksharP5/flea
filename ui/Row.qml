@@ -85,7 +85,7 @@ Item {
     Accessible.role: Accessible.ListItem
     Accessible.name: root.displayName
     // The compact form drops the clock, so the picker's rows carry the whole stamp here instead; this tree has no tooltip.
-    Accessible.description: root.compactDate && root.row && root.row.m !== null ? Format.date(root.row.m, Date.now()) : ""
+    Accessible.description: root.compactDate && root.row && root.row.m !== null ? Format.date(root.row.m) : ""
 
     Rectangle {
         anchors.fill: parent
@@ -352,7 +352,7 @@ Item {
         return (root.dirSize.partial ? ">" : "") + Format.size(root.dirSize.bytes)
     }
 
-    // The window's own four forms, or the picker's compact three; both are cell text and nothing more.
+    // The window's one stamp, or the picker's compact three; both are cell text and nothing more.
     function dateText() {
         if (!root.row) {
             return ""
@@ -361,7 +361,7 @@ Item {
         if (root.row.m === null) {
             return "--"
         }
-        return root.compactDate ? Format.compactDate(root.row.m, Date.now()) : Format.date(root.row.m, Date.now())
+        return root.compactDate ? Format.compactDate(root.row.m, Date.now()) : Format.date(root.row.m)
     }
 
     // row.k indexes root.kindNames; an index past its bounds (a row held over from an older listing) reads as empty, never a crash.
