@@ -88,6 +88,20 @@ at_least() {
     awk -v g="$got" -v f="$floor" 'BEGIN { exit !(g >= f) }' \
         || fail "$theme: $rule is $got, under $floor"
 }
+# The first of these keys colors.toml sets, as "#rrggbb". Sample input, one line of the file:
+#   background = "#1e1e2e"   # the canvas
+colour_for() {
+    local file="$1" key line hex
+    shift
+    for key in "$@"; do
+        line=$(grep -m1 -E "^$key[[:space:]]*=" "$file")
+        hex=$(printf '%s\n' "$line" | grep -o '#[0-9A-Fa-f]\{6\}' | tr 'A-F' 'a-f')
+        if [ -n "$hex" ]; then
+            printf '%s' "$hex"
+            return
+        fi
+    done
+}
 # One pixel of a shot, as "#rrggbb": a fill and a frame are solid, so a pixel is the colour itself.
 pixel_at() {
     magick "$1" -format "%[hex:p{$2,$3}]" info: | tr 'A-F' 'a-f' | cut -c1-6
@@ -137,9 +151,11 @@ for colours in "$themes_dir"/*/colors.toml; do
     read -r bg surface fg muted accent error symlink executable accentframe <<< "$(ipc palette)"
     case "$bg$fg$muted$accent$accentframe" in *"#"*) ;; *) fail "$theme: the window reports no palette"; continue ;; esac
     case "$accentframe" in "#"*) ;; *) fail "$theme: the window reports no accentFrame field"; continue ;; esac
-    # Sample input, one line of colors.toml: background = "#1e1e2e"   # the canvas
-    want_bg=$(grep -m1 '^background' "$colours" | grep -o '#[0-9A-Fa-f]\{6\}' | tr 'A-F' 'a-f')
-    want_fg=$(grep -m1 '^foreground' "$colours" | grep -o '#[0-9A-Fa-f]\{6\}' | tr 'A-F' 'a-f')
+    # The keys Commons/Color.qml maps, first match wins, each anchored to its own key so background_dim
+    # cannot answer for background. Sample input, one line of colors.toml: background = "#1e1e2e"
+    want_bg=$(colour_for "$colours" background color0)
+    want_fg=$(colour_for "$colours" foreground color7)
+    want_muted=$(colour_for "$colours" muted)
     # An unreadable file is the sweep losing its binding, so it reddens rather than skipping quietly.
     [ -n "$want_bg" ] && [ -n "$want_fg" ] \
         || fail "$theme: colors.toml names no background or foreground this sweep can bind to"
@@ -157,9 +173,17 @@ for colours in "$themes_dir"/*/colors.toml; do
     at_least "$theme" "executable on background" "$(ratio "$executable" "$bg")" "$text_min"
     at_least "$theme" "the primary frame on the card's surface" "$(ratio "$accentframe" "$surface")" "$caption_min"
     # The role is the accent lifted onto the card, so a theme whose accent already clears the floor
-    # reports the accent itself: a frame bound to another role would still clear it and reddens here.
-    awk -v r="$(ratio "$accent" "$surface")" -v f="$caption_min" 'BEGIN { exit !(r >= f) }' \
-        && same_colour "$theme" "the primary frame" "$accentframe" "$accent"
+    # reports that accent itself, exactly: both come from one palette read, with no shot between them.
+    if awk -v r="$(ratio "$accent" "$surface")" -v f="$caption_min" 'BEGIN { exit !(r >= f) }'; then
+        [ "$accentframe" = "$accent" ] \
+            || fail "$theme: the primary frame is $accentframe, not this theme's own accent $accent"
+    fi
+    # The caption is the palette's own muted lifted to that same floor, so a theme already clearing it
+    # reports that muted itself: this is what binds the role tests/js/themes.js mirrors to the file.
+    if [ -n "$want_muted" ] && awk -v r="$(ratio "$want_muted" "$bg")" -v f="$caption_min" 'BEGIN { exit !(r >= f) }'; then
+        [ "$want_muted" = "$muted" ] \
+            || fail "$theme: the caption draws $muted, not this theme's own $want_muted"
+    fi
 
     # The cursor row's own accent edge, marked and hovered rows beside it: a shot of all three.
     key j; sleep 0.5

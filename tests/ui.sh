@@ -2339,7 +2339,7 @@ case_lifted() {
 
     # Found by name, not by a predicted sort position, see goto_row and icon_of for the same rule.
     local foreground symlink_colour i link_row=-1 plain_row=-1
-    read -r _background _surface foreground _muted _accent _error symlink_colour _executable <<< "$(ipc palette)"
+    read -r _background _surface foreground _muted _accent _error symlink_colour _executable _rest <<< "$(ipc palette)"
     for ((i = 0; i < 2; i++)); do
         case "$(ipc rowAt "$i")" in
             z-link\|*) link_row=$i ;;
@@ -5965,8 +5965,18 @@ EOS
         || fail "phones: the menu's Mount did not mount the row, got $(ipc deviceEntries)"
 
     # And the row's own click does the same from the other side, which is what a share row does too.
+    # The pane is walked off the mount first: the menu leg above already opened it, so a click asserted
+    # from there would pass with the click deleted.
     key -k Tab >/dev/null
     settle
+    for _attempt in 1 2 3 4; do
+        [[ "$(ipc focusView)" == "list" ]] && break
+        key -k Tab >/dev/null
+        settle
+    done
+    key h >/dev/null
+    wait_path "$dir/gvfs"
+    wait_listing 1
     click_rail_row "$(rail_row_of 'SAMSUNG Android')" left
     wait_path "$fuse"
     wait_listing 1

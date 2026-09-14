@@ -8,8 +8,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 const CHUNK: usize = 256 * 1024;
 // rename(2) sets EXDEV when the two paths are on different filesystems, which is the one failure that means "copy instead".
 const EXDEV: i32 = 18;
-use crate::oflags::O_NOFOLLOW;
-use std::os::unix::fs::PermissionsExt;
+use crate::oflags::{O_DIRECTORY, O_NOFOLLOW};
+use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+use std::os::unix::io::AsRawFd;
 
 // What a copy reports as it runs; a directory has no total without a sweep, so it reports 0 and renders indeterminate.
 pub struct Progress<'a> {
@@ -27,17 +28,33 @@ pub fn cancelled(p: &Progress) -> bool {
     p.cancel.load(Ordering::Relaxed)
 }
 
+// A path the filesystem is asked about, beside the path an error names. Inside a tree the first is a
+// held descriptor's own /proc entry, which is the one parent a rename cannot reach.
+#[derive(Clone, Copy)]
+pub struct At<'a> {
+    pub at: &'a Path,
+    pub named: &'a Path,
+}
+
+fn here(path: &Path) -> At<'_> {
+    At { at: path, named: path }
+}
+
 // Copies one regular file, creating the destination exclusively so an existing file is never destroyed.
 pub fn copy_file(src: &Path, dst: &Path, total: u64, p: &mut Progress) -> Result<(), FleaError> {
+    copy_file_at(here(src), here(dst), total, p)
+}
+
+fn copy_file_at(src: At, dst: At, total: u64, p: &mut Progress) -> Result<(), FleaError> {
     // Anything reaching here that is not a regular file was swapped in after copy_any's stat:
     // O_NOFOLLOW refuses a symlink, and regfile's non-blocking open and fstat refuse every other kind.
-    let mut r = crate::backend::regfile::open_if_regular(src, O_NOFOLLOW)
-        .map_err(|e| from_io("copy", &src.to_string_lossy(), &e))?;
+    let mut r = crate::backend::regfile::open_if_regular(src.at, O_NOFOLLOW)
+        .map_err(|e| from_io("copy", &src.named.to_string_lossy(), &e))?;
     let mut w = std::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
-        .open(dst)
-        .map_err(|e| from_io("copy", &dst.to_string_lossy(), &e))?;
+        .open(dst.at)
+        .map_err(|e| from_io("copy", &dst.named.to_string_lossy(), &e))?;
     // From here the destination exists, and every failure below leaves it for the caller to journal.
     let mut buf = vec![0u8; CHUNK];
     let mut done: u64 = 0;
@@ -45,18 +62,18 @@ pub fn copy_file(src: &Path, dst: &Path, total: u64, p: &mut Progress) -> Result
         if cancelled(p) {
             // The partial file goes with the cancel: a half-written destination is not a result anyone asked for.
             drop(w);
-            let _ = std::fs::remove_file(dst);
-            return Err(cancel_err(dst));
+            let _ = std::fs::remove_file(dst.at);
+            return Err(cancel_err(dst.named));
         }
         let n = match r.read(&mut buf) {
             Ok(n) => n,
-            Err(e) => return Err(left_partial(p, dst, from_io("copy", &src.to_string_lossy(), &e))),
+            Err(e) => return Err(left_partial(p, dst.named, from_io("copy", &src.named.to_string_lossy(), &e))),
         };
         if n == 0 {
             break;
         }
         if let Err(e) = w.write_all(&buf[..n]) {
-            return Err(left_partial(p, dst, from_io("copy", &dst.to_string_lossy(), &e)));
+            return Err(left_partial(p, dst.named, from_io("copy", &dst.named.to_string_lossy(), &e)));
         }
         done += n as u64;
         let (reported, against) = match p.tree {
@@ -66,14 +83,14 @@ pub fn copy_file(src: &Path, dst: &Path, total: u64, p: &mut Progress) -> Result
         (p.on_bytes)(reported, against);
     }
     if let Err(e) = w.flush() {
-        return Err(left_partial(p, dst, from_io("copy", &dst.to_string_lossy(), &e)));
+        return Err(left_partial(p, dst.named, from_io("copy", &dst.named.to_string_lossy(), &e)));
     }
     // Issue 109: a create takes the umask, so a 0600 source landed 0644 and the copy published what the
     // original kept private. The source's own bits are carried, narrowed by the umask and never widened.
     if let Ok(meta) = r.metadata() {
         let mode = keep_mode(meta.permissions().mode());
         if let Err(e) = w.set_permissions(std::fs::Permissions::from_mode(mode)) {
-            return Err(left_partial(p, dst, from_io("copy", &dst.to_string_lossy(), &e)));
+            return Err(left_partial(p, dst.named, from_io("copy", &dst.named.to_string_lossy(), &e)));
         }
     }
     if let Some(carried) = p.tree.as_mut() {
@@ -110,72 +127,114 @@ fn left_partial(p: &mut Progress, dst: &Path, e: FleaError) -> FleaError {
 
 // A symlink is copied as a symlink and never followed, matching cp -a and every rival in the parity audit.
 pub fn copy_symlink(src: &Path, dst: &Path) -> Result<(), FleaError> {
-    let target = std::fs::read_link(src).map_err(|e| from_io("copy", &src.to_string_lossy(), &e))?;
-    std::os::unix::fs::symlink(&target, dst).map_err(|e| from_io("copy", &dst.to_string_lossy(), &e))
+    copy_symlink_at(here(src), here(dst))
+}
+
+fn copy_symlink_at(src: At, dst: At) -> Result<(), FleaError> {
+    let target = std::fs::read_link(src.at).map_err(|e| from_io("copy", &src.named.to_string_lossy(), &e))?;
+    std::os::unix::fs::symlink(&target, dst.at).map_err(|e| from_io("copy", &dst.named.to_string_lossy(), &e))
 }
 
 // Copies a file, a symlink, a whole directory tree, or any other node by recreating it. The
 // destination must not already exist.
 pub fn copy_any(src: &Path, dst: &Path, p: &mut Progress) -> Result<(), FleaError> {
+    copy_at(here(src), here(dst), p)
+}
+
+fn copy_at(src: At, dst: At, p: &mut Progress) -> Result<(), FleaError> {
     let meta = src
+        .at
         .symlink_metadata()
-        .map_err(|e| from_io("copy", &src.to_string_lossy(), &e))?;
+        .map_err(|e| from_io("copy", &src.named.to_string_lossy(), &e))?;
     if meta.file_type().is_symlink() {
-        return copy_symlink(src, dst);
+        return copy_symlink_at(src, dst);
     }
     if meta.is_dir() {
-        return copy_dir(src, dst, p);
+        return copy_dir_at(src, dst, p);
     }
     if meta.is_file() {
-        return copy_file(src, dst, meta.len(), p);
+        return copy_file_at(src, dst, meta.len(), p);
     }
     // A fifo, a socket and a device node are the rest, and none of them has contents copy_file could
     // stream: the fifo's open waits, the socket's fails, and the device's would never end.
-    crate::backend::copynode::copy_node(&meta, dst)
+    crate::backend::copynode::copy_node(&meta, dst.at)
 }
 
-fn copy_dir(src: &Path, dst: &Path, p: &mut Progress) -> Result<(), FleaError> {
-    std::fs::create_dir(dst).map_err(|e| from_io("copy", &dst.to_string_lossy(), &e))?;
+fn copy_dir_at(src: At, dst: At, p: &mut Progress) -> Result<(), FleaError> {
+    // Issue 110: both ends are held open and every child is reached through those descriptors, because
+    // resolving a child from its path again lets a parent renamed aside mid-copy redirect the rest of
+    // the tree through a symlink. corner: one descriptor a level, so a tree deeper than this process's
+    // open-file limit fails where it used to recurse.
+    let from = open_dir(src.at).map_err(|e| from_io("copy", &src.named.to_string_lossy(), &e))?;
+    std::fs::create_dir(dst.at).map_err(|e| from_io("copy", &dst.named.to_string_lossy(), &e))?;
+    let into = open_dir(dst.at).map_err(|e| from_io("copy", &dst.named.to_string_lossy(), &e))?;
+    let (from_held, into_held) = (held_path(&from), held_path(&into));
     // Issue 109 again, one level up: a 0700 directory landed 0755 and its contents were readable by
-    // anyone. The mode is set after the entries are copied, at the end of copy_dir below.
-    let keep = std::fs::symlink_metadata(src).ok().map(|m| keep_mode(m.permissions().mode()));
+    // anyone. The mode is set after the entries are copied, at the end of this function.
+    let keep = from.metadata().ok().map(|m| keep_mode(m.permissions().mode()));
     // Set once at the top of the tree, so a directory inside it goes on counting rather than starting again.
     if p.tree.is_none() {
         p.tree = Some(0);
     }
-    let r = copy_dir_entries(src, dst, p);
+    let r = copy_dir_entries(
+        At { at: &from_held, named: src.named },
+        At { at: &into_held, named: dst.named },
+        p,
+    );
     if r.is_err() {
         if cancelled(p) {
             // The tree goes with the cancel, the same rule copy_file already applies to a partial file: a
             // half-copied directory is not a result anyone asked for, and no journal step records one.
             // Gated on the flag rather than the message, because a nested copy_file returns its own cancel.
-            let _ = std::fs::remove_dir_all(dst);
+            let _ = std::fs::remove_dir_all(dst.at);
             p.partial = None;
         } else {
             // Any other failure leaves what was copied, since removing it would destroy data on a
             // transient error, and reports the whole tree as the one partial the journal records.
-            p.partial = Some(dst.to_path_buf());
+            p.partial = Some(dst.named.to_path_buf());
         }
         return r;
     }
     // Last, so a directory this run still has to write into is not made unwritable halfway through.
     if let Some(mode) = keep {
-        std::fs::set_permissions(dst, std::fs::Permissions::from_mode(mode))
-            .map_err(|e| from_io("copy", &dst.to_string_lossy(), &e))?;
+        std::fs::set_permissions(&into_held, std::fs::Permissions::from_mode(mode))
+            .map_err(|e| from_io("copy", &dst.named.to_string_lossy(), &e))?;
     }
     r
 }
 
-fn copy_dir_entries(src: &Path, dst: &Path, p: &mut Progress) -> Result<(), FleaError> {
-    let entries = std::fs::read_dir(src).map_err(|e| from_io("copy", &src.to_string_lossy(), &e))?;
+fn copy_dir_entries(src: At, dst: At, p: &mut Progress) -> Result<(), FleaError> {
+    let entries = std::fs::read_dir(src.at).map_err(|e| from_io("copy", &src.named.to_string_lossy(), &e))?;
     for entry in entries {
         if cancelled(p) {
-            return Err(cancel_err(dst));
+            return Err(cancel_err(dst.named));
         }
-        let entry = entry.map_err(|e| from_io("copy", &src.to_string_lossy(), &e))?;
-        copy_any(&entry.path(), &dst.join(entry.file_name()), p)?;
+        let entry = entry.map_err(|e| from_io("copy", &src.named.to_string_lossy(), &e))?;
+        let name = entry.file_name();
+        let (from_at, from_named) = (src.at.join(&name), src.named.join(&name));
+        let (into_at, into_named) = (dst.at.join(&name), dst.named.join(&name));
+        copy_at(
+            At { at: &from_at, named: &from_named },
+            At { at: &into_at, named: &into_named },
+            p,
+        )?;
     }
     Ok(())
+}
+
+// The path that reaches a held directory through this process's own descriptor table, so no rename of
+// the name it was opened under can put anything else behind it. Linux only, the one platform this ships on.
+fn held_path(dir: &std::fs::File) -> PathBuf {
+    PathBuf::from(format!("/proc/self/fd/{}", dir.as_raw_fd()))
+}
+
+// O_DIRECTORY refuses anything that is not a directory and O_NOFOLLOW refuses a symlink swapped in at
+// the name itself, so the descriptor is the directory this copy stat'd or the open fails.
+fn open_dir(path: &Path) -> std::io::Result<std::fs::File> {
+    std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(O_DIRECTORY | O_NOFOLLOW)
+        .open(path)
 }
 
 // Same filesystem is a rename; a different one is copy-then-remove, and the source only goes once the copy is complete.

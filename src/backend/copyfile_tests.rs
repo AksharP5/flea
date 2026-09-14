@@ -133,6 +133,35 @@ fn a_directory_is_copied_with_its_tree_and_its_links() {
     assert!(d.join("clone/link").symlink_metadata().unwrap().file_type().is_symlink());
 }
 
+// Issue 110: the tree's own parent is renamed aside between two children and a symlink to somebody
+// else's directory is left at its name. Resolving each child from the path again reads the second file
+// through that symlink, so private bytes land in the destination.
+#[test]
+fn a_parent_swapped_between_two_children_cannot_redirect_the_copy() {
+    let d = TestDir::new("copyswap");
+    let src = d.dir("selected");
+    std::fs::write(src.join("a.txt"), "public a").unwrap();
+    std::fs::write(src.join("b.txt"), "public b").unwrap();
+    let outside = d.dir("outside");
+    std::fs::write(outside.join("a.txt"), "PRIVATE").unwrap();
+    std::fs::write(outside.join("b.txt"), "PRIVATE").unwrap();
+    let flag = AtomicBool::new(false);
+    let swapped = std::cell::Cell::new(false);
+    // The swap lands after the first child's bytes, which is the window the issue's own fixture uses.
+    let mut sink = |_: u64, _: u64| {
+        if !swapped.replace(true) {
+            std::fs::rename(&src, d.join("moved")).expect("the rename an attacker makes");
+            std::os::unix::fs::symlink(&outside, &src).expect("the symlink left at its name");
+        }
+    };
+    let clone = d.join("clone");
+    let _ = copy_any(&src, &clone, &mut quiet(&flag, &mut sink));
+    for name in ["a.txt", "b.txt"] {
+        let landed = std::fs::read_to_string(clone.join(name)).unwrap_or_default();
+        assert!(!landed.contains("PRIVATE"), "{name} was read through the replacement symlink: {landed:?}");
+    }
+}
+
 #[test]
 fn a_cancelled_copy_leaves_no_partial_file_behind() {
     let d = TestDir::new("copycancel");
