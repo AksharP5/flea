@@ -57,6 +57,12 @@ function summary(list, loaded, total) {
     return total > loaded ? head + " · of " + Format.count(total) + " in this folder" : head
 }
 
+// States' no-match tile: the pane names the query back and says how many rows it tested, because
+// the query is up in a strip the reader may have looked away from.
+function noMatch(total) {
+    return total === 1 ? "1 row here, and not it" : Format.count(total) + " rows here, none of them"
+}
+
 // The rows drawn between two ends, which is not the range between them: a plain index range would
 // sweep up every row the filter hid in the gap, and nothing on screen would say it had.
 function between(list, a, b) {

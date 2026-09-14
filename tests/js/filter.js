@@ -235,4 +235,7 @@ function run(check) {
           + "scripts Screens screenshot-2026-08-30.png screenrecording-2026-08-21.mp4")
     check("and directories still lead the filtered view after a reverse",
           sortFirst.map(function (i) { return Fixture.reversed()[i].d }).join(","), "true,true,false,false")
+    // States' no-match tile: the query named back, and the count of rows the filter tested.
+    check("a filter that matches none says how many rows it tested", Filter.noMatch(11), "11 rows here, none of them")
+    check("and a single row keeps the sentence readable", Filter.noMatch(1), "1 row here, and not it")
 }

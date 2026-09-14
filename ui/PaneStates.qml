@@ -52,5 +52,7 @@ Item {
         listingState: root.pane.listingState
         lockedMode: root.pane.lockedMode
         total: root.pane.total
+        filterQuery: root.pane.filterQuery
+        shown: root.pane.filterQuery.length > 0 ? root.pane.shownTotal : -1
     }
 }
