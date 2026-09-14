@@ -5932,7 +5932,7 @@ EOS
         || fail "phones: the two volumes are not two unmounted DEVICES rows, got $(ipc deviceEntries)"
     # Behind the block devices, per the DEVICES rule: a block device leads and the phones are the tail.
     ipc railEntries | jq -e '[.[] | select(.group == "device") | .kind] | index("phone") as $i
-        | ($i != null) and ($i > 0) and (.[$i:] | all(. == "phone")) and (.[0:$i] | all(. != "phone"))' >/dev/null \
+        | ($i != null) and ($i > 0) and (.[$i:] | all(. == "phone"))' >/dev/null \
         || fail "phones: the phone rows do not sit behind the block devices, got $(ipc railEntries | jq -c '[.[]|select(.group=="device")|.kind]')"
     # PhoneMark rule 1: the monitor picks the mark, MTP the phone and GPhoto2 the camera.
     ipc railEntries | jq -e '[.[] | select(.kind == "phone") | .glyph] == ["smartphone", "camera"]' >/dev/null \
@@ -5941,15 +5941,6 @@ EOS
     ipc railDetails | jq -e '[.rows[] | select(.kind == "phone")] | length == 2
         and all(.[]; .detail == "" and .indicatorVisible)' >/dev/null \
         || fail "phones: a phone row drew a size or lost its indicator, got $(ipc railDetails | jq -c '[.rows[]|select(.kind=="phone")|{detail,indicatorVisible}]')"
-
-    # The control for the guard below: d on this fixture's own local path does arm, so the silence
-    # on the phone's path is the guard and not a keyboard that stopped answering.
-    key j >/dev/null
-    settle
-    key d >/dev/null
-    wait_message "Press d again to trash, or Delete on its own."
-    key -k Escape >/dev/null
-    settle
 
     # An unmounted volume offers no release, so it opens no menu at all, exactly as a volume does.
     click_rail_row "$(rail_row_of 'SAMSUNG Android')" right
@@ -5982,9 +5973,23 @@ EOS
     key -k Escape >/dev/null
     settle
     key d >/dev/null
+    for _attempt in $(seq 1 20); do
+        [[ "$(ipc statusPrimary)" != *"Press d again"* ]] \
+            || fail "phones: d armed a trash that can only fail, the bar reads $(ipc statusPrimary)"
+        sleep 0.05
+    done
+    # H walks back to the local path this case started on, where the same key does arm.
+    key H >/dev/null
+    wait_path "$dir/files"
+    wait_listing 1
+    key j >/dev/null
+    settle
+    key d >/dev/null
+    wait_message "Press d again to trash, or Delete on its own."
+    key -k Escape >/dev/null
     settle
     [[ "$(ipc statusPrimary)" != *"Press d again"* ]] \
-        || fail "phones: d armed a trash that can only fail, the bar reads $(ipc statusPrimary)"
+        || fail "phones: Escape left the trash armed on the local path, the bar reads $(ipc statusPrimary)"
 
     # Unmount is the release a phone offers, never Eject, and the key that carries it is its uri.
     click_rail_row "$(rail_row_of 'SAMSUNG Android')" right
