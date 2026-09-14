@@ -172,6 +172,10 @@ fn reverse(step: &Step) -> Result<Option<(ItemIdentity, ItemIdentity)>, FleaErro
                 return Err(FleaError { where_: "undo".into(), path: to.to_string_lossy().into(),
                     msg: "the copied item changed since this operation, so undo left it in place".into() });
             }
+            if !nothing_inside_is_newer(to, created.changed)? {
+                return Err(FleaError { where_: "undo".into(), path: to.to_string_lossy().into(),
+                    msg: "something inside the copied folder changed since this operation, so undo left it in place".into() });
+            }
             remove(to)?
         }
         Step::MadeDir { path, identity } => {
@@ -193,6 +197,33 @@ fn remove_new_file(path: &PathBuf, identity: &ItemIdentity) -> Result<(), FleaEr
             msg: "the new file changed since creation, so undo left it in place".into() });
     }
     std::fs::remove_file(path).map_err(|e| from_io("undo", &path.to_string_lossy(), &e))
+}
+
+// Issue 111: a directory keeps its own ctime when a file inside it is edited or one is added to a
+// subdirectory, so the root's identity alone said the tree was untouched and undo removed the work the
+// user had done since. The copy sets the root's mode last, so nothing it wrote is newer than the ctime
+// recorded for it, and anything that is belongs to somebody else.
+// corner: a change landing between this walk and the removal below is not covered, which is the window
+// every check-then-act has on a live filesystem, and neither is one landing inside the filesystem's own
+// timestamp granularity of the copy: btrfs and ext4 here resolve nanoseconds, tmpfs does not.
+fn nothing_inside_is_newer(root: &std::path::Path, copied: (i64, i64)) -> Result<bool, FleaError> {
+    let meta = root.symlink_metadata().map_err(|e| from_io("undo", &root.to_string_lossy(), &e))?;
+    if !meta.is_dir() || meta.file_type().is_symlink() {
+        return Ok(true);
+    }
+    let entries = std::fs::read_dir(root).map_err(|e| from_io("undo", &root.to_string_lossy(), &e))?;
+    for entry in entries {
+        let entry = entry.map_err(|e| from_io("undo", &root.to_string_lossy(), &e))?;
+        let path = entry.path();
+        let meta = path.symlink_metadata().map_err(|e| from_io("undo", &path.to_string_lossy(), &e))?;
+        if (meta.ctime(), meta.ctime_nsec()) > copied {
+            return Ok(false);
+        }
+        if meta.is_dir() && !meta.file_type().is_symlink() && !nothing_inside_is_newer(&path, copied)? {
+            return Ok(false);
+        }
+    }
+    Ok(true)
 }
 
 // Only ever a path this operation itself created, so a directory it made is removed with its contents.
@@ -227,150 +258,5 @@ fn err(msg: &str) -> FleaError {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::backend::testdir::TestDir;
-
-    fn entry(op: &str, steps: Vec<Step>) -> Entry {
-        Entry { op: op.to_string(), steps }
-    }
-
-    #[test]
-    fn an_empty_journal_answers_an_error_rather_than_claiming_it_undid_something() {
-        let mut j = Journal::new();
-        let e = j.undo().expect_err("nothing to undo");
-        assert_eq!(e.where_, "undo");
-        assert!(e.msg.contains("nothing to undo"));
-    }
-
-    #[test]
-    fn an_operation_that_changed_nothing_is_not_recorded() {
-        let mut j = Journal::new();
-        j.push(entry("rename", Vec::new()));
-        assert!(j.is_empty(), "an empty step list would undo as a no-op reported as work");
-    }
-
-    #[test]
-    fn the_ring_is_bounded_at_fifty_and_drops_its_oldest() {
-        let mut j = Journal::new();
-        for i in 0..DEPTH + 10 {
-            j.push(entry(&format!("op {}", i), vec![Step::Created { path: PathBuf::from("/x") }]));
-        }
-        assert_eq!(j.len(), DEPTH);
-    }
-
-    #[test]
-    fn undoing_a_rename_puts_the_old_name_back() {
-        let d = TestDir::new("undorename");
-        let from = d.join("before.txt");
-        let to = d.file("after.txt", "body");
-        let mut j = Journal::new();
-        j.push(entry("rename", vec![moved(&from, &to, ItemIdentity::inspect(&to).unwrap()).unwrap()]));
-        assert_eq!(j.undo().expect("undo"), "rename");
-        assert!(from.exists(), "the original name is back");
-        assert!(!to.exists(), "the new name is gone");
-        assert_eq!(std::fs::read_to_string(&from).unwrap(), "body");
-    }
-
-    #[test]
-    fn undoing_a_rename_refuses_to_clobber_a_file_that_took_the_old_name_since() {
-        let d = TestDir::new("undoclobber");
-        let from = d.file("before.txt", "something else wrote this");
-        let to = d.file("after.txt", "body");
-        let mut j = Journal::new();
-        j.push(entry("rename", vec![moved(&from, &to, ItemIdentity::inspect(&to).unwrap()).unwrap()]));
-        let e = j.undo().expect_err("must refuse rather than destroy the newer file");
-        assert_eq!(e.where_, "rename");
-        assert_eq!(std::fs::read_to_string(&from).unwrap(), "something else wrote this");
-    }
-
-    #[test]
-    fn undoing_a_duplicate_removes_only_the_copy_it_created() {
-        let d = TestDir::new("undodup");
-        let original = d.file("doc.txt", "original");
-        let copy = d.file("doc copy.txt", "original");
-        let mut j = Journal::new();
-        j.push(entry("duplicate", vec![Step::Created { path: copy.clone() }]));
-        d.assert_contains(&copy);
-        j.undo().expect("undo");
-        assert!(!copy.exists(), "the copy is gone");
-        assert!(original.exists(), "the file it was copied from is untouched");
-    }
-
-    #[test]
-    fn undoing_a_created_directory_takes_its_contents_with_it() {
-        let d = TestDir::new("undodir");
-        let made = d.dir("copied-tree");
-        std::fs::write(made.join("inside.txt"), "body").unwrap();
-        let mut j = Journal::new();
-        j.push(entry("copy", vec![Step::Created { path: made.clone() }]));
-        d.assert_contains(&made);
-        j.undo().expect("undo");
-        assert!(!made.exists());
-    }
-
-    #[test]
-    fn the_steps_of_one_operation_reverse_newest_first() {
-        let d = TestDir::new("undoorder");
-        // A move recorded as two steps: undoing them out of order would leave b.txt where a.txt belongs.
-        let a = d.file("a.txt", "a");
-        let mut j = Journal::new();
-        j.push(entry(
-            "move",
-            vec![
-                moved(&d.join("first.txt"), &a, ItemIdentity::inspect(&a).unwrap()).unwrap(),
-                Step::Created { path: d.file("second.txt", "s") },
-            ],
-        ));
-        d.assert_contains(&d.join("second.txt"));
-        j.undo().expect("undo");
-        assert!(!d.join("second.txt").exists(), "the newest step reversed");
-        assert!(d.join("first.txt").exists(), "the oldest step reversed too");
-    }
-
-    #[test]
-    fn a_step_that_fails_stops_the_rest_rather_than_half_reversing() {
-        let d = TestDir::new("undofail");
-        let mut j = Journal::new();
-        j.push(entry(
-            "copy",
-            vec![
-                Step::Created { path: d.file("keeper.txt", "k") },
-                // Reversed first, and it cannot be: nothing is at this path to remove.
-                Step::Created { path: d.join("never-existed.txt") },
-            ],
-        ));
-        d.assert_contains(&d.join("keeper.txt"));
-        d.assert_contains(&d.join("never-existed.txt"));
-        let e = j.undo().expect_err("the missing path must fail");
-        assert_eq!(e.where_, "undo");
-        assert!(d.join("keeper.txt").exists(), "the step behind the failure was not reversed");
-    }
-
-    #[test]
-    fn undoing_a_new_folder_removes_it_while_it_is_still_empty() {
-        let d = TestDir::new("undomkdir");
-        let made = d.dir("fresh");
-        let mut j = Journal::new();
-        j.push(entry("mkdir", vec![Step::MadeDir { path: made.clone(), identity: ItemIdentity::inspect(&made).unwrap() }]));
-        d.assert_contains(&made);
-        assert_eq!(j.undo().expect("undo"), "mkdir");
-        assert!(!made.exists());
-    }
-
-    #[test]
-    fn undoing_a_new_folder_the_user_has_filled_refuses_and_keeps_what_is_inside() {
-        let d = TestDir::new("undomkdirfilled");
-        let made = d.dir("fresh");
-        std::fs::write(made.join("theirs.txt"), "not ours to remove").unwrap();
-        let mut j = Journal::new();
-        j.push(entry("mkdir", vec![Step::MadeDir { path: made.clone(), identity: ItemIdentity::inspect(&made).unwrap() }]));
-        d.assert_contains(&made);
-        let e = j.undo().expect_err("must refuse rather than delete what the operation did not put there");
-        assert_eq!(e.where_, "undo");
-        assert_eq!(e.msg, "the new folder has been filled since, so undo left it in place");
-        assert_eq!(std::fs::read_to_string(made.join("theirs.txt")).unwrap(), "not ours to remove");
-        // Spent like every failed reversal, so the next undo reaches the operation before this one.
-        assert!(j.is_empty());
-    }
-}
+#[path = "undo_tests.rs"]
+mod tests;
