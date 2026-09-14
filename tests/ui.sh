@@ -113,6 +113,8 @@ settle_s=0.4
 chrome_band_inset=2
 # Wide enough to hold the elided head's opaque fill and the hairline either side of it; that gap measured at x 80 to 86.
 chrome_edge_sample_width=200
+# The rule is the house hairline, foreground at 12 percent, so a crumb glyph under it shows through: measured 2 of 255 on this box, against 23 for the surface an opaque fill would expose in its place.
+chrome_edge_max_spread=8
 # The Hyprland corner arc shows wallpaper through the window's own top-left pixels, so start past it.
 header_sample_x=16
 header_sample_width=600
@@ -1675,15 +1677,16 @@ case_click() {
         [[ "$(ipc pathBarOpen)" == "false" ]] || fail "click: Escape did not close the path bar opened at y $band"
     done
 
-    # The strip's own bottom edge is one flat rule, so that row holds one colour until something opaque draws over it.
-    local edge_y edge_colours
+    # The strip's own bottom edge is one rule across that row, and what would break it is an opaque fill standing where the rule should be.
+    local edge_y edge_spread
     edge_y=$(( chrome_h - 1 ))
     shot click-chrome-edge
-    edge_colours=$(magick "$evidence_dir/click-chrome-edge.png" \
-        -crop "${chrome_edge_sample_width}x1+0+${edge_y}" +repage -unique-colors -format "%[fx:w]" info:)
-    printf 'CLICK chrome-edge y=%s width=%s colours=%s\n' "$edge_y" "$chrome_edge_sample_width" "$edge_colours"
-    [[ "$edge_colours" == "1" ]] \
-        || fail "click: the strip's bottom edge holds $edge_colours colours across ${chrome_edge_sample_width}px, so something drew over it"
+    edge_spread=$(magick "$evidence_dir/click-chrome-edge.png" \
+        -crop "${chrome_edge_sample_width}x1+0+${edge_y}" +repage \
+        -format "%[fx:round(255*max(max(maxima.r-minima.r,maxima.g-minima.g),maxima.b-minima.b))]" info:)
+    printf 'CLICK chrome-edge y=%s width=%s spread=%s\n' "$edge_y" "$chrome_edge_sample_width" "$edge_spread"
+    [[ "$edge_spread" -le "$chrome_edge_max_spread" ]] \
+        || fail "click: the strip's bottom edge spans $edge_spread of 255 across ${chrome_edge_sample_width}px, so something opaque drew over it"
 
     # Issue 45's own control, and the positive half the elision check needs: with only the negative
     # above, a click that missed the window entirely passed it. Nothing drove a crumb at all, so a
