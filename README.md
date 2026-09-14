@@ -32,9 +32,15 @@ Large directories stay responsive: the window loads rows and requests thumbnails
 - **Quick Look.** Press Space for images, PDFs, text, media and archive contents.
 - **File operations.** Copy, move, rename, trash, compress and extract, with an undo journal.
 - **Network and sharing.** SMB, SFTP, FTPS, WebDAV, NFS, Dropbox and Taildrop.
-- **Devices.** USB drives, and phones and cameras over MTP and PTP, mounted from the rail.
+- **Devices.** USB drives, phones and cameras over MTP, PTP and AFC, mounted from the rail.
 - **Desktop integration.** Default file manager, “Show in folder” and Open/Save dialogs.
 - **Your settings.** Omarchy text sizes, configurable menus and Default, Vim, Mac or Windows keys.
+
+An iPhone lists once it has been unlocked and trusted on this machine: AFC needs the pairing record
+that leaves behind, not an unlocked screen every time. Pairing also puts the phone on its tethering
+USB configuration, so iOS shows Personal Hotspot as active while it is plugged in, and Flea never
+uses it. If this machine should never route through the phone, tell NetworkManager so with a
+`conf.d` drop-in carrying `unmanaged-devices=driver:ipheth`; that is your call, not the package's.
 
 ## Install
 

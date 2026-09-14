@@ -145,4 +145,78 @@ function run(check) {
     check("a PTP folder cannot trash", Mounts.trashable("/run/user/1000/gvfs/gphoto2:host=usb%3A001%2C014/store"), false)
     check("a share folder still can", Mounts.trashable("/run/user/1000/gvfs/smb-share:server=nas,share=media"), true)
     check("and so does every ordinary path", Mounts.trashable("/home/gm/Downloads"), true)
+
+    // Directive 44, captured on the box with GM's iPhone on USB (iOS 26.6.2, 2026-09-14). It answers
+    // on two monitors at once: GPhoto2 for the camera store, which lists zero folders on this iOS
+    // even unlocked and trusted, and AFC for the files, which lists DCIM.
+    var phone = 'Volume(0): iPhone\n'
+              + '  Type: GProxyVolume (GProxyVolumeMonitorGPhoto2)\n'
+              + '  ids:\n'
+              + "   unix-device: '/dev/bus/usb/001/005'\n"
+              + '  activation_root=gphoto2://Apple_Inc._iPhone_00008130001641411883401C/\n'
+              + '  can_mount=1\n'
+              + '  can_eject=0\n'
+              + '  should_automount=1\n'
+              + "Volume(1): Documents on GM\u2019s iPhone\n"
+              + '  Type: GProxyVolume (GProxyVolumeMonitorAfc)\n'
+              + '  ids:\n'
+              + "   uuid: '00008130-001641411883401C'\n"
+              + '  uuid=00008130-001641411883401C\n'
+              + '  activation_root=afc://00008130-001641411883401C:3/\n'
+              + '  can_mount=1\n'
+              + '  can_eject=0\n'
+              + '  should_automount=1\n'
+    var iphone = Phones.parsePhones(phone)
+    check("an iPhone on two monitors is one row", iphone.length, 1)
+    check("and it is the phone, not the camera store", iphone[0].glyph, "smartphone")
+    check("the row's uri is the AFC root, never the documents volume gvfs advertises",
+          iphone[0].uri, "afc://00008130-001641411883401C/")
+    check("the label is the phone's own, with the documents share taken off the front",
+          iphone[0].label, "GM\u2019s iPhone")
+    check("an unmounted iPhone reads as unmounted", iphone[0].mounted, false)
+    check("and it rides DEVICES like any other phone",
+          iphone[0].group + "|" + iphone[0].kind, "device|phone")
+
+    // The root mount prints at column zero rather than inside the volume block, which is the whole
+    // reason the parser collects those lines: reading only the indented Mount() misses it.
+    var live = phone + "Mount(2): GM\u2019s iPhone -> afc://00008130-001641411883401C/\n"
+                     + '  Type: GDaemonMount\n'
+    var liveRows = Phones.parsePhones(live)
+    check("a mounted iPhone is still one row", liveRows.length, 1)
+    check("and the root mount is what says it is mounted", liveRows[0].mounted, true)
+
+    // And gvfs answers can_mount=0 for the volume once its root is mounted, the same way it does for
+    // MTP, so the row has to be kept by the mount rather than dropped before the mount is looked at.
+    var liveNoRemount = phone.replace("  activation_root=afc://00008130-001641411883401C:3/\n  can_mount=1\n",
+                                      "  activation_root=afc://00008130-001641411883401C:3/\n  can_mount=0\n")
+                      + "Mount(2): GM\u2019s iPhone -> afc://00008130-001641411883401C/\n"
+    var keptRows = Phones.parsePhones(liveNoRemount)
+    check("a mounted iPhone gvfs will not remount is still a row", keptRows.length, 1)
+    check("and it reads as mounted", keptRows[0].mounted, true)
+
+    // The fold is on the serial the two monitors share, so a real camera beside a phone keeps its row.
+    var both = phone + 'Volume(2): Canon EOS R6\n'
+                     + '  Type: GProxyVolume (GProxyVolumeMonitorGPhoto2)\n'
+                     + '  activation_root=gphoto2://usb%3A001%2C014/\n'
+                     + '  can_mount=1\n'
+    var bothRows = Phones.parsePhones(both)
+    check("a camera plugged in beside the iPhone is its own row", bothRows.length, 2)
+    check("and it is still the camera", bothRows[1].glyph + "|" + bothRows[1].label, "camera|Canon EOS R6")
+
+    // With no AFC volume to fold into, an iPhone's GPhoto2 leg is the only row there is, and it draws
+    // the camera: the mark names the transport, which is what rule 1 says.
+    var ptpOnly = 'Volume(0): iPhone\n'
+                + '  Type: GProxyVolume (GProxyVolumeMonitorGPhoto2)\n'
+                + '  activation_root=gphoto2://Apple_Inc._iPhone_00008130001641411883401C/\n'
+                + '  can_mount=1\n'
+    var ptpRows = Phones.parsePhones(ptpOnly)
+    check("without gvfs-afc the iPhone is one camera row", ptpRows.length + "|" + ptpRows[0].glyph, "1|camera")
+
+    // The iPhone's root mount must not become a Network row as well, the same rule mtp and gphoto2
+    // already have: its row is the rail's, built from the volume block.
+    var shadow = "Mount(2): GM\u2019s iPhone -> afc://00008130-001641411883401C/\n"
+               + 'Mount(3): isos on nas -> smb://nas/isos/\n'
+    var shares = Mounts.parseMounts(shadow)
+    check("the iPhone's mount is not a network share", shares.length, 1)
+    check("and the real share beside it still is", shares[0].uri, "smb://nas/isos/")
 }

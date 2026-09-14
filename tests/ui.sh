@@ -5867,12 +5867,20 @@ case_phones() {
     : > "$dir/files/local.txt"
     : > "$fuse/DCIM/IMG_0001.jpg"
     local mtp_uri="mtp://SAMSUNG_SAMSUNG_Android_RQGL705T0NR/"
+    # Directive 44's capture: an iPhone answers on GPhoto2 and on AFC at once, and the rail folds the
+    # pair into one row on the serial they share. The uuid here is GM's own phone's, as measured.
+    local afc_uuid="00008130-001641411883401C"
+    local afc_uri="afc://$afc_uuid/"
+    local afc_fuse="$dir/gvfs-afc/afc:host=$afc_uuid"
+    mkdir -p "$afc_fuse/DCIM/113APPLE"
+    : > "$afc_fuse/DCIM/113APPLE/IMG_3263.HEIC"
     local unmount_log="$dir/unmount.log"
     : > "$unmount_log"
 
     cat > "$dir/bin/gio" <<EOS
 #!/bin/sh
 mounted="$dir/mounted"
+afcmounted="$dir/afcmounted"
 case "\$1 \${2:-}" in
 "mount -li")
     printf 'Volume(0): SAMSUNG Android\n'
@@ -5892,16 +5900,37 @@ case "\$1 \${2:-}" in
     printf '  Type: GProxyVolume (GProxyVolumeMonitorGPhoto2)\n'
     printf '  activation_root=gphoto2://%%5Busb%%3A001%%2C004%%5D/\n'
     printf '  can_mount=1\n'
+    printf 'Volume(2): iPhone\n'
+    printf '  Type: GProxyVolume (GProxyVolumeMonitorGPhoto2)\n'
+    printf '  activation_root=gphoto2://Apple_Inc._iPhone_00008130001641411883401C/\n'
+    printf '  can_mount=1\n'
+    printf 'Volume(3): Documents on GM’s iPhone\n'
+    printf '  Type: GProxyVolume (GProxyVolumeMonitorAfc)\n'
+    printf '  uuid=$afc_uuid\n'
+    printf '  activation_root=afc://$afc_uuid:3/\n'
+    if [ -f "\$afcmounted" ]; then
+        printf '  can_mount=0\n'
+        printf 'Mount(2): GM’s iPhone -> $afc_uri\n'
+        printf '  Type: GDaemonMount\n'
+    else
+        printf '  can_mount=1\n'
+    fi
     exit 0 ;;
 "mount -u")
     printf 'UNMOUNT %s\n' "\$3" >> "$unmount_log"
-    rm -f "\$mounted"
+    rm -f "\$mounted" "\$afcmounted"
     exit 0 ;;
 "mount $mtp_uri")
     : > "\$mounted"
     exit 0 ;;
 "info $mtp_uri")
     printf 'local path: %s\n' "$fuse"
+    exit 0 ;;
+"mount $afc_uri")
+    : > "\$afcmounted"
+    exit 0 ;;
+"info $afc_uri")
+    printf 'local path: %s\n' "$afc_fuse"
     exit 0 ;;
 esac
 # Everything else is the real tool's, so the Trash count and its monitor keep working under the stub.
@@ -5928,23 +5957,29 @@ EOS
         sleep 0.05
     done
     [[ "$(ipc deviceEntries)" == *"SAMSUNG Android|device|phone|false"* \
-        && "$(ipc deviceEntries)" == *"NIKON DSC D3500|device|phone|false"* ]] \
-        || fail "phones: the two volumes are not two unmounted DEVICES rows, got $(ipc deviceEntries)"
+        && "$(ipc deviceEntries)" == *"NIKON DSC D3500|device|phone|false"* \
+        && "$(ipc deviceEntries)" == *"GM’s iPhone|device|phone|false"* ]] \
+        || fail "phones: the three volumes are not three unmounted DEVICES rows, got $(ipc deviceEntries)"
+    # Directive 44: the iPhone answers on GPhoto2 as well, and that leg is folded into the row above
+    # rather than drawn beside it, so the phone is one row and its camera store is not a second.
+    [[ "$(ipc deviceEntries)" != *"iPhone|device|phone|false|camera"* ]] \
+        || fail "phones: the iPhone's camera leg drew its own row, got $(ipc deviceEntries)"
     # Behind the block devices, per the DEVICES rule: a block device leads and the phones are the tail.
     ipc railEntries | jq -e '[.[] | select(.group == "device") | .kind] | index("phone") as $i
         | ($i != null) and ($i > 0) and (.[$i:] | all(. == "phone"))' >/dev/null \
         || fail "phones: the phone rows do not sit behind the block devices, got $(ipc railEntries | jq -c '[.[]|select(.group=="device")|.kind]')"
     # PhoneMark rule 1: the monitor picks the mark, MTP the phone and GPhoto2 the camera.
-    ipc railEntries | jq -e '[.[] | select(.kind == "phone") | .glyph] == ["smartphone", "camera"]' >/dev/null \
-        || fail "phones: the marks are $(ipc railEntries | jq -c '[.[]|select(.kind=="phone")|.glyph]'), not the phone then the camera"
+    # AFC is a phone the same way MTP is: the mark names the transport, and only GPhoto2 is a camera.
+    ipc railEntries | jq -e '[.[] | select(.kind == "phone") | .glyph] == ["smartphone", "camera", "smartphone"]' >/dev/null \
+        || fail "phones: the marks are $(ipc railEntries | jq -c '[.[]|select(.kind=="phone")|.glyph]'), not phone, camera, phone"
     # RailDetails: a phone has no capacity to draw, and it keeps the fixed indicator slot a volume has.
-    ipc railDetails | jq -e '[.rows[] | select(.kind == "phone")] | length == 2
+    ipc railDetails | jq -e '[.rows[] | select(.kind == "phone")] | length == 3
         and all(.[]; .detail == "" and .indicatorVisible)' >/dev/null \
         || fail "phones: a phone row drew a size or lost its indicator, got $(ipc railDetails | jq -c '[.rows[]|select(.kind=="phone")|{detail,indicatorVisible}]')"
 
     # A row with no number gives its label the whole width up to the indicator slot: the label needs
     # 126 px at this text size and the numbers column used to leave it 110.
-    ipc railDetails | jq -e '[.rows[] | select(.kind == "phone")] | length == 2
+    ipc railDetails | jq -e '[.rows[] | select(.kind == "phone")] | length == 3
         and all(.[]; .labelNeeds > 0 and .labelWidth >= .labelNeeds)' >/dev/null \
         || fail "phones: a phone label is still cut, got $(ipc railDetails | jq -c '[.rows[]|select(.kind=="phone")|{label,labelWidth,labelNeeds}]')"
 
@@ -6045,7 +6080,29 @@ EOS
     [[ "$(ipc deviceEntries)" == *"SAMSUNG Android|device|phone|true"* ]] \
         || fail "phones: the menu's Mount did not mount the row, got $(ipc deviceEntries)"
 
-    printf 'PHONES rows=ok marks=ok mount=ok trash-guard=ok unmount=ok\n'
+    # The same three legs on the iPhone's own row, which reaches its files over AFC: its menu offers
+    # the mount, activating it resolves the root rather than the documents volume gvfs advertises,
+    # and DCIM is what lists. Directive 44's live proof on the plugged phone is the overseer's.
+    click_rail_row "$(rail_row_of 'GM’s iPhone')" right
+    settle
+    [[ "$(ipc contextMenuVisible)" == "true" && "$(ipc contextMenuEntries)" == "Mount" ]] \
+        || fail "phones: the unmounted iPhone's menu is $(ipc contextMenuEntries), not Mount alone"
+    key -k Escape >/dev/null
+    settle
+    click_rail_row "$(rail_row_of 'GM’s iPhone')" left
+    wait_path "$afc_fuse"
+    wait_listing 1
+    [[ "$(ipc rowAt 0)" == "DCIM|"* ]] || fail "phones: the iPhone's own listing is $(ipc rowAt 0)"
+    for _attempt in $(seq 1 200); do
+        [[ "$(ipc deviceEntries)" == *"GM’s iPhone|device|phone|true"* ]] && break
+        sleep 0.05
+    done
+    [[ "$(ipc deviceEntries)" == *"GM’s iPhone|device|phone|true"* ]] \
+        || fail "phones: the iPhone row did not survive its own mount, got $(ipc deviceEntries)"
+    [[ -z "$(ipc networkEntries)" ]] \
+        || fail "phones: the AFC root mount became a NETWORK row as well, got $(ipc networkEntries)"
+    shot phones-iphone-mounted
+    printf 'PHONES rows=ok marks=ok mount=ok trash-guard=ok unmount=ok iphone=ok\n'
     export PATH="$saved_path"
     if [[ -n "$old_state" ]]; then export XDG_STATE_HOME="$old_state"; else unset XDG_STATE_HOME; fi
     kill_flea

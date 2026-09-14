@@ -20,8 +20,9 @@ function parseMounts(output) {
         if (uri.indexOf("file://") === 0)
             continue
         // A phone is DEVICES territory the same way: its row is ui/js/Phones.js's, built from the
-        // volume block, and this line is gio's shadow GDaemonMount printed beside it.
-        if (/^(mtp|gphoto2):\/\//i.test(uri))
+        // volume block, and this line is gio's shadow GDaemonMount printed beside it. afc is the
+        // iPhone's own, whose root mount prints here rather than inside its volume block.
+        if (/^(mtp|gphoto2|afc):\/\//i.test(uri))
             continue
         out.push({ label: Protocols.shareName(m[1], uri), uri: uri })
     }
