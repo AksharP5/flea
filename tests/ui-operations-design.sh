@@ -601,7 +601,7 @@ PY
     jq -e --arg query "$query" --argjson count "$directory_count" '.searchMode == "results" and .searchQuery == $query and .searchRunning and (.searchCancelled | not) and .searchScanned == $count' <<< "$state" >/dev/null \
         || fail "operations: Search did not expose the real positive scan before deadline: $state"
     footer=$(ipc statusFooterState) || fail "operations: live Search footer unavailable"
-    if ! jq -e '(.centre.text | test("^[0-9,]+ found · Searching, 100,000 scanned$")) and .secondary.text == ""' <<< "$footer" >/dev/null; then
+    if ! jq -e '(.centre.text | test("^[0-9]{1,3}(,[0-9]{3})* found · Searching, 100,000 scanned$")) and .secondary.text == ""' <<< "$footer" >/dev/null; then
         state=$(ipc keyDeliveryState) || fail "operations: Search state unavailable after footer mismatch"
         if jq -e '.searchMode == "results" and (.searchRunning | not)' <<< "$state" >/dev/null; then
             operations_missed_window search-footer "$state footer=$footer"

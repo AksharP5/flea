@@ -227,11 +227,16 @@ function crumbs(path, home) {
 // Below this a leaf gives up more to the ellipsis than the ellipsis saves, so it is drawn whole.
 var LEAF_FLOOR = 6
 
+// What the crumbs before it leave the leaf, in characters.
+function leafRoom(list, budget) {
+    return budget - (crumbChars(list) - list[list.length - 1].text.length)
+}
+
 // Chrome rule 2 collapses whole crumbs, but the leaf is the one crumb that cannot be dropped: when
 // even it does not fit, it takes the ellipsis in its own middle rather than a cut at the strip's edge.
 function elideLeaf(list, budget) {
     var end = list[list.length - 1]
-    var room = budget - (crumbChars(list) - end.text.length)
+    var room = leafRoom(list, budget)
     if (room >= end.text.length || end.text.length <= LEAF_FLOOR) {
         return list
     }
@@ -258,6 +263,14 @@ function fitCrumbs(list, budget) {
             break
         }
         shown = next
+    }
+    // A parent that leaves the leaf less than it needs and less than its floor goes the way the
+    // middle went: rule 2 elides whole crumbs, and the leaf is the one that may not be the one to go.
+    if (shown.length === 4) {
+        var left = leafRoom(shown, budget)
+        if (left < shown[3].text.length && left < LEAF_FLOOR) {
+            shown = [shown[0], shown[1], shown[3]]
+        }
     }
     return elideLeaf(shown, budget)
 }

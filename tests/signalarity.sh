@@ -24,7 +24,9 @@ count_arguments() {
     printf '%s\n' "$(( $(tr -cd ',' <<< "$text" | wc -c) + 1 ))"
 }
 
+declarations=0
 while IFS= read -r line; do
+    declarations=$((declarations + 1))
     name=${line#*signal }
     name=${name%%(*}
     params=${line#*"$name"(}
@@ -42,7 +44,12 @@ while IFS= read -r line; do
             fail "$name declares $declared parameter(s) and is emitted with $passed: $emit"
         fi
     done < <(tr '\n' '\r' < "$file" | sed 's/,\r */, /g' | tr '\r' '\n' | grep -E "root\.$name\(")
-done < <(grep -E '^\s*signal [a-zA-Z]+\(' "$file")
+done < <(grep -E '^[[:space:]]*signal [A-Za-z_][A-Za-z0-9_]*\(' "$file")
 
-printf 'signalarity: %s emit(s) checked, %s failed\n' "$checks" "$failed"
+# A suite that checked nothing is the shape this whole class hides in, so the floors are its own
+# first check: ui/Backend.qml is the file the wire is decoded in and it has never held fewer than
+# twenty signals or thirty emits of them.
+[[ "$declarations" -ge 20 ]] || fail "only $declarations signal declaration(s) found in $file, so this suite read the wrong file or the wrong shape"
+[[ "$checks" -ge 30 ]] || fail "only $checks emit(s) found for $declarations signal(s), so the emits are not being matched"
+printf 'signalarity: %s signal(s), %s emit(s) checked, %s failed\n' "$declarations" "$checks" "$failed"
 [[ "$failed" == 0 ]]

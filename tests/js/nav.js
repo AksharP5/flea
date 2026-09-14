@@ -255,7 +255,14 @@ function run(check) {
           drawn(Nav.fitCrumbs(Nav.crumbs("/home/gm/one/two/three/a-very-long-leaf-name", "/home/gm"), 18)),
           "~/\u2026/three/a-ve\u2026ame")
     check("a short leaf is drawn whole rather than spending its characters on an ellipsis",
-          drawn(Nav.fitCrumbs(Nav.crumbs("/home/gm/one/two/three/four", "/home/gm"), 6)), "~/\u2026/three/four")
+          drawn(Nav.fitCrumbs(Nav.crumbs("/home/gm/one/two/three/four", "/home/gm"), 14)), "~/\u2026/three/four")
+    // A parent that leaves the leaf less than its floor is elided itself, rather than the leaf being
+    // cut to nothing: rule 2 elides whole crumbs and the leaf is the one that may not be dropped.
+    var wide = Nav.crumbs("/home/gm/one/two/a-parent-with-a-very-long-name-indeed/leaf-name", "/home/gm")
+    check("a parent that leaves the leaf no room is elided with the middle",
+          drawn(Nav.fitCrumbs(wide, 16)), "~/\u2026/leaf-name")
+    check("and a budget too small for even that draws the least it can rather than a cut",
+          drawn(Nav.fitCrumbs(Nav.crumbs("/home/gm/one/two/three/four", "/home/gm"), 6)), "~/\u2026/four")
 
     // A keyboard rename reveals the row it renamed; one the pointer committed keeps the row the
     // click chose instead, because a write operation targets the selection ahead of the cursor.
