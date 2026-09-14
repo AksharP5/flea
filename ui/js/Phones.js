@@ -19,8 +19,9 @@
 // Drive() block, and the Type line is required anyway, so only the three gvfs monitors with no block
 // device behind them qualify, MTP for Android, AFC for an iPhone's files and GPhoto2 for cameras.
 // lsblk can never list these, which is why ui/DeviceMounts.qml's enumeration misses a plugged phone.
-// The indented Mount() inside the block is what says the phone is live; the shadow top-level
-// Mount() gio prints beside it is ui/js/Mounts.js parseMounts's to skip.
+// The indented Mount() inside the block is what says an MTP or GPhoto2 volume is live; an AFC root
+// mounts outside the block that offered it, so a column-zero Mount() naming the row's own uri says
+// the same thing. Either way that line is ui/js/Mounts.js parseMounts's to skip as a NETWORK row.
 function parsePhones(output) {
     var blocks = []
     var mounted = {}
@@ -41,8 +42,8 @@ function parsePhones(output) {
         // Any other column-zero line ends the block, the next Drive() or Mount() included.
         if (!/^\s/.test(line)) { v = null; continue }
         if (!v) continue
-        // The monitor is also the mark: PhoneMark rule 1 gives MTP the phone and GPhoto2 the camera,
-        // which is what the transport exposes the device as rather than what brand made it.
+        // The monitor is also the mark: PhoneMark rule 1 gives MTP and AFC the phone and GPhoto2 the
+        // camera, which is what the transport exposes the device as rather than what brand made it.
         var monitor = line.match(/^\s+Type: GProxyVolume \(GProxyVolumeMonitor(MTP|GPhoto2|Afc)\)\s*$/)
         if (monitor) v.monitor = monitor[1]
         // The block's own uuid line, not the deeper one under ids:, and the only place the root uri is.
