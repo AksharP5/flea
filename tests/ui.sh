@@ -115,6 +115,8 @@ chrome_band_inset=2
 chrome_edge_sample_width=200
 # The rule is the house hairline, foreground at 12 percent, so a crumb glyph under it shows through: measured 2 of 255 on this box, against 23 for the surface an opaque fill would expose in its place.
 chrome_edge_max_spread=8
+# boxOf rounds each edge to a whole pixel, so a clamp recomputed from three of them carries about a pixel and a quarter of rounding before anything is wrong.
+centre_axis_tolerance=2
 # The Hyprland corner arc shows wallpaper through the window's own top-left pixels, so start past it.
 header_sample_x=16
 header_sample_width=600
@@ -2563,16 +2565,17 @@ centre_on_axis() {
     # Each is "x width centre" in window pixels, read off the rendered items. The awk is the clamp
     # arithmetic recomputed here from those pixels, on purpose: a check that asks the code where the
     # lane should be only ever agrees with itself, which is what the first version of this did.
+    # The right edge is pinned first and the left second, mirroring the Math.max outside the Math.min in ui/StatusBar.qml: a lane wider than the room goes to the room's left edge, not its right.
     off=$(awk -v lane="$lane" -v room="$room" -v slot="$slot" 'BEGIN {
         split(lane, l, " "); split(room, r, " "); split(slot, s, " ")
         want = s[3]
-        if (want - l[2] / 2 < r[1]) want = r[1] + l[2] / 2
         if (want + l[2] / 2 > r[1] + r[2]) want = r[1] + r[2] - l[2] / 2
+        if (want - l[2] / 2 < r[1]) want = r[1] + l[2] / 2
         d = want - l[3]
         print (d < 0 ? -d : d)
     }')
     printf 'CENTRE %s lane=[%s] slot=[%s] off=%s\n' "$label" "$lane" "$slot" "$off"
-    awk -v o="$off" 'BEGIN { exit (o < 1) ? 0 : 1 }' \
+    awk -v o="$off" -v t="$centre_axis_tolerance" 'BEGIN { exit (o < t) ? 0 : 1 }' \
         || fail "status: the $label centre lane [$lane] is $off px from the listing's axis [$slot] inside [$room]"
 }
 
@@ -2614,6 +2617,18 @@ case_status() {
     shot status-dismissed
     centre_on_axis "single pane"
     shot status-centre-axis
+    # The trash owns the pane without being one, and its host is anchored to the same band, so the
+    # lane keeps the listing's axis there too: this is the state that had been falling back to the window.
+    click_rail_row "$(rail_row_of 'Trash')" left
+    settle
+    settle
+    # Or the measurement below is the listing's again, taken under a name that says otherwise.
+    [[ "$(ipc statusFooterState | jq -r '.path')" == "Trash" ]] \
+        || fail "status: the Trash row did not open the trash, the strip still says $(ipc statusFooterState | jq -r '.path')"
+    centre_on_axis "trash"
+    shot status-centre-axis-trash
+    key -k Escape >/dev/null
+    settle
     kill_flea
 }
 
