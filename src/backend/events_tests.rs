@@ -56,8 +56,8 @@ fn a_path_that_carries_the_token_is_not_a_cancel() {
     assert_eq!(live.running(), Some(4));
 }
 
-// The framing cannot be trusted past a decode failure, so the loop stops there and src/backend/run.rs
-// reports the error and breaks; a reader that read on would hand it lines cut out of the middle.
+// A read that failed leaves nothing to resume from, so the reader stops on the first Err and
+// src/backend/run.rs reports it and breaks. This pins that it stops rather than reading on.
 #[test]
 fn a_line_that_does_not_decode_stops_the_reader_where_it_failed() {
     let (live, _flag) = claimed(4);

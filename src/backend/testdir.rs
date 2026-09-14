@@ -125,9 +125,16 @@ fn owner_can_write(root: &Path) {
     let _ = std::fs::set_permissions(&held, std::fs::Permissions::from_mode(0o700));
     let Ok(entries) = std::fs::read_dir(&held) else { return };
     for entry in entries.flatten() {
-        if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-            owner_can_write(&entry.path());
+        if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+            continue;
         }
+        let child = entry.path();
+        // A test may leave a directory with no read bit at all, and one of those cannot be opened to
+        // be repaired; the name is under a parent this frame holds open, so the bits go back by name.
+        if open_dir(&child).is_err() {
+            let _ = std::fs::set_permissions(&child, std::fs::Permissions::from_mode(0o700));
+        }
+        owner_can_write(&child);
     }
 }
 
@@ -151,22 +158,29 @@ mod tests {
             let d = TestDir::new("dropreadonly");
             let sub = d.dir("locked");
             std::fs::write(sub.join("held.txt"), "x").unwrap();
+            // 0500 cannot be written into and 0000 cannot even be opened, and a test may leave either.
+            let shut = d.dir("shut");
+            std::fs::write(shut.join("inside.txt"), "x").unwrap();
+            std::fs::set_permissions(&shut, std::fs::Permissions::from_mode(0o000)).unwrap();
             std::fs::set_permissions(&sub, std::fs::Permissions::from_mode(0o500)).unwrap();
             d.path().to_path_buf()
         };
         assert!(!kept.exists(), "the sandbox goes with the test that made it: {}", kept.display());
     }
 
-    // The walk opens rather than chmods by name, so a symlink planted at a name it is about to take
-    // is refused at the open instead of carrying a recursive chmod to whatever it points at.
+    // The walk is handed a name that is a symlink, which is the shape a planted /tmp entry takes, and
+    // has to change nothing at the other end rather than chmodding its way down somebody else's tree.
     #[test]
-    fn the_repair_walk_refuses_a_symlink_where_it_expects_a_directory() {
+    fn the_repair_walk_changes_nothing_through_a_symlink_it_is_handed() {
         let d = TestDir::new("dropsymlink");
-        let real = d.dir("elsewhere");
+        let target = d.dir("elsewhere");
+        std::fs::write(target.join("inside.txt"), "x").unwrap();
+        std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o500)).unwrap();
         let planted = d.join("planted");
-        std::os::unix::fs::symlink(&real, &planted).unwrap();
-        assert!(open_dir(&planted).is_err(), "a symlink is never opened as the directory to repair");
-        assert!(open_dir(&real).is_ok(), "and a real directory still is");
+        std::os::unix::fs::symlink(&target, &planted).unwrap();
+        owner_can_write(&planted);
+        let mode = target.symlink_metadata().unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o500, "a symlink is not the directory to repair, and its target is untouched");
     }
 
     #[test]
