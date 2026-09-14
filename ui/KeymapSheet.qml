@@ -16,7 +16,14 @@ Item {
     readonly property var groups: {
         var out = []
         for (var name in Keymap.SHEET_GROUPS) {
-            var claimed = root.sheet.filter(function (row) { return Keymap.SHEET_GROUPS[name].indexOf(row.action) >= 0 })
+            var order = Keymap.SHEET_GROUPS[name], claimed = []
+            // The group's own list is the order the board draws, cursor keys before the chords;
+            // the generated sheet is in keys.toml's file order, which puts every preset row first.
+            for (var i = 0; i < order.length; i++) {
+                var row = root.sheet.filter(function (candidate) { return candidate.action === order[i] })
+                if (row.length > 0)
+                    claimed.push(row[0])
+            }
             if (claimed.length > 0)
                 out.push({ title: name.charAt(0).toUpperCase() + name.slice(1), rows: claimed })
         }
@@ -33,6 +40,10 @@ Item {
     readonly property var cardItem: card
     // A cap is sized from the type scale, never from the text inside it, so every cap is one height.
     readonly property int capSize: Theme.markSize
+    // The board's own rhythm, measured off its drawing at GM's text size: a 32px row around the 19px
+    // cap, which is the row padding above and below it, and the wording a gap clear of the cap's box.
+    readonly property int rowPitch: root.capSize + 2 * Theme.spacing.rowPaddingY
+    readonly property int capGap: Theme.spacing.gap
 
     // One cap column for the whole sheet, measured off the widest chord this preset spells. Sizing
     // each cap to its own text left every wording starting on a different x, and a wide chord took
@@ -43,10 +54,16 @@ Item {
             if (root.sheet[i].keys.length > out.length) out = root.sheet[i].keys
         return out
     }
-    readonly property int capWidth: Math.max(root.capSize, Math.ceil(capMetrics.width) + Theme.spacing.gap)
-    // The narrowest wording worth drawing beside a cap. A preset whose chords are wide enough to
-    // leave less than this takes one column and scrolls, rather than two columns of elided stubs.
-    readonly property int cellFloor: root.capWidth + Theme.spacing.gap + Math.ceil(labelFloor.width)
+    readonly property int capWidth: Math.max(root.capSize, Math.ceil(capMetrics.width) + root.capGap)
+    // Board rule 4: no label is ever cut, so the floor is the widest wording this preset really
+    // draws. A window that cannot give two cells that much takes one column and scrolls instead.
+    readonly property string widestLabel: {
+        var out = ""
+        for (var i = 0; i < root.sheet.length; i++)
+            if (root.sheet[i].label.length > out.length) out = root.sheet[i].label
+        return out
+    }
+    readonly property int cellFloor: root.capWidth + root.capGap + Math.ceil(labelFloor.width)
     // Two columns is what the canvas draws, and what keeps the whole map on one panel where it fits.
     readonly property int columns: body.width >= 2 * root.cellFloor + Theme.spacing.rowPaddingX ? 2 : 1
 
@@ -61,7 +78,7 @@ Item {
         id: labelFloor
         font.family: Theme.font.family
         font.pixelSize: Theme.font.caption
-        text: "extend down"
+        text: root.widestLabel
     }
     readonly property real groundOpacity: 0.5
 
@@ -142,8 +159,7 @@ Item {
                     text: "Keys"
                     color: Theme.color.foreground
                     font.family: Theme.font.family
-                    font.pixelSize: Theme.font.body
-                    font.bold: true
+                    font.pixelSize: Theme.font.bodySmall
                     textFormat: Text.PlainText
                 }
 
@@ -160,7 +176,9 @@ Item {
 
             Grid {
                 columns: root.columns
-                rowSpacing: Theme.spacing.rowPaddingY
+                // The heading above each block is the air between two of them; a row gap here would
+                // be a second one, and the board draws the four blocks on one rhythm.
+                rowSpacing: 0
                 columnSpacing: Theme.spacing.rowPaddingX
 
                 Repeater {
@@ -171,10 +189,13 @@ Item {
                         id: block
                         required property var modelData
                         width: (body.width - (root.columns - 1) * Theme.spacing.rowPaddingX) / root.columns
-                        spacing: Theme.spacing.gap
 
+                        // The heading carries its own air, above and below, rather than a spacing
+                        // every row would take as well: a row's pitch is inside its own box.
                         Text {
                             text: block.modelData.title
+                            topPadding: Theme.spacing.gap
+                            bottomPadding: Theme.spacing.hairline * 4
                             color: Theme.color.muted
                             font.family: Theme.font.family
                             font.pixelSize: Theme.font.caption
@@ -190,7 +211,7 @@ Item {
                                 id: entry
                                 required property var modelData
                                 width: block.width
-                                height: root.capSize
+                                height: root.rowPitch
                                 // Nothing this cell draws may reach the cell beside it, whatever it holds.
                                 clip: true
 
@@ -222,11 +243,13 @@ Item {
 
                                 Text {
                                     anchors.left: capBox.right
-                                    anchors.leftMargin: Theme.spacing.gap
+                                    anchors.leftMargin: root.capGap
                                     anchors.right: parent.right
                                     anchors.verticalCenter: parent.verticalCenter
                                     text: entry.modelData.label
-                                    color: Theme.color.muted
+                                    // The wording is the sheet's own running text, so it takes the
+                                    // foreground the board draws it in; muted is for the headings.
+                                    color: Theme.color.foreground
                                     font.family: Theme.font.family
                                     font.pixelSize: Theme.font.caption
                                     textFormat: Text.PlainText
