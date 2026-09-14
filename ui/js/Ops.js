@@ -85,8 +85,11 @@ function copied(n, moving) {
     return (moving ? "Cut " : "Copied ") + items(n) + ", p pastes."
 }
 
+// The three reasons a cursor is not a target, asked in the order ui/js/Nav.js asks them of Enter.
 function sayNoTarget(pane) {
-    pane.message(pane.rowFor(pane.cursorIndex) ? "That row is hidden by the filter." : "There is nothing to act on.", false)
+    if (pane.cursorIndex < 0) return pane.message("There is nothing to act on.", false)
+    if (!pane.rowFor(pane.cursorIndex)) return pane.message("That row has not loaded yet.", false)
+    pane.message("That row is hidden by the filter.", false)
 }
 
 // The cursor is a target only while the filter draws it, the rule prune already applies to a selection.
@@ -170,8 +173,7 @@ function commitRename(pane, newName) {
 // Indices, not paths: trash acts on the listing that is up right now, so the backend resolves them.
 function trash(pane, menuId) {
     var idx = targetIndices(pane)
-    if (idx.length === 0)
-        return sayNoTarget(pane)
+    if (idx.length === 0) return sayNoTarget(pane)
     pane.backend.trash(idx, menuId)
 }
 
@@ -184,8 +186,7 @@ function clip(pane, moving, paths) {
         return
     }
     var idx = targetIndices(pane)
-    if (idx.length === 0)
-        return sayNoTarget(pane)
+    if (idx.length === 0) return sayNoTarget(pane)
     pane.clipPending = moving
     pane.backend.askPaths(idx)
 }
@@ -255,8 +256,7 @@ function sendTaildrop(pane, taildrop, peerId, path) {
 // before the request goes out, and the backend refuses a destination that appeared meanwhile anyway.
 function compress(pane, format) {
     var idx = targetIndices(pane)
-    if (idx.length === 0)
-        return sayNoTarget(pane)
+    if (idx.length === 0) return sayNoTarget(pane)
     // The archive request names paths and has no rows form, so the indices are resolved first and the
     // request is built in compressResolved. Naming them here would drop every row outside the window.
     pane.pathsPending = { kind: "compress", format: format }
@@ -320,8 +320,7 @@ function convert(pane, source, format, strip, requestId) {
 function moveToDropbox(pane, dropboxPath, menuId) {
     var idx = targetIndices(pane)
     if (dropboxPath.length === 0) return
-    if (idx.length === 0)
-        return sayNoTarget(pane)
+    if (idx.length === 0) return sayNoTarget(pane)
     // Deliberately does not touch pane.clipboard: this is its own move, and clobbering what the
     // operator cut or copied earlier would lose it with no way back.
     // Rows, not paths: a selection reaches past the window the client holds, and targetPaths drops

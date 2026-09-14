@@ -8,6 +8,7 @@ import "dst.js" as DstSuite
 import "errors.js" as ErrorsSuite
 import "facts.js" as FactsSuite
 import "filter.js" as FilterSuite
+import "filter-cursor.js" as FilterCursorSuite
 import "focus.js" as FocusSuite
 import "focus-forward.js" as FocusForwardSuite
 import "focus-lines.js" as FocusLinesSuite
@@ -71,7 +72,7 @@ Item {
             ["archive", ArchiveSuite], ["columns", ColumnsSuite], ["contrast", ContrastSuite],
             ["dirsizes", DirSizesSuite], ["drag", DragSuite], ["dst", DstSuite],
             ["edmonton", DstSuite],
-            ["errors", ErrorsSuite], ["facts", FactsSuite], ["filter", FilterSuite],
+            ["errors", ErrorsSuite], ["facts", FactsSuite], ["filter", FilterSuite], ["filter-cursor", FilterCursorSuite],
             ["focus", FocusSuite], ["focus-forward", FocusForwardSuite],
             ["focus-lines", FocusLinesSuite], ["focus-wrap", FocusWrapSuite],
             ["format", FormatSuite], ["icons", IconsSuite],
