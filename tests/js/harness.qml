@@ -36,6 +36,7 @@ import "search.js" as SearchSuite
 import "selection.js" as SelectionSuite
 import "settings.js" as SettingsSuite
 import "settingsmenus.js" as SettingsMenusSuite
+import "transfer.js" as TransferSuite
 import "sort.js" as SortSuite
 import "startup.js" as StartupSuite
 import "status.js" as StatusSuite
@@ -85,7 +86,7 @@ Item {
             ["selection", SelectionSuite], ["settings", SettingsSuite], ["settingsmenus", SettingsMenusSuite],
             ["sort", SortSuite], ["startup", StartupSuite], ["trashdates", TrashDatesSuite], ["permissions", PermissionsSuite], ["status", StatusSuite], ["taildrop", TaildropSuite], ["textsize", TextSizeSuite],
             ["trash", TrashSuite], ["tap", TapSuite], ["marquee", MarqueeSuite], ["tabs", TabsSuite],
-            ["thumbs", ThumbsSuite], ["uistate", UiStateSuite],
+            ["thumbs", ThumbsSuite], ["transfer", TransferSuite], ["uistate", UiStateSuite],
             ["watch", WatchSuite]
         ]
         var argv = Qt.application.arguments

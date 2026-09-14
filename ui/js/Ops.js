@@ -10,10 +10,10 @@ function emptyClipboard() {
 }
 
 // What the status bar and the card are tracking while a transfer runs; id is what a cancel names.
-// done, bytes and total are the card's bar: the items already finished, and the one in flight.
+// done, bytes and total are the card's bar, the items finished and the one in flight; moved is ui/js/Transfer.js's own sum of the finished ones, which the wire never carries.
 function emptyTransfer() {
     return { id: 0, moving: false, n: 0, index: 0, name: "", running: false,
-             done: 0, bytes: 0, total: 0 }
+             done: 0, bytes: 0, total: 0, moved: 0 }
 }
 
 // "1 item" or "4 items", so no caller builds a plural by hand.
@@ -26,7 +26,7 @@ var UNDO_HINT = " · z undoes"
 
 function started(id, moving, n) {
     return { id: id, moving: moving, n: n, index: 0, name: "", running: true,
-             done: 0, bytes: 0, total: 0 }
+             done: 0, bytes: 0, total: 0, moved: 0 }
 }
 
 // The count comes from the card's headline so both surfaces name the same progress sample.

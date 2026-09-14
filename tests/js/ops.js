@@ -341,8 +341,8 @@ function run(check) {
           "panel-demo.mp4 \u00b7 48.0 MB")
     // total is 0 for a directory, whose size is not known without a sweep this codebase never does.
     check("a directory with nothing copied yet claims no size", Transfer.fileLine({ name: "photos", total: 0, bytes: 0 }), "photos")
-    // The one number a tree has without a sweep is what it has copied, and that is what moves on the card.
-    check("a directory under way reports what it has copied", Transfer.fileLine({ name: "photos", total: 0, bytes: 1500000000 }), "photos \u00b7 1.5 GB so far")
+    // A tree's own running count is the byte line's under the bar, so the file line never says it twice.
+    check("a directory under way still claims no size", Transfer.fileLine({ name: "photos", total: 0, bytes: 1500000000 }), "photos")
     check("nothing in flight yet draws no second row at all",
           Transfer.fileLine({ name: "", total: 0, bytes: 0 }),
           "")

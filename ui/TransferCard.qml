@@ -21,6 +21,18 @@ Item {
     // About four changes a second, which is what the eye reads. The backend's own byte heartbeat is
     // 150 ms (src/backend/opsreq.rs PROGRESS_EVERY), so a large file loses almost nothing here.
     readonly property int publishMs: 250
+    // TransferCard rule 3: the rate is what this card published over the last two seconds, so one
+    // slow beat cannot make it jump and a stall reads 0 B/s rather than a stale number.
+    readonly property int rateWindowMs: 2000
+    property var rateSamples: []
+    readonly property real rate: {
+        if (root.rateSamples.length < 2)
+            return 0
+        var first = root.rateSamples[0]
+        var last = root.rateSamples[root.rateSamples.length - 1]
+        var span = (last.at - first.at) / 1000
+        return span > 0 ? Math.max(0, (last.bytes - first.bytes) / span) : 0
+    }
 
     // Set the instant Cancel is pressed. src/backend/copyfile.rs stops the item in flight and
     // removes what it wrote, so this covers only the round trip to transferdone and the beat above.
@@ -43,16 +55,30 @@ Item {
     onTransferChanged: {
         // The first sample and the last are published at once; the ones between wait for the beat.
         if (!root.transfer.running || !root.shown.running || root.transfer.id !== root.shown.id) {
-            root.shown = root.transfer
+            root.publish()
         }
     }
-    onOwnerChanged: root.shown = root.transfer
+    onOwnerChanged: root.publish()
 
     Timer {
         interval: root.publishMs
         repeat: true
         running: root.transfer.running
-        onTriggered: root.shown = root.transfer
+        onTriggered: root.publish()
+    }
+
+    // One published sample, and the window the rate is measured over: everything older than two
+    // seconds goes except the one sample just past the edge, which is what the span is taken from.
+    function publish() {
+        var fresh = root.transfer.id !== root.shown.id ? [] : root.rateSamples
+        root.shown = root.transfer
+        var now = Date.now()
+        var next = fresh.concat([{at: now, bytes: Transfer.movedBytes(root.shown)}])
+        var keep = 0
+        while (keep + 1 < next.length && now - next[keep + 1].at > root.rateWindowMs) {
+            keep += 1
+        }
+        root.rateSamples = next.slice(keep)
     }
 
     function cancel() {
@@ -146,6 +172,29 @@ Item {
                 // fill read as movement rather than as four steps a second.
                 Behavior on width {
                     NumberAnimation { duration: root.publishMs; easing.type: Easing.Linear }
+                }
+            }
+        }
+
+        // TransferCard rule 1: the bar's own caption, the figures the operator is waiting on inked
+        // in the foreground and the words between them muted. Rule 4 makes it absent, not blank,
+        // until the first byte sample lands, so the card is one row shorter until then.
+        Row {
+            id: byteLine
+            readonly property var parts: Transfer.byteParts(root.shown, root.rate)
+            visible: byteLine.parts.length > 0
+            height: visible ? implicitHeight : 0
+
+            Repeater {
+                model: byteLine.parts
+
+                delegate: Text {
+                    required property var modelData
+                    text: modelData.text
+                    color: modelData.figure ? Theme.color.foreground : Theme.color.muted
+                    font.family: Theme.font.family
+                    font.pixelSize: Theme.font.caption
+                    textFormat: Text.PlainText
                 }
             }
         }
