@@ -29,10 +29,8 @@ function read(url) {
     return String(request.responseText || "")
 }
 
-// The roles Omarchy's own Commons/Color.qml derives from colors.toml, key for key, plus the ones
-// ui/Theme.qml derives on top of them, lifts included. This file mirrors that derivation rather than
-// importing it, because Theme.qml is a QML singleton; tests/themes.sh measures the real pixels, which
-// is what catches the two drifting apart.
+// Commons/Color.qml's own mapping from colors.toml, key for key, plus the roles ui/Theme.qml derives
+// on top of it; tests/themes.sh reads the running window, which is what catches this mirror drifting.
 function roles(body) {
     var found = Palette.parse(body)
     var foreground = Palette.pick(found, ["foreground", "color7"], "#cacccc")
@@ -111,10 +109,8 @@ function run(check) {
         // ground cut out for its tick, and the muted frame when empty. tests/themes.sh measures the
         // fill's own pixel, which is where a checkbox that stopped using them would show.
 
-        // The error role, on the ground, and beside the caption it must never read as the quieter of.
-        // Two inks compared to each other would measure the two floors above rather than the palette,
-        // and a theme with an unusually bright muted, ethereal's is 4.90, would fail for being good at
-        // captions; what an error must never be is dimmer than one.
+        // The error role on its ground, and beside the caption it must never be the quieter of: two inks
+        // compared to each other would measure the floors above, and ethereal's muted of 4.90 would fail.
         atLeast(check, name, "error on background", Contrast.ratio(r.error, r.background), TEXT_MIN)
         atLeast(check, name, "error is never dimmer than a caption",
                 Contrast.ratio(r.error, r.background), Contrast.ratio(r.muted, r.background))

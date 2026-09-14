@@ -79,9 +79,8 @@ function ensureRatio(fgHex, bgHex, minRatio) {
     return stepped(hexOf(best), bgHex, need, toward)
 }
 
-// Rounding the search's answer to 8 bits can land just under the ratio asked for: 20 of the 22 stock
-// palettes came back at 2.99 for a requested 3. The rounded value walks on in whole steps toward the
-// same extreme the search used, black or white, and stops there whether or not the ratio arrived.
+// Rounding the search's answer to 8 bits can land just under the ratio asked for, 2.99 for 3 on 20 of
+// the 22 stock palettes, so it walks on in whole steps toward the same extreme and stops there.
 function stepped(hex, bgHex, need, toward) {
     var c = parse(hex)
     var step = toward[0] > 0.5 ? 1 / 255 : -1 / 255
