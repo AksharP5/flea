@@ -2,7 +2,7 @@
 // std has no select, so each blocking source is a thread and the loop only ever waits on the receiver.
 use crate::backend::opscancel::Live;
 use crate::backend::opsreq::OpMsg;
-use crate::backend::proto::{parse_request, Request};
+use crate::backend::proto::{parse_request, Request, TRANSFER_CANCEL};
 use crate::backend::thumbs::Done;
 use crate::error::{from_io, FleaError};
 use std::io::{self, BufRead};
@@ -31,12 +31,7 @@ pub fn spawn_reader(tx: Sender<Event>, live: Arc<Live>) {
         let stdin = io::stdin();
         for line in stdin.lock().lines() {
             let event = match line {
-                Ok(l) => {
-                    if let Some(Request::TransferCancel { id }) = cancel_in(&l) {
-                        live.cancel(id);
-                    }
-                    Event::Request(l)
-                }
+                Ok(l) => read_line(l, &live),
                 // The reader has no writer, so the decode failure is handed back for the loop to report.
                 Err(e) => Event::ReadError(from_io("read", "stdin", &e)),
             };
@@ -49,9 +44,17 @@ pub fn spawn_reader(tx: Sender<Event>, live: Arc<Live>) {
     });
 }
 
+// One line's worth of the reader thread's job, split out so the cancel it acts on has a test.
+fn read_line(line: String, live: &Live) -> Event {
+    if let Some(Request::TransferCancel { id }) = cancel_in(&line) {
+        live.cancel(id);
+    }
+    Event::Request(line)
+}
+
 // Parsed only for the one request this thread acts on, so no other line pays for a second parse.
 fn cancel_in(line: &str) -> Option<Request> {
-    if !line.contains("transfercancel") {
+    if !line.contains(TRANSFER_CANCEL) {
         return None;
     }
     Some(parse_request(line))
@@ -78,3 +81,7 @@ pub fn spawn_forwarder(results: Receiver<Done>, tx: Sender<Event>) {
         }
     });
 }
+
+#[cfg(test)]
+#[path = "events_tests.rs"]
+mod tests;

@@ -1,4 +1,7 @@
 use crate::error::FleaError;
+
+// The one spelling of the token the reader thread also matches; see src/backend/events.rs.
+pub const TRANSFER_CANCEL: &str = "transfercancel";
 use crate::json::{escape, field_bool, field_str, field_str_array, field_usize, field_usize_array};
 
 pub enum Request {
@@ -91,7 +94,7 @@ pub fn parse_request(line: &str) -> Request {
             dest: field_str(line, "dest").unwrap_or_default(),
             menu_id: field_usize(line, "menuId").unwrap_or(0),
         },
-        Some("transfercancel") => Request::TransferCancel { id: field_usize(line, "id").unwrap_or(0) },
+        Some(TRANSFER_CANCEL) => Request::TransferCancel { id: field_usize(line, "id").unwrap_or(0) },
         Some("trash") => Request::Trash {
             paths: field_str_array(line, "paths"),
             rows: field_usize_array(line, "rows"),
@@ -103,10 +106,7 @@ pub fn parse_request(line: &str) -> Request {
             menu_id: field_usize(line, "menuId").unwrap_or(0),
         },
         Some("duplicate") => Request::Duplicate { path: field_str(line, "path").unwrap_or_default(), menu_id: field_usize(line, "menuId").unwrap_or(0) },
-        Some("mkdir") => Request::MkDir {
-            path: field_str(line, "path").unwrap_or_default(),
-            name: field_str(line, "name").unwrap_or_default(),
-        },
+        Some("mkdir") => Request::MkDir { path: field_str(line, "path").unwrap_or_default(), name: field_str(line, "name").unwrap_or_default() },
         Some("newfile") => Request::NewFile {
             path: field_str(line, "path").unwrap_or_default(),
             name: field_str(line, "name").unwrap_or_default(),

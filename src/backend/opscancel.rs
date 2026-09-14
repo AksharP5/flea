@@ -75,10 +75,13 @@ mod tests {
     #[test]
     fn nothing_running_takes_no_cancel_at_all() {
         let live = Live::new();
-        assert_eq!(live.running(), None);
-        live.cancel(1);
         let flag = Arc::new(AtomicBool::new(false));
         live.claim(1, &flag);
-        assert!(!flag.load(Ordering::Relaxed), "a cancel that arrived first does not carry over");
+        live.finished();
+        live.cancel(1);
+        assert_eq!(live.running(), None);
+        assert!(!flag.load(Ordering::Relaxed), "a cancel with nothing running reaches the flag Live held");
+        live.claim(1, &flag);
+        assert!(!flag.load(Ordering::Relaxed), "and it does not carry over to the next claim of that id");
     }
 }
