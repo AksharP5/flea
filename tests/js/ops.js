@@ -127,6 +127,7 @@ function run(check) {
             path: "/d",
             cursorIndex: 0,
             rows: rows,
+            shown: null,
             selectedIndices: function () { return picked },
             rowFor: function (i) { return (i < 0 || i >= rows.length) ? null : rows[i] },
             join: function (a, b) { return a + "/" + b },

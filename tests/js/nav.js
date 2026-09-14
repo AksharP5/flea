@@ -13,6 +13,8 @@ function pane() {
         total: 40,
         held: 10,
         rows: [{ n: "a" }],
+        // The filter's own list, null while nothing is filtered, which is what the pane always carries.
+        shown: null,
         kindNames: ["Plain text document"],
         thumbState: "stale",
         dirSizeState: "stale",

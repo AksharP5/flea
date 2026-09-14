@@ -2,6 +2,8 @@
 .import "../../ui/js/Thumbs.js" as Thumbs
 .import "../../ui/js/DirSizes.js" as DirSizes
 .import "filterfixture.js" as Fixture
+.import "../../ui/js/Nav.js" as Nav
+.import "../../ui/js/Ops.js" as Ops
 
 // The fixtures and the stub pane live in filterfixture.js, so this file stays checks.
 
@@ -173,6 +175,27 @@ function run(check) {
     check("and the version moves, so the status bar's count re-reads", sel.selectionVersion > 0, true)
     Filter.close(sel); sel.refresh()
     check("clearing the filter keeps what survived it and restores nothing", Fixture.picks(sel), "5,6")
+
+    // Issue 92, nixfred: the same rule for the cursor, which the fallback target reads when nothing is
+    // selected. A query matching nothing leaves it on the row it was on, and that row is not drawn.
+    var hidden = Fixture.pane("zzz")
+    hidden.cursorIndex = 3
+    check("a cursor the filter hides is not a row the pane can act on", Filter.cursorShown(hidden), false)
+    check("and its target list is empty rather than that hidden row", JSON.stringify(Ops.targetIndices(hidden)), "[]")
+    hidden.rowFor = function (i) { return hidden.rows[i] }
+    hidden.join = function (base, name) { return base + "/" + name }
+    hidden.path = "/fixture"
+    hidden.message = function (text, failed) { hidden.said = text }
+    hidden.renamingIndex = -1
+    Ops.startRename(hidden)
+    check("a rename opens no editor over a row with no delegate", hidden.renamingIndex, -1)
+    Nav.openCursor(hidden, { open: function () { hidden.said = "opened" } })
+    check("and Enter says so rather than navigating away", hidden.said, "That row is hidden by the filter.")
+
+    var visible = Fixture.pane("2026")
+    visible.cursorIndex = Filter.at(visible.shown, 0)
+    check("a cursor the filter draws is still a row to act on", Filter.cursorShown(visible), true)
+    check("and it is still the fallback target", JSON.stringify(Ops.targetIndices(visible)), "[" + visible.cursorIndex + "]")
 
     var hidden = Fixture.pane()
     hidden.cursorIndex = 3

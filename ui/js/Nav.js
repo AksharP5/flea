@@ -163,6 +163,10 @@ function openCursor(pane, opener) {
         pane.message("That row has not loaded yet.", false)
         return
     }
+    if (!Filter.cursorShown(pane)) {
+        pane.message("That row is hidden by the filter.", false)
+        return
+    }
     var path = pane.join(pane.path, row.n)
     if (row.d) {
         pane.open(path)
