@@ -1,54 +1,11 @@
-.import "../../ui/js/Selection.js" as Selection
+.import "tabsfixture.js" as Fixture
 .import "../../ui/js/Tabs.js" as Tabs
-
-function pane(path) {
-    var p = {
-        path: path || "/home/gm/Work",
-        home: "/home/gm",
-        history: ["/home/gm"],
-        cursorIndex: 4,
-        viewMode: "list",
-        showHidden: false,
-        searchMode: "",
-        searchFrom: "",
-        searchQuery: "",
-        searchRunning: false,
-        searchCancelled: false,
-        searchScanned: 0,
-        filterQuery: "",
-        filterTyping: false,
-        listInFlight: false,
-        tabs: null,
-        total: 20,
-        windowSize: 40,
-        said: [],
-        listed: [],
-        sorted: [],
-        windows: [],
-        preview: { active: false, closed: 0, close: function () { this.active = false; this.closed += 1 } },
-        selection: Selection.create(),
-        selectionVersion: 0
-    }
-    p.selectedIndices = function () { return p.selection.indices() }
-    p.clearSelection = function () { p.selection.clear(); p.selectionVersion++ }
-    p.setCursor = function (i) { p.cursorIndex = i }
-    p.message = function (text) { p.said.push(text) }
-    p.openWithoutHistory = function (next) { p.listed.push(next); p.path = next; p.cursorIndex = 0 }
-    p.backend = {
-        sortBy: "name",
-        sortDesc: false,
-        sort: function (by, desc) { p.sorted.push(by + ":" + desc); this.sortBy = by; this.sortDesc = desc },
-        window: function (start, count) { p.windows.push(start + ":" + count) },
-        searchcancel: function () { p.searchRunning = false }
-    }
-    return p
-}
 
 function run(check) {
     // A search sets pane.path to the scope it walks and keeps the origin in searchFrom, which
     // dropOverlay clears. openNew is driven whole rather than restingPath alone, because the defect
     // was the ORDER of those two and a test on restingPath by itself passes either way.
-    var searching = pane("/")
+    var searching = Fixture.pane("/")
     searching.searchMode = "results"
     searching.searchFrom = "/home/gm/Work"
     Tabs.openNew(searching)
@@ -60,7 +17,7 @@ function run(check) {
     check("carrying no cursor from the search's own listing", searching.tabs.items[1].cursorIndex, 0)
     check("and no selection from it either", searching.tabs.items[1].selected.length, 0)
 
-    var plain = pane("/tmp/here")
+    var plain = Fixture.pane("/tmp/here")
     Tabs.openNew(plain)
     check("an ordinary listing opens its tab on its own path", plain.tabs.items[1].path, "/tmp/here")
 
@@ -80,7 +37,7 @@ function run(check) {
     // The clamp alone was not enough: a row deleted BELOW a kept index leaves that index in range
     // and naming a different file, which trash would then act on. A switch that re-lists carries no
     // selection at all now, and the re-list's own reset is what clears it.
-    var moved = pane("/tmp/a")
+    var moved = Fixture.pane("/tmp/a")
     moved.tabs = { items: [{ path: "/tmp/a" }, { path: "/tmp/b", history: [], cursorIndex: 1,
                             viewMode: "list", showHidden: false, selected: [0, 1, 2],
                             sortBy: "name", sortDesc: false }],
@@ -91,7 +48,7 @@ function run(check) {
     check("and it did re-list, which is what clears the selection", moved.listed.join(","), "/tmp/b")
 
     // F3 and F4: a refusal and a background close must each cost the user nothing else.
-    var full = pane("/tmp/full")
+    var full = Fixture.pane("/tmp/full")
     var nine = []
     for (var t = 0; t < 9; t++) nine.push({ path: "/tmp/" + t })
     full.tabs = { items: nine, index: 0, pendingCursor: -1, pendingSelected: null,
@@ -106,7 +63,7 @@ function run(check) {
     check("and the search itself is still standing", full.searchMode, "results")
 
     // selectAt got the same read-before-dropOverlay hoist, and nothing drove it from a search.
-    var leaving = pane("/")
+    var leaving = Fixture.pane("/")
     leaving.searchMode = "results"
     leaving.searchFrom = "/home/gm/Work"
     var other = { path: "/tmp/other", history: [], cursorIndex: 0, viewMode: "list",
@@ -117,7 +74,7 @@ function run(check) {
     check("the tab left behind during a search records where the user was",
           leaving.tabs.items[1].path, "/home/gm/Work")
 
-    var many = pane("/tmp/one")
+    var many = Fixture.pane("/tmp/one")
     many.tabs = { items: [{ path: "/tmp/one" }, { path: "/tmp/two" }, { path: "/tmp/three" }],
                   index: 0, pendingCursor: -1, pendingSelected: null,
                   pendingSortBy: "", pendingSortDesc: false }
@@ -140,9 +97,9 @@ function run(check) {
     check("the home directory uses the rail's own Home label", Tabs.label("/home/gm", "/home/gm"), "Home")
     check("a home child is labelled with its leaf, not the tilde form",
           Tabs.label("/home/gm/Work", "/home/gm"), "Work")
-    check("one pane with no tab state still counts as one tab", Tabs.count(pane()), 1)
+    check("one pane with no tab state still counts as one tab", Tabs.count(Fixture.pane()), 1)
 
-    var born = pane()
+    var born = Fixture.pane()
     Tabs.act("tabNew", born)
     check("t seeds the current folder and opens a second tab on it", Tabs.count(born), 2)
     check("and lands on the new tab", Tabs.currentIndex(born), 1)
@@ -162,7 +119,7 @@ function run(check) {
     Tabs.applyPending(born)
     check("the pending cursor lands once rows arrive", born.cursorIndex, 4)
 
-    var cycling = pane("/tmp/first")
+    var cycling = Fixture.pane("/tmp/first")
     Tabs.openNew(cycling)
     cycling.path = "/tmp/second"
     cycling.cursorIndex = 7
@@ -200,7 +157,7 @@ function run(check) {
     check("both loading refusals explain why the key did not switch",
           cycling.said.join("|"), "A directory is already loading.|A directory is already loading.")
 
-    var single = pane("/tmp/only")
+    var single = Fixture.pane("/tmp/only")
     single.preview.active = true
     single.filterQuery = "keep"
     single.selection.toggle(2)
@@ -211,42 +168,42 @@ function run(check) {
           single.preview.active + "|" + single.filterQuery + "|" + single.cursorIndex + "|" + single.selectedIndices().join(","),
           "true|keep|4|2")
 
-    var missing = pane()
+    var missing = Fixture.pane()
     Tabs.act("tab3", missing)
     check("a digit with no such tab says so in words", missing.said.join(""), "No tab 3.")
 
-    var last = pane()
+    var last = Fixture.pane()
     Tabs.act("tabClose", last)
     check("w on the only tab refuses rather than closing the window",
           last.said.join(""), "Can't close the last tab.")
 
-    var pair = pane("/home/gm/a")
+    var pair = Fixture.pane("/home/gm/a")
     Tabs.act("tabNew", pair)
     pair.path = "/home/gm/b"
     Tabs.act("tabClose", pair)
     check("w on a second tab leaves one", Tabs.count(pair), 1)
     check("and lists the tab that remains", pair.listed.join(","), "/home/gm/a")
 
-    var capped = pane()
+    var capped = Fixture.pane()
     var n
     for (n = 0; n < 12; n++)
         Tabs.act("tabNew", capped)
     check("the ninth tab is the last one t will open", Tabs.count(capped), 9)
     check("and the tenth says so", capped.said[capped.said.length - 1], "Nine tabs is the most.")
 
-    var loading = pane()
+    var loading = Fixture.pane()
     loading.listInFlight = true
     Tabs.act("tabNew", loading)
     check("t while a listing is in flight uses the same sentence navigation does",
           loading.said.join(""), "A directory is already loading.")
 
-    var previewing = pane()
+    var previewing = Fixture.pane()
     previewing.preview.active = true
     Tabs.act("tabNew", previewing)
     check("t closes an open preview, so the new tab is not sitting under one",
           previewing.preview.closed, 1)
 
-    var pending = pane("/home/gm/a")
+    var pending = Fixture.pane("/home/gm/a")
     pending.tabs = {
         items: [],
         index: 0,
@@ -260,48 +217,4 @@ function run(check) {
           pending.sorted.join(",") + "|" + pending.cursorIndex, "size:true|4")
     Tabs.applyPending(pending)
     check("the next rows reply restores the cursor", pending.cursorIndex, 9)
-
-    // Issue 93, nixfred: a search begun in home walks home, so its scope is where the user already
-    // was. Dropping it leaves the pane's rows on the walk's results, and a destination equal to that
-    // scope used to look like the one switch that re-lists nothing: the new tab showed search rows.
-    var scoped = pane("/home/gm")
-    scoped.searchMode = "results"
-    scoped.searchFrom = "/home/gm"
-    Tabs.openNew(scoped)
-    check("a tab opened onto the scope its search walked lists it again",
-          scoped.listed.join(","), "/home/gm")
-
-    var switching = pane("/home/gm")
-    Tabs.openNew(switching)
-    switching.listed = []
-    switching.searchMode = "results"
-    switching.searchFrom = "/home/gm"
-    Tabs.selectAt(switching, 0)
-    check("switching to a tab standing on that scope lists it again",
-          switching.listed.join(","), "/home/gm")
-
-    var closing = pane("/home/gm")
-    Tabs.openNew(closing)
-    closing.listed = []
-    closing.searchMode = "results"
-    closing.searchFrom = "/home/gm"
-    Tabs.closeAt(closing, 1)
-    check("closing a searching tab onto one on that scope lists it again",
-          closing.listed.join(","), "/home/gm")
-
-    // Issue 91, nixfred: an order the fresh listing already has is spent on that same reply, cursor
-    // and all. Left pending it revived on the reply answering the user's next sort and reverted it.
-    var already = pane("/home/gm/a")
-    already.tabs = { items: [], index: 0, pendingCursor: 9, pendingSelected: null,
-                     pendingSortBy: "name", pendingSortDesc: false }
-    Tabs.applyPending(already)
-    check("an order the listing already has asks for no sort", already.sorted.length, 0)
-    check("and the cursor is restored on that same reply", already.cursorIndex, 9)
-    check("and the pending order is spent", already.tabs.pendingSortBy, "")
-    already.backend.sort("size", true)
-    already.sorted = []
-    already.tabs.pendingCursor = -1
-    Tabs.applyPending(already)
-    check("so a later user sort survives the reply that answers it",
-          already.sorted.length + "|" + already.backend.sortBy + ":" + already.backend.sortDesc, "0|size:true")
 }

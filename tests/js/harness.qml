@@ -51,6 +51,7 @@ import "trash.js" as TrashSuite
 import "tap.js" as TapSuite
 import "marquee.js" as MarqueeSuite
 import "tabs.js" as TabsSuite
+import "tabs-switch.js" as TabsSwitchSuite
 import "thumbs.js" as ThumbsSuite
 import "uistate.js" as UiStateSuite
 import "watch.js" as WatchSuite
@@ -89,7 +90,7 @@ Item {
             ["scroll", ScrollSuite], ["search", SearchSuite],
             ["selection", SelectionSuite], ["settings", SettingsSuite], ["settingsmenus", SettingsMenusSuite],
             ["sort", SortSuite], ["startup", StartupSuite], ["trashdates", TrashDatesSuite], ["permissions", PermissionsSuite], ["status", StatusSuite], ["taildrop", TaildropSuite], ["textsize", TextSizeSuite],
-            ["trash", TrashSuite], ["tap", TapSuite], ["marquee", MarqueeSuite], ["tabs", TabsSuite],
+            ["trash", TrashSuite], ["tap", TapSuite], ["marquee", MarqueeSuite], ["tabs", TabsSuite], ["tabs-switch", TabsSwitchSuite],
             ["themes", ThemesSuite], ["thumbs", ThumbsSuite], ["transfer", TransferSuite], ["uistate", UiStateSuite],
             ["watch", WatchSuite]
         ]
