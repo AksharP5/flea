@@ -283,8 +283,10 @@ fn handle_line(
         Request::DirSizeCancel => {
             st.dirsize_queue.clear();
         }
-        Request::Transfer { op, paths, rows, dest, menu_id } => {
-            if menu_id != 0 {
+        Request::Transfer { op, paths, rows, dest, menu_id, shelf } => {
+            if !shelf.is_empty() {
+                crate::backend::shelfdrop::start(out, ops, &shelf, &dest)
+            } else if menu_id != 0 {
                 start_menu_transfer(out, ops, &op, menu_id, &dest)
             } else {
                 let named = resolve_rows(paths, &rows, &st.base, &st.listing);
@@ -410,10 +412,6 @@ fn drain(
         writeln!(out, "{}", thumbed_line(row, "", 0.0)).ok();
     }
     out.flush().ok();
-}
-
-pub fn since(t: Instant) -> f64 {
-    t.elapsed().as_secs_f64() * 1000.0
 }
 
 pub fn write_window(out: &mut impl Write, st: &State, start: usize, count: usize, tb: &Tables) {

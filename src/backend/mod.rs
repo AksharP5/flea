@@ -42,6 +42,8 @@ pub mod trashdelete;
 pub mod trashmanifest;
 pub mod rows;
 pub mod run;
+pub mod shelfdrop;
+pub mod timing;
 pub mod md5;
 pub mod thumbspec;
 pub mod thumbargv;

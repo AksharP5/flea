@@ -44,7 +44,7 @@ impl Ops {
     }
 
     // A fresh flag per operation, so a cancel can never reach the operation after the one it was aimed at.
-    fn claim(&mut self) -> (usize, Arc<AtomicBool>) {
+    pub(crate) fn claim_transfer(&mut self) -> (usize, Arc<AtomicBool>) {
         let id = self.next_id;
         self.next_id += 1;
         let cancel = Arc::new(AtomicBool::new(false));
@@ -86,7 +86,7 @@ pub(crate) fn request_menu_action(out: &mut impl Write, ops: &mut Ops, line: Str
     }
     let replies = ops.tx.clone();
     let accepted = ops.menuactions.get_or_insert_with(|| super::menu_actions::MenuActions::new(replies)).request(line, paths, cursor);
-    if deleting && accepted { ops.claim(); }
+    if deleting && accepted { ops.claim_transfer(); }
 }
 
 pub(crate) fn start_menu_transfer(out: &mut impl Write, ops: &mut Ops, op: &str, id: usize, dest: &str) {
@@ -122,7 +122,7 @@ fn start_transfer_checked(out: &mut impl Write, ops: &mut Ops, op: &str, paths: 
     let moving = op == "move";
     let n = paths.len();
     ops.transfer_retry = (0, Vec::new());
-    let (id, cancel) = ops.claim();
+    let (id, cancel) = ops.claim_transfer();
     writeln!(out, "{}", transferstarted_line(id, n, moving)).ok();
     out.flush().ok();
     let tx = ops.tx.clone();
@@ -149,7 +149,7 @@ pub(crate) fn start_trash(out: &mut impl Write, ops: &mut Ops, paths: Vec<String
         Ok(selection) => selection,
         Err(message) => { writeln!(out, "{}", error_line(&op_err("trash", "", &message))).ok(); out.flush().ok(); return; }
     };
-    ops.claim();
+    ops.claim_transfer();
     let tx = ops.tx.clone();
     thread::spawn(move || run_trash(paths, tx, selection));
 }
@@ -163,7 +163,7 @@ pub(crate) fn start_duplicate(out: &mut impl Write, ops: &mut Ops, path: &str, m
         Ok(selection) => selection,
         Err(message) => { writeln!(out, "{}", error_line(&op_err("duplicate", path, &message))).ok(); out.flush().ok(); return; }
     };
-    ops.claim();
+    ops.claim_transfer();
     let tx = ops.tx.clone();
     let owned = path.to_string();
     thread::spawn(move || run_duplicate_checked(owned, tx, selection));
@@ -246,7 +246,7 @@ pub(crate) fn start_redo(out: &mut impl Write, ops: &mut Ops) {
             return;
         }
     };
-    let (id, cancel) = ops.claim();
+    let (id, cancel) = ops.claim_transfer();
     let mut journal = std::mem::replace(&mut ops.journal, Journal::new());
     writeln!(out, r#"{{"t":"redostarted","id":{},"n":{},"op":"{}"}}"#, id, n, crate::json::escape(&op)).ok();
     out.flush().ok();
@@ -330,9 +330,9 @@ mod tests {
     #[test]
     fn each_operation_claims_a_new_id_and_its_own_cancel_flag() {
         let mut o = ops();
-        let (first, first_flag) = o.claim();
+        let (first, first_flag) = o.claim_transfer();
         o.live.finished();
-        let (second, second_flag) = o.claim();
+        let (second, second_flag) = o.claim_transfer();
         assert_eq!((first, second), (1, 2));
         first_flag.store(true, Ordering::Relaxed);
         assert!(
@@ -344,7 +344,7 @@ mod tests {
     #[test]
     fn a_cancel_for_an_operation_that_is_not_running_does_nothing() {
         let mut o = ops();
-        let (id, flag) = o.claim();
+        let (id, flag) = o.claim_transfer();
         cancel_transfer(&o, id + 99);
         assert!(!flag.load(Ordering::Relaxed), "a stale id must not cancel the live operation");
         cancel_transfer(&o, id);
@@ -356,7 +356,7 @@ mod tests {
         let (tx, rx) = channel();
         let mut o = Ops::new(tx);
         let mut buf = out();
-        o.claim();
+        o.claim_transfer();
         request_menu_action(&mut buf, &mut o, r#"{"op":"delete","id":5,"token":1}"#.into(), vec![], None);
         assert!(text(&buf).contains(r#""op":"delete","ok":false"#));
         assert!(text(&buf).contains("already running"));
@@ -481,7 +481,7 @@ mod tests {
     fn a_second_operation_while_one_runs_is_refused_as_data_rather_than_queued_invisibly() {
         let d = TestDir::new("dispatchbusy");
         let mut o = ops();
-        o.claim();
+        o.claim_transfer();
         let mut buf = out();
         start_trash(&mut buf, &mut o, vec![d.file("a.txt", "a").to_string_lossy().to_string()], 0);
         assert!(text(&buf).contains("an operation is already running"));
@@ -491,7 +491,7 @@ mod tests {
     #[test]
     fn a_terminal_message_clears_the_running_slot_so_the_next_operation_is_accepted() {
         let mut o = ops();
-        o.claim();
+        o.claim_transfer();
         assert!(o.live.running().is_some());
         let mut buf = out();
         report_op(

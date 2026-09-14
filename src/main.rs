@@ -18,6 +18,7 @@ mod thp;
 mod uischema;
 mod uistate;
 mod favourites;
+mod shelf;
 mod uistore;
 mod userfile;
 mod vulkan;
@@ -216,6 +217,11 @@ fn main() {
 
     if args.get(1).map(String::as_str) == Some("--favourites") {
         exit(favourites::command(&args));
+    }
+
+    // flea shelf <verb>: the drop shelf's own state, minted for a plugin that is another process.
+    if args.get(1).map(String::as_str) == Some("shelf") {
+        exit(shelf::command(&args));
     }
 
     let mut want_tui = false;

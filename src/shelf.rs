@@ -1,0 +1,246 @@
+// The drop shelf's own state, and the single-use token a drag out of it carries. The bar widget
+// reads shelf.json and never writes it; every write is here, under the same lock discipline ui.json
+// takes. DragOut rule 1: no row index crosses the process boundary, only a token bound to entries.
+use crate::jsondoc::{self, Json};
+use crate::uistore;
+use std::fs;
+use std::io::Read;
+use std::os::unix::fs::MetadataExt;
+use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+const DIR: &str = "omarchy/flea-shelf";
+const PILE: &str = "shelf.json";
+const DRAGS: &str = "drags.json";
+const DRAGS_LOCK: &str = "drags.json.lock";
+
+// A drag is a gesture, not a session: a token older than this is refused however it was stored.
+const TOKEN_LIFE_MS: u64 = 120_000;
+// Sixteen bytes of urandom, hex encoded: the token is the only thing standing between a foreign
+// process and a move, so it is not a counter and not the clock.
+const TOKEN_BYTES: usize = 16;
+
+pub struct Shelf {
+    pile: PathBuf,
+    drags: PathBuf,
+    lock: PathBuf,
+}
+
+// What a redeemed token asks for: the entries as they were at the lift, and the intent fixed there.
+pub struct Redeemed {
+    pub token: String,
+    pub moving: bool,
+    pub paths: Vec<String>,
+}
+
+impl Shelf {
+    pub fn user() -> Result<Shelf, String> {
+        Ok(Shelf::at(&uistore::state_home()?))
+    }
+
+    pub fn at(state_dir: &Path) -> Shelf {
+        let dir = state_dir.join(DIR);
+        Shelf { pile: dir.join(PILE), drags: dir.join(DRAGS), lock: dir.join(DRAGS_LOCK) }
+    }
+
+    pub fn pile_file(&self) -> &Path {
+        &self.pile
+    }
+
+    // Never fails: the bar draws an empty shelf for a file that is missing or unreadable, and so does this.
+    pub fn pile(&self) -> Vec<String> {
+        let text = match fs::read_to_string(&self.pile) {
+            Ok(text) => text,
+            Err(_) => return Vec::new(),
+        };
+        let doc = match jsondoc::parse(&text) {
+            Ok(doc) => doc,
+            Err(_) => return Vec::new(),
+        };
+        let items = match doc.get("items").and_then(Json::as_array) {
+            Some(items) => items,
+            None => return Vec::new(),
+        };
+        items.iter().filter_map(|item| item.get("path").and_then(Json::as_str)).map(String::from).collect()
+    }
+
+    // Rule 1: the token is bound to the entries and to the intent, both fixed before the platform
+    // loop starts, so nothing the drag passes through can change what is being asked for.
+    pub fn drag_begin(&self, moving: bool, paths: &[String], now_ms: u64) -> Result<String, String> {
+        if paths.is_empty() {
+            return Err("a drag carries at least one entry".to_string());
+        }
+        let token = mint()?;
+        let mut entries = Vec::new();
+        for path in paths {
+            entries.push(entry_of(path)?);
+        }
+        let record = Json::Obj(vec![
+            ("token".to_string(), Json::Str(token.clone())),
+            ("intent".to_string(), Json::Str(if moving { "move" } else { "copy" }.to_string())),
+            ("created".to_string(), Json::Num(now_ms.to_string())),
+            ("entries".to_string(), Json::Arr(entries)),
+        ]);
+        self.write_drags(|drags| {
+            let mut kept = live_drags(drags, now_ms);
+            kept.push(record.clone());
+            Ok(Json::Obj(vec![("drags".to_string(), Json::Arr(kept))]))
+        })?;
+        Ok(token)
+    }
+
+    // Single use: the record is taken out of the file under the lock, so a replayed token finds
+    // nothing. Rule 4: a token that is unknown, expired or already spent is refused outright.
+    pub fn redeem(&self, token: &str, now_ms: u64) -> Result<Redeemed, String> {
+        let mut found: Option<Json> = None;
+        self.write_drags(|drags| {
+            let mut kept = Vec::new();
+            for drag in live_drags(drags, now_ms) {
+                if drag.get("token").and_then(Json::as_str) == Some(token) && found.is_none() {
+                    found = Some(drag);
+                } else {
+                    kept.push(drag);
+                }
+            }
+            Ok(Json::Obj(vec![("drags".to_string(), Json::Arr(kept))]))
+        })?;
+        let record = found.ok_or_else(|| "that drag is not one this shelf started".to_string())?;
+        let moving = record.get("intent").and_then(Json::as_str) == Some("move");
+        let entries: Vec<Json> = record.get("entries").and_then(Json::as_array).map(<[Json]>::to_vec).unwrap_or_default();
+        let mut paths = Vec::new();
+        for entry in &entries {
+            paths.push(unchanged(entry)?);
+        }
+        Ok(Redeemed { token: token.to_string(), moving, paths })
+    }
+
+    // Rule 3: the shelf changes only after completion. A copy leaves every reference, a move removes
+    // the ones the transfer engine reported moved, and a failure or a cancel leaves the rest.
+    pub fn settle(&self, moved: &[String]) -> Result<(), String> {
+        if moved.is_empty() {
+            return Ok(());
+        }
+        let text = fs::read_to_string(&self.pile).unwrap_or_default();
+        let doc = jsondoc::parse(&text).unwrap_or(Json::Obj(Vec::new()));
+        let items: Vec<Json> = doc.get("items").and_then(Json::as_array).map(<[Json]>::to_vec).unwrap_or_default();
+        let kept: Vec<Json> = items
+            .into_iter()
+            .filter(|item| match item.get("path").and_then(Json::as_str) {
+                Some(path) => !moved.iter().any(|gone| gone == path),
+                None => false,
+            })
+            .collect();
+        let next = Json::Obj(vec![("items".to_string(), Json::Arr(kept))]);
+        uistore::make_dir(self.pile.parent().ok_or("the shelf has no directory to write in")?)?;
+        uistore::replace(&self.pile, &jsondoc::render(&next))
+    }
+
+    fn write_drags(&self, change: impl FnOnce(&Json) -> Result<Json, String>) -> Result<(), String> {
+        let dir = self.drags.parent().ok_or("the shelf has no directory to write in")?;
+        uistore::make_dir(dir)?;
+        let lock = uistore::take_lock(&self.lock)?;
+        let current = fs::read_to_string(&self.drags)
+            .ok()
+            .and_then(|text| jsondoc::parse(&text).ok())
+            .unwrap_or(Json::Obj(Vec::new()));
+        let next = change(&current)?;
+        let written = uistore::replace(&self.drags, &jsondoc::render(&next));
+        lock.unlock().map_err(|e| format!("{} could not be unlocked ({:?})", self.lock.display(), e.kind()))?;
+        written
+    }
+}
+
+// Every drag still inside its own lifetime, so an abandoned gesture cannot be redeemed later.
+fn live_drags(drags: &Json, now_ms: u64) -> Vec<Json> {
+    drags
+        .get("drags")
+        .and_then(Json::as_array)
+        .map(|list| {
+            list.iter()
+                .filter(|drag| match drag.get("created").and_then(Json::as_f64) {
+                    Some(created) => now_ms.saturating_sub(created as u64) < TOKEN_LIFE_MS,
+                    None => false,
+                })
+                .cloned()
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+// The source identity the lift recorded, which is what makes a token name a file rather than a name.
+fn entry_of(path: &str) -> Result<Json, String> {
+    let meta = fs::symlink_metadata(path).map_err(|e| format!("{} could not be read ({:?})", path, e.kind()))?;
+    Ok(Json::Obj(vec![
+        ("path".to_string(), Json::Str(path.to_string())),
+        ("dev".to_string(), Json::Num(meta.dev().to_string())),
+        ("ino".to_string(), Json::Num(meta.ino().to_string())),
+        ("bytes".to_string(), Json::Num(meta.len().to_string())),
+    ]))
+}
+
+// The same file, or the drag is refused: a path that now names another inode is not what was lifted.
+fn unchanged(entry: &Json) -> Result<String, String> {
+    let path = entry.get("path").and_then(Json::as_str).ok_or("a drag entry with no path")?;
+    let meta = fs::symlink_metadata(path).map_err(|_| format!("{} is no longer there", path))?;
+    let same = entry.get("dev").and_then(Json::as_f64) == Some(meta.dev() as f64)
+        && entry.get("ino").and_then(Json::as_f64) == Some(meta.ino() as f64);
+    if !same {
+        return Err(format!("{} is not the file the shelf was holding", path));
+    }
+    Ok(path.to_string())
+}
+
+fn mint() -> Result<String, String> {
+    let mut bytes = [0u8; TOKEN_BYTES];
+    let mut source = fs::File::open("/dev/urandom").map_err(|e| format!("no randomness for a drag token ({:?})", e.kind()))?;
+    source.read_exact(&mut bytes).map_err(|e| format!("short read of randomness ({:?})", e.kind()))?;
+    Ok(bytes.iter().map(|b| format!("{:02x}", b)).collect())
+}
+
+pub fn now_ms() -> u64 {
+    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
+}
+
+// flea shelf <verb>: the plugin is another process, so the mint is a command rather than a wire line.
+pub fn command(args: &[String]) -> i32 {
+    match args.get(2).map(String::as_str) {
+        Some("drag-begin") => drag_begin(&args[3..]),
+        _ => {
+            eprintln!("flea: shelf takes drag-begin <move|copy> <path>...");
+            2
+        }
+    }
+}
+
+fn drag_begin(rest: &[String]) -> i32 {
+    let moving = match rest.first().map(String::as_str) {
+        Some("move") => true,
+        Some("copy") => false,
+        _ => {
+            eprintln!("flea: shelf drag-begin takes move or copy, then the entries");
+            return 2;
+        }
+    };
+    let paths: Vec<String> = rest[1..].to_vec();
+    let shelf = match Shelf::user() {
+        Ok(shelf) => shelf,
+        Err(e) => {
+            eprintln!("flea: {}", e);
+            return 2;
+        }
+    };
+    match shelf.drag_begin(moving, &paths, now_ms()) {
+        Ok(token) => {
+            println!("{}", token);
+            0
+        }
+        Err(e) => {
+            eprintln!("flea: {}", e);
+            2
+        }
+    }
+}
+
+#[cfg(test)]
+#[path = "shelf_tests.rs"]
+mod tests;

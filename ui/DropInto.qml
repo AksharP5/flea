@@ -18,7 +18,7 @@ DropArea {
     property string enteredMarker: ""
     property var enteredUrls: []
 
-    keys: [DragOps.ROWS_MIME, "text/uri-list"]
+    keys: [DragOps.ROWS_MIME, DragOps.SHELF_MIME, "text/uri-list"]
 
     Flea.FileDrag {
         id: feedback
@@ -60,7 +60,8 @@ DropArea {
     onPositionChanged: root.updateFeedback()
     onExited: root.leaveFeedback()
     onDropped: function (drop) {
-        if (DragOps.dropInto(root.pane, drop.getDataAsString(DragOps.ROWS_MIME), drop.urls, root.dest, root.destDev))
+        if (DragOps.dropInto(root.pane, drop.getDataAsString(DragOps.ROWS_MIME), drop.urls, root.dest,
+                             root.destDev, drop.getDataAsString(DragOps.SHELF_MIME)))
             drop.accept(Qt.CopyAction)
         root.leaveFeedback()
     }
