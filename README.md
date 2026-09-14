@@ -188,6 +188,7 @@ or a package. [The test suites](tests/) cover file operations, previews, persist
 ## Support
 
 If this saved you an afternoon, you can
+[sponsor me on GitHub](https://github.com/sponsors/thisisgm) or
 [buy me a coffee](https://buymeacoffee.com/thisisgm).
 
 ## Licence
