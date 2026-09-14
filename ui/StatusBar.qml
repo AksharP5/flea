@@ -25,12 +25,32 @@ Item {
     property var errors: []
     readonly property string transient_: root.errors.length ? root.errors[0].text : root.notice
     readonly property string errorDetail: root.errors.length ? root.errors[0].detail : ""
+    // Directive 46: the strip spans the window and the listing does not, so a lane centred on the
+    // strip sits half a sidebar to the right of the rows it speaks for. corner: the trash view owns
+    // the pane without being one, and keeps the strip's own midpoint.
+    readonly property real listAxis: {
+        var p = root.pane
+        if (!p || !p.listSlot)
+            return strip.width / 2
+        var slot = p.listSlot
+        // Read before the map, so this binding re-runs when the pane moves or its slot resizes.
+        var mid = slot.x + slot.width / 2
+        return strip.mapFromItem(p, mid, 0).x
+    }
+    // Where the rule puts the lane: the listing's axis, slid only as far as the standing zones force.
+    readonly property real centreWanted: Math.max(middleItem.x, Math.min(root.listAxis - centreItem.width / 2, middleItem.x + middleItem.width - centreItem.width))
+    // Zero when the lane is where that rule puts it, which is what a test reads instead of a shot.
+    readonly property real centreSlack: centreItem.x - root.centreWanted
+    // And how far it ends up from the axis itself, which in dual mode the clamp alone makes non-zero.
+    readonly property real centreOffset: centreItem.x + centreItem.width / 2 - root.listAxis
     readonly property var stripItem: background
     readonly property var transferCard: cardLoader.item
     readonly property var countsItem: counts
     readonly property var primaryItem: primary
     readonly property var secondaryItem: secondary
     readonly property var diskItem: disk
+    readonly property var centreItem: centre
+    readonly property var middleItem: middle
     readonly property bool transientIsError: root.errors.length > 0
     property var activities: []
     property var dragFeedbackOwner: null
@@ -236,7 +256,9 @@ Item {
 
     Row {
         id: centre
-        anchors.horizontalCenter: middle.horizontalCenter
+        // On the listing's axis, clamped into the lane the two standing zones leave: StatusBar rule 1
+        // is that the three never trade places, so the message slides just enough and elides as it did.
+        x: root.centreWanted
         anchors.verticalCenter: strip.verticalCenter
         // The hairline takes its own width out of the room the two texts share, or the pair clamps to
         // a middle the bar is not in and the centre grows past its third: StatusBar rule 1 is that the

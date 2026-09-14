@@ -2552,6 +2552,18 @@ case_columns() {
     kill_flea
 }
 
+# Directive 46: the strip speaks for the current pane, so its centre lane sits on that pane's own list slot axis. centreOffset is where the lane is less where it should be, in the strip's own pixels.
+centre_on_axis() {
+    local label="$1" state offset slack
+    state=$(ipc statusFooterState)
+    offset=$(jq -r '.centreOffset' <<< "$state")
+    slack=$(jq -r '.centreSlack' <<< "$state")
+    # offset is how far the lane ends up from the axis, which the clamp alone can make non-zero in dual mode; slack is how far it is from where the rule puts it, which is always zero.
+    printf 'CENTRE %s offset=%s slack=%s\n' "$label" "$offset" "$slack"
+    awk -v s="$slack" 'BEGIN { exit (s < 1 && s > -1) ? 0 : 1 }' \
+        || fail "status: the $label centre lane sits $slack px off where the listing's axis puts it"
+}
+
 case_status() {
     local dir="$fixture_root/status" failure
     sandbox_scratch "$dir"
@@ -2577,6 +2589,7 @@ case_status() {
     key -k Return >/dev/null
     settle
     [[ "$(ipc statusPrimary)" == "$failure" ]] || fail "status: search hid error"
+    centre_on_axis "single pane, error"
     [[ "$(ipc statusSecondary)" == *scanned* || "$(ipc statusSecondary)" == *result* ]] || fail "status: search lost secondary count"
     [[ "$(ipc statusColor)" == "$(ipc palette | cut -d' ' -f6)" ]] || fail "status: error lost its color"
     shot status-error-search
@@ -2587,6 +2600,8 @@ case_status() {
     settle
     [[ "$(ipc statusError)" == false ]] || fail "status: Escape did not acknowledge error"
     shot status-dismissed
+    centre_on_axis "single pane"
+    shot status-centre-axis
     kill_flea
 }
 
@@ -6646,6 +6661,14 @@ case_dual() {
     key l >/dev/null
     wait_listing 1
     [[ "$(ipc path)" == "$dir/left/nested" ]] || fail "dual: left navigation did not enter nested folder"
+    centre_on_axis "dual left"
+    shot dual-centre-axis-left
+    key -k Tab >/dev/null
+    settle
+    centre_on_axis "dual right"
+    shot dual-centre-axis-right
+    key -k Tab >/dev/null
+    settle
     key -k Tab >/dev/null
     settle
     [[ "$(ipc path)" == "$dir/right" && "$(ipc cursor)" == 1 ]] || fail "dual: left navigation changed right state"
