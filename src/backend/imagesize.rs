@@ -73,7 +73,7 @@ fn png(b: &[u8]) -> Option<(u32, u32)> {
 }
 
 // How far into a file the frame header is looked for. A camera's EXIF preview is tens of kilobytes,
-// so this is generous; past it the file is not answering and this runs on the preview path.
+// corner: a frame header past this megabyte is not found, and the preview names no pixel size.
 const JPEG_WALK: u64 = 1024 * 1024;
 
 // One byte, and the walk's own bound with it: a file that never names a marker must not be read whole.
@@ -123,8 +123,11 @@ fn jpeg<R: Read + Seek>(r: &mut R) -> Option<(u32, u32)> {
             return Some((width, height));
         }
         // Seeked rather than read: an EXIF segment is tens of kilobytes and none of it is wanted.
-        r.seek(SeekFrom::Current(i64::from(len) - 2)).ok()?;
         walked += u64::from(len) - 2;
+        if walked > JPEG_WALK {
+            return None;
+        }
+        r.seek(SeekFrom::Current(i64::from(len) - 2)).ok()?;
     }
 }
 
@@ -219,7 +222,7 @@ mod tests {
     }
 
     // The bound, because the walk is no longer held to the probe: a file that starts FFD8 and never
-    // names a marker used to be read to its end, 44.8 s for 64 MB on this box measured before the cap.
+    // names a marker was read to its end, tens of seconds for 64 MB on this box against 26 ms now.
     #[test]
     fn a_file_that_never_names_a_marker_is_not_read_to_its_end() {
         let mut quiet = std::io::Cursor::new(vec![0u8; JPEG_WALK as usize * 2]);
@@ -228,6 +231,17 @@ mod tests {
         let mut padding = std::io::Cursor::new(vec![0xFFu8; JPEG_WALK as usize * 2]);
         assert_eq!(jpeg(&mut padding), None, "and a file that is all padding names no marker either");
         assert!(padding.position() <= JPEG_WALK, "at the bound, not at the end: {}", padding.position());
+        // Segments are seeked over rather than read, so the bound has to be charged for them too.
+        let mut segments = Vec::new();
+        let filler = 1024u16;
+        while segments.len() < JPEG_WALK as usize * 2 {
+            segments.extend_from_slice(&[0xFF, 0xE1]);
+            segments.extend_from_slice(&(filler + 2).to_be_bytes());
+            segments.extend_from_slice(&vec![0u8; filler as usize]);
+        }
+        let mut skipped = std::io::Cursor::new(segments);
+        assert_eq!(jpeg(&mut skipped), None, "a chain of segments with no frame in it answers nothing");
+        assert!(skipped.position() <= JPEG_WALK, "and the seeks are charged: {}", skipped.position());
     }
 
     // The shapes the old byte walker stepped over: fill bytes before a marker, a marker that carries
