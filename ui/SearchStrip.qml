@@ -1,14 +1,17 @@
 import QtQuick
 
 // The query line the search puts in the header's slot: the mark, the query with its caret, the
-// scope, and the count. Presentation only; ui/Pane.qml owns every value it draws.
+// scope, the count beside it, and the way out at the right edge. Presentation only; ui/Pane.qml
+// owns every value it draws.
 Item {
     id: root
 
     property string query: ""
     property string scope: ""
-    // What the right edge says: a live count while the walk runs, the terminal word once it stops.
+    // A live count while the walk runs, the terminal word once it stops, against the scope rather than at the right edge, because the number and the folder it counts are one fact.
     property string note: ""
+    // The right edge, which is what esc does from here.
+    property string wayOut: ""
     property bool typing: false
 
     readonly property real ruleOpacity: 0.12
@@ -68,11 +71,12 @@ Item {
     }
 
     Text {
+        id: scopeText
         anchors.left: caret.right
         anchors.leftMargin: Theme.spacing.gap
-        anchors.right: noteText.left
-        anchors.rightMargin: Theme.spacing.gap
         anchors.verticalCenter: parent.verticalCenter
+        // The scope gives way before the count does: the number is the one that keeps changing.
+        width: Math.min(implicitWidth, Math.max(0, wayOutText.x - x - noteText.width - 2 * Theme.spacing.gap))
         text: root.scope.length > 0 ? "in " + root.scope : ""
         color: Theme.color.muted
         font.family: Theme.font.family
@@ -83,10 +87,22 @@ Item {
 
     Text {
         id: noteText
+        anchors.left: scopeText.right
+        anchors.leftMargin: Theme.spacing.gap
+        anchors.verticalCenter: parent.verticalCenter
+        text: root.note
+        color: Theme.color.muted
+        font.family: Theme.font.family
+        font.pixelSize: Theme.font.caption
+        textFormat: Text.PlainText
+    }
+
+    Text {
+        id: wayOutText
         anchors.right: parent.right
         anchors.rightMargin: Theme.spacing.rowPaddingX
         anchors.verticalCenter: parent.verticalCenter
-        text: root.note
+        text: root.wayOut
         color: Theme.color.muted
         font.family: Theme.font.family
         font.pixelSize: Theme.font.caption

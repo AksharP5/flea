@@ -214,7 +214,7 @@ Item {
         root.showCursor()
     }
 
-    function showCursor() { pane.showCursor(root.cursor) }
+    function showCursor() { pane.showCursor(root.cursor, Settings.stepRow(root.rows, root.cursor, 1) === root.cursor) }
     function sectionsText() { return JSON.stringify(Settings.SECTIONS) }
     function rowItemForId(id) {
         for (var i = 0; i < root.rows.length; i++) {

@@ -46,7 +46,7 @@ Flickable {
     contentHeight: root.current ? root.current.implicitHeight : 0
     clip: true
     boundsBehavior: Flickable.StopAtBounds
-    onHeightChanged: root.showCursor(root.cursor)
+    onHeightChanged: root.showCursor(root.cursor, false)
 
     Flea.FastScrollHandler {
         parent: root
@@ -75,10 +75,19 @@ Flickable {
 
     // The Column inside the Flickable holds rows of two different heights, so the visible window is
     // moved onto the row itself rather than derived from an index times a row height.
-    function showCursor(index) {
+    // last is the cursor sitting on the final row that can hold it: the rows after it are read-only,
+    // so revealing the cursor alone would leave the section's own tail unreachable by the keyboard.
+    function showCursor(index, last) {
         var item = root.rowItem(index)
         if (!item)
             return
+        // The tail is revealed by taking the cursor row to the top of the pane, never past it: on a
+        // short window the rows after it are taller than the viewport, and scrolling to the content's
+        // own end would push the row the keyboard is on off the top of the card.
+        if (last) {
+            root.contentY = Math.max(0, Math.min(root.contentHeight - root.height, item.y))
+            return
+        }
         if (item.y < root.contentY)
             root.contentY = item.y
         else if (item.y + item.height > root.contentY + root.height)

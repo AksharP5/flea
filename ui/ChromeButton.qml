@@ -42,16 +42,6 @@ Item {
     Accessible.name: root.accessName
     Accessible.onPressAction: if (root.enabled) root.activated()
 
-    Rectangle {
-        anchors.centerIn: parent
-        width: Theme.hitMin
-        height: Theme.hitMin
-        visible: root.keyboardFocused
-        color: "transparent"
-        border.width: Theme.spacing.hairline
-        border.color: Theme.color.accent
-    }
-
     Behavior on scale {
         enabled: !Theme.reducedMotion
         NumberAnimation { duration: 150; easing.type: Easing.OutQuad }
@@ -62,7 +52,10 @@ Item {
         width: root.glyphSize
         height: root.glyphSize
         name: root.glyph
-        color: !root.enabled ? Theme.color.muted : root.active || root.keyboardFocused ? Theme.color.accent : root.restingColor
+        // Containers Tier A: a chrome glyph wears no box, so the keyboard says where it is by brightness and the caller dims the rest of the strip.
+        color: !root.enabled ? Theme.color.muted
+             : root.active ? Theme.color.accent
+             : root.keyboardFocused ? Theme.color.foreground : root.restingColor
         opacity: root.enabled ? 1 : root.disabledOpacity
     }
 

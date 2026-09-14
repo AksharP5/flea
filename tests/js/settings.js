@@ -45,8 +45,9 @@ function runRows(check) {
     // An Omarchy size that is not one of the seven still marks a stop, the nearest one.
     var between = Settings.rows("display", displayState(TextSize.follow(), 13))
     check("a size between two stops marks the nearer one", between[2].index, 3)
-    check("the hint is down to the two chords", display[3].label,
-          "Ctrl+Shift +/- walks them. Ctrl+Shift+0 follows Omarchy again.")
+    // HANDOFF rule 8: one short line, which at this panel's width is 47 characters, measured.
+    check("the hint is down to the two chords, on one line", display[3].label,
+          "Ctrl+Shift +/- walks them, Ctrl+Shift+0 follows.")
     // And Effective stays, because in Follow it is the size running and the ruler's mark is not.
     check("Effective reports the size actually running", display[4].label + "|" + display[4].value + "|" + display[4].role,
           "Effective|14 px|live")
@@ -248,10 +249,10 @@ function runCompletionRows(check) {
     // HANDOFF rule 3: nothing is indented, so no row carries the flag that stepped its mark right.
     check("no preview row is indented", preview.filter(function (row) { return row.indented }).length, 0)
     var sizes = ["small", "medium", "large", "xlarge"]
-    check("each named stop carries its own pixel figure and the row states one value", sizes.map(function (size) {
+    check("the size row names the stop and no figure, one value per row", sizes.map(function (size) {
         var row = find(Settings.rows("preview", { data: { preview: { thumbSize: size } } }), "preview.thumbSize")
         return (row.caption === undefined ? "-" : row.caption) + "|" + row.value
-    }).join(","), "-|Small 48 px,-|Medium 64 px,-|Large 96 px,-|Extra large 128 px")
+    }).join(","), "-|Small,-|Medium,-|Large,-|Extra large")
     // Rule 3: the sentence explaining Load sits under Load, inside its own group, not in a footer two hairlines away.
     check("the load hint sits under the control it explains", preview[3].kind + "|" + preview[3].label + "|" + (preview[3].footer === undefined),
           "hint|Ctrl+Space loads the current selection.|true")

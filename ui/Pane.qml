@@ -453,6 +453,7 @@ FocusScope {
         searchQuery: root.searchQuery
         searchScope: Search.scope(Search.scopeRoot(root.path, root.home, root.searchHere), root.home)
         searchNote: Search.note(root.total, root.searchRunning, root.searchCancelled)
+        searchWayOut: Search.wayOut(root.searchRunning)
     }
 
     // The two views share the same slot, the same rows and the same cursor; only one is ever up, and

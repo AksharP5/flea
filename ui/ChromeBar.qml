@@ -43,8 +43,14 @@ Item {
     // What the seam reads: the line as it stands, and the box a test double-clicks to open the bar.
     readonly property alias editText: field.text
     readonly property alias pathArea: pathArea
-    // The elided head's own marker, so a test can click the one spot the crumbs slide underneath.
-    readonly property alias elisionMarker: elision
+    // The collapsed middle's own crumb, so a test can press the one segment that names no directory. Its index moves with the room, because the crumbs nearest the root are put back before it.
+    readonly property int elisionIndex: {
+        for (var i = 0; i < crumbs.model.length; i++)
+            if (crumbs.model[i].elided)
+                return i
+        return -1
+    }
+    readonly property var elisionMarker: root.elisionIndex >= 0 ? crumbs.itemAt(root.elisionIndex) : null
     // Issue 45's segments as items, so tests/ui.sh can press one the way it presses a tab.
     readonly property alias crumbItems: crumbs
     // The directory a Tab is waiting on, and the one that came back. Both are keyed by the hidden
@@ -224,6 +230,15 @@ Item {
             TapHandler { onDoubleTapped: root.startEdit() }
         }
 
+        // One glyph's advance is every glyph's advance in this face, so the crumbs are fitted by
+        // character count rather than by a layout pass that would feed its own width back in.
+        TextMetrics {
+            id: crumbMetrics
+            font.family: Theme.font.family
+            font.pixelSize: Theme.font.caption
+            text: "0"
+        }
+
         Item {
             id: crumbSlot
             visible: !root.editing && root.showPath && ViewState.addressBar === "breadcrumb"
@@ -233,11 +248,11 @@ Item {
             Row {
                 id: crumbRow
                 anchors.verticalCenter: parent.verticalCenter
-                x: Math.min(0, crumbSlot.width - crumbRow.width)
 
                 Repeater {
                     id: crumbs
-                    model: Nav.crumbs(root.path, root.home)
+                    model: Nav.fitCrumbs(Nav.crumbs(root.path, root.home),
+                                         Math.floor(crumbSlot.width / crumbMetrics.advanceWidth))
 
                     // corner: a path is arbitrary text, so PlainText, the same rule every filename on this surface follows.
                     delegate: Text {
@@ -245,7 +260,8 @@ Item {
                         required property var modelData
                         text: crumb.modelData.text
                         // Only the current folder is lit at rest; an ancestor lights under the pointer, one at a time, which is the one sign a crumb answers a click.
-                        color: crumb.modelData.last || crumbHover.hovered ? Theme.color.foreground : Theme.color.muted
+                        color: crumb.modelData.last || (crumbHover.hovered && !crumb.modelData.elided)
+                            ? Theme.color.foreground : Theme.color.muted
                         font.family: Theme.font.family
                         font.pixelSize: Theme.font.caption
                         textFormat: Text.PlainText
@@ -257,7 +273,7 @@ Item {
 
                         HoverHandler {
                             id: crumbHover
-                            cursorShape: crumb.modelData.last ? Qt.IBeamCursor : Qt.PointingHandCursor
+                            cursorShape: crumb.modelData.last || crumb.modelData.elided ? Qt.IBeamCursor : Qt.PointingHandCursor
                         }
 
                         // Both flags together, measured on Qt 6.11.2: one of them alone suppresses
@@ -268,7 +284,8 @@ Item {
                         TapHandler {
                             acceptedButtons: Qt.LeftButton
                             exclusiveSignals: TapHandler.SingleTap | TapHandler.DoubleTap
-                            onSingleTapped: if (!crumb.modelData.last) root.pathEntered(crumb.modelData.path)
+                            // The collapsed marker names no directory, so a press on it opens nothing rather than whichever crumb it stands for.
+                            onSingleTapped: if (!crumb.modelData.last && !crumb.modelData.elided) root.pathEntered(crumb.modelData.path)
                             onDoubleTapped: root.startEdit()
                         }
                     }
@@ -294,38 +311,6 @@ Item {
                 }
             }
 
-            // The head that ran off the left, marked where the elided Text drew its own ellipsis; the
-            // fill behind it is the chrome's own colour, because the crumbs slide underneath it. It
-            // keeps the root in front of the ellipsis, so a long path still reads as its root, one
-            // collapsed crumb and the segments nearest you rather than starting mid-path.
-            Rectangle {
-                visible: elision.visible
-                anchors.fill: elision
-                color: Theme.color.surface
-
-                // The crumbs slide under this fill, so without a gesture of its own a press here
-                // opened whichever one had scrolled behind it, a directory nobody could see. A
-                // MouseArea and not a TapHandler: the default DragThreshold policy takes a passive
-                // grab, so the crumb underneath still tapped, measured on the box.
-                MouseArea {
-                    anchors.fill: parent
-                    onDoubleClicked: root.startEdit()
-                }
-            }
-
-            Text {
-                id: elision
-                visible: crumbRow.width > crumbSlot.width
-                anchors.left: parent.left
-                anchors.top: parent.top
-                anchors.bottom: parent.bottom
-                verticalAlignment: Text.AlignVCenter
-                text: (crumbs.model.length > 0 ? crumbs.model[0].text : "") + "\u2026"
-                color: Theme.color.muted
-                font.family: Theme.font.family
-                font.pixelSize: Theme.font.caption
-                textFormat: Text.PlainText
-            }
         }
 
         // The rename editor's own frame, at chrome scale: the accent says which strip has the

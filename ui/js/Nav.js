@@ -220,6 +220,33 @@ function crumbs(path, home) {
     return out
 }
 
+// Chrome rule 2: a path too long for the strip reads as its root, one collapsed crumb and the segments nearest you, whole crumbs only, so the marker is a crumb of its own. budget is the strip's width in characters, monospace.
+function fitCrumbs(list, budget) {
+    if (list.length < 4 || crumbChars(list) <= budget) {
+        return list
+    }
+    var shown = [list[0], { text: "\u2026/", path: "", last: false, elided: true },
+                 list[list.length - 2], list[list.length - 1]]
+    // Whatever room the marker leaves goes back to the crumbs nearest the root, in walking order.
+    for (var i = 1; i < list.length - 2; i++) {
+        var next = shown.slice()
+        next.splice(i, 0, list[i])
+        if (crumbChars(next) > budget) {
+            break
+        }
+        shown = next
+    }
+    return shown
+}
+
+function crumbChars(list) {
+    var chars = 0
+    for (var i = 0; i < list.length; i++) {
+        chars += list[i].text.length
+    }
+    return chars
+}
+
 // Backspace and the chrome's up arrow: the root has no parent, so it is where climbing stops.
 function parent(pane) {
     if (pane.listInFlight) {

@@ -14,9 +14,7 @@ use crate::oflags::O_NOFOLLOW;
 pub struct Progress<'a> {
     pub cancel: &'a AtomicBool,
     pub on_bytes: &'a mut dyn FnMut(u64, u64),
-    // Some once the copy is inside a directory tree, holding the bytes its earlier files already
-    // copied. A tree then reports one running count for the whole item instead of restarting at
-    // every file in it, and no total, because the size of a tree is not known without a sweep.
+    // Some once the copy is inside a directory tree, holding the bytes its earlier files already copied, so a tree reports one running count and no total: the size of a tree is not known without a sweep.
     pub tree: Option<u64>,
     // The destination a copy created and then failed to finish for a reason other than a cancel. It
     // stays on disk, because removing it would destroy data on a transient error, and the caller

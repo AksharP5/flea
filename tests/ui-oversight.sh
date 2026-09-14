@@ -327,8 +327,8 @@ case_oversight() {
                 || fail "oversight: native Thumbnail size control did not start at Medium"
             key -k Left >/dev/null
             settings_wait_value '.preview.thumbSize == "small"'
-            ipc settingsModel | jq -e 'any(.[]; .id == "preview.thumbSize" and .selected == "small" and .caption == "48 px")' >/dev/null \
-                || fail "oversight: native Thumbnail size control did not show Small 48 px"
+            ipc settingsModel | jq -e 'any(.[]; .id == "preview.thumbSize" and .selected == "small" and .value == "Small")' >/dev/null \
+                || fail "oversight: native Thumbnail size control did not show Small"
             key -k Escape >/dev/null
             permissions_expect settingsOpen false
             permissions_expect viewMode grid

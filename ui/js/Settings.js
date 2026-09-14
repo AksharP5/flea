@@ -185,8 +185,8 @@ function displayRows(state) {
         { kind: "ruler", id: "textStop", stops: TextSize.STOPS, on: !follows,
           index: TextSize.STOPS.indexOf(TextSize.nearest(state.baseSize)) }
     ]
-    // SettingsRest rule 2: the stops name themselves now, so the paragraph keeps only the chords.
-    out.push({ kind: "hint", label: "Ctrl+Shift +/- walks them. Ctrl+Shift+0 follows Omarchy again." })
+    // SettingsRest rule 2 keeps only the chords, and HANDOFF rule 8 keeps them to the one line the panel can draw: the board's own sentence wrapped onto two at this width.
+    out.push({ kind: "hint", label: "Ctrl+Shift +/- walks them, Ctrl+Shift+0 follows." })
     // And Effective stays: it is state.baseSize, the size actually running, where the ruler marks TextSize.nearest() and a tie takes the smaller stop, so a base of 13 marks 12.
     out.push({ kind: "fact", id: "textEffective", label: "Effective", role: "live",
                value: state.baseSize + " px", caption: effectiveNote(follows, state.baseSize) })
@@ -339,10 +339,9 @@ function previewRows(state) {
                       ["Automatic", "Manual"], data.loadOn || "automatic")
     // Rule 7: with the column off, SelectionPreview.canRead is false and both load paths return, so Load is the one real dependent here and it greys rather than lying.
     load.available = data.column !== false
-    // One value per row, rule 4: the figure rides each option, where "64 px  Medium" said it twice.
+    // One value per row, rule 4: the board drops the figure outright, because "64 px  Medium" is one fact twice.
     var size = choice("preview.thumbSize", "Thumbnail size", "maximize", ["small", "medium", "large", "xlarge"],
-                      ["Small 48 px", "Medium 64 px", "Large 96 px", "Extra large 128 px"],
-                      data.thumbSize || "medium")
+                      ["Small", "Medium", "Large", "Extra large"], data.thumbSize || "medium")
     return [
         { kind: "group", label: "Preview column" },
         // Preview board rule 4: the heading names the group, so the row under it names the switch.

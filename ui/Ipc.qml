@@ -652,7 +652,7 @@ QtObject {
         function pathCentre(): string { return root.fleaWindow.centreOf(root.chrome.pathArea) }
         // The elision marker, or "" while the whole path fits: the one spot the crumbs slide under.
         function elisionCentre(): string {
-            return root.chrome.elisionMarker.visible ? root.fleaWindow.centreOf(root.chrome.elisionMarker) : ""
+            return root.chrome.elisionMarker ? root.fleaWindow.centreOf(root.chrome.elisionMarker) : ""
         }
         // Issue 45's segments, reached the way tabCentre reaches a tab: a driven press on a real
         // crumb is the only thing that can tell a bound TapHandler from an unbound one.

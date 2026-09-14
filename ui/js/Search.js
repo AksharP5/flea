@@ -190,6 +190,12 @@ function note(total, running, cancelled) {
     return cancelled ? "stopped" : "done"
 }
 
+// The strip's own right edge, SearchFilter's proposed drawing: while the walk runs esc stops it and
+// a second esc is what leaves, which is the pair the board prints as one line.
+function wayOut(running) {
+    return running ? "esc cancels, then returns" : "esc returns"
+}
+
 // The rule itself lives in Format.tilde, because the window chrome draws a path through the same one.
 function scope(path, home) {
     return Format.tilde(path, home)

@@ -12,6 +12,8 @@ Item {
     property int size: 0
     // What the backend called this row, which the column draws and the overlay is opened from.
     property string kindName: ""
+    // The backend probe's sample rate in hertz, 0 until its answer lands or for a file with none.
+    property int rate: 0
     // The Quick Look starts playing on open, which is its whole job. The preview column does not:
     // arrowing down a folder of clips must not start any of them.
     property bool autoStart: true
@@ -36,17 +38,16 @@ Item {
             || player.mediaStatus === MediaPlayer.BufferedMedia
             || player.mediaStatus === MediaPlayer.EndOfMedia)
 
-    // MediaPdf rule 6: the overlay says at least what the column says, so the kind the backend named
-    // this row leads, the duration comes off the transport a few hundred pixels below, and the size
-    // ends the line. The sample rate is the one part still missing: Qt carries no sample-rate key at
-    // all (QMediaMetaData::Key, Qt 6.11) and the backend probe's rate reaches the column's own
-    // askMeta answer, which no caller of this overlay holds.
+    // MediaPdf rule 6, all four facts: the kind the backend named this row leads, the duration comes
+    // off the transport a few hundred pixels below, the rate is the backend probe's because Qt
+    // carries no sample-rate key at all (QMediaMetaData::Key, Qt 6.11), and the size ends the line.
     readonly property string facts: {
         var name = root.path.substring(root.path.lastIndexOf("/") + 1)
         var dot = name.lastIndexOf(".")
         var suffix = dot > 0 ? name.substring(dot + 1).toLowerCase() : ""
         var parts = [root.kindName.length > 0 ? root.kindName : suffix]
         if (player.duration > 0) parts.push(Format.duration(player.duration))
+        parts.push(Format.sampleRate(root.rate))
         if (root.size > 0) parts.push(Format.size(root.size))
         return parts.filter(function (part) { return part.length > 0 }).join(" · ")
     }

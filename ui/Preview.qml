@@ -30,6 +30,9 @@ Item {
     // The backend's meta answer for the open archive, null until it lands; archiveRow is the row it was asked for.
     property var archiveMeta: null
     property int archiveRow: -1
+    // MediaPdf rule 6's fourth fact: Qt carries no sample-rate key at all (QMediaMetaData::Key, Qt 6.11), so the number is the backend probe's, asked the way an archive's is.
+    property int mediaRate: 0
+    property int mediaRow: -1
     readonly property bool archiveFailed: root.isArchive && root.archiveMeta !== null && root.archiveMeta.archiveFailed === true
     // For ui/Ipc.qml: the item drawing this kind's content, whether a player exists, and what the text and archive panes hold.
     function surfaceItem() {
@@ -146,6 +149,8 @@ Item {
         imageLoader.source = ""
         root.archiveMeta = null
         root.archiveRow = -1
+        root.mediaRate = 0
+        root.mediaRow = -1
         if (root.pane) root.pane.listArea.forceActiveFocus()
     }
 
@@ -161,6 +166,7 @@ Item {
         pdfLoader.source = root.isPdf ? "PdfViewer.qml" : ""
         imageLoader.source = root.isImage ? "PreviewImage.qml" : ""
         root.askArchive()
+        root.askMedia()
         root.revealStrip()
     }
 
@@ -172,18 +178,31 @@ Item {
             root.pane.backend.askMeta(root.archiveRow, false, false, true)
     }
 
+    // The same one row, for the one fact the transport under the overlay cannot report.
+    function askMedia() {
+        root.mediaRate = 0
+        root.mediaRow = root.isMedia && root.pane ? root.pane.cursorIndex : -1
+        if (root.mediaRow >= 0)
+            root.pane.backend.askMeta(root.mediaRow, false, true, false)
+    }
+
     Connections {
         target: root.pane ? root.pane.backend : null
         function onMeta(row, w, h, durationMs, sampleRate, entries, unpacked, archiveFailed, names, lines, partial, linesFailed, target, targetDir, owner) {
             if (root.isArchive && row === root.archiveRow)
                 root.archiveMeta = { entries: entries, unpacked: unpacked, archiveFailed: archiveFailed, names: names }
+            if (root.isMedia && row === root.mediaRow)
+                root.mediaRate = sampleRate
         }
     }
 
     // A meta asked across a listing change is answered with silence, so the rows landing re-asks it, the way ui/ColumnsArea.qml does.
     Connections {
         target: root.pane
-        function onRowsChanged() { if (root.active && root.isArchive && root.archiveMeta === null) root.askArchive() }
+        function onRowsChanged() {
+            if (root.active && root.isArchive && root.archiveMeta === null) root.askArchive()
+            if (root.active && root.isMedia && root.mediaRate === 0) root.askMedia()
+        }
     }
 
     Timer {
@@ -278,6 +297,7 @@ Item {
                 item.kind = Qt.binding(function () { return root.kind })
                 item.size = Qt.binding(function () { return root.size })
                 item.kindName = Qt.binding(function () { return root.kindName })
+                item.rate = Qt.binding(function () { return root.mediaRate })
             }
         }
 

@@ -52,7 +52,6 @@ Item {
     property string retryLine: ""
     property bool searchRunning: false
     readonly property bool searching: root.searchLine.length > 0
-    readonly property int spiralSize: Style.font.body
     readonly property int messageMs: 4000
     readonly property real ruleOpacity: 0.12
     readonly property bool hasUndo: !root.transientIsError && !root.stickyHere && !root.searching
@@ -297,16 +296,6 @@ Item {
         font: secondary.font
         text: root.keyHint.length ? " · " + root.keyHint
             + (root.secondaryText !== " · " + root.keyHint ? " · …" : "") : ""
-    }
-
-    Spinner {
-        visible: !root.transientIsError && (root.stickyHere || root.searchRunning)
-        anchors.right: centre.left
-        anchors.rightMargin: Theme.spacing.gap
-        anchors.verticalCenter: strip.verticalCenter
-        width: root.spiralSize
-        height: root.spiralSize
-        color: Theme.color.muted
     }
 
     Rectangle {

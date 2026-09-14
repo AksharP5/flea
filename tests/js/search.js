@@ -28,6 +28,10 @@ function run(check) {
     check("with no home in the environment the pane searches where it stands",
           Search.scopeRoot("/d", ""), "/d")
 
+    // The strip's own right edge, which the board draws as the pair esc really is from here.
+    check("the strip says esc stops the walk and then leaves", Search.wayOut(true), "esc cancels, then returns")
+    check("and once the walk is done esc only leaves", Search.wayOut(false), "esc returns")
+
     check("a running walk offers cancel, open and reveal", Search.statusKeys(true), "esc cancels, enter opens, o reveals")
     check("a finished walk offers only the way back", Search.statusKeys(false), "esc returns to the listing")
 

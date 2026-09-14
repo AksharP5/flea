@@ -20,6 +20,9 @@ Item {
     readonly property int tickHeight: Theme.spacing.hairline * 3
     // The board's own 7 against 11: the stop in force stands taller, so the mark is never a colour alone.
     readonly property int markedHeight: Theme.spacing.hairline * 5
+    // And the board's own 2 against 3 across; the tap target is the slot behind the ink, so a mark this narrow still answers a click anywhere on its stop.
+    readonly property int tickInk: Theme.spacing.hairline * 2
+    readonly property int markedInk: Theme.spacing.hairline * 3
     // The hairline treatment the panel already uses for a quiet edge, so an unmarked stop reads as one.
     readonly property real restOpacity: 0.4
     readonly property real tickWidth: root.stops.length > 0
@@ -60,7 +63,7 @@ Item {
             Rectangle {
                 anchors.horizontalCenter: parent.horizontalCenter
                 y: Math.round(root.numberHeight)
-                width: parent.width
+                width: tick.marked ? root.markedInk : root.tickInk
                 height: tick.marked ? root.markedHeight : root.tickHeight
                 color: root.active && tick.marked ? Theme.color.accent : Theme.color.muted
                 opacity: tick.marked ? 1 : root.restOpacity

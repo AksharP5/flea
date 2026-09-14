@@ -172,6 +172,8 @@ FocusScope {
                 anchors.rightMargin: Theme.spacing.rowPaddingX
                 anchors.verticalCenter: parent.verticalCenter
                 glyph: "x"
+                // The one chrome control here, so brightness is all it has to say where the keyboard is: muted at rest, foreground under focus.
+                restingColor: Theme.color.muted
                 enabled: !root.applying
                 accessName: "Close permissions"
                 activeFocusOnTab: true

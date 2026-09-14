@@ -29,6 +29,7 @@ Item {
     property string searchQuery: ""
     property string searchScope: ""
     property string searchNote: ""
+    property string searchWayOut: ""
 
     // A search takes the header's slot whole, but the strip's ground is a plain Rectangle and
     // accepts no input, so the titles under it stay hittable unless the handlers go down with them.
@@ -49,6 +50,7 @@ Item {
         query: root.searchQuery
         scope: root.searchScope
         note: root.searchNote
+        wayOut: root.searchWayOut
         // The canvas draws the caret on both its search boards, so it stays up as long as the strip is.
         typing: true
     }

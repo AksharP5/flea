@@ -22,9 +22,7 @@ function head(t) {
     return (t.redo ? "Redoing " + t.redo + " " : t.moving ? "Moving " : "Copying ") + (t.index + 1) + " of " + t.n
 }
 
-// The card's second row: the item in flight and how big it is. total is 0 for a directory, whose
-// size is not known in advance without a sweep, so that one reports what it has copied so far
-// instead: a running count is the only honest progress a tree has, and it is what moves on screen.
+// The card's second row: the item in flight and how big it is. total is 0 for a directory, whose size is not known without a sweep, so that one reports what it has copied so far: a running count is the only honest progress a tree has.
 function fileLine(t) {
     if (t.name.length === 0) {
         return ""

@@ -277,7 +277,7 @@ Item {
         visible: !root.isGroup && !root.isHint && !root.isHero && !root.isFavourite && !root.isRuler && !root.isKeyPreview
         anchors.left: markSlot.right
         anchors.leftMargin: Theme.spacing.gap
-        anchors.right: caption.visible ? caption.left : trailing.left
+        anchors.right: trailing.left
         anchors.rightMargin: Theme.spacing.gap
         anchors.verticalCenter: parent.verticalCenter
         text: root.row.label || ""
@@ -286,24 +286,6 @@ Item {
         font.family: Theme.font.family
         font.pixelSize: Theme.font.body
         textFormat: Text.PlainText
-        elide: Text.ElideRight
-    }
-
-    Text {
-        id: caption
-        visible: !!root.row.caption && width > 0
-        anchors.right: trailing.left
-        anchors.rightMargin: Theme.spacing.gap + Theme.settings.railPaddingY
-        anchors.verticalCenter: parent.verticalCenter
-        text: root.row.caption || ""
-        // A caption explains the row rather than stating its value, so it takes the muted weight every board draws it at.
-        color: Theme.color.muted
-        font.family: Theme.font.family
-        font.pixelSize: Theme.font.caption
-        textFormat: Text.PlainText
-        // Preserve the label and real controls first; only the explanatory caption elides in the remaining space.
-        width: Math.min(implicitWidth, Math.max(0, trailing.x - anchors.rightMargin
-            - Theme.spacing.gap - rowLabel.x - rowLabel.implicitWidth))
         elide: Text.ElideRight
     }
 
@@ -329,6 +311,21 @@ Item {
             textFormat: Text.PlainText
             width: Math.min(implicitWidth, root.width * 0.56)
             elide: root.row.elide === "head" ? Text.ElideLeft : Text.ElideRight
+        }
+
+        // SettingsRest draws the sentence after the value it explains, so the row reads label, value, sentence; half the row at most, or the label would elide to make space for prose.
+        Text {
+            id: caption
+            visible: !!root.row.caption && width > 0
+            height: Theme.markSize
+            verticalAlignment: Text.AlignVCenter
+            text: root.row.caption || ""
+            color: Theme.color.muted
+            font.family: Theme.font.family
+            font.pixelSize: Theme.font.caption
+            textFormat: Text.PlainText
+            width: Math.min(implicitWidth, Math.round(root.width * 0.5))
+            elide: Text.ElideRight
         }
 
         Flea.SettingsSegment {

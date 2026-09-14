@@ -229,6 +229,20 @@ function run(check) {
     check("a sibling whose name merely starts with home's is outside it, and says so",
           drawn(sibling) + "|" + targets(sibling), "/home/gmx/deep|/ /home /home/gmx /home/gmx/deep")
 
+    // Chrome rule 2: the strip collapses whole crumbs into one marker rather than cutting one in half.
+    var deep = Nav.crumbs("/home/gm/one/two/three/four/five", "/home/gm")
+    check("a path that fits keeps every crumb", drawn(Nav.fitCrumbs(deep, 80)), "~/one/two/three/four/five")
+    check("a path too long for the strip reads as its root, a marker and the two nearest you",
+          drawn(Nav.fitCrumbs(deep, 16)), "~/\u2026/four/five")
+    // The marker names no directory, so ui/ChromeBar.qml has something to refuse a press on.
+    check("and the marker it inserts carries no destination",
+          Nav.fitCrumbs(deep, 16)[1].path + String(Nav.fitCrumbs(deep, 16)[1].elided), "true")
+    check("room left over goes back to the crumbs nearest the root",
+          drawn(Nav.fitCrumbs(deep, 24)), "~/one/two/\u2026/four/five")
+    // Three crumbs have no middle to collapse, so the marker would cost a segment and save nothing.
+    check("a path with nothing between its root and the two nearest is left whole",
+          drawn(Nav.fitCrumbs(Nav.crumbs("/home/gm/one/two", "/home/gm"), 4)), "~/one/two")
+
     // A keyboard rename reveals the row it renamed; one the pointer committed keeps the row the
     // click chose instead, because a write operation targets the selection ahead of the cursor.
     var typed = { renameKeepsPointerRow: false }
