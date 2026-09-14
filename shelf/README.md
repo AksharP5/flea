@@ -31,6 +31,7 @@ bar. Adding, holding, dragging out and the card itself land in the units that fo
 | Key | What it does | Default |
 |---|---|---|
 | `refreshIntervalSec` | how often the pile is re-read when no change has been signalled | 5 |
+| `fleaCommand` | the flea that owns the pile, a name on PATH or a path of its own | `flea` |
 
 The pile's file is watched, so a change is drawn as it happens; the interval is what finds the
 first item, because a watch cannot fire for a file that does not exist yet.

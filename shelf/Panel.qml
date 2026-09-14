@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell
+import Quickshell.Wayland
 import qs.Commons
 import qs.Ui
 import "Model.js" as Model
@@ -18,10 +19,17 @@ Panel {
     // BarMark rule 2: empty is 55 percent present and holding is 100, and nothing else changes.
     readonly property real emptyPresence: 0.55
     readonly property real markOpacity: shelf.holding ? 1.0 : root.emptyPresence
+    // The card's own slot, rule 5: one voice at a time, and the pile's own state owns neither.
+    property string result: ""
+    property string error: ""
 
     ShelfService {
         id: shelf
         settings: root.settings
+        // Rule 4's budget: sizes are asked for while the card is up and never while it is closed.
+        drawing: root.opened
+        onMinted: function (token, moving) { card.lift(token, !moving) }
+        onFailed: function (why) { root.error = why }
     }
 
     BarIconButton {
@@ -39,6 +47,54 @@ Panel {
                     color: root.barForeground
                     opacity: root.markOpacity
                 }
+            }
+        }
+        onPressed: function (buttonCode) { root.toggle() }
+    }
+
+    // The card is its own layer surface, sized to itself. The shell's KeyboardPanel is a full-screen
+    // overlay so a click anywhere dismisses it, and a full-screen overlay is a surface a drag can
+    // never leave: the pointer stays on the shelf and the drop never reaches the window underneath.
+    // Measured on this box before the change, with the overlay: Flea's DropArea saw no enter at all.
+    PanelWindow {
+        id: panel
+        visible: root.opened
+        color: "transparent"
+        implicitWidth: card.implicitWidth + surface.contentLeftInset + surface.contentRightInset
+        implicitHeight: card.implicitHeight + surface.contentTopInset + surface.contentBottomInset
+        anchors { top: true; right: true }
+        margins { right: Style.gapsOut; top: Style.gapsOut }
+        WlrLayershell.namespace: "flea-shelf-card"
+        WlrLayershell.layer: WlrLayer.Overlay
+        WlrLayershell.keyboardFocus: root.opened ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
+
+        // The ground, border and corner the shell's own popups draw: Ui/KeyboardPanel.qml and
+        // Ui/PopupCard.qml both fill a BorderSurface this way, so the shelf card is an Omarchy card.
+        BorderSurface {
+            id: surface
+            anchors.fill: parent
+            color: Color.popups.background
+            borderSpec: Border.surfaceSpec("popups", "border", Color.popups.border, Math.max(1, Style.space(2)))
+            radius: Style.cornerRadius
+            focus: root.opened
+            Keys.onEscapePressed: root.close()
+
+            ShelfCard {
+                id: card
+                x: surface.contentLeftInset
+                y: surface.contentTopInset
+                width: surface.width - surface.contentLeftInset - surface.contentRightInset
+                height: surface.height - surface.contentTopInset - surface.contentBottomInset
+                pile: Model.sized(shelf.pile, shelf.sizes)
+                foreground: Color.popups.text
+                result: root.result
+                error: root.error
+                onRemoveRequested: function (index) {
+                    root.error = ""
+                    shelf.forget(shelf.pile.items[index].path)
+                }
+                onActionRequested: function (id) { root.result = ""; root.error = id + " lands with the actions." }
+                onLiftRequested: function (copying) { shelf.mintDrag(!copying) }
             }
         }
     }

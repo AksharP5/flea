@@ -88,3 +88,39 @@ fn a_pile_that_cannot_be_read_is_an_empty_one_rather_than_an_error() {
     assert!(shelf.pile().is_empty());
     let _ = dir;
 }
+
+#[test]
+fn a_file_answers_its_own_bytes_and_a_directory_its_walk() {
+    let (dir, _shelf) = shelf("shelfsize");
+    let one = file(&dir, "one.txt");
+    let (bytes, partial) = size_of(&one).unwrap();
+    assert_eq!(bytes, "payload".len() as u64, "a plain file is its own entry, not a walk");
+    assert!(!partial);
+    let tree = dir.dir("tree");
+    std::fs::write(tree.join("inner.bin"), vec![0u8; 4096]).unwrap();
+    let (walked, _) = size_of(&tree.to_string_lossy()).unwrap();
+    assert!(walked > 4096, "a directory answers the walk, which counts what is under it: {}", walked);
+}
+
+#[test]
+fn a_path_that_is_not_there_answers_a_sentence_rather_than_a_zero() {
+    let (dir, _shelf) = shelf("shelfsizegone");
+    let gone = dir.path().join("never-written").to_string_lossy().to_string();
+    assert!(size_of(&gone).is_err(), "a zero would draw as a real size on the card");
+}
+
+#[test]
+fn the_row_x_takes_the_reference_off_and_leaves_the_file() {
+    let (dir, shelf) = shelf("shelfforget");
+    let one = file(&dir, "one.txt");
+    let two = file(&dir, "two.txt");
+    std::fs::create_dir_all(shelf.pile_file().parent().unwrap()).unwrap();
+    std::fs::write(
+        shelf.pile_file(),
+        format!(r#"{{"items":[{{"path":"{}"}},{{"path":"{}"}}]}}"#, one, two),
+    )
+    .unwrap();
+    shelf.settle(&[one.clone()]).unwrap();
+    assert_eq!(shelf.pile(), vec![two], "the reference leaves the pile");
+    assert!(std::fs::metadata(&one).is_ok(), "and the file it named is still there");
+}

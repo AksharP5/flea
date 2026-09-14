@@ -19,7 +19,8 @@
     "allowMultiple": false,
     "defaultSection": "right",
     "defaults": {
-      "refreshIntervalSec": 5
+      "refreshIntervalSec": 5,
+      "fleaCommand": "flea"
     },
     "schema": [
       {
@@ -30,6 +31,12 @@
         "min": 1,
         "max": 120,
         "step": 1
+      },
+      {
+        "key": "fleaCommand",
+        "type": "string",
+        "label": "The flea command that owns the pile",
+        "defaultValue": "flea"
       }
     ]
   }

@@ -201,12 +201,68 @@ pub fn now_ms() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
 }
 
+// Main rule 4's budget: the card asks about one path it is drawing, so this answers one path. A
+// directory takes the listing's own bounded walk, which is why a floor comes back marked partial and
+// the card draws it with the same > prefix a list row does.
+pub fn size_of(path: &str) -> Result<(u64, bool), String> {
+    let meta = fs::symlink_metadata(path).map_err(|e| format!("{} could not be read ({:?})", path, e.kind()))?;
+    if meta.is_dir() {
+        let walked = crate::backend::dirsize::walk(Path::new(path));
+        return Ok((walked.bytes, walked.partial));
+    }
+    Ok((meta.len(), false))
+}
+
 // flea shelf <verb>: the plugin is another process, so the mint is a command rather than a wire line.
 pub fn command(args: &[String]) -> i32 {
     match args.get(2).map(String::as_str) {
         Some("drag-begin") => drag_begin(&args[3..]),
+        Some("size") => size(&args[3..]),
+        Some("forget") => forget(&args[3..]),
         _ => {
-            eprintln!("flea: shelf takes drag-begin <move|copy> <path>...");
+            eprintln!("flea: shelf takes drag-begin <move|copy> <path>..., size <path> or forget <path>...");
+            2
+        }
+    }
+}
+
+fn size(rest: &[String]) -> i32 {
+    let path = match rest.first() {
+        Some(path) => path,
+        None => {
+            eprintln!("flea: shelf size takes one path");
+            return 2;
+        }
+    };
+    match size_of(path) {
+        Ok((bytes, partial)) => {
+            println!("{} {}", bytes, u8::from(partial));
+            0
+        }
+        Err(e) => {
+            eprintln!("flea: {}", e);
+            2
+        }
+    }
+}
+
+fn forget(rest: &[String]) -> i32 {
+    if rest.is_empty() {
+        eprintln!("flea: shelf forget takes at least one path");
+        return 2;
+    }
+    let shelf = match Shelf::user() {
+        Ok(shelf) => shelf,
+        Err(e) => {
+            eprintln!("flea: {}", e);
+            return 2;
+        }
+    };
+    // Main rule 6: the row's own x is the same edit a completed move makes, and it never touches the file.
+    match shelf.settle(rest) {
+        Ok(()) => 0,
+        Err(e) => {
+            eprintln!("flea: {}", e);
             2
         }
     }
