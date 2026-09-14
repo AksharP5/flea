@@ -751,6 +751,7 @@ case_footertransfer() (
     menus_expect selectionCount '. == 1' 'transfer specimen displays one native selection'
     # Directive 51, StatusBar rule 8: the card owns a transfer's progress and it is up whenever one
     # runs, so the strip stays at rest rather than drawing the same count and a second hairline.
+    menus_expect statusActivityState '.activities[0].running and .transferCard.visible and (.transferCard.byteLine | length) > 0' 'the card is up and reporting the bytes it owns'
     menus_expect statusFooterState '.centre.text == "" and .secondary.text == ""' 'the strip stays at rest while the card reports'
     operations_footer_capture transfer '(.left.text | startswith("1 of 10 selected")) and .centre.text == "" and .secondary.text == ""'
     after_bytes=$(stat -c '%s' "$menu_box/destination/photo.heic") || fail 'footer: captured partial disappeared'

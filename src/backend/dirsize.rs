@@ -157,14 +157,25 @@ mod tests {
     #[test]
     fn a_walk_ends_on_its_stop_rather_than_on_a_clock() {
         let (_sandbox, d) = fixture("dirsize-stop");
+        // Flat, so the stop below fires between two entries of one directory rather than on the way
+        // into another, which is the check a walk of one wide folder spends all its time in.
+        for name in ["a", "b", "c", "d", "e", "f"] {
+            fs::write(d.join(name), "abcdefgh").unwrap();
+        }
         fs::create_dir(d.join("inner")).unwrap();
-        fs::write(d.join("inner/a.txt"), "abc").unwrap();
-        let stopped = std::sync::atomic::AtomicBool::new(false);
+        fs::write(d.join("inner/g"), "abcdefgh").unwrap();
         let whole = walk_while(&d, &|| false);
         assert!(!whole.partial, "a stop that never fires walks the tree whole");
-        let cut = walk_while(&d, &|| stopped.swap(true, std::sync::atomic::Ordering::Relaxed) || true);
-        assert!(cut.partial, "and a stop that fires leaves a floor, which publishes no total at all");
-        assert!(cut.bytes <= whole.bytes, "a stopped walk never counts more than the whole one");
+        // Fires part way in, so the stop inside the loop is what ends it rather than the one on entry.
+        let seen = std::sync::atomic::AtomicUsize::new(0);
+        let cut = walk_while(&d, &|| seen.fetch_add(1, std::sync::atomic::Ordering::Relaxed) >= 3);
+        assert!(cut.partial, "a stop that fires leaves a floor, which publishes no total at all");
+        assert!(cut.bytes > 0, "and it keeps what it saw before the stop: {}", cut.bytes);
+        assert!(cut.bytes < whole.bytes, "which is less than the whole tree: {} against {}", cut.bytes, whole.bytes);
+        // The two entry points, on one tree: the listing stops at its clock, the copy's walk has none.
+        let past = Instant::now() - Duration::from_secs(1);
+        assert!(walk_until(&d, past).partial, "the listing's own deadline still bounds it");
+        assert!(!walk_while(&d, &|| false).partial, "and the copy's walk is not bounded by any clock");
     }
 
     #[test]

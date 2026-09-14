@@ -40,14 +40,6 @@ function run(check) {
     check("an activity precedes search", Status.centreText(both), "Copy 1 item to dest")
     check("and retains foreground during search", Status.centreRole(both), "foreground")
 
-    // The half F5 had to leave working: the card is up and an error lands, so the strip draws it even
-    // though it draws nothing for the transfer under it.
-    var errorWhileCardUp = slot({ transient: "Copy failed: c.txt · already exists", transientIsError: true })
-    check("an error during a transfer still owns the slot",
-          Status.centreText(errorWhileCardUp), "Copy failed: c.txt · already exists")
-    check("and takes the error role with nothing else in the slot",
-          Status.centreRole(errorWhileCardUp), "error")
-
     var failed = slot({ transient: "Copy failed: photo.heic · disk full", transientIsError: true })
     check("a failure owns the slot", Status.centreText(failed), "Copy failed: photo.heic · disk full")
     check("and takes the error role", Status.centreRole(failed), "error")

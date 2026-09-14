@@ -136,6 +136,17 @@ pub fn run_transfer(
 // thread on a mount that has stopped answering; what it costs then is the estimate, never the copy.
 
 // The scan a batch's total comes from, on its own thread so the first byte never waits for it. It
+// The sweep's own lifetime: it walks while the transfer is in this function and stops when it leaves.
+struct SweepGuard {
+    flag: Arc<AtomicBool>,
+}
+
+impl Drop for SweepGuard {
+    fn drop(&mut self) {
+        self.flag.store(false, Ordering::Relaxed);
+    }
+}
+
 // publishes into the cell every progress sample reads, and publishes nothing at all when it stopped
 // early: the card shows no total rather than a floor, and no time left with it. Directive 50: the
 // walk answers to the transfer and not to a clock, so it runs until the copy cancels or finishes.
@@ -184,9 +195,9 @@ pub(crate) fn run_transfer_checked(
     // Directive 45: a batch gets a time left once it knows what it is copying, and a tree's size is
     // not known without a walk. This is that walk, beside the copy rather than before it.
     let settled = Arc::new(AtomicU64::new(0));
-    // The walk outlives nothing: it is told to stop when this function returns, however that happens.
-    let sweeping = Arc::new(AtomicBool::new(true));
-    spawn_total(&paths, &cancel, &settled, &sweeping);
+    // The walk outlives nothing: the guard clears the flag when this function leaves, a panic included.
+    let sweep = SweepGuard { flag: Arc::new(AtomicBool::new(true)) };
+    spawn_total(&paths, &cancel, &settled, &sweep.flag);
     let mut steps: Vec<Step> = Vec::new();
     let mut retry = Vec::new();
     let (mut ok, mut failed, mut skipped) = (0usize, 0usize, 0usize);
@@ -268,7 +279,6 @@ pub(crate) fn run_transfer_checked(
             }
         }
     }
-    sweeping.store(false, Ordering::Relaxed);
     let entry = Entry { op: if moving { "move".to_string() } else { "copy".to_string() }, steps };
     let _ = tx.send(OpMsg::TransferDone { id, ok, failed, skipped, cancelled: was_cancelled, entry, retry });
 }
