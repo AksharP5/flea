@@ -88,10 +88,16 @@ function stepped(hex, bgHex, need, toward) {
     for (var i = 0; i < 255; i++) {
         if (ratioOf(c, bg) >= need)
             break
-        var next = [c[0] + step, c[1] + step, c[2] + step]
-        if (next[0] < 0 || next[0] > 1)
+        // Every channel is clamped on its own: one that has reached the extreme must not carry the
+        // other two out of range, and a step that moves no channel at all is the extreme itself.
+        var next = [clamp(c[0] + step), clamp(c[1] + step), clamp(c[2] + step)]
+        if (hexOf(next) === hexOf(c))
             break
         c = next
     }
     return hexOf(c)
+}
+
+function clamp(v) {
+    return v < 0 ? 0 : (v > 1 ? 1 : v)
 }

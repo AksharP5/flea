@@ -74,11 +74,15 @@ function washed(colour, alpha, ground) {
 // No slack: ui/js/Contrast.js delivers the ratio it was asked for after rounding, so a lift that lands
 // at 2.99 for a requested 3 is the defect this suite exists to catch rather than a tolerance to grant.
 function atLeast(check, theme, rule, got, floor) {
-    check(theme + ": " + rule + " is " + got.toFixed(2) + ", at least " + floor.toFixed(2),
-          got >= floor ? "ok" : "under " + floor.toFixed(2) + " at " + got.toFixed(2), "ok")
+    // Four decimals, because a lift that lands at 2.9996 prints as 3.00 and reads as a false failure.
+    check(theme + ": " + rule + " is " + got.toFixed(4) + ", at least " + floor.toFixed(2),
+          got >= floor ? "ok" : "under " + floor.toFixed(2) + " at " + got.toFixed(4), "ok")
 }
 
 function run(check) {
+    // A truncated table would iterate few times and report every check it did run as green, so the
+    // table's own size is checked first; tests/themes.sh compares it with the directory itself.
+    check("the table still names the themes this box ships", THEMES.length >= 22, true)
     for (var i = 0; i < THEMES.length; i++) {
         var name = THEMES[i]
         var body = read(THEME_DIR + name + "/colors.toml")
@@ -106,8 +110,7 @@ function run(check) {
                 Contrast.ratio(r.foreground, washed(r.accent, WASH, r.background)), TEXT_MIN)
 
         // The checkbox draws in the two roles above and nothing of its own: a foreground fill with the
-        // ground cut out for its tick, and the muted frame when empty. tests/themes.sh measures the
-        // fill's own pixel, which is where a checkbox that stopped using them would show.
+        // ground cut out for its tick, and the muted frame when empty, so it needs no rule here.
 
         // The error role on its ground, and beside the caption it must never be the quieter of: two inks
         // compared to each other would measure the floors above, and ethereal's muted of 4.90 would fail.
@@ -123,4 +126,8 @@ function run(check) {
         // The primary button carries its identity in a frame, on the card's own surface.
         atLeast(check, name, "primary frame on surface", Contrast.ratio(r.accentFrame, r.surface), MARK_MIN)
     }
+    // Measured: while the walk bounded red alone, 46 colour and ground pairs with a channel at 0 or 255
+    // came back under the floor, this one at 2.9996 for a requested 3.
+    atLeast(check, "a channel at the extreme", "the lift still delivers the floor",
+            Contrast.ratio(Contrast.ensureRatio("#0099ff", "#ffffff", MARK_MIN), "#ffffff"), MARK_MIN)
 }

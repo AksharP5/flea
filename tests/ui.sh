@@ -5944,7 +5944,8 @@ EOS
 
     # A row with no number gives its label the whole width up to the indicator slot: the label needs
     # 126 px at this text size and the numbers column used to leave it 110.
-    ipc railDetails | jq -e '[.rows[] | select(.kind == "phone")] | all(.labelWidth >= .labelNeeds)' >/dev/null \
+    ipc railDetails | jq -e '[.rows[] | select(.kind == "phone")] | length == 2
+        and all(.[]; .labelWidth >= .labelNeeds)' >/dev/null \
         || fail "phones: a phone label is still cut, got $(ipc railDetails | jq -c '[.rows[]|select(.kind=="phone")|{label,labelWidth,labelNeeds}]')"
 
     # An unmounted volume offers the mount its own row does, per RailAdditions rule 2, and choosing it

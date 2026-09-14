@@ -38,7 +38,10 @@ fi
 
 sandbox="$FIXTURE_ROOT/flea-themes-$$"
 sandbox_make "$sandbox"
-shots=$(mktemp -d --tmpdir="$FIXTURE_ROOT" flea-themeshots.XXXXXXXX) || exit 1
+# The PNGs outlive the run as its record, so they take one path the next run replaces rather than a
+# fresh mktemp nobody ever removes.
+shots="$FIXTURE_ROOT/flea-themeshots"
+sandbox_make "$shots"
 # Only what this run launched: the candidate is started with setsid, so its own process group holds
 # it and the qs it spawns, and nothing the operator started is signalled.
 launched=""
@@ -82,22 +85,17 @@ PY
 }
 at_least() {
     local theme="$1" rule="$2" got="$3" floor="$4"
-    awk -v g="$got" -v f="$floor" 'BEGIN { exit !(g + 0.01 >= f) }' \
+    awk -v g="$got" -v f="$floor" 'BEGIN { exit !(g >= f) }' \
         || fail "$theme: $rule is $got, under $floor"
 }
 # One pixel of a shot, as "#rrggbb": a fill and a frame are solid, so a pixel is the colour itself.
 pixel_at() {
     magick "$1" -format "%[hex:p{$2,$3}]" info: | tr 'A-F' 'a-f' | cut -c1-6
 }
-# Is this colour anywhere in the shot? A frame is a run of pixels, so it is in the image unless the
-# control stopped drawing that role; magick answers with a capital, so the answer is folded.
-colour_present() {
-    [ "$(magick "$1" -alpha on -fuzz 2% -transparent "$2" -format '%[opaque]' info: | tr 'A-Z' 'a-z')" = "false" ]
-}
 # A screenshot is not bit exact: measured over all 22 themes the compositor's own round trip moves a
 # role by up to three steps a channel, so a role matches within role_steps and never by string.
 same_colour() {
-    local theme="$1" rule="$2" got="$3" want="$4" near
+    local theme="$1" rule="$2" got="${3#\#}" want="$4" near
     near=$(python3 -c '
 import sys
 def channels(value):
@@ -137,10 +135,14 @@ for colours in "$themes_dir"/*/colors.toml; do
     sleep 3
     [ "$(ipc themeLoaded)" = "true" ] || fail "$theme: the window did not load a palette"
     read -r bg surface fg muted accent error symlink executable accentframe <<< "$(ipc palette)"
-    case "$bg$fg$muted$accent" in *"#"*) ;; *) fail "$theme: the window reports no palette"; continue ;; esac
+    case "$bg$fg$muted$accent$accentframe" in *"#"*) ;; *) fail "$theme: the window reports no palette"; continue ;; esac
+    case "$accentframe" in "#"*) ;; *) fail "$theme: the window reports no accentFrame field"; continue ;; esac
     # Sample input, one line of colors.toml: background = "#1e1e2e"   # the canvas
     want_bg=$(grep -m1 '^background' "$colours" | grep -o '#[0-9A-Fa-f]\{6\}' | tr 'A-F' 'a-f')
     want_fg=$(grep -m1 '^foreground' "$colours" | grep -o '#[0-9A-Fa-f]\{6\}' | tr 'A-F' 'a-f')
+    # An unreadable file is the sweep losing its binding, so it reddens rather than skipping quietly.
+    [ -n "$want_bg" ] && [ -n "$want_fg" ] \
+        || fail "$theme: colors.toml names no background or foreground this sweep can bind to"
     [ -z "$want_bg" ] || [ "$want_bg" = "$bg" ] \
         || fail "$theme: the window is on $bg, not this theme's own $want_bg"
     [ -z "$want_fg" ] || [ "$want_fg" = "$fg" ] \
@@ -154,6 +156,10 @@ for colours in "$themes_dir"/*/colors.toml; do
     at_least "$theme" "symlink on background" "$(ratio "$symlink" "$bg")" "$text_min"
     at_least "$theme" "executable on background" "$(ratio "$executable" "$bg")" "$text_min"
     at_least "$theme" "the primary frame on the card's surface" "$(ratio "$accentframe" "$surface")" "$caption_min"
+    # The role is the accent lifted onto the card, so a theme whose accent already clears the floor
+    # reports the accent itself: a frame bound to another role would still clear it and reddens here.
+    awk -v r="$(ratio "$accent" "$surface")" -v f="$caption_min" 'BEGIN { exit !(r >= f) }' \
+        && same_colour "$theme" "the primary frame" "$accentframe" "$accent"
 
     # The cursor row's own accent edge, marked and hovered rows beside it: a shot of all three.
     key j; sleep 0.5
@@ -178,18 +184,12 @@ for colours in "$themes_dir"/*/colors.toml; do
     omarchy-drive shot "$shots/$theme-settings.png" "$class" >/dev/null
     key -k Escape; sleep 1
 
-    # The dialog's primary button frames itself in the lifted accent: its presence in the shot says the
-    # button still draws an accent-family frame rather than the muted one an unavailable control takes.
-    # The lift moves rose-pine's accent by 2.4 percent a channel, inside this tolerance, so what this
-    # cannot tell apart is the lifted role from the raw accent; the palette check above is that rule.
+    # The dialog is the reviewer's record: the seam publishes no rectangle for a button, and a search
+    # of the whole window passes on any accent pixel in it, so the role check above is the rule.
     key a; sleep 2
-    # A host in the field is what makes the primary available: an unavailable one frames itself muted,
-    # which is ui/DialogButton.qml's own rule and not the role this measures.
     omarchy-drive key --window "$class" nas >/dev/null
     sleep 1
     omarchy-drive shot "$shots/$theme-dialog.png" "$class" >/dev/null
-    colour_present "$shots/$theme-dialog.png" "$accentframe" \
-        || fail "$theme: the dialog carries no pixel of the primary frame's own $accentframe"
     key -k Escape; sleep 1
 
     # A search run, whose matches carry the one wash, and the strip that reports it.
