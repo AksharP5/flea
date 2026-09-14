@@ -70,15 +70,17 @@ function run(check) {
           + "|" + reordered.windows.join(","), "size:true|size:true|0:40")
 
     // A half-typed search or a filter leaves the pane's own rows in place, so only "results" re-lists:
-    // widening that test would drop a selection and re-read a directory on every switch with one open.
+    // widening that test would re-read the directory and drop the selection on a switch with one open.
     var typing = Fixture.pane("/home/gm")
+    typing.selection.toggle(2)
     Tabs.openNew(typing)
     typing.listed = []
     typing.searchMode = "typing"
-    typing.selection.toggle(2)
     Tabs.selectAt(typing, 0)
     check("switching with the search field open but no results re-lists nothing",
           typing.listed.join(","), "")
+    check("and the tab's own selection comes back rather than being dropped",
+          typing.selectedIndices().join(","), "2")
 
     // Issue 91, nixfred: an order the fresh listing already has is spent on that same reply, cursor
     // and all. Left pending it revived on the reply answering the user's next sort and reverted it.

@@ -34,7 +34,15 @@ function pane(path) {
     p.clearSelection = function () { p.selection.clear(); p.selectionVersion++ }
     p.setCursor = function (i) { p.cursorIndex = i }
     p.message = function (text) { p.said.push(text) }
-    p.openWithoutHistory = function (next) { p.listed.push(next); p.path = next; p.cursorIndex = 0 }
+    // A new listing is what forgets a selection and asks the backend again: see ui/js/Nav.js.
+    p.openWithoutHistory = function (next) {
+        p.listed.push(next)
+        p.path = next
+        p.cursorIndex = 0
+        p.selection.clear()
+        p.selectionVersion++
+        p.backend.listRequests += 1
+    }
     p.backend = {
         sortBy: "name",
         sortDesc: false,
