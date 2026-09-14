@@ -56,6 +56,20 @@ fn a_path_that_carries_the_token_is_not_a_cancel() {
     assert_eq!(live.running(), Some(4));
 }
 
+// The framing cannot be trusted past a decode failure, so the loop stops there and src/backend/run.rs
+// reports the error and breaks; a reader that read on would hand it lines cut out of the middle.
+#[test]
+fn a_line_that_does_not_decode_stops_the_reader_where_it_failed() {
+    let (live, _flag) = claimed(4);
+    let (tx, rx) = std::sync::mpsc::channel();
+    let lines: &[u8] = b"{\"c\":\"list\"}\n\xff\n{\"c\":\"transfercancel\",\"id\":4}\n";
+    read_lines(std::io::Cursor::new(lines), &tx, &live);
+    drop(tx);
+    let seen: Vec<Event> = rx.iter().collect();
+    assert_eq!(seen.len(), 2, "the good line and the failure, and nothing read past it");
+    assert!(matches!(seen[1], Event::ReadError(_)), "the decode failure is what the loop is handed");
+}
+
 #[test]
 fn an_ordinary_request_cancels_nothing_on_its_way_through() {
     let (live, flag) = claimed(4);
