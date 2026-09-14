@@ -17,7 +17,6 @@ var DISABLED_MIN = 1.5      // Containers: a disabled row still reads as a row, 
 var WASH_MIN = 1.06         // A 14 percent wash has to be visible against the ground it washes.
 var MARK_MIN = 3.0          // A drawn mark or frame is a graphical object, AA at 3:1.
 var EDGE_MIN = 1.5          // The cursor's accent edge borders the unselected ground, see the KB.
-var EPSILON = 0.01          // An 8-bit hex cannot express a finer step than this in a ratio.
 var WASH = 0.14             // Theme.washActive, the one wash strength on every surface.
 var SELECTED_FILL = 0.18    // Style.selectedFillAlpha, the OEM default a theme's shell.toml may raise.
 var DISABLED = 0.55         // Theme.disabledOpacity.
@@ -27,10 +26,7 @@ function read(url) {
     var request = new XMLHttpRequest()
     request.open("GET", url, false)
     request.send()
-    var body = String(request.responseText || "")
-    if (body.length === 0)
-        throw new Error("themes: no body read from " + url + ", status " + request.status)
-    return body
+    return String(request.responseText || "")
 }
 
 // The roles Omarchy's own Commons/Color.qml derives from colors.toml, key for key, plus the ones
@@ -45,13 +41,25 @@ function roles(body) {
     var urgent = Palette.pick(found, ["red", "color1"], "#a55555")
     var surface = Palette.pick(found, Palette.SURFACE_KEYS, "#181825")
     return { foreground: foreground, background: background, accent: accent, urgent: urgent,
-             // ui/Theme.qml lifts the palette's own muted to the caption floor on the ground it sits on.
-             muted: Contrast.ensureRatio(Palette.pick(found, ["muted", "color8"], foreground), background, CAPTION_MIN),
+             // ui/Theme.qml's own rule, key for key: the palette's muted or a darkened foreground, lifted
+             // to the caption floor on the ground it sits on.
+             muted: Contrast.ensureRatio(Palette.pick(found, ["muted"], darker(foreground)), background, CAPTION_MIN),
              surface: surface,
              accentFrame: Contrast.ensureRatio(accent, surface, MARK_MIN),
              // ui/Theme.qml: a red with no chroma of its own reads as switched off, so it is dropped
              // for the foreground; every other red is lifted to AA the way symlink and executable are.
              error: saturation(urgent) > 0.2 ? Contrast.ensureRatio(urgent, background, TEXT_MIN) : foreground }
+}
+
+// Qt.darker(c, 1.4) in the value channel, which is ui/Theme.qml's fallback when a palette sets no
+// muted of its own. Every stock palette does set one, so this is the path no installed theme takes.
+function darker(hex) {
+    var c = Contrast.parse(hex)
+    var hi = Math.max(c[0], Math.max(c[1], c[2]))
+    if (hi <= 0)
+        return hex
+    var scale = (hi / 1.4) / hi
+    return Contrast.hexOf([c[0] * scale, c[1] * scale, c[2] * scale])
 }
 
 function saturation(hex) {
@@ -61,27 +69,25 @@ function saturation(hex) {
     return hi <= 0 ? 0 : (hi - lo) / hi
 }
 
-// The best ratio any colour can reach on this ground: miasma's is 4.48, so AA is not reachable there
-// for anything at all, and a rule asking for more would be asking the palette for the impossible.
-function ceiling(ground) {
-    return Math.max(Contrast.ratio("#ffffff", ground), Contrast.ratio("#000000", ground))
-}
-
 function washed(colour, alpha, ground) {
     return Contrast.hexOf(Contrast.over(colour, alpha, ground))
 }
 
+// No slack: ui/js/Contrast.js delivers the ratio it was asked for after rounding, so a lift that lands
+// at 2.99 for a requested 3 is the defect this suite exists to catch rather than a tolerance to grant.
 function atLeast(check, theme, rule, got, floor) {
     check(theme + ": " + rule + " is " + got.toFixed(2) + ", at least " + floor.toFixed(2),
-          got + EPSILON >= floor ? "ok" : "under " + floor.toFixed(2) + " at " + got.toFixed(2), "ok")
+          got >= floor ? "ok" : "under " + floor.toFixed(2) + " at " + got.toFixed(2), "ok")
 }
 
 function run(check) {
-    check("every stock theme on this box is in the table", THEMES.length, 22)
     for (var i = 0; i < THEMES.length; i++) {
         var name = THEMES[i]
         var body = read(THEME_DIR + name + "/colors.toml")
         check(name + ": colors.toml parses to a palette", Palette.isPalette(Palette.parse(body)), true)
+        // A theme that did not read is one red check, not a throw that leaves the rest unmeasured.
+        if (body.length === 0)
+            continue
         var r = roles(body)
 
         // Text, on both grounds a listing row can sit on.
@@ -101,15 +107,15 @@ function run(check) {
         atLeast(check, name, "a matched run still reads on its wash",
                 Contrast.ratio(r.foreground, washed(r.accent, WASH, r.background)), TEXT_MIN)
 
-        // The checkbox is a foreground fill with the ground cut out of it, and a muted frame when empty.
-        atLeast(check, name, "checkbox fill on background", Contrast.ratio(r.foreground, r.background), MARK_MIN)
-        atLeast(check, name, "checkbox empty frame on background", Contrast.ratio(r.muted, r.background), MARK_MIN)
+        // The checkbox draws in the two roles above and nothing of its own: a foreground fill with the
+        // ground cut out for its tick, and the muted frame when empty. tests/themes.sh measures the
+        // fill's own pixel, which is where a checkbox that stopped using them would show.
 
         // The error role, on the ground, and beside the caption it must never read as the quieter of.
         // Two inks compared to each other would measure the two floors above rather than the palette,
         // and a theme with an unusually bright muted, ethereal's is 4.90, would fail for being good at
         // captions; what an error must never be is dimmer than one.
-        atLeast(check, name, "error on background", Contrast.ratio(r.error, r.background), Math.min(TEXT_MIN, ceiling(r.background)))
+        atLeast(check, name, "error on background", Contrast.ratio(r.error, r.background), TEXT_MIN)
         atLeast(check, name, "error is never dimmer than a caption",
                 Contrast.ratio(r.error, r.background), Contrast.ratio(r.muted, r.background))
 

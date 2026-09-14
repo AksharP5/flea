@@ -45,7 +45,7 @@ QtObject {
         function selectedFill(): string { return String(Style.selectedFill) }
         function palette(): string {
             var c = Theme.color;
-            return [c.background, c.surface, c.foreground, c.muted, c.accent, c.error, c.symlink, c.executable].join(" ");
+            return [c.background, c.surface, c.foreground, c.muted, c.accent, c.error, c.symlink, c.executable, c.accentFrame].join(" ");
         }
         // The size running text really draws at, and a row name's own: the settings case pins both to the stop.
         function bodyPx(): int { return Theme.font.body }

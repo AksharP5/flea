@@ -5942,15 +5942,30 @@ EOS
         and all(.[]; .detail == "" and .indicatorVisible)' >/dev/null \
         || fail "phones: a phone row drew a size or lost its indicator, got $(ipc railDetails | jq -c '[.rows[]|select(.kind=="phone")|{detail,indicatorVisible}]')"
 
-    # An unmounted volume offers the mount its own row does, per RailAdditions rule 2.
+    # A row with no number gives its label the whole width up to the indicator slot: the label needs
+    # 126 px at this text size and the numbers column used to leave it 110.
+    ipc railDetails | jq -e '[.rows[] | select(.kind == "phone")] | all(.labelWidth >= .labelNeeds)' >/dev/null \
+        || fail "phones: a phone label is still cut, got $(ipc railDetails | jq -c '[.rows[]|select(.kind=="phone")|{label,labelWidth,labelNeeds}]')"
+
+    # An unmounted volume offers the mount its own row does, per RailAdditions rule 2, and choosing it
+    # is the row's own activation: this is the only thing that drives Sidebar.openPhone.
     click_rail_row "$(rail_row_of 'SAMSUNG Android')" right
     settle
     [[ "$(ipc contextMenuVisible)" == "true" && "$(ipc contextMenuEntries)" == "Mount" ]] \
         || fail "phones: an unmounted phone's menu is $(ipc contextMenuEntries), not Mount alone"
-    key -k Escape >/dev/null
-    settle
+    key -k Return >/dev/null
+    wait_path "$fuse"
+    wait_listing 1
+    for _attempt in $(seq 1 200); do
+        [[ "$(ipc deviceEntries)" == *"SAMSUNG Android|device|phone|true"* ]] && break
+        sleep 0.05
+    done
+    [[ "$(ipc deviceEntries)" == *"SAMSUNG Android|device|phone|true"* ]] \
+        || fail "phones: the menu's Mount did not mount the row, got $(ipc deviceEntries)"
 
-    # Activating it mounts, resolves the folder and opens it, the way a share does.
+    # And the row's own click does the same from the other side, which is what a share row does too.
+    key -k Tab >/dev/null
+    settle
     click_rail_row "$(rail_row_of 'SAMSUNG Android')" left
     wait_path "$fuse"
     wait_listing 1
@@ -5981,9 +5996,16 @@ EOS
             || fail "phones: d armed a trash that can only fail, the bar reads $(ipc statusPrimary)"
         sleep 0.05
     done
-    # H walks back to the local path this case started on, where the same key does arm, and L returns.
-    key H >/dev/null
-    wait_path "$dir/files"
+    # One directory up is the folder the mount sits in rather than the mount, so the same key does arm
+    # there: the silence above is the guard and not a keyboard that stopped answering.
+    for _attempt in 1 2 3 4; do
+        [[ "$(ipc focusView)" == "list" ]] && break
+        key -k Tab >/dev/null
+        settle
+    done
+    [[ "$(ipc focusView)" == "list" ]] || fail "phones: the listing never took the keyboard back, focus is $(ipc focusView)"
+    key h >/dev/null
+    wait_path "$dir/gvfs"
     wait_listing 1
     key j >/dev/null
     settle
@@ -5992,8 +6014,8 @@ EOS
     key -k Escape >/dev/null
     settle
     [[ "$(ipc statusPrimary)" != *"Press d again"* ]] \
-        || fail "phones: Escape left the trash armed on the local path, the bar reads $(ipc statusPrimary)"
-    key L >/dev/null
+        || fail "phones: Escape left the trash armed one directory up, the bar reads $(ipc statusPrimary)"
+    key -k Return >/dev/null
     wait_path "$fuse"
     wait_listing 1
 

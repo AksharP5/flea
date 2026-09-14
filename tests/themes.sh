@@ -5,6 +5,9 @@
 # catches ui/Theme.qml and that suite drifting apart, and it leaves one PNG per theme per surface.
 set -u
 set -o pipefail
+# Hard rule 9's own guard owns every create and delete here, the way tests/mount-listing.sh does it:
+# a fixture lives outside $HOME and carries a marker, and nothing unmarked is ever removed.
+. "$(dirname "$0")/../tools/flea-sandbox-guard"
 cd "$(dirname "$0")/.." || exit 1
 repo=$PWD
 themes_dir=${THEMES_DIR:-/usr/share/omarchy/themes}
@@ -12,6 +15,10 @@ flea_ui="$repo/ui"
 flea_bin=${FLEA_BIN:-$repo/target/debug/flea}
 class=com.thisisgm.flea
 failures=0
+# The same floors tests/js/themes.js names, and the same rules behind them.
+text_min=4.5      # body text on its own ground, WCAG AA
+caption_min=3     # a muted caption, large-text AA
+role_steps=4      # how far a screenshot's round trip may move a role, measured over all 22 themes
 
 command -v omarchy-drive >/dev/null || { echo "themes.sh: omarchy-drive is not installed"; exit 1; }
 command -v magick >/dev/null || { echo "themes.sh: magick is not installed, and the pixel reads need it"; exit 1; }
@@ -19,23 +26,30 @@ command -v magick >/dev/null || { echo "themes.sh: magick is not installed, and 
 eval "$(omarchy-drive env)"
 
 # The pure suite pins the same list; a theme shipped since then reddens here rather than being skipped.
+# Sample input, the block this reads out of tests/js/themes.js:
+#   var THEMES = ["catppuccin", "catppuccin-latte", "ethereal",
+#                 "everforest", ...]
 installed=$(ls -1 "$themes_dir" | sort | tr '\n' ' ')
-pinned=$(sed -n '/^var THEMES = \[/,/\]$/p' tests/js/themes.js | tr -d '\n' \
-    | sed 's/.*\[//; s/\].*//; s/"//g; s/,/ /g' | tr -s ' ' | sed 's/^ //; s/ $//' | tr ' ' '\n' | sort | tr '\n' ' ')
+pinned=$(sed -n '/^var THEMES = \[/,/\]$/p' tests/js/themes.js | grep -o '"[a-z0-9-]*"' | tr -d '"' | sort | tr '\n' ' ')
 if [ "$installed" != "$pinned" ]; then
     printf 'FAIL the installed themes are not the ones tests/js/themes.js pins\n  installed: %s\n  pinned:    %s\n' "$installed" "$pinned"
     failures=$((failures + 1))
 fi
 
-sandbox=$(mktemp -d --tmpdir="$HOME" flea-themes.XXXXXXXX) || exit 1
-case $sandbox in "$HOME"/flea-themes.????????) ;; *) echo "themes.sh: refusing a sandbox outside $HOME"; exit 1 ;; esac
-touch "$sandbox/.flea-themes"
-shots=$(mktemp -d --tmpdir="$HOME" flea-themeshots.XXXXXXXX) || exit 1
-stop() { pkill -x flea 2>/dev/null; for p in $(pgrep -x qs 2>/dev/null); do kill "$p" 2>/dev/null; done; sleep 1; }
+sandbox="$FIXTURE_ROOT/flea-themes-$$"
+sandbox_make "$sandbox"
+shots=$(mktemp -d --tmpdir="$FIXTURE_ROOT" flea-themeshots.XXXXXXXX) || exit 1
+# Only what this run launched: the candidate is started with setsid, so its own process group holds
+# it and the qs it spawns, and nothing the operator started is signalled.
+launched=""
+stop() {
+    [ -n "$launched" ] && kill -TERM -- "-$launched" 2>/dev/null
+    launched=""
+    sleep 1
+}
 cleanup() {
     stop
-    case $sandbox in "$HOME"/flea-themes.????????) ;; *) return ;; esac
-    [ -f "$sandbox/.flea-themes" ] && rm -rf "$sandbox"
+    sandbox_remove "$sandbox"
 }
 trap cleanup EXIT HUP INT TERM
 
@@ -78,6 +92,12 @@ pixel_at() {
 # A screenshot is not bit exact: measured over all 22 themes, the compositor's own buffer round trip
 # moves a role by up to three steps a channel, kanagawa's accent the furthest, so a role is matched
 # within four rather than by string equality. A role drawn from the wrong colour is hundreds away.
+# Is this colour anywhere in the shot, within the same round trip the tolerance above allows? A frame
+# is a run of pixels, so it is in the image unless the control stopped drawing that role altogether.
+# magick answers "True" or "False" with a capital, so the answer is folded before it is compared.
+colour_present() {
+    [ "$(magick "$1" -alpha on -fuzz 2% -transparent "$2" -format '%[opaque]' info: | tr 'A-Z' 'a-z')" = "false" ]
+}
 same_colour() {
     local theme="$1" rule="$2" got="$3" want="$4" near
     near=$(python3 -c '
@@ -97,7 +117,7 @@ for colours in "$themes_dir"/*/colors.toml; do
     # One theme at a time while a rule is being written; the battery runs them all.
     [ -n "${THEMES_ONLY:-}" ] && [ "$theme" != "${THEMES_ONLY}" ] && continue
     home="$sandbox/home"
-    rm -rf "$home"
+    sandbox_scratch "$home"
     mkdir -p "$home/.local/state/omarchy/current/theme" "$home/.config/omarchy"
     cp "$colours" "$home/.local/state/omarchy/current/theme/colors.toml"
     [ -f "$(dirname "$colours")/shell.toml" ] && cp "$(dirname "$colours")/shell.toml" "$home/.local/state/omarchy/current/theme/"
@@ -109,6 +129,7 @@ for colours in "$themes_dir"/*/colors.toml; do
     export HOME="$home"
     FLEA_UI="$flea_ui" FLEA_BIN="$flea_bin" XDG_STATE_HOME="$sandbox/state" XDG_CONFIG_HOME="$sandbox/config" \
         setsid nohup "$flea_bin" --gui "$sandbox/files" >"$sandbox/flea-$theme.log" 2>&1 </dev/null &
+    launched=$!
     export HOME="$real_home"
     if ! omarchy-drive wait window "$class" --timeout 20 >/dev/null; then
         fail "$theme: the candidate never opened a window"
@@ -117,16 +138,24 @@ for colours in "$themes_dir"/*/colors.toml; do
     omarchy-drive focus "$class" >/dev/null
     sleep 3
     [ "$(ipc themeLoaded)" = "true" ] || fail "$theme: the window did not load a palette"
-    read -r bg surface fg muted accent error symlink executable <<< "$(ipc palette)"
+    read -r bg surface fg muted accent error symlink executable accentframe <<< "$(ipc palette)"
     case "$bg$fg$muted$accent" in *"#"*) ;; *) fail "$theme: the window reports no palette"; continue ;; esac
+    # Sample input, one line of colors.toml: background = "#1e1e2e"   # the canvas
+    want_bg=$(grep -m1 '^background' "$colours" | grep -o '#[0-9A-Fa-f]\{6\}' | tr 'A-F' 'a-f')
+    want_fg=$(grep -m1 '^foreground' "$colours" | grep -o '#[0-9A-Fa-f]\{6\}' | tr 'A-F' 'a-f')
+    [ -z "$want_bg" ] || [ "$want_bg" = "$bg" ] \
+        || fail "$theme: the window is on $bg, not this theme's own $want_bg"
+    [ -z "$want_fg" ] || [ "$want_fg" = "$fg" ] \
+        || fail "$theme: the window draws $fg, not this theme's own $want_fg"
 
     # The rules, on the roles the running window carries rather than on the file it read.
-    at_least "$theme" "foreground on background" "$(ratio "$fg" "$bg")" 4.5
-    at_least "$theme" "foreground on surface" "$(ratio "$fg" "$surface")" 4.5
-    at_least "$theme" "muted caption on background" "$(ratio "$muted" "$bg")" 3
-    at_least "$theme" "error on background" "$(ratio "$error" "$bg")" "$(ratio "$fg" "$bg" | awk '{ print ($1 < 4.5 ? $1 : 4.5) }')"
-    at_least "$theme" "symlink on background" "$(ratio "$symlink" "$bg")" 4.5
-    at_least "$theme" "executable on background" "$(ratio "$executable" "$bg")" 4.5
+    at_least "$theme" "foreground on background" "$(ratio "$fg" "$bg")" "$text_min"
+    at_least "$theme" "foreground on surface" "$(ratio "$fg" "$surface")" "$text_min"
+    at_least "$theme" "muted caption on background" "$(ratio "$muted" "$bg")" "$caption_min"
+    at_least "$theme" "error on background" "$(ratio "$error" "$bg")" "$text_min"
+    at_least "$theme" "symlink on background" "$(ratio "$symlink" "$bg")" "$text_min"
+    at_least "$theme" "executable on background" "$(ratio "$executable" "$bg")" "$text_min"
+    at_least "$theme" "the primary frame on the card's surface" "$(ratio "$accentframe" "$surface")" "$caption_min"
 
     # The cursor row's own accent edge, marked and hovered rows beside it: a shot of all three.
     key j; sleep 0.5
@@ -145,14 +174,24 @@ for colours in "$themes_dir"/*/colors.toml; do
         fail "$theme: the cursor row has no rectangle to measure"
     fi
 
-    # A settings checkbox on and off, and the disabled row beside them.
+    # The settings card, whose checkbox draws in the foreground and muted roles the rules above already
+    # measure; it is shot for the reviewer rather than measured a second time here.
     key ,; sleep 2
     omarchy-drive shot "$shots/$theme-settings.png" "$class" >/dev/null
     key -k Escape; sleep 1
 
-    # The dialog's primary and secondary buttons, on the card's own surface.
+    # The dialog's primary button frames itself in the lifted accent: its presence in the shot says the
+    # button still draws an accent-family frame rather than the muted one an unavailable control takes.
+    # The lift moves rose-pine's accent by 2.4 percent a channel, inside this tolerance, so what this
+    # cannot tell apart is the lifted role from the raw accent; the palette check above is that rule.
     key a; sleep 2
+    # A host in the field is what makes the primary available: an unavailable one frames itself muted,
+    # which is ui/DialogButton.qml's own rule and not the role this measures.
+    omarchy-drive key --window "$class" nas >/dev/null
+    sleep 1
     omarchy-drive shot "$shots/$theme-dialog.png" "$class" >/dev/null
+    colour_present "$shots/$theme-dialog.png" "$accentframe" \
+        || fail "$theme: the dialog carries no pixel of the primary frame's own $accentframe"
     key -k Escape; sleep 1
 
     # A search run, whose matches carry the one wash, and the strip that reports it.
