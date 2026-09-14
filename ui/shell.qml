@@ -295,6 +295,8 @@ ShellRoot {
                 total: view.currentPane.trash.opened ? view.currentPane.trash.total : view.currentPane.total
                 listingState: view.currentPane.listingState
                 pane: view.currentPane.trash.opened ? null : view.currentPane
+                // Trash open or not: its host is anchored to the same band, right of the rail.
+                axisPane: view.currentPane
                 selectionCount: view.currentPane.trash.opened ? view.currentPane.trash.selectedCount : view.currentPane.selectionCount()
                 fsName: view.currentPane.fsName
                 fsFree: view.currentPane.fsFree
@@ -304,9 +306,7 @@ ShellRoot {
                             : ""
                 searchKeys: Search.statusKeys(view.currentPane.searchRunning)
                 retryLine: view.currentPane.trash.opened ? "" : view.currentPane.retrySelectionText
-                onTransferCancelRequested: function (id) {
-                    bar.transferOwner.backend.transfercancel(id)
-                }
+                onTransferCancelRequested: function (id) { bar.transferOwner.backend.transfercancel(id) }
             }
 
             Flea.Preview { id: preview; pane: view.currentPane }

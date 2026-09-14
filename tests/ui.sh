@@ -2554,14 +2554,26 @@ case_columns() {
 
 # Directive 46: the strip speaks for the current pane, so its centre lane sits on that pane's own list slot axis. centreOffset is where the lane is less where it should be, in the strip's own pixels.
 centre_on_axis() {
-    local label="$1" state offset slack
+    local label="$1" state lane room slot off
     state=$(ipc statusFooterState)
-    offset=$(jq -r '.centreOffset' <<< "$state")
-    slack=$(jq -r '.centreSlack' <<< "$state")
-    # offset is how far the lane ends up from the axis, which the clamp alone can make non-zero in dual mode; slack is how far it is from where the rule puts it, which is always zero.
-    printf 'CENTRE %s offset=%s slack=%s\n' "$label" "$offset" "$slack"
-    awk -v s="$slack" 'BEGIN { exit (s < 1 && s > -1) ? 0 : 1 }' \
-        || fail "status: the $label centre lane sits $slack px off where the listing's axis puts it"
+    lane=$(jq -r '.lane' <<< "$state")
+    room=$(jq -r '.room' <<< "$state")
+    slot=$(jq -r '.slot' <<< "$state")
+    [[ -n "$lane" && -n "$room" && -n "$slot" ]] || fail "status: the $label strip reported no geometry: lane=[$lane] room=[$room] slot=[$slot]"
+    # Each is "x width centre" in window pixels, read off the rendered items. The awk is the clamp
+    # arithmetic recomputed here from those pixels, on purpose: a check that asks the code where the
+    # lane should be only ever agrees with itself, which is what the first version of this did.
+    off=$(awk -v lane="$lane" -v room="$room" -v slot="$slot" 'BEGIN {
+        split(lane, l, " "); split(room, r, " "); split(slot, s, " ")
+        want = s[3]
+        if (want - l[2] / 2 < r[1]) want = r[1] + l[2] / 2
+        if (want + l[2] / 2 > r[1] + r[2]) want = r[1] + r[2] - l[2] / 2
+        d = want - l[3]
+        print (d < 0 ? -d : d)
+    }')
+    printf 'CENTRE %s lane=[%s] slot=[%s] off=%s\n' "$label" "$lane" "$slot" "$off"
+    awk -v o="$off" 'BEGIN { exit (o < 1) ? 0 : 1 }' \
+        || fail "status: the $label centre lane [$lane] is $off px from the listing's axis [$slot] inside [$room]"
 }
 
 case_status() {
@@ -6661,9 +6673,14 @@ case_dual() {
     key l >/dev/null
     wait_listing 1
     [[ "$(ipc path)" == "$dir/left/nested" ]] || fail "dual: left navigation did not enter nested folder"
+    # A message first, or the lane is empty and its centre is a point rather than a measured box.
+    key y >/dev/null
+    settle
     centre_on_axis "dual left"
     shot dual-centre-axis-left
     key -k Tab >/dev/null
+    settle
+    key y >/dev/null
     settle
     centre_on_axis "dual right"
     shot dual-centre-axis-right

@@ -127,7 +127,7 @@ QtObject {
                 frame: root.fleaWindow.rectOf(root.bar.stripItem), borderWidth: root.bar.stripItem.border.width,
                 zoneWidth: root.bar.zoneWidth, hintWidth: root.bar.hintWidth,
                 left: textState(root.bar.countsItem), centre: textState(root.bar.primaryItem),
-                secondary: textState(root.bar.secondaryItem), disk: textState(root.bar.diskItem), centreOffset: root.bar.centreOffset, centreSlack: root.bar.centreSlack})
+                secondary: textState(root.bar.secondaryItem), disk: textState(root.bar.diskItem), lane: root.fleaWindow.boxOf(root.bar.centreItem), room: root.fleaWindow.boxOf(root.bar.middleItem), slot: root.pane ? root.fleaWindow.boxOf(root.pane.listSlot) : ""})
         }
         function selectionBandState(): string {
             var band = root.pane.selectionBand
