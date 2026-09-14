@@ -19,7 +19,7 @@ Item {
     // The canvas draws a secondary button as a hairline rule carrying live text, so only the frame
     // takes muted, the role ThemeRoles.html gives borders and inactive controls; the label is alive.
     readonly property bool leading: root.primary && root.available
-    readonly property color frame: root.leading ? Theme.color.accent : Theme.color.muted
+    readonly property color frame: root.leading ? Theme.color.accentFrame : Theme.color.muted
     readonly property color ink: root.available ? Theme.color.foreground : Theme.color.muted
     // The frame and this wash say which action is being asked for; an accent label said it by going darker, HANDOFF rule 18.
     readonly property color wash: root.leading ? Qt.alpha(Theme.color.accent, Theme.washActive) : root.fillColor

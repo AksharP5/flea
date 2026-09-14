@@ -51,6 +51,9 @@ Singleton {
         property color surface: root.fallbackColor.surface
         property color symlink: root.fallbackColor.symlink
         property color executable: root.fallbackColor.executable
+        // The accent as a frame rather than as ink: on a card's own surface a frame is a graphical
+        // object, so it is lifted to 3:1 there the way symlink and executable are lifted on the list.
+        property color accentFrame: Color.accent
     }
 
     readonly property QtObject font: QtObject {
@@ -219,11 +222,8 @@ Singleton {
         readonly property real fraction: 0.82
     }
 
-    // The column set a list of this width can draw, less the columns the user has hidden (qs
-    // module ViewState). ui/Header.qml and ui/Row.qml each call this with their own width, which
-    // anchoring keeps equal, so the header and the rows below it cannot disagree about which
-    // columns exist.
-    // dateWidth lets the picker afford the date at column.pickerDate, the width it actually draws.
+    // The columns a list of this width can draw, less the ones ViewState hides; Header and Row call
+    // it with their own anchored-equal width, so they cannot disagree, and dateWidth is the picker's.
     readonly property var columnTokens: ({
         rowPaddingX: root.spacing.rowPaddingX, gap: root.spacing.gap, iconSize: root.iconSize,
         nameMin: root.column.nameMin, mode: root.column.mode,
@@ -296,7 +296,11 @@ Singleton {
         var surface = Palette.pick(found, Palette.SURFACE_KEYS, root.fallbackColor.surface);
         root.color.surface = surface;
         Color.loadColors(body);
-        root.color.muted = Palette.pick(found, ["muted"], Qt.darker(Color.foreground, 1.4));
+        // Measured over the 22 stock palettes in tests/js/themes.js: 20 set a muted under the 3:1 a
+        // caption needs, rose-pine's at 1.48, so it is lifted the way the two ladder colours below are.
+        root.color.muted = Contrast.ensureRatio(
+            Palette.pick(found, ["muted"], Qt.darker(Color.foreground, 1.4)), bg, 3);
+        root.color.accentFrame = Contrast.ensureRatio(Color.accent, surface, 3);
         root.color.symlink = Contrast.ensureRatio(
             Palette.pick(found, ["cyan", "color6"], root.fallbackColor.symlink), bg, 4.5);
         root.color.executable = Contrast.ensureRatio(
@@ -326,11 +330,9 @@ Singleton {
         root.reducedMotion = String(body).indexOf('"bool": false') >= 0;
     }
 
-    // blockLoading only gates calls to text()/data(); nothing forced that call before this fix,
-    // so a window could paint one frame against qs.Commons Color's own un-loaded fallback (blue)
-    // before onLoaded ever fired. Component.onCompleted calls text() itself, which blocks the
-    // Singleton's own construction, which runs before any window: colors.toml is applied before
-    // the first frame, and the later onLoaded is a harmless second, idempotent apply.
+    // blockLoading only gates calls to text()/data(), so a window could paint one frame against the
+    // un-loaded fallback; Component.onCompleted calls text() itself, which blocks this Singleton's
+    // construction before any window, and the later onLoaded is a harmless idempotent second apply.
     FileView {
         id: colorsFile
         path: root.stateDir + "/theme/colors.toml"
@@ -382,11 +384,9 @@ Singleton {
         }
     }
 
-    // Flea agrees with the compositor rather than carrying its own switch, the rule the corner
-    // radius already follows; FLEA_REDUCED_MOTION is the test override and skips the ask.
-    // Two forms below look like mistakes and are not: Quickshell.env returns null and not "" for
-    // an unset variable, so the guard is a truthiness test, and StdioCollector text is a property
-    // whose call throws. The query is Commons/Style.qml's own decoration:rounding shape.
+    // Flea agrees with the compositor rather than carrying a switch, and FLEA_REDUCED_MOTION is the
+    // test override; Quickshell.env answers null for an unset variable, so the guard is a truthiness
+    // test, StdioCollector text is a property whose call throws, and the query is Style.qml's own.
     Process {
         id: motionQuery
         running: !Quickshell.env("FLEA_REDUCED_MOTION")

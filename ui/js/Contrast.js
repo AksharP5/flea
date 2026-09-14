@@ -76,5 +76,24 @@ function ensureRatio(fgHex, bgHex, minRatio) {
     }
     if (ratioOf(best, bg) < need)
         best = toward
-    return hexOf(best)
+    return stepped(hexOf(best), bgHex, need, toward)
+}
+
+// An 8-bit hex cannot hold the exact colour the search found, and rounding it can land just under the
+// ratio that was asked for: 20 of the 22 stock palettes came back at 2.99 for a requested 3. So the
+// rounded value is walked on in whole steps until it delivers, or until it is the extreme itself.
+function stepped(hex, bgHex, need, toward) {
+    var c = parse(hex)
+    var step = 1 / 255
+    for (var i = 0; i < 255; i++) {
+        if (ratioOf(c, parse(bgHex)) >= need)
+            return hexOf(c)
+        var next = [c[0] + (toward[0] - c[0] > 0 ? step : -step),
+                    c[1] + (toward[1] - c[1] > 0 ? step : -step),
+                    c[2] + (toward[2] - c[2] > 0 ? step : -step)]
+        if (hexOf(next) === hexOf(c))
+            break
+        c = next
+    }
+    return hexOf(c)
 }

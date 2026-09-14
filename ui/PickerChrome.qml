@@ -65,7 +65,7 @@ Item {
         // one, and an unavailable control stays there: a frame may recede only when the control is
         // inert. ui/DialogButton.qml has drawn its own frames this way all along.
         readonly property color frame: control.available && control.primary
-            ? Theme.color.accent : Theme.color.muted
+            ? Theme.color.accentFrame : Theme.color.muted
 
         // The primary control carries its wash at rest, because it is the one action the request is
         // asking for; every other control earns one under the pointer or the keyboard.

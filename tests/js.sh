@@ -23,7 +23,8 @@ run() {
   local suite_args=()
   local out code
   [ -n "${2:-}" ] && suite_args=(-- "$2")
-  out=$(TZ="$1" QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1 timeout 120 qml6 tests/js/harness.qml "${suite_args[@]}" 2>&1)
+  # tests/js/themes.js reads the installed colors.toml files, which qml6 refuses without this.
+  out=$(TZ="$1" QML_XHR_ALLOW_FILE_READ=1 QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1 timeout 120 qml6 tests/js/harness.qml "${suite_args[@]}" 2>&1)
   code=$?
   echo "$out"
   if [ "$code" = 124 ]; then
