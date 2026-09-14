@@ -212,13 +212,15 @@ function run(check) {
           noUuidRows[0].glyph + "|" + noUuidRows[0].uri,
           "camera|gphoto2://Apple_Inc._iPhone_00008130001641411883401C/")
 
-    // The fold follows the row, not the block: an AFC volume gvfs will neither mount nor has mounted
-    // is not a row, and folding its camera twin anyway would take the phone off the rail altogether.
-    var afcGone = phone.replace("  activation_root=afc://00008130-001641411883401C:3/\n  can_mount=1\n",
-                                "  activation_root=afc://00008130-001641411883401C:3/\n  can_mount=0\n")
-    var afcGoneRows = Phones.parsePhones(afcGone)
-    check("a dropped AFC volume leaves the camera leg standing", afcGoneRows.length, 1)
-    check("and the phone is still on the rail, as its camera", afcGoneRows[0].glyph, "camera")
+    // gvfs may automount the documents share and then answer can_mount=0 for it, and neither fact is
+    // about the root: the phone is plugged in, so the row stands and offers the mount it names.
+    var automounted = phone.replace("  activation_root=afc://00008130-001641411883401C:3/\n  can_mount=1\n",
+                                    "  activation_root=afc://00008130-001641411883401C:3/\n  can_mount=0\n"
+                                  + "  Mount(1): Documents on GM\u2019s iPhone -> afc://00008130-001641411883401C:3/\n")
+    var autoRows = Phones.parsePhones(automounted)
+    check("an automounted documents share does not decide the phone's row", autoRows.length, 1)
+    check("the row is still the phone", autoRows[0].glyph, "smartphone")
+    check("and it still offers its mount rather than an unmount", autoRows[0].mounted, false)
 
     // gvfs can publish more than one AFC volume for one phone, and they rebuild to the same root.
     var twice = phone + 'Volume(2): Documents on GM\u2019s iPhone\n'

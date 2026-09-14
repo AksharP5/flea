@@ -18,6 +18,7 @@
 //   uuid=00008130-001641411883401C
 //   activation_root=afc://00008130-001641411883401C:3/
 //   can_mount=1
+//   Mount(1): Documents on GM's iPhone -> afc://00008130-001641411883401C:3/
 // Mount(2): GM's iPhone -> afc://00008130-001641411883401C/
 // Only a COLUMN-ZERO Volume() block can be a phone: a udisks volume prints indented under its own
 // Drive() block, and the Type line is required anyway, so only the three gvfs monitors with no block
@@ -69,9 +70,10 @@ function parsePhones(output) {
         var p = blocks[b]
         // An Afc block's own Mount is that documents share, so only the root's column-zero line counts.
         p.mounted = p.monitor === "Afc" ? mounted[p.uri] === true : (p.inBlock || mounted[p.uri] === true)
-        // gvfs answers can_mount=0 for a volume that is already mounted, measured on this box's own
-        // USB volume, so only a volume that can neither be mounted nor is mounted is not a row.
-        if (p.monitor.length === 0 || p.uri.length === 0 || (!p.canMount && !p.mounted))
+        // An Afc volume's can_mount is that share's too, so its row stands on the root it names.
+        var live = p.monitor === "Afc" || p.canMount || p.mounted
+        // gvfs answers can_mount=0 for a volume it has already mounted, measured on this box's own USB
+        if (p.monitor.length === 0 || p.uri.length === 0 || !live)
             continue
         // Two AFC volumes can carry one uuid, and they rebuild to one root, which is one row.
         if (seen[p.uri])
