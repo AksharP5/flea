@@ -528,6 +528,12 @@ operations_cancel_live() (
     done
     jq -e '.activities[0].running and .activities[0].text == "Copying 1 of 2 · a-large.bin" and .transferCard.visible' <<< "$state" >/dev/null \
         || fail "operations: no filename-bearing live transfer before deadline: $state"
+    # Directive 45: the sweep runs beside the copy, so a batch names a total once it settles, which is
+    # microseconds for two local items. Read from the state above rather than polled for: this window
+    # is the live transfer's own, and an extra round trip here is what operations_missed_window is for.
+    jq -e '.transferCard.byteLine | contains(" of ")' <<< "$state" >/dev/null \
+        || fail "operations: the batch card states no total, its line reads [$(jq -r '.transferCard.byteLine' <<< "$state")]"
+    printf 'OPERATIONS_BATCH_TOTAL line=%s\n' "$(jq -r '.transferCard.byteLine' <<< "$state")"
     observed_bytes=$(stat -c '%s' "$destination/a-large.bin") || fail "operations: live destination byte count unavailable"
     (( observed_bytes > 0 && observed_bytes < operations_bytes )) || operations_missed_window transfer-before-capture "$state"
     printf 'OPERATIONS_LIVE_TRANSFER before_cancel_bytes=%s state=%s\n' "$observed_bytes" "$state"

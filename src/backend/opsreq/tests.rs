@@ -109,10 +109,9 @@ fn a_failed_item_line_carries_its_reason_escaped() {
 fn every_operation_line_matches_the_shape_the_operations_design_names() {
     assert_eq!(transferstarted_line(12, 2, false), r#"{"t":"transferstarted","id":12,"n":2,"moving":false}"#);
     assert_eq!(transferstarted_line(12, 2, true), r#"{"t":"transferstarted","id":12,"n":2,"moving":true}"#);
-    assert_eq!(
-        transferprogress_line(12, 0, "a.txt", 40000000, 120000000),
-        r#"{"t":"transferprogress","id":12,"index":0,"name":"a.txt","bytes":40000000,"total":120000000}"#
-    );
+    assert_eq!(transferprogress_line(12, 0, "a.txt", 40000000, 120000000, 0), r#"{"t":"transferprogress","id":12,"index":0,"name":"a.txt","bytes":40000000,"total":120000000,"scanned":0}"#);
+    // Directive 45: the batch's own total once its sweep settles, which is what the card's time left needs.
+    assert_eq!(transferprogress_line(12, 3, "photos", 40000000, 0, 8400000000), r#"{"t":"transferprogress","id":12,"index":3,"name":"photos","bytes":40000000,"total":0,"scanned":8400000000}"#);
     assert_eq!(
         transferdone_line(12, 1, 1, 0, false, &[]),
         r#"{"t":"transferdone","id":12,"ok":1,"failed":1,"skipped":0,"cancelled":false,"retryPaths":[]}"#

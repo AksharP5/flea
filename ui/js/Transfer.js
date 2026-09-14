@@ -7,8 +7,11 @@
 
 // The byte sample for the item in flight. done is the count already finished, so it stays where it
 // was: a sample fills the item in, it does not complete it.
-function sampled(t, index, name, bytes, total) {
-    return Object.assign({}, t, {index: index, name: name, done: index, bytes: bytes, total: total})
+function sampled(t, index, name, bytes, total, scanned) {
+    // scanned is the whole batch's own total and only arrives once the sweep beside the copy settles,
+    // so a sample that carries none must not unset the one an earlier sample already brought.
+    var settled = scanned > 0 ? scanned : (t.scanned || 0)
+    return Object.assign({}, t, {index: index, name: name, done: index, bytes: bytes, total: total, scanned: settled})
 }
 
 // That item's own terminal line: it counts whole from here, and its byte sample is spent. What it
@@ -27,24 +30,25 @@ function movedBytes(t) {
 }
 
 // TransferCard rule 1's line under the bar, as the pieces it is drawn from: a figure the card inks
-// in the foreground, or the muted words between them. The transfer's total is known only when it is
-// one regular file, because n counts top-level items and a tree never gets a byte total.
+// in the foreground, or the muted words between them.
 function byteParts(t, rate) {
     var moved = movedBytes(t)
     if (moved <= 0) {
         return []
     }
-    var known = t.n === 1 && t.total > 0
+    // Directive 45: the item's own total when the transfer is one file, the batch's sweep otherwise,
+    // and a batch has none until that sweep settles, which is the counting state the board describes.
+    var total = t.n === 1 ? t.total : (t.scanned || 0)
     var parts = [figure(Format.size(moved))]
-    if (known) {
-        parts.push(word(" of "), figure(Format.size(t.total)))
+    if (total > 0) {
+        parts.push(word(" of "), figure(Format.size(total)))
     } else {
         parts.push(word(t.moving ? " moved" : " copied"))
     }
     parts.push(word(" · "), figure(Format.size(rate) + "/s"))
     // Rule 3b: an estimate needs both a total and a rate, and a stall has neither to divide by.
-    if (known && rate > 0) {
-        parts.push(word(" · "), figure(Format.duration((t.total - t.bytes) / rate * 1000)), word(" left"))
+    if (total > 0 && rate > 0) {
+        parts.push(word(" · "), figure(Format.duration((total - moved) / rate * 1000)), word(" left"))
     }
     return parts
 }

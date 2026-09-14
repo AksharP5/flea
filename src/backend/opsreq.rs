@@ -7,7 +7,7 @@ use crate::error::{from_io, io_message, FleaError};
 use crate::json::escape;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -17,7 +17,8 @@ pub(crate) const PROGRESS_EVERY: Duration = Duration::from_millis(150);
 
 // What an operation thread sends back, joined onto the same receiver every other event already arrives on.
 pub enum OpMsg {
-    Progress { id: usize, index: usize, name: String, bytes: u64, total: u64 },
+    // scanned is the batch's own total, 0 until the sweep beside the copy settles on one.
+    Progress { id: usize, index: usize, name: String, bytes: u64, total: u64, scanned: u64 },
     Item { id: usize, index: usize, name: String, ok: bool, err: String },
     TransferDone { id: usize, ok: usize, failed: usize, skipped: usize, cancelled: bool, entry: Entry,
                    retry: Vec<(PathBuf, ItemIdentity)> },
@@ -36,11 +37,12 @@ pub fn transferstarted_line(id: usize, n: usize, moving: bool) -> String {
     format!(r#"{{"t":"transferstarted","id":{},"n":{},"moving":{}}}"#, id, n, moving)
 }
 
-// total is 0 for a directory, whose size is not known in advance without the sweep this codebase never does.
-pub fn transferprogress_line(id: usize, index: usize, name: &str, bytes: u64, total: u64) -> String {
+// total is 0 for a directory, whose size the item's own progress never knows in advance. scanned is
+// the whole batch's, 0 until the sweep beside the copy settles on one: directive 45's counting state.
+pub fn transferprogress_line(id: usize, index: usize, name: &str, bytes: u64, total: u64, scanned: u64) -> String {
     format!(
-        r#"{{"t":"transferprogress","id":{},"index":{},"name":"{}","bytes":{},"total":{}}}"#,
-        id, index, escape(name), bytes, total
+        r#"{{"t":"transferprogress","id":{},"index":{},"name":"{}","bytes":{},"total":{},"scanned":{}}}"#,
+        id, index, escape(name), bytes, total, scanned
     )
 }
 
@@ -130,11 +132,52 @@ pub fn run_transfer(
     run_transfer_checked(id, moving, paths, dest, cancel, tx, None, None)
 }
 
+// A tree this far in is a tree the operator is watching, so the sweep gives up rather than holding a
+// thread on a mount that has stopped answering; what it costs then is the estimate, never the copy.
+const TOTAL_SWEEP_MS: u64 = 30_000;
+
+// The scan a batch's total comes from, on its own thread so the first byte never waits for it. It
+// publishes into the cell every progress sample reads, and a walk that hits the deadline or meets a
+// cancel publishes nothing: the card shows no total rather than a floor, and no time left with it.
+fn spawn_total(paths: &[String], cancel: &Arc<AtomicBool>, settled: &Arc<AtomicU64>) {
+    let paths: Vec<String> = paths.to_vec();
+    let cancel = Arc::clone(cancel);
+    let settled = Arc::clone(settled);
+    std::thread::spawn(move || {
+        let deadline = Instant::now() + Duration::from_millis(TOTAL_SWEEP_MS);
+        let mut bytes = 0u64;
+        for raw in &paths {
+            if cancel.load(Ordering::Relaxed) {
+                return;
+            }
+            let meta = match std::fs::symlink_metadata(raw) {
+                Ok(meta) => meta,
+                Err(_) => return,
+            };
+            if !meta.is_dir() {
+                // A symlink is copied as the link, so its own size is what it costs and not its target's.
+                bytes += meta.len();
+                continue;
+            }
+            let seen = crate::backend::dirsize::walk_until(Path::new(raw), deadline);
+            if seen.partial {
+                return;
+            }
+            bytes += seen.bytes;
+        }
+        settled.store(bytes, Ordering::Relaxed);
+    });
+}
+
 pub(crate) fn run_transfer_checked(
     id: usize, moving: bool, paths: Vec<String>, dest: PathBuf,
     cancel: Arc<AtomicBool>, tx: Sender<OpMsg>, selection: Option<Vec<super::menu_actions::Selected>>,
     destination: Option<super::menu_actions::Selected>,
 ) {
+    // Directive 45: a batch gets a time left once it knows what it is copying, and a tree's size is
+    // not known without a walk. This is that walk, beside the copy rather than before it.
+    let settled = Arc::new(AtomicU64::new(0));
+    spawn_total(&paths, &cancel, &settled);
     let mut steps: Vec<Step> = Vec::new();
     let mut retry = Vec::new();
     let (mut ok, mut failed, mut skipped) = (0usize, 0usize, 0usize);
@@ -199,7 +242,7 @@ pub(crate) fn run_transfer_checked(
             let _ = tx.send(OpMsg::Item { id, index, name, ok: false, err: ALREADY_THERE.to_string() });
             continue;
         }
-        match one_item(id, index, &name, moving, &src, &dst, source.clone(), &cancel, &tx, &mut steps) {
+        match one_item(id, index, &name, moving, &src, &dst, source.clone(), &cancel, &tx, &settled, &mut steps) {
             Ok(()) => {
                 ok += 1;
                 let _ = tx.send(OpMsg::Item { id, index, name, ok: true, err: String::new() });
@@ -232,6 +275,7 @@ fn one_item(
     source: ItemIdentity,
     cancel: &AtomicBool,
     tx: &Sender<OpMsg>,
+    settled: &AtomicU64,
     steps: &mut Vec<Step>,
 ) -> Result<(), FleaError> {
     let mut last = Instant::now() - PROGRESS_EVERY;
@@ -246,6 +290,8 @@ fn one_item(
             name: name.to_string(),
             bytes: done,
             total,
+            // Still 0 while the sweep counts, and the batch's own total from the moment it settles.
+            scanned: settled.load(Ordering::Relaxed),
         });
     };
     let mut p = Progress { cancel, on_bytes: &mut sink, partial: None, tree: None };

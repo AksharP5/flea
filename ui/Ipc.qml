@@ -112,7 +112,7 @@ QtObject {
                     cancelling: activity.cancelling, ownerPath: owner.path, ownerFocused: owner.paneFocused}
             }), errors: root.bar.errors.length, notice: root.bar.notice,
                 undoAvailable: root.bar.hasUndo,
-                transferCard: {visible: !!card && card.visible, cancelling: !!card && card.cancelling,
+                transferCard: {visible: !!card && card.visible, cancelling: !!card && card.cancelling, byteLine: card ? card.byteText : "",
                     rect: root.fleaWindow.rectOf(card), cancel: root.controlState("Cancel", card ? card.cancelItem : null)}})
         }
         function statusFooterState(): string {

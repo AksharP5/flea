@@ -12,6 +12,7 @@ Item {
     property var transfer: Ops.emptyTransfer()
     property var owner: null
     readonly property var cancelItem: cancelButton
+    readonly property alias byteText: byteLine.text
     signal cancelRequested(int id)
 
     // Everything drawn comes off this sample rather than straight off the wire, because thirty
@@ -182,6 +183,8 @@ Item {
         Row {
             id: byteLine
             readonly property var parts: Transfer.byteParts(root.shown, root.rate)
+            // The drawn line as one string, so a driven case reads what the card says rather than a shot.
+            readonly property string text: byteLine.parts.map(function (p) { return p.text }).join("")
             visible: byteLine.parts.length > 0
             height: visible ? implicitHeight : 0
 

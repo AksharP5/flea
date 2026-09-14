@@ -38,6 +38,21 @@ function run(check) {
           drawn(Transfer.byteParts(Object.assign({}, many, { moving: true }), megabyte)),
           "312.0 MB| moved| · |1.0 MB/s")
 
+    // Directive 45: a batch has no total only while the sweep beside the copy is still counting, and
+    // once it settles the line reads exactly as a single file's does, time left and all.
+    var settled = Object.assign({}, many, { scanned: 8400 * megabyte })
+    check("a batch still counting states what has moved and nothing it cannot know",
+          drawn(Transfer.byteParts(many, megabyte)), "312.0 MB| copied| · |1.0 MB/s")
+    check("a batch whose scan has settled names the total and the time left",
+          drawn(Transfer.byteParts(settled, megabyte)),
+          "312.0 MB| of |8.4 GB| · |1.0 MB/s| · |2:14:48| left")
+    check("and a stalled batch keeps its total and drops the estimate, as rule 3b says",
+          drawn(Transfer.byteParts(settled, 0)), "312.0 MB| of |8.4 GB| · |0 B/s")
+    // The sweep publishes once; a later sample that carries no total must not take it away again.
+    var kept = Transfer.sampled(settled, 4, "plate-18.raw", 2 * megabyte, 0, 0)
+    check("a sample with no total of its own keeps the one the scan settled on", kept.scanned, 8400 * megabyte)
+    check("and a sample that brings one records it", Transfer.sampled(many, 4, "x", 1, 0, 77).scanned, 77)
+
     // Rule 4: the line is absent, not blank, until the first sample lands.
     check("no byte sample draws no line at all",
           Transfer.byteParts({ id: 3, n: 1, moving: false, index: 0, name: "captures", done: 0,

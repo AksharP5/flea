@@ -272,14 +272,14 @@ Item {
             pane.sticky(Ops.progressLine(pane.transfer))
         }
 
-        // Sample input: {"t":"transferprogress","id":12,"index":0,"name":"a.txt","bytes":40000000,"total":120000000}
-        function onTransferProgress(id, index, name, bytes, total) {
+        // Sample input: {"t":"transferprogress","id":12,"index":0,"name":"a.txt","bytes":40000000,"total":120000000,"scanned":8400000000}
+        function onTransferProgress(id, index, name, bytes, total, scanned) {
             if (id !== pane.transfer.id) {
                 return
             }
             // Reassigned rather than mutated in place: an in-place write re-evaluates no binding,
             // so the card would never see a sample. The bytes and the total ride along with it.
-            pane.transfer = Transfer.sampled(pane.transfer, index, name, bytes, total)
+            pane.transfer = Transfer.sampled(pane.transfer, index, name, bytes, total, scanned)
             pane.sticky(Ops.progressLine(pane.transfer))
         }
 

@@ -287,7 +287,7 @@ Item {
     // Sample input: {"t":"changed","path":"/home/gm/Downloads"}
     // Sample input: {"t":"searching","n":812,"scanned":41200,"ms":300.114}
     // Sample input: {"t":"transferstarted","id":12,"n":2,"moving":true}
-    // Sample input: {"t":"transferprogress","id":12,"index":0,"name":"a.txt","bytes":40000000,"total":120000000}
+    // Sample input: {"t":"transferprogress","id":12,"index":0,"name":"a.txt","bytes":40000000,"total":120000000,"scanned":8400000000}
     // Sample input: {"t":"transferitem","id":12,"index":1,"name":"photos","ok":false,"err":"permission denied"}
     // Sample input: {"t":"transferdone","id":12,"ok":1,"failed":1,"skipped":0,"cancelled":false}
     // Sample input: {"t":"trashed","ok":1,"failed":0}
@@ -322,7 +322,7 @@ Item {
         } else if (message.t === "transferstarted") {
             root.transferStarted(message.id, message.n, message.moving)
         } else if (message.t === "transferprogress") {
-            root.transferProgress(message.id, message.index, message.name, message.bytes, message.total)
+            root.transferProgress(message.id, message.index, message.name, message.bytes, message.total, message.scanned || 0)
         } else if (message.t === "transferitem") {
             // err rides only on a failure, so an ok item has no field to read here.
             root.transferItem(message.id, message.index, message.name, message.ok, message.err || "")

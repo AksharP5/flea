@@ -264,8 +264,8 @@ pub(crate) fn report_op(out: &mut impl Write, ops: &mut Ops, msg: OpMsg) {
             ops.live.finished();
             writeln!(out, "{}", line).ok();
         }
-        OpMsg::Progress { id, index, name, bytes, total } => {
-            writeln!(out, "{}", transferprogress_line(id, index, &name, bytes, total)).ok();
+        OpMsg::Progress { id, index, name, bytes, total, scanned } => {
+            writeln!(out, "{}", transferprogress_line(id, index, &name, bytes, total, scanned)).ok();
         }
         OpMsg::Item { id, index, name, ok, err } => {
             writeln!(out, "{}", transferitem_line(id, index, &name, ok, &err)).ok();
