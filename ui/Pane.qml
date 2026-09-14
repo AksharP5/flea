@@ -6,6 +6,7 @@ import "js/Dropbox.js" as Dropbox
 import "js/Filter.js" as Filter
 import "js/Focus.js" as Focus
 import "js/Menu.js" as Menu
+import "js/Mounts.js" as Mounts
 import "js/Search.js" as Search
 import "js/Archive.js" as Archive
 import "js/Nav.js" as Nav
@@ -599,6 +600,8 @@ FocusScope {
         dropboxReason: root.dropboxService ? root.dropboxService.dropboxReason : "Dropbox service unavailable"
         rowInDropbox: root.dropboxService && root.cursorRow
             && Dropbox.contains(root.dropboxService.dropboxPath, root.join(root.path, root.cursorRow.n))
+        // Issue 133: an MTP or PTP mount has no trash of its own, so the row is not offered there.
+        canTrash: Mounts.trashable(root.path)
         onChosen: function (action) {
             menuActions.activate(action, menu.hasRow && !menu.forHeader)
         }

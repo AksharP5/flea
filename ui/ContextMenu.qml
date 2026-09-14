@@ -104,10 +104,10 @@ Item {
 
     // The row list this menu currently offers; a test reads this back through shell.qml's IPC.
     property var entries: []
+    property bool canTrash: true
 
     // The construction lives in ui/js/Menu.js now, so the rows are unit-testable without a window:
-    // listingEntries(p) builds the listing's rows from the pane's state, headerEntries() the column
-    // titles' own rows on a right click (see ui/Header.qml), and this file only routes between them.
+    // listingEntries(p) builds the listing's rows from the pane's state and headerEntries() the column titles' own on a right click (ui/Header.qml); this file only routes between them.
     function buildEntries() {
         // Which release a rail row offers is the rail's knowledge, not the listing's, so the rail
         // hands its rows in already built; see ui/js/Mounts.js "railMenu".
@@ -132,6 +132,7 @@ Item {
             canConvert: root.canConvert,
             canExtract: root.canExtract,
             clipboardAvailable: root.clipboardAvailable,
+            canTrash: root.canTrash,
             openWithApps: root.openWithApps,
             openWithLoaded: root.openWithLoaded,
             rowMode: root.rowMode,
@@ -141,8 +142,7 @@ Item {
         })
     }
 
-    // The row item at an index, for ui/Ipc.qml: a driven test clicks a menu row without deriving
-    // its geometry from a row count the Menus settings can now change under it.
+    // The row item at an index, for ui/Ipc.qml: a driven test clicks a menu row without deriving its geometry from a row count the Menus settings can now change under it.
     function itemFor(index) { return menuRows.itemAt(index) }
     function submenuItemFor(index) { return subRows.itemAt(index) }
     readonly property var frameItem: frame

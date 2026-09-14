@@ -19,6 +19,10 @@ function parseMounts(output) {
         // corner: a local device mount (file://) is Favorites territory, not Network; Places.js skips the inverse.
         if (uri.indexOf("file://") === 0)
             continue
+        // A phone is DEVICES territory the same way: its row is ui/js/Phones.js's, built from the
+        // volume block, and this line is gio's shadow GDaemonMount printed beside it.
+        if (/^(mtp|gphoto2):\/\//i.test(uri))
+            continue
         out.push({ label: Protocols.shareName(m[1], uri), uri: uri })
     }
     return out
@@ -36,6 +40,13 @@ function localPath(body) {
             return lines[i].substring("local path: ".length).trim()
     }
     return ""
+}
+
+// Issue 133 (mfilm77): gio trash refuses a location with no trash directory of its own, so Move to
+// Trash on a phone fails every time it is offered. The FUSE folder names the scheme that reached it,
+// which is what says so without a round trip; every other location keeps the row it always had.
+function trashable(path) {
+    return !/\/gvfs\/(mtp|gphoto2):/i.test(String(path || ""))
 }
 
 // Sample input: the operator's real bookmarks file, ui/js/Places.js "bookmarks" reads the same lines.
@@ -130,6 +141,10 @@ function railMenu(entry) {
         return []
     if (entry.group === "device" && entry.kind === "volume" && entry.removable === true)
         return [{ label: "Eject", action: "eject", glyph: "eject" }]
+    // A phone unmounts rather than ejects: gvfs answers can_eject=0 for the MTP monitor, and the
+    // action name is its own so release below can never resolve it against the share list.
+    if (entry.group === "device" && entry.kind === "phone")
+        return [{ label: "Unmount", action: "unmountPhone", glyph: "eject" }]
     if (entry.group === "network" && entry.kind === "share")
         return [{ label: "Unmount", action: "unmount", glyph: "eject" }]
     return []
@@ -156,6 +171,8 @@ function railKey(entry) {
         return ""
     if (entry.group === "device" && entry.kind === "volume")
         return String(entry.device || "")
+    if (entry.group === "device" && entry.kind === "phone")
+        return String(entry.uri || "")
     if (entry.group === "network" && entry.kind === "share")
         return String(entry.uri || "")
     return ""
@@ -212,6 +229,11 @@ function release(action, key, devices, mounts, sidebar) {
         var volume = rowByKey(sidebar.deviceEntries, key)
         if (volume >= 0)
             devices.eject(volume)
+        return
+    }
+    // The phone Service is the sidebar's own child, so the sidebar resolves the key against it.
+    if (action === "unmountPhone") {
+        sidebar.releasePhone(key)
         return
     }
     var share = rowByKey(sidebar.networkEntries, key)

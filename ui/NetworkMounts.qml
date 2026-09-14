@@ -5,9 +5,8 @@ import "js/Errors.js" as Errors
 import "js/Mounts.js" as Mounts
 import "js/Dropbox.js" as Dropbox
 
-// OEM-shaped Network service: nothing but this file and its two children touches gio or the saved
-// places file, and Sidebar only renders its entries. The five second listing is ui/MountListing.qml's
-// and the places file is ui/NetworkPlaces.qml's.
+// OEM-shaped Network service: gio and the saved places file are this file's, its two children's and
+// ui/PhoneMounts.qml's, which shares this listing; Sidebar only renders what the three answer with.
 Item {
     id: root
 
@@ -41,6 +40,8 @@ Item {
     // is why nothing below decides anything on one.
     readonly property var gioEnvironment: ({ "LC_ALL": "C" })
     property string _mountListing: ""
+    // ui/PhoneMounts.qml builds its rows off the same five second poll rather than walking the gvfs volume monitors a second time.
+    readonly property alias mountListing: root._mountListing
     property string _pendingUri: ""
     // OEM collectors cache finished output because onExited can race their text property.
     property string _infoOutput: ""
@@ -172,8 +173,7 @@ Item {
         }
     }
 
-    // The five second "gio mount -l" poll is ui/MountListing.qml's: this Service reads its listing
-    // and asks for a re-read through pollMounts() below.
+    // The five second "gio mount -li" poll is ui/MountListing.qml's: this Service reads its listing and asks for a re-read through pollMounts() below.
     MountListing {
         id: listing
         environment: root.gioEnvironment

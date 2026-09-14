@@ -108,6 +108,9 @@ function availableEntry(e, p, kind) {
         if (!(p.archiveFormats || []).length) return false
         e.submenu = Archive.formatEntries(p.archiveFormats)
     }
+    // Issue 133: a mount with no trash directory never offers the row, rather than offering one that
+    // fails; ui/js/Mounts.js trashable is the one reader of what the path says about that.
+    if (e.action === "trash" && p.canTrash === false) return false
     if (e.action === "extract" && !(p.rowIsArchive && p.canExtract === true && count === 1)) return false
     if (e.action === "convert" && !(p.rowIsImage && p.canConvert && count === 1)) return false
     // OpenWith.html: the desktop's current default is first and carries the muted caption "default"

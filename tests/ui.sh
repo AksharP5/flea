@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Drives the real Quickshell window with omarchy-drive and asserts through the read-only IPC seam.
-# Usage: ./tests/ui.sh [cursor|terminal|open|rows|click|menu|hidden|selection|select|colour|lifted|icons|thumbs|hashcache|stale|nosweep|oem|header|overflow|focus|preview|network|netmark|networktimeout|networklive|gvfs|sharebrowser|unmount|eject|rename|renamelife|taildrop|grid|columns|operations|tabs|openterminal|renderer|settings ...]; networklive is opt-in.
+# Usage: ./tests/ui.sh [cursor|terminal|open|rows|click|menu|hidden|selection|select|colour|lifted|icons|thumbs|hashcache|stale|nosweep|oem|header|overflow|focus|preview|network|netmark|networktimeout|networklive|gvfs|sharebrowser|unmount|phones|eject|rename|renamelife|taildrop|grid|columns|operations|tabs|openterminal|renderer|settings ...]; networklive is opt-in.
 set -u
 set -o pipefail
 # Hard rule 9's guard, which owns FIXTURE_ROOT and every create and delete this suite makes.
@@ -3877,7 +3877,7 @@ case "\$*" in
 "info --attributes=trash::item-count trash:///"|"monitor --dir=trash:///") exec /usr/bin/gio "\$@" ;;
 esac
 case "\$1 \${2:-}" in
-"mount -l") exit 0 ;;
+"mount -li") exit 0 ;;
 "mount nfs://cancel.test/export")
     : > "$fake_root/cancel-started"
     read release < "$fake_root/mount-release"
@@ -4641,7 +4641,7 @@ case_networkauth() {
     cat > "$dir/bin/gio" <<EOS
 #!/bin/sh
 case "\$1 \${2:-}" in
-"mount -l")
+"mount -li")
     if [ -s "$state/mounted" ]; then
         uri=\$(cat "$state/mounted")
         printf 'Mount(0): auth-test -> %s\n' "\$uri"
@@ -5019,7 +5019,7 @@ case_networktimeout() {
 
     cat > "$dir/bin/gio" <<EOS
 #!/bin/sh
-if [ "\$1 \$2" != "mount -l" ]; then
+if [ "\$1 \$2" != "mount -li" ]; then
   exec /usr/bin/gio "\$@"
 fi
 count=\$(cat "$calls")
@@ -5525,7 +5525,7 @@ case_hangshare() {
 # Every call is logged, because a case that hangs on purpose has no other way to say which leg it
 # reached; the fail messages below quote it. Same idea as case_unmount's own stub log.
 printf '%s\n' "\$*" >> "$dir/bin/calls"
-if [ "\$1 \$2" = "mount -l" ]; then
+if [ "\$1 \$2" = "mount -li" ]; then
   printf 'Mount(0): hang en stubhost -> $hang_uri\n  Type: GDaemonMount\n'
   printf 'Mount(1): good en stubhost -> $good_uri\n  Type: GDaemonMount\n'
   exit 0
@@ -5659,7 +5659,7 @@ case_unmount() {
     cat > "$dir/bin/gio" <<EOS
 #!/bin/sh
 case "\$1 \$2" in
-  "mount -l")
+  "mount -li")
     # gvfsd composes this label and translates the word between share and host, so the stub speaks
     # Spanish here whatever the client locale is. What that proves is that the parser is robust to a
     # translated connector, and nothing about the C pin: live matrix step 0b ran this case in both
@@ -5852,6 +5852,151 @@ EOS
     sandbox_remove "$fixture_home"
 }
 
+# PR 122's phone rows, stubbed, because no MTP device is plugged into this box and gvfs is what the
+# parser reads. The stub answers what "gio mount -li" answers here, can_mount=0 on a volume gio has
+# already mounted included, which is the line the row has to survive to keep its Unmount.
+case_phones() {
+    local dir="$fixture_root/phones" state="$fixture_root/phones-state"
+    sandbox_scratch "$dir"
+    sandbox_scratch "$state"
+    mkdir -p "$dir/bin" "$dir/files" "$state/flea"
+    # The folder gio hands back after the mount, named the way gvfs names it, so the pane's own path
+    # is what ui/js/Mounts.js "trashable" reads for issue 133.
+    local fuse="$dir/gvfs/mtp:host=SAMSUNG_Android"
+    mkdir -p "$fuse/DCIM"
+    : > "$dir/files/local.txt"
+    : > "$fuse/DCIM/IMG_0001.jpg"
+    local mtp_uri="mtp://SAMSUNG_SAMSUNG_Android_RQGL705T0NR/"
+    local unmount_log="$dir/unmount.log"
+    : > "$unmount_log"
+
+    cat > "$dir/bin/gio" <<EOS
+#!/bin/sh
+mounted="$dir/mounted"
+case "\$1 \${2:-}" in
+"mount -li")
+    printf 'Volume(0): SAMSUNG Android\n'
+    printf '  Type: GProxyVolume (GProxyVolumeMonitorMTP)\n'
+    printf '  activation_root=$mtp_uri\n'
+    if [ -f "\$mounted" ]; then
+        printf '  can_mount=0\n'
+        printf '  Mount(0): SAMSUNG Android -> $mtp_uri\n'
+        printf '    Type: GProxyShadowMount (GProxyVolumeMonitorMTP)\n'
+        printf 'Mount(0): mtp -> $mtp_uri\n'
+        printf '  Type: GDaemonMount\n'
+    else
+        printf '  can_mount=1\n'
+    fi
+    printf 'Volume(1): NIKON DSC D3500\n'
+    printf '  Type: GProxyVolume (GProxyVolumeMonitorGPhoto2)\n'
+    printf '  activation_root=gphoto2://%%5Busb%%3A001%%2C004%%5D/\n'
+    printf '  can_mount=1\n'
+    exit 0 ;;
+"mount -u")
+    printf 'UNMOUNT %s\n' "\$3" >> "$unmount_log"
+    rm -f "\$mounted"
+    exit 0 ;;
+"mount $mtp_uri")
+    : > "\$mounted"
+    exit 0 ;;
+"info $mtp_uri")
+    printf 'local path: %s\n' "$fuse"
+    exit 0 ;;
+esac
+exit 0
+EOS
+    chmod +x "$dir/bin/gio"
+
+    local fixture_home="$fixture_root/phones-home"
+    fixture_home_make "$fixture_home"
+    # Drive size on is what makes a phone row's detail reachable: a device row draws one when its
+    # size is not null, and a row carrying no size at all wrote a type error into this run's log.
+    printf '{"view":"list","places":{"driveSize":true,"trashCount":true}}\n' > "$state/flea/ui.json"
+    local real_home="$HOME" saved_path="$PATH" old_state="${XDG_STATE_HOME:-}"
+    export PATH="$dir/bin:$PATH"
+    export XDG_STATE_HOME="$state"
+    export HOME="$fixture_home"
+    launch "$dir/files"
+    export HOME="$real_home"
+    wait_listing 1
+    wait_rail 1
+
+    for _attempt in $(seq 1 200); do
+        [[ "$(ipc deviceEntries)" == *"SAMSUNG Android|device|phone|false"* ]] && break
+        sleep 0.05
+    done
+    [[ "$(ipc deviceEntries)" == *"SAMSUNG Android|device|phone|false"* \
+        && "$(ipc deviceEntries)" == *"NIKON DSC D3500|device|phone|false"* ]] \
+        || fail "phones: the two volumes are not two unmounted DEVICES rows, got $(ipc deviceEntries)"
+    # Behind the block devices, per the DEVICES rule: the phones are the tail of that group.
+    ipc railEntries | jq -e '[.[] | select(.group == "device") | .kind] | index("phone") as $i
+        | ($i != null) and (.[$i:] | all(. == "phone"))' >/dev/null \
+        || fail "phones: the phone rows do not sit behind the block devices, got $(ipc railEntries | jq -c '[.[]|select(.group=="device")|.kind]')"
+    # PhoneMark rule 1: the monitor picks the mark, MTP the phone and GPhoto2 the camera.
+    ipc railEntries | jq -e '[.[] | select(.kind == "phone") | .glyph] == ["smartphone", "camera"]' >/dev/null \
+        || fail "phones: the marks are $(ipc railEntries | jq -c '[.[]|select(.kind=="phone")|.glyph]'), not the phone then the camera"
+    # RailDetails: a phone has no capacity to draw, and it keeps the fixed indicator slot a volume has.
+    ipc railDetails | jq -e '[.rows[] | select(.kind == "phone")] | length == 2
+        and all(.[]; .detail == "" and .indicatorVisible)' >/dev/null \
+        || fail "phones: a phone row drew a size or lost its indicator, got $(ipc railDetails | jq -c '[.rows[]|select(.kind=="phone")|{detail,indicatorVisible}]')"
+
+    # An unmounted volume offers no release, so it opens no menu at all, exactly as a volume does.
+    click_rail_row "$(rail_row_of 'SAMSUNG Android')" right
+    settle
+    [[ "$(ipc contextMenuVisible)" == "false" ]] \
+        || fail "phones: an unmounted phone opened the menu $(ipc contextMenuEntries)"
+
+    # Activating it mounts, resolves the folder and opens it, the way a share does.
+    click_rail_row "$(rail_row_of 'SAMSUNG Android')" left
+    wait_path "$fuse"
+    wait_listing 1
+    [[ "$(ipc rowAt 0)" == "DCIM|"* ]] || fail "phones: the phone's own listing is $(ipc rowAt 0)"
+    for _attempt in $(seq 1 200); do
+        [[ "$(ipc deviceEntries)" == *"SAMSUNG Android|device|phone|true"* ]] && break
+        sleep 0.05
+    done
+    [[ "$(ipc deviceEntries)" == *"SAMSUNG Android|device|phone|true"* ]] \
+        || fail "phones: the row did not survive its own mount, got $(ipc deviceEntries)"
+    shot phones-mounted
+
+    # Issue 133: gio cannot trash into this mount, so neither the row nor the key is offered here.
+    click_row 0 right
+    settle
+    [[ "$(ipc contextMenuEntries)" != *"Move to Trash"* ]] \
+        || fail "phones: an MTP path still offers Move to Trash: $(ipc contextMenuEntries)"
+    key -k Escape >/dev/null
+    settle
+    key d >/dev/null
+    settle
+    [[ "$(ipc statusPrimary)" != *"trash"* ]] \
+        || fail "phones: d armed a trash that can only fail, the bar reads $(ipc statusPrimary)"
+
+    # Unmount is the release a phone offers, never Eject, and the key that carries it is its uri.
+    click_rail_row "$(rail_row_of 'SAMSUNG Android')" right
+    settle
+    [[ "$(ipc contextMenuEntries)" == "Unmount" ]] \
+        || fail "phones: the mounted phone's menu is $(ipc contextMenuEntries), not Unmount alone"
+    key -k Return >/dev/null
+    for _attempt in $(seq 1 200); do
+        [[ -s "$unmount_log" ]] && break
+        sleep 0.05
+    done
+    [[ "$(cat "$unmount_log")" == "UNMOUNT $mtp_uri" ]] \
+        || fail "phones: the menu row unmounted $(cat "$unmount_log"), not $mtp_uri"
+    for _attempt in $(seq 1 200); do
+        [[ "$(ipc deviceEntries)" == *"SAMSUNG Android|device|phone|false"* ]] && break
+        sleep 0.05
+    done
+    [[ "$(ipc deviceEntries)" == *"SAMSUNG Android|device|phone|false"* ]] \
+        || fail "phones: the row never came back unmounted, got $(ipc deviceEntries)"
+
+    printf 'PHONES rows=ok marks=ok mount=ok trash-guard=ok unmount=ok\n'
+    export PATH="$saved_path"
+    if [[ -n "$old_state" ]]; then export XDG_STATE_HOME="$old_state"; else unset XDG_STATE_HOME; fi
+    kill_flea
+    sandbox_remove "$fixture_home"
+}
+
 # The eject half of the same menu, and the one property that must never bend: "safe to unplug" is
 # read off an lsblk listing taken after gio exits, never off gio's exit code. Both are stubbed, so
 # no real device is touched and no privilege is needed; the gio stub always exits 0, which is the
@@ -6005,7 +6150,7 @@ case_rename() {
     cat > "$dir/bin/gio" <<EOS
 #!/bin/sh
 case "\$1 \$2" in
-  "mount -l") cat "$dir/bin/gio-out"; exit 0 ;;
+  "mount -li") cat "$dir/bin/gio-out"; exit 0 ;;
 esac
 exit 0
 EOS
@@ -8118,7 +8263,7 @@ case_previewviews() {
 . "$repo/tests/ui-convert-design.sh"
 
 declare -a wanted=("$@")
-[[ ${#wanted[@]} -eq 0 ]] && wanted=(cursor scroll terminal open rows click menu background hidden selection watch select colour lifted icons thumbs hashcache stale nosweep oem header overflow focus preview pdffocus network netmark networkauth networktimeout gvfs sharebrowser unmount eject rename renamelife taildrop providers grid columns operations tabs openterminal renderer settings clickthrough wheelunder overlays views formats previewviews hangshare openwithdesign)
+[[ ${#wanted[@]} -eq 0 ]] && wanted=(cursor scroll terminal open rows click menu background hidden selection watch select colour lifted icons thumbs hashcache stale nosweep oem header overflow focus preview pdffocus network netmark networkauth networktimeout gvfs sharebrowser unmount phones eject rename renamelife taildrop providers grid columns operations tabs openterminal renderer settings clickthrough wheelunder overlays views formats previewviews hangshare openwithdesign)
 
 : > "$run_log"
 : > "$flea_log"

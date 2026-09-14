@@ -31,8 +31,11 @@ Item {
         ? (root.placesState.trashCount === true && root.modelData.count > 0 ? String(root.modelData.count) : "")
         : root.modelData.group === "device" && root.placesState.driveSize === true && root.modelData.size !== null
             ? Format.size(root.modelData.size) : ""
+    // PhoneMark: a phone is a volume, so its row carries the same mount-state square a removable
+    // disk and a share carry, in the same fixed slot.
     readonly property bool showsDot: (root.modelData.group === "network" && root.modelData.kind !== "dropbox")
-        || (root.modelData.group === "device" && root.modelData.kind === "volume")
+        || (root.modelData.group === "device"
+            && (root.modelData.kind === "volume" || root.modelData.kind === "phone"))
     // The Trash row draws its count where every other row draws its indicator, and never both.
     readonly property bool countIsIndicator: root.modelData.kind === "trash" && root.detail.length > 0
     // Small and fixed: a status dot is not part of the type or icon scale.

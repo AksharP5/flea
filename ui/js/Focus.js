@@ -3,6 +3,7 @@
 .import "Filter.js" as Filter
 .import "Format.js" as Format
 .import "Keymap.js" as Keymap
+.import "Mounts.js" as Mounts
 .import "Ops.js" as Ops
 .import "PreviewKeys.js" as PreviewKeys
 .import "RailKeys.js" as RailKeys
@@ -57,6 +58,10 @@ function lookup(event, root) {
         var row = root.rowFor(root.cursorIndex)
         return row && (row.d || (Format.isSymlink(row.p) && row.i === "folder")) ? "open" : (row ? "preview" : "")
     }
+    // Issue 133: the key follows the row. A mount gio cannot trash into offers neither, rather than
+    // arming a d that can only fail; ui/js/Mounts.js trashable is the same reader the menu uses.
+    if ((action === "trashArm" || action === "trash") && !Mounts.trashable(root.path))
+        return ""
     // reveal only means something on a search result, so o is discarded everywhere else.
     if (action === "reveal" && root.searchMode !== Search.RESULTS)
         return ""
