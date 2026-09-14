@@ -172,8 +172,8 @@ fn reverse(step: &Step) -> Result<Option<(ItemIdentity, ItemIdentity)>, FleaErro
                 return Err(FleaError { where_: "undo".into(), path: to.to_string_lossy().into(),
                     msg: "the copied item changed since this operation, so undo left it in place".into() });
             }
-            if !nothing_inside_is_newer(to, created.changed)? {
-                return Err(FleaError { where_: "undo".into(), path: to.to_string_lossy().into(),
+            if let Some(newer) = newer_inside(to, created.changed)? {
+                return Err(FleaError { where_: "undo".into(), path: newer.to_string_lossy().into(),
                     msg: "something inside the copied folder changed since this operation, so undo left it in place".into() });
             }
             remove(to)?
@@ -199,17 +199,15 @@ fn remove_new_file(path: &PathBuf, identity: &ItemIdentity) -> Result<(), FleaEr
     std::fs::remove_file(path).map_err(|e| from_io("undo", &path.to_string_lossy(), &e))
 }
 
-// Issue 111: a directory keeps its own ctime when a file inside it is edited or one is added to a
-// subdirectory, so the root's identity alone said the tree was untouched and undo removed the work the
-// user had done since. The copy sets the root's mode last, so nothing it wrote is newer than the ctime
-// recorded for it, and anything that is belongs to somebody else.
-// corner: a change landing between this walk and the removal below is not covered, which is the window
-// every check-then-act has on a live filesystem, and neither is one landing inside the filesystem's own
-// timestamp granularity of the copy: btrfs and ext4 here resolve nanoseconds, tmpfs does not.
-fn nothing_inside_is_newer(root: &std::path::Path, copied: (i64, i64)) -> Result<bool, FleaError> {
+// Issue 111: a directory keeps its own ctime while a file inside it is edited, so the root's identity
+// said the tree was untouched and undo removed the work the user had done since; the copy sets the
+// root's mode last, so nothing it wrote is newer than the ctime recorded for the root.
+// corner: neither a change landing between this walk and the removal, the window every check-then-act
+// has, nor one inside the filesystem's own timestamp granularity: tmpfs is coarser than a copy is fast.
+fn newer_inside(root: &std::path::Path, copied: (i64, i64)) -> Result<Option<PathBuf>, FleaError> {
     let meta = root.symlink_metadata().map_err(|e| from_io("undo", &root.to_string_lossy(), &e))?;
     if !meta.is_dir() || meta.file_type().is_symlink() {
-        return Ok(true);
+        return Ok(None);
     }
     let entries = std::fs::read_dir(root).map_err(|e| from_io("undo", &root.to_string_lossy(), &e))?;
     for entry in entries {
@@ -217,13 +215,15 @@ fn nothing_inside_is_newer(root: &std::path::Path, copied: (i64, i64)) -> Result
         let path = entry.path();
         let meta = path.symlink_metadata().map_err(|e| from_io("undo", &path.to_string_lossy(), &e))?;
         if (meta.ctime(), meta.ctime_nsec()) > copied {
-            return Ok(false);
+            return Ok(Some(path));
         }
-        if meta.is_dir() && !meta.file_type().is_symlink() && !nothing_inside_is_newer(&path, copied)? {
-            return Ok(false);
+        if meta.is_dir() && !meta.file_type().is_symlink() {
+            if let Some(found) = newer_inside(&path, copied)? {
+                return Ok(Some(found));
+            }
         }
     }
-    Ok(true)
+    Ok(None)
 }
 
 // Only ever a path this operation itself created, so a directory it made is removed with its contents.

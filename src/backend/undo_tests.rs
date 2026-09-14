@@ -81,7 +81,12 @@ fn undoing_a_copied_folder_refuses_once_anything_inside_it_has_changed() {
         j.push(entry("copy", vec![step]));
         let e = j.undo().expect_err("must refuse rather than delete work done since the copy");
         assert_eq!(e.where_, "undo");
-        assert!(e.msg.contains("changed since this operation"), "{}", e.msg);
+        // The distinctive half: the identity refusal beside it says "the copied item changed", so a
+        // substring both carry would not say which guard answered.
+        assert!(e.msg.contains("something inside the copied folder"), "{}", e.msg);
+        // An edit moves the file's own ctime; a create moves the ctime of the directory it landed in.
+        let names = if change == "edit" { "nested/document.txt" } else { "nested" };
+        assert!(e.path.ends_with(names), "names what changed: {}", e.path);
         assert!(copy.join("nested").exists(), "the tree the user was working in is still there");
         match change {
             "edit" => assert_eq!(std::fs::read_to_string(copy.join("nested/document.txt")).unwrap(), "the user's own work"),
@@ -108,6 +113,25 @@ fn undoing_a_copied_folder_nobody_touched_still_removes_it() {
     j.undo().expect("an untouched copy is still this operation's to remove");
     assert!(!copy.exists(), "the copy is gone and the source is untouched");
     assert!(source.join("nested/document.txt").exists());
+}
+
+// The assumption the guard rests on, asserted rather than trusted: the copy writes the root's own mode
+// last, so no descendant it wrote can carry a ctime past the one the journal records for that root. A
+// filesystem too coarse to tell them apart answers equal, which is what this compares.
+#[test]
+fn a_copy_leaves_no_descendant_newer_than_the_root_it_records() {
+    let d = TestDir::new("undotreeorder");
+    let source = d.dir("source");
+    std::fs::create_dir(source.join("nested")).unwrap();
+    std::fs::write(source.join("nested/document.txt"), "as copied").unwrap();
+    std::os::unix::fs::symlink("document.txt", source.join("nested/link")).unwrap();
+    let copy = d.join("copy");
+    let flag = std::sync::atomic::AtomicBool::new(false);
+    let mut sink = |_: u64, _: u64| {};
+    let mut p = crate::backend::copyfile::Progress { cancel: &flag, on_bytes: &mut sink, tree: None, partial: None };
+    crate::backend::copyfile::copy_any(&source, &copy, &mut p).expect("copy");
+    let root = ItemIdentity::inspect(&copy).unwrap().changed;
+    assert_eq!(newer_inside(&copy, root).unwrap(), None, "the copy's own tree is never newer than its root");
 }
 
 #[test]
