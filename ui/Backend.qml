@@ -22,7 +22,7 @@ Item {
     signal searched(int total, int scanned, real ms, bool cancelled)
     // The write operations, see docs/protocol.md; every one of them is reversible with undo.
     signal transferStarted(int id, int n, bool moving)
-    signal transferProgress(int id, int index, string name, real bytes, real total)
+    signal transferProgress(int id, int index, string name, real bytes, real total, real scanned)
     signal transferItem(int id, int index, string name, bool ok, string err)
     signal transferDone(int id, int ok, int failed, int skipped, bool cancelled, var retryPaths)
     signal trashed(int ok, int failed)

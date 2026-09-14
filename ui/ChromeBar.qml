@@ -50,7 +50,8 @@ Item {
                 return i
         return -1
     }
-    readonly property var elisionMarker: root.elisionIndex >= 0 ? crumbs.itemAt(root.elisionIndex) : null
+    // itemAt is a call and not a property, so the model is named here too: without it a width that keeps the same index hands back the item the model before it built, which is by then destroyed.
+    readonly property var elisionMarker: root.elisionIndex >= 0 && crumbs.model ? crumbs.itemAt(root.elisionIndex) : null
     // Issue 45's segments as items, so tests/ui.sh can press one the way it presses a tab.
     readonly property alias crumbItems: crumbs
     // The directory a Tab is waiting on, and the one that came back. Both are keyed by the hidden
