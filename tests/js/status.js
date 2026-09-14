@@ -40,12 +40,12 @@ function run(check) {
     check("an activity precedes search", Status.centreText(both), "Copy 1 item to dest")
     check("and retains foreground during search", Status.centreRole(both), "foreground")
 
-    // Directive 51 leaves a running transfer no sticky at all, so this is the slot the strip hands in.
+    // The precedence with an empty sticky, which is what the strip hands in while a transfer runs.
     var errorOverSearch = slot({ transient: "Copy failed: c.txt · already exists", transientIsError: true,
                                  searching: true, searchLine: "3 found in 1.6 s" })
-    check("an error with no activity beside it still owns the slot",
+    check("an error beats a search that is still reporting",
           Status.centreText(errorOverSearch), "Copy failed: c.txt · already exists")
-    check("and the search behind it does not take the slot back",
+    check("and keeps the error role while it does",
           Status.centreRole(errorOverSearch), "error")
 
     var failed = slot({ transient: "Copy failed: photo.heic · disk full", transientIsError: true })
