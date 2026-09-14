@@ -72,8 +72,7 @@ fn png(b: &[u8]) -> Option<(u32, u32)> {
     Some((be32(b, 16)?, be32(b, 20)?))
 }
 
-// How far into a file the frame header is looked for. A camera's EXIF preview is tens of kilobytes,
-// corner: a frame header past this megabyte is not found, and the preview names no pixel size.
+// A camera's EXIF preview is tens of kilobytes; corner: a frame header past this megabyte is not found.
 const JPEG_WALK: u64 = 1024 * 1024;
 
 // One byte, and the walk's own bound with it: a file that never names a marker must not be read whole.
@@ -222,7 +221,7 @@ mod tests {
     }
 
     // The bound, because the walk is no longer held to the probe: a file that starts FFD8 and never
-    // names a marker was read to its end, tens of seconds for 64 MB on this box against 26 ms now.
+    // names a marker was read to its end, seconds for 64 MB on this box where it is now milliseconds.
     #[test]
     fn a_file_that_never_names_a_marker_is_not_read_to_its_end() {
         let mut quiet = std::io::Cursor::new(vec![0u8; JPEG_WALK as usize * 2]);
