@@ -5973,12 +5973,13 @@ EOS
     key -k Escape >/dev/null
     settle
     key d >/dev/null
+    # The arm sentence stands for four seconds, so a second of samples cannot miss one that appears.
     for _attempt in $(seq 1 20); do
         [[ "$(ipc statusPrimary)" != *"Press d again"* ]] \
             || fail "phones: d armed a trash that can only fail, the bar reads $(ipc statusPrimary)"
         sleep 0.05
     done
-    # H walks back to the local path this case started on, where the same key does arm.
+    # H walks back to the local path this case started on, where the same key does arm, and L returns.
     key H >/dev/null
     wait_path "$dir/files"
     wait_listing 1
@@ -5990,6 +5991,9 @@ EOS
     settle
     [[ "$(ipc statusPrimary)" != *"Press d again"* ]] \
         || fail "phones: Escape left the trash armed on the local path, the bar reads $(ipc statusPrimary)"
+    key L >/dev/null
+    wait_path "$fuse"
+    wait_listing 1
 
     # Unmount is the release a phone offers, never Eject, and the key that carries it is its uri.
     click_rail_row "$(rail_row_of 'SAMSUNG Android')" right

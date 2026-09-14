@@ -5,8 +5,8 @@ import "js/Errors.js" as Errors
 import "js/Mounts.js" as Mounts
 import "js/Dropbox.js" as Dropbox
 
-// OEM-shaped Network service: gio and the saved places file are this file's and its two children's,
-// plus ui/PhoneMounts.qml, which only unmounts off this listing; Sidebar renders what they answer.
+// OEM-shaped Network service: nothing but this file, its two children and ui/PhoneMounts.qml, which
+// only unmounts off this listing, touches gio or the saved places file; Sidebar renders their rows.
 Item {
     id: root
 
