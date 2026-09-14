@@ -15,7 +15,7 @@ assert not any(row["text"] == "FAVORITES" for row in headers), "Empty Favorites 
 rows = [row for row in state["rows"] if row["group"] in ("trash", "device")]
 assert any(row["kind"] == "disk" for row in rows), "No native internal disk row for capacity proof"
 assert any(row["kind"] == "trash" for row in rows), "No native Trash row"
-edges = []
+edges, indicators = [], []
 for row in rows:
     if row["kind"] == "trash":
         expected = str(count) if enabled and count else ""
@@ -33,19 +33,21 @@ for row in rows:
         detail, slot = row["detailRect"], row["indicatorRect"]
         assert row["detailColor"] == muted and row["tabular"], row
         assert row["kind"] != "disk" or not row["indicatorVisible"], row
-        # GM's ruling: one right edge for every trailing mark. A dot holds the slot on the rows that
-        # have one and the detail sits clear of it; a row without a dot puts its detail in the slot.
-        if row["indicatorVisible"]:
+        # RailDetails rules 1 and 3 with their 2026-09-14 amendment: a drive size ends on the sizes'
+        # own x with the 12px slot reserved after it, dot or no dot, and the Trash count is an
+        # indicator, so it sits in that slot on the same edge as the dots and the NETWORK plus.
+        if row["kind"] == "trash":
+            assert slot["width"] == 0, row
+            indicators.append(detail["x"] + detail["width"])
+        else:
             assert slot["width"] == row["fontSize"], row
             assert detail["x"] + detail["width"] < slot["x"], row
-        else:
-            assert slot["width"] == 0, row
-        edges.append((slot["x"] + slot["width"]) if row["indicatorVisible"]
-                     else (detail["x"] + detail["width"]))
+            edges.append(detail["x"] + detail["width"])
 for row in state["rows"]:
     if row["indicatorVisible"]:
-        edges.append(row["indicatorRect"]["x"] + row["indicatorRect"]["width"])
-assert len(set(edges)) <= 1, ("Rail trailing right edges differ", edges)
+        indicators.append(row["indicatorRect"]["x"] + row["indicatorRect"]["width"])
+assert len(set(edges)) <= 1, ("Rail size right edges differ", edges)
+assert len(set(indicators)) <= 1, ("Rail indicator right edges differ", indicators)
 print("RAIL_DETAILS " + json.dumps(state, sort_keys=True))
 PY
     [[ "$?" == 0 ]] || fail "rail: actual detail text, geometry, or semantic role differs"

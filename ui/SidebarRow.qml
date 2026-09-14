@@ -33,6 +33,8 @@ Item {
             ? Format.size(root.modelData.size) : ""
     readonly property bool showsDot: (root.modelData.group === "network" && root.modelData.kind !== "dropbox")
         || (root.modelData.group === "device" && root.modelData.kind === "volume")
+    // The Trash row draws its count where every other row draws its indicator, and never both.
+    readonly property bool countIsIndicator: root.modelData.kind === "trash" && root.detail.length > 0
     // Small and fixed: a status dot is not part of the type or icon scale.
     readonly property int dotSize: 6
     // The canvas's own value for a bookmark nothing has mounted yet.
@@ -136,7 +138,7 @@ Item {
     Text {
         id: detailText
         anchors.right: dot.left
-        anchors.rightMargin: root.showsDot ? Style.spacing.rowGap : 0
+        anchors.rightMargin: dot.width > 0 ? Style.spacing.rowGap : 0
         anchors.verticalCenter: parent.verticalCenter
         text: root.detail
         color: Theme.color.muted
@@ -154,11 +156,11 @@ Item {
         anchors.right: parent.right
         anchors.rightMargin: Style.spacing.rowPaddingX
         anchors.verticalCenter: parent.verticalCenter
-        // GM's ruling, 2026-09-13: one right edge for every trailing mark in the rail. The dot takes
-        // the slot on a row that has one; on a row that does not, the detail takes the slot itself
-        // rather than sitting a slot's width in from the edge, which is what left the Trash count
-        // short of the indicators above it.
-        width: root.showsDot ? Theme.font.caption : 0
+        // RailDetails rules 1 and 3 with their 2026-09-14 amendment: a drive size is a number, so
+        // every device row ends its size on one x with this slot reserved after it, dot or no dot;
+        // the Trash count is an indicator rather than a size, so it sits in the slot itself, on the
+        // same edge as the mount dots and the NETWORK plus.
+        width: root.countIsIndicator ? 0 : (root.showsDot || root.detail.length > 0 ? Theme.font.caption : 0)
         height: Theme.font.caption
 
         // Green once gio mount -l lists it, muted at half strength while it is only a bookmark waiting
