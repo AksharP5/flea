@@ -56,6 +56,7 @@ pub mod convert;
 pub mod copyfile;
 pub mod copynode;
 pub mod ops;
+pub mod opscancel;
 pub mod opsdispatch;
 pub mod opsreq;
 mod mountinfo;

@@ -92,7 +92,7 @@ pub fn run() -> i32 {
     // The workers hold senders too, so no exit can come from a disconnect and every exit is an explicit event; see AGENTS.md "Thumbnail requests".
     spawn_forwarder(done, tx.clone());
     spawn_op_forwarder(op_rx, tx.clone());
-    spawn_reader(tx.clone());
+    spawn_reader(tx.clone(), Arc::clone(&ops.live));
     // Armed before the first request, so no listing is ever answered with nothing watching it.
     let mut watch = Watch::start(tx);
     loop {
@@ -389,10 +389,10 @@ fn drain(
     let deadline = Instant::now() + DRAIN_LIMIT;
     // A clean shutdown cancels the operation rather than abandoning it: a cancelled copy removes its own
     // partial destination, a file by copy_file and a tree by copy_dir, so quitting leaves nothing behind.
-    if ops.running.is_some() {
-        ops.cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+    if let Some(id) = ops.live.running() {
+        ops.live.cancel(id);
     }
-    while st.outstanding > 0 || ops.running.is_some() {
+    while st.outstanding > 0 || ops.live.running().is_some() {
         match rx.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
             Ok(Event::Thumb(d)) => report_done(out, st, d),
             Ok(Event::Op(m)) => report_op(out, ops, m),

@@ -1,10 +1,13 @@
 // Every source of work the read loop waits on, and the threads that join them onto its one channel.
 // std has no select, so each blocking source is a thread and the loop only ever waits on the receiver.
+use crate::backend::opscancel::Live;
 use crate::backend::opsreq::OpMsg;
+use crate::backend::proto::{parse_request, Request};
 use crate::backend::thumbs::Done;
 use crate::error::{from_io, FleaError};
 use std::io::{self, BufRead};
 use std::sync::mpsc::{Receiver, Sender};
+use std::sync::Arc;
 use std::thread;
 
 // std has no select, so every source of work reaches the loop as one of these.
@@ -21,12 +24,19 @@ pub enum Event {
 }
 
 // stdin blocks, so reading it is a thread and the loop only ever waits on the channel.
-pub fn spawn_reader(tx: Sender<Event>) {
+// Issue 144: a cancel is acted on here rather than only forwarded, because the loop that would act on
+// it can be inside a read_dir on a FUSE mount for as long as the device takes to answer.
+pub fn spawn_reader(tx: Sender<Event>, live: Arc<Live>) {
     thread::spawn(move || {
         let stdin = io::stdin();
         for line in stdin.lock().lines() {
             let event = match line {
-                Ok(l) => Event::Request(l),
+                Ok(l) => {
+                    if let Some(Request::TransferCancel { id }) = cancel_in(&l) {
+                        live.cancel(id);
+                    }
+                    Event::Request(l)
+                }
                 // The reader has no writer, so the decode failure is handed back for the loop to report.
                 Err(e) => Event::ReadError(from_io("read", "stdin", &e)),
             };
@@ -37,6 +47,14 @@ pub fn spawn_reader(tx: Sender<Event>) {
         }
         let _ = tx.send(Event::Closed);
     });
+}
+
+// Parsed only for the one request this thread acts on, so no other line pays for a second parse.
+fn cancel_in(line: &str) -> Option<Request> {
+    if !line.contains("transfercancel") {
+        return None;
+    }
+    Some(parse_request(line))
 }
 
 // An operation thread answers on its own channel, joined onto the loop's receiver the same way the pool's is.
