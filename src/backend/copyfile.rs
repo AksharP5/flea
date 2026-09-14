@@ -186,7 +186,7 @@ fn copy_dir_at(src: At, dst: At, p: &mut Progress) -> Result<(), FleaError> {
             // The tree goes with the cancel, the same rule copy_file already applies to a partial file: a
             // half-copied directory is not a result anyone asked for, and no journal step records one.
             // Gated on the flag rather than the message, because a nested copy_file returns its own cancel.
-            p.partial = match remove_tree(dst.at, &into_held) {
+            p.partial = match remove_tree(dst.at, &into) {
                 Ok(()) => None,
                 // Still there, so the journal is told where it is rather than that nothing was left.
                 Err(()) => Some(dst.named.to_path_buf()),
@@ -199,8 +199,8 @@ fn copy_dir_at(src: At, dst: At, p: &mut Progress) -> Result<(), FleaError> {
         return r;
     }
     // Last, so a directory this run still has to write into is not made unwritable halfway through.
-    // Best effort: a destination with no mode bits of its own refuses this, and a copy that carried
-    // every byte is not a failure. What it keeps then is the source's bits widened by the owner's three.
+    // corner: a destination with no mode bits of its own refuses this and keeps the source's bits
+    // widened by the owner's three, because a copy that carried every byte is not a failure.
     if let Some(mode) = keep {
         let _ = std::fs::set_permissions(&into_held, std::fs::Permissions::from_mode(mode));
     }
@@ -228,7 +228,7 @@ fn copy_dir_entries(src: At, dst: At, p: &mut Progress) -> Result<(), FleaError>
 
 // A copy of a 0500 source is itself 0500, and nothing can be removed from one. The owner's bits go
 // back on only after a removal has actually failed, so a tree without such a directory pays nothing.
-fn remove_tree(at: &Path, held: &Path) -> Result<(), ()> {
+fn remove_tree(at: &Path, held: &std::fs::File) -> Result<(), ()> {
     if std::fs::remove_dir_all(at).is_ok() {
         return Ok(());
     }
@@ -236,15 +236,21 @@ fn remove_tree(at: &Path, held: &Path) -> Result<(), ()> {
     std::fs::remove_dir_all(at).map_err(|_| ())
 }
 
-fn owner_can_write(root: &Path) {
-    let _ = std::fs::set_permissions(root, std::fs::Permissions::from_mode(0o700));
-    let entries = match std::fs::read_dir(root) {
+// Issue 110's discipline again: every child is opened O_NOFOLLOW and reached through this process's
+// own descriptor, so a directory swapped for a symlink cannot take the owner's bits somewhere else.
+fn owner_can_write(dir: &std::fs::File) {
+    let held = held_path(dir);
+    let _ = std::fs::set_permissions(&held, std::fs::Permissions::from_mode(0o700));
+    let entries = match std::fs::read_dir(&held) {
         Ok(entries) => entries,
         Err(_) => return,
     };
     for entry in entries.flatten() {
-        if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-            owner_can_write(&entry.path());
+        if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+            continue;
+        }
+        if let Ok(child) = open_dir(&entry.path()) {
+            owner_can_write(&child);
         }
     }
 }
