@@ -328,7 +328,6 @@ fn a_source_directory_the_owner_cannot_write_is_copied_with_that_mode() {
     let mode = clone.join("sub").symlink_metadata().unwrap().permissions().mode() & 0o777;
     assert_eq!(mode, 0o500, "the source's own mode is carried, write bit and all");
     assert_eq!(std::fs::read_to_string(clone.join("sub/f.txt")).unwrap(), "s");
-    std::fs::set_permissions(clone.join("sub"), std::fs::Permissions::from_mode(0o700)).unwrap();
 }
 
 #[test]

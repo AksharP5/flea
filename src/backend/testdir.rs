@@ -1,5 +1,6 @@
 // Hard rule 9's sandbox, in code: every destructive test writes inside one of these and nowhere else.
 use std::io::Write;
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -100,8 +101,28 @@ pub fn removable(path: &Path) -> bool {
 
 impl Drop for TestDir {
     fn drop(&mut self) {
-        if removable(&self.path) {
+        if !removable(&self.path) {
+            return;
+        }
+        if std::fs::remove_dir_all(&self.path).is_err() {
+            owner_can_write(&self.path);
             let _ = std::fs::remove_dir_all(&self.path);
+        }
+    }
+}
+
+// A test is allowed to leave a directory its own owner cannot write into, and nothing can be unlinked
+// from one of those, so the bits go back on rather than the sandbox outliving the test that made it.
+// A symlink reports its own type here and is never followed, and this runs inside removable's guard.
+fn owner_can_write(root: &Path) {
+    let _ = std::fs::set_permissions(root, std::fs::Permissions::from_mode(0o700));
+    let entries = match std::fs::read_dir(root) {
+        Ok(entries) => entries,
+        Err(_) => return,
+    };
+    for entry in entries.flatten() {
+        if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+            owner_can_write(&entry.path());
         }
     }
 }
