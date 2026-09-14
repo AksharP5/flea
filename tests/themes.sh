@@ -65,6 +65,10 @@ printf '{"view":"list","places":{"driveSize":true,"trashCount":true}}\n' > "$san
 # A palette that sets no muted of its own, which no installed theme does and a third-party theme can:
 # it is the one way to drive ui/Theme.qml's darkened-foreground fallback through the real window.
 synthetic="$sandbox/no-muted/colors.toml"
+# The name the loop will read back out of the path, so the rule below is bound to the palette this
+# wrote rather than to a second copy of its name, and a sweep that never reached it says so.
+no_muted_theme=$(basename "$(dirname "$synthetic")")
+no_muted_seen=0
 mkdir -p "$(dirname "$synthetic")"
 printf 'background = "#1e1e2e"\nforeground = "#cdd6f4"\naccent = "#89b4fa"\nred = "#f38ba8"\n' > "$synthetic"
 # Qt.darker(#cdd6f4, 1.4) as ui/Theme.qml applies it, which tests/js/themes.js pins as the same
@@ -207,7 +211,8 @@ for colours in "$themes_dir"/*/colors.toml "$synthetic"; do
     # And with no muted key at all the window darkens the foreground rather than drawing it, which is
     # the fallback tests/js/themes.js mirrors. The value is this palette's own, so the rule is its own:
     # an installed theme that ships no muted would darken a different foreground and is not this case.
-    if [ "$theme" = no-muted ]; then
+    if [ "$theme" = "$no_muted_theme" ]; then
+        no_muted_seen=1
         [ "$muted" = "$no_muted_caption" ] \
             || fail "$theme: with no muted of its own the caption is $muted, not the darkened $no_muted_caption"
     fi
@@ -252,6 +257,11 @@ for colours in "$themes_dir"/*/colors.toml "$synthetic"; do
 
     printf 'THEME %s bg=%s fg=%s muted=%s accent=%s error=%s\n' "$theme" "$bg" "$fg" "$muted" "$accent" "$error"
 done
+
+# One palette owns that rule, so a sweep that never ran it has not checked the fallback at all, and
+# the 22 themes that do ship a muted key would carry the suite green past a missing synthetic palette.
+[ -n "${THEMES_ONLY:-}" ] || [ "$no_muted_seen" = 1 ] \
+    || fail "the $no_muted_theme palette never ran, so the darkened-foreground fallback went unchecked"
 
 stop
 printf 'SHOTS %s\n' "$shots"
