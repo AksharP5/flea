@@ -7,14 +7,18 @@
 //   activation_root=mtp://SAMSUNG_SAMSUNG_Android_RQGL705T0NR/
 //   can_mount=1
 //   Mount(0): SAMSUNG Android -> mtp://SAMSUNG_SAMSUNG_Android_RQGL705T0NR/
-// And with GM's iPhone on USB (iOS 26.6.2, 2026-09-14), which answers on two monitors at once:
+// And with GM's iPhone on USB (iOS 26.6.2, 2026-09-14), which answers on two monitors at once,
+// then once its root is mounted, at column zero and outside the block that offered it:
 // Volume(0): iPhone
 //   Type: GProxyVolume (GProxyVolumeMonitorGPhoto2)
 //   activation_root=gphoto2://Apple_Inc._iPhone_00008130001641411883401C/
+//   can_mount=1
 // Volume(1): Documents on GM's iPhone
 //   Type: GProxyVolume (GProxyVolumeMonitorAfc)
 //   uuid=00008130-001641411883401C
 //   activation_root=afc://00008130-001641411883401C:3/
+//   can_mount=1
+// Mount(2): GM's iPhone -> afc://00008130-001641411883401C/
 // Only a COLUMN-ZERO Volume() block can be a phone: a udisks volume prints indented under its own
 // Drive() block, and the Type line is required anyway, so only the three gvfs monitors with no block
 // device behind them qualify, MTP for Android, AFC for an iPhone's files and GPhoto2 for cameras.
@@ -31,7 +35,7 @@ function parsePhones(output) {
         var line = lines[i]
         var head = line.match(/^Volume\(\d+\):\s*(.+?)\s*$/)
         if (head) {
-            v = { label: head[1], uri: "", uuid: "", mounted: false, monitor: "", canMount: false }
+            v = { label: head[1], uri: "", uuid: "", mounted: false, inBlock: false, monitor: "", canMount: false }
             blocks.push(v)
             continue
         }
@@ -42,44 +46,54 @@ function parsePhones(output) {
         // Any other column-zero line ends the block, the next Drive() or Mount() included.
         if (!/^\s/.test(line)) { v = null; continue }
         if (!v) continue
-        // The monitor is also the mark: PhoneMark rule 1 gives MTP and AFC the phone and GPhoto2 the
-        // camera, which is what the transport exposes the device as rather than what brand made it.
+        // Rule 1: the mark names the transport, MTP and AFC the phone and GPhoto2 the camera.
         var monitor = line.match(/^\s+Type: GProxyVolume \(GProxyVolumeMonitor(MTP|GPhoto2|Afc)\)\s*$/)
         if (monitor) v.monitor = monitor[1]
-        // The block's own uuid line, not the deeper one under ids:, and the only place the root uri is.
+        // The block's own uuid line, not the deeper one under ids: that carries the same digits.
         var uuid = line.match(/^\s+uuid=(\S+)\s*$/)
         if (uuid) v.uuid = uuid[1]
         var root = line.match(/^\s+activation_root=(\S+)\s*$/)
         if (root) v.uri = root[1]
         if (/^\s+can_mount=1\s*$/.test(line)) v.canMount = true
-        if (/^\s+Mount\(\d+\):/.test(line)) v.mounted = true
+        if (/^\s+Mount\(\d+\):/.test(line)) v.inBlock = true
     }
-    var out = []
-    var serials = []
     for (var a = 0; a < blocks.length; a++) {
+        if (blocks[a].monitor !== "Afc")
+            continue
         // gvfs-afc advertises the app documents volume, afc://<uuid>:3/, and the rail never mounts
-        // that one: the phone's own files are at the root, which mounts on request.
-        if (blocks[a].monitor === "Afc" && blocks[a].uuid.length > 0) {
-            blocks[a].uri = "afc://" + blocks[a].uuid + "/"
-            serials.push(blocks[a].uuid.replace(/-/g, "").toUpperCase())
-        }
+        // that one: the phone's own files are at the root, rebuilt here from the volume's own uuid.
+        // With no uuid there is no root to name, and a row pointing at that share is worse than none.
+        blocks[a].uri = blocks[a].uuid.length > 0 ? "afc://" + blocks[a].uuid + "/" : ""
     }
+    var kept = []
+    var serials = []
+    var seen = {}
     for (var b = 0; b < blocks.length; b++) {
         var p = blocks[b]
-        // Before the guard below, because an AFC volume answers can_mount=0 once its root is mounted
-        // and that mount is the column-zero line rather than one inside its block: asking in the other
-        // order loses the row at the moment the rail needs its Unmount.
-        if (mounted[p.uri])
-            p.mounted = true
+        // An Afc block's own indented Mount is its :3 documents volume, which gvfs may automount on
+        // its own, and never the root this row points at, so only the column-zero line counts there.
+        p.mounted = p.monitor === "Afc" ? mounted[p.uri] === true : (p.inBlock || mounted[p.uri] === true)
         // gvfs answers can_mount=0 for a volume that is already mounted, measured on this box's own
         // USB volume, so only a volume that can neither be mounted nor is mounted is not a row.
         if (p.monitor.length === 0 || p.uri.length === 0 || (!p.canMount && !p.mounted))
             continue
+        // Two AFC volumes can carry one uuid, and they rebuild to one root, which is one row.
+        if (seen[p.uri])
+            continue
+        seen[p.uri] = true
+        if (p.monitor === "Afc")
+            serials.push(p.uuid.replace(/-/g, "").toUpperCase())
+        kept.push(p)
+    }
+    // Folded against the rows that survived rather than against every block, so an iPhone whose AFC
+    // volume was dropped keeps its camera row instead of leaving the rail with nothing at all.
+    var out = []
+    for (var c = 0; c < kept.length; c++) {
         // One phone, one row: an iPhone's GPhoto2 volume is the camera store that lists nothing on
         // this iOS, and the serial it shares with the AFC uuid is what says they are one device.
-        if (p.monitor === "GPhoto2" && carriesOneOf(p.uri, serials))
+        if (kept[c].monitor === "GPhoto2" && carriesOneOf(kept[c].uri, serials))
             continue
-        out.push(entry(p))
+        out.push(entry(kept[c]))
     }
     return out
 }
