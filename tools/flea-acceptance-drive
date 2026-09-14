@@ -1996,8 +1996,9 @@ menu_row_for() {
 # Sample inventory: ["delete", "Delete permanently", "trash", "F", "trash", "deletePermanently"].
 derive_menu_actions() {
   python3 - "$REPO/ui/js/Menu.js" <<'PY'
-import json, pathlib, sys
-source = pathlib.Path(sys.argv[1]).read_text()
+import json, pathlib, re, sys
+# The table carries its own comments, and a // line is not JSON: dropped before the decoder reads it.
+source = re.sub(r'^\s*//.*$', '', pathlib.Path(sys.argv[1]).read_text(), flags=re.M)
 def array(name):
     start = source.index('var ' + name + ' = ') + len('var ' + name + ' = ')
     return json.JSONDecoder().raw_decode(source[start:].lstrip())[0]

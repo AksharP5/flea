@@ -3,10 +3,10 @@ set -eu
 cd "$(dirname "$0")/.." || exit 1
 
 ui_dir=${FLEA_EMPTY_STATE_UI_DIR:-ui}
-# The hint used to be bound in shell.qml and now lives on the pane that owns the listing. The file
+# The hint used to be bound in shell.qml, then on the pane, and now on the states tile it draws. The file
 # is named here rather than in each check, and the check below fails loudly when it moves again
 # rather than matching nothing and passing.
-hint_file="$ui_dir/Pane.qml"
+hint_file="$ui_dir/PaneStates.qml"
 column_file="$ui_dir/ColumnPane.qml"
 tip='Press Ctrl+Shift+N for a new folder.'
 
@@ -29,10 +29,10 @@ if [ "$ungated" != 0 ]; then
     fail 'the new-folder tip is drawn without the keyboard-hints setting'
 fi
 
-shell_hint=$(sed -n '/hint: root.searchMode === "results"/,/^[[:space:]]*}/p' "$hint_file")
+shell_hint=$(sed -n '/hint: root.pane.searchMode === "results"/,/^[[:space:]]*}/p' "$hint_file")
 shell_hint=$(printf '%s' "$shell_hint" | tr -s '[:space:]' ' ')
 [ -n "$shell_hint" ] || fail "no hint binding found in $hint_file"
-expected_hint='hint: root.searchMode === "results" ? "Press Escape to clear." : ViewState.keyHints ? "Press Ctrl+Shift+N for a new folder." : ""'
+expected_hint='hint: root.pane.searchMode === "results" ? "Press Escape to clear." : ViewState.keyHints ? "Press Ctrl+Shift+N for a new folder." : ""'
 case "$shell_hint" in
     *"$expected_hint"*) ;;
     *) fail 'the hint must show Escape for search results and the tip only behind the setting' ;;

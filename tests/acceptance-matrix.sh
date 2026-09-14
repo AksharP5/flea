@@ -67,10 +67,11 @@ import pathlib, sys
 rows = [line.split('|') for line in pathlib.Path(sys.argv[1]).read_text().splitlines()]
 assert all(len(row) == 4 for row in rows)
 assert len(rows) == len({(row[0], row[3]) for row in rows})
-# 30, derived by running the suite's own derive_menu_actions and counting the distinct non-header
-# ids in its output, not by counting declarations in Menu.js. It was 29 and drifted when 0.2.0 added
-# Move to, Copy to, Properties, Permissions, New file, Delete permanently and Add to Favorites.
-assert len({row[0] for row in rows if row[3] != 'header'}) == 30
+# 31, derived by running the suite's own derive_menu_actions and counting the distinct non-header
+# ids in its output, not by counting declarations in Menu.js. It was 29, then 30 when 0.2.0 added
+# Move to, Copy to, Properties, Permissions, New file, Delete permanently and Add to Favorites, and
+# 31 with Add to shelf.
+assert len({row[0] for row in rows if row[3] != 'header'}) == 31
 assert ['delete', 'deletePermanently', 'Delete permanently', 'file'] in rows
 assert ['moveto', 'moveTo', 'Move to', 'file'] in rows
 assert ['openwith', 'openWith', 'Open with', 'file'] in rows

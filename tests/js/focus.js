@@ -7,9 +7,7 @@
 
 function pane(preview, viewMode) {
     return {
-        focusView: "list",
-        // The filter's own list, null while nothing is filtered, which is what the pane always carries.
-        shown: null,
+        focusView: "list", shown: null,
         viewMode: viewMode ? viewMode : "list",
         chooseView: function (mode) { this.viewMode = mode },
         searchMode: "",

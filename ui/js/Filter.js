@@ -45,11 +45,8 @@ function viewOf(list, row) {
     return list === null ? row : list.indexOf(row)
 }
 
-// Issue 92, nixfred: a query matching nothing leaves the cursor on the row it was on, which the filter
-// is no longer drawing, and trash, cut and copy take their target with no confirmation at all.
-function cursorShown(pane) {
-    return viewOf(pane.shown, pane.cursorIndex) >= 0
-}
+// Issue 92, nixfred: a query matching nothing leaves the cursor on a row the filter no longer draws.
+function cursorShown(pane) { return viewOf(pane.shown, pane.cursorIndex) >= 0 }
 
 // The strip's own sentence, SearchFilter rules 1 and 2: what the filter kept, out of the rows it
 // could test, and the directory those rows are a window on. The scope is the half that must not be

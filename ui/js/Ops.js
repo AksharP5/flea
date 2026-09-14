@@ -57,26 +57,22 @@ function retrySelectionLine(matches) {
 
 // The canvas draws this one verbatim: "Moved 4 items to Trash · z undoes".
 function trashed(ok, failed) {
-    if (ok === 0) {
+    if (ok === 0)
         return failed === 1 ? "That item could not be moved to Trash." : items(failed) + " could not be moved to Trash."
-    }
     var line = "Moved " + items(ok) + " to Trash"
-    if (failed > 0) {
+    if (failed > 0)
         line += ", " + failed + " failed"
-    }
     return line + UNDO_HINT
 }
 
 // The op an undone line carries is the backend's own word for the operation it reversed.
 function undone(op) {
-    if (op === "trash") {
+    if (op === "trash")
         return "Put it back from Trash."
-    }
     // src/backend/undo.rs reverses a mkdir with remove_dir, and "mkdir" is a wire word the operator
     // never typed, so this one says what left the disk instead.
-    if (op === "mkdir") {
+    if (op === "mkdir")
         return "Removed the new folder."
-    }
     return "Undid the " + op + "."
 }
 
@@ -89,14 +85,10 @@ function copied(n, moving) {
     return (moving ? "Cut " : "Copied ") + items(n) + ", p pastes."
 }
 
-// Which rows an operation acts on: the selection when there is one, the cursor row otherwise.
+// The cursor is a target only while the filter draws it, the rule prune already applies to a selection.
 function targetIndices(pane) {
     var picked = pane.selectedIndices()
-    if (picked.length > 0)
-        return picked
-    // The cursor is a target only while the filter draws it, the rule Filter.prune already applies to
-    // a selection: what nobody can see is what gets acted on by accident.
-    return Filter.cursorShown(pane) ? [pane.cursorIndex] : []
+    return picked.length > 0 ? picked : (Filter.cursorShown(pane) ? [pane.cursorIndex] : [])
 }
 
 // Only rows inside the held window can be named as a path, so the caller sends indices instead and
@@ -138,12 +130,12 @@ function newFolder(pane) {
 // over its active column, see ui/ColumnPane.qml's own corner.
 function startRename(pane, menuId, index) {
     if (pane.renamePending) return
-    // The row the request named, not wherever the cursor has reached by the time the reply lands.
-    var at = index !== undefined && index >= 0 ? index : pane.cursorIndex
+    // The row the request named, not wherever the cursor has reached by the time the reply lands, and
+    // a hidden row has no delegate to draw the editor in: it would open on the filter clearing instead.
+    var named = index !== undefined && index >= 0
+    var at = named ? index : pane.cursorIndex
     var row = pane.rowFor(at)
-    // A hidden row has no delegate to draw the editor in, so the rename would hold watchBusy and then
-    // open over the row the moment the filter cleared.
-    if (row && (index !== undefined && index >= 0 || Filter.cursorShown(pane))) {
+    if (row && (named || Filter.cursorShown(pane))) {
         pane.setCursor(at)
         pane.renameError = ""
         pane.renameSource = pane.join(pane.path, row.n)
