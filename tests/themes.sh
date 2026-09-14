@@ -89,15 +89,13 @@ at_least() {
 pixel_at() {
     magick "$1" -format "%[hex:p{$2,$3}]" info: | tr 'A-F' 'a-f' | cut -c1-6
 }
-# A screenshot is not bit exact: measured over all 22 themes, the compositor's own buffer round trip
-# moves a role by up to three steps a channel, kanagawa's accent the furthest, so a role is matched
-# within four rather than by string equality. A role drawn from the wrong colour is hundreds away.
-# Is this colour anywhere in the shot, within the same round trip the tolerance above allows? A frame
-# is a run of pixels, so it is in the image unless the control stopped drawing that role altogether.
-# magick answers "True" or "False" with a capital, so the answer is folded before it is compared.
+# Is this colour anywhere in the shot? A frame is a run of pixels, so it is in the image unless the
+# control stopped drawing that role; magick answers with a capital, so the answer is folded.
 colour_present() {
     [ "$(magick "$1" -alpha on -fuzz 2% -transparent "$2" -format '%[opaque]' info: | tr 'A-Z' 'a-z')" = "false" ]
 }
+# A screenshot is not bit exact: measured over all 22 themes the compositor's own round trip moves a
+# role by up to three steps a channel, so a role matches within role_steps and never by string.
 same_colour() {
     local theme="$1" rule="$2" got="$3" want="$4" near
     near=$(python3 -c '
@@ -106,9 +104,9 @@ def channels(value):
     h = value.lstrip("#")
     h = h[2:] if len(h) == 8 else h
     return [int(h[i:i + 2], 16) for i in (0, 2, 4)]
-got, want = channels(sys.argv[1]), channels(sys.argv[2])
-print("near" if all(abs(a - b) <= 4 for a, b in zip(got, want)) else "off")
-' "$got" "$want")
+got, want, steps = channels(sys.argv[1]), channels(sys.argv[2]), int(sys.argv[3])
+print("near" if all(abs(a - b) <= steps for a, b in zip(got, want)) else "off")
+' "$got" "$want" "$role_steps")
     [ "$near" = "near" ] || fail "$theme: $rule draws #$got, not $want"
 }
 
