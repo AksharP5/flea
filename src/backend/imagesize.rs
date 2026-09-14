@@ -220,8 +220,7 @@ mod tests {
         assert_eq!(from_header(&v[..PROBE]), None, "and the probe alone cannot reach it, which is why the file is walked");
     }
 
-    // The bound, because the walk is no longer held to the probe: a file that starts FFD8 and never
-    // names a marker was read to its end, seconds for 64 MB on this box where it is now milliseconds.
+    // Unbounded, a file naming no marker was read whole: tens of seconds for 64 MB, milliseconds now.
     #[test]
     fn a_file_that_never_names_a_marker_is_not_read_to_its_end() {
         let mut quiet = std::io::Cursor::new(vec![0u8; JPEG_WALK as usize * 2]);
