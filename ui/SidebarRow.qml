@@ -136,7 +136,7 @@ Item {
     Text {
         id: detailText
         anchors.right: dot.left
-        anchors.rightMargin: root.detail.length > 0 && dot.width > 0 ? Style.spacing.rowGap : 0
+        anchors.rightMargin: root.showsDot ? Style.spacing.rowGap : 0
         anchors.verticalCenter: parent.verticalCenter
         text: root.detail
         color: Theme.color.muted
@@ -154,8 +154,11 @@ Item {
         anchors.right: parent.right
         anchors.rightMargin: Style.spacing.rowPaddingX
         anchors.verticalCenter: parent.verticalCenter
-        // Device capacities share one right edge even when the internal disk has no mount indicator.
-        width: root.showsDot || root.detail.length > 0 ? Theme.font.caption : 0
+        // GM's ruling, 2026-09-13: one right edge for every trailing mark in the rail. The dot takes
+        // the slot on a row that has one; on a row that does not, the detail takes the slot itself
+        // rather than sitting a slot's width in from the edge, which is what left the Trash count
+        // short of the indicators above it.
+        width: root.showsDot ? Theme.font.caption : 0
         height: Theme.font.caption
 
         // Green once gio mount -l lists it, muted at half strength while it is only a bookmark waiting

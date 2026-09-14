@@ -32,11 +32,20 @@ for row in rows:
     if expected:
         detail, slot = row["detailRect"], row["indicatorRect"]
         assert row["detailColor"] == muted and row["tabular"], row
-        assert slot["width"] == row["fontSize"], row
-        assert detail["x"] + detail["width"] < slot["x"], row
         assert row["kind"] != "disk" or not row["indicatorVisible"], row
-        edges.append(detail["x"] + detail["width"])
-assert len(set(edges)) <= 1, ("Rail detail right edges differ", edges)
+        # GM's ruling: one right edge for every trailing mark. A dot holds the slot on the rows that
+        # have one and the detail sits clear of it; a row without a dot puts its detail in the slot.
+        if row["indicatorVisible"]:
+            assert slot["width"] == row["fontSize"], row
+            assert detail["x"] + detail["width"] < slot["x"], row
+        else:
+            assert slot["width"] == 0, row
+        edges.append((slot["x"] + slot["width"]) if row["indicatorVisible"]
+                     else (detail["x"] + detail["width"]))
+for row in state["rows"]:
+    if row["indicatorVisible"]:
+        edges.append(row["indicatorRect"]["x"] + row["indicatorRect"]["width"])
+assert len(set(edges)) <= 1, ("Rail trailing right edges differ", edges)
 print("RAIL_DETAILS " + json.dumps(state, sort_keys=True))
 PY
     [[ "$?" == 0 ]] || fail "rail: actual detail text, geometry, or semantic role differs"
