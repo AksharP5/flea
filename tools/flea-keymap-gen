@@ -31,8 +31,33 @@ def caps(mods, key):
     return prefix + name
 
 
+# ui/js/Keymap.js folds an armed chord onto the action it completes, and the sheet groups the pair
+# as one row, so the group table names the action rather than the arm.
+ARMS = {'copyArm': 'copy', 'cutArm': 'cut', 'pasteArm': 'paste', 'cursorFirstArm': 'cursorFirst',
+        'trashArm': 'trash'}
+
+
+# KeymapSheet.html rule 1: every action the listing binds gets a group, and one only. A missing row
+# would draw a heading nobody wrote; a duplicated one would draw the same key under two.
+def check_groups(data, rows):
+    seen = {}
+    for group, actions in data['sheetgroups'].items():
+        for action in actions:
+            if action in seen:
+                fail(f'{action} is in both the {seen[action]} and {group} sheet groups')
+            seen[action] = group
+    bound = set()
+    for row in rows:
+        if 'listing' in row['context'].split(',') and row['action']:
+            bound.add(ARMS.get(row['action'], row['action']))
+    for action in sorted(bound - set(seen)):
+        fail(f'the sheet draws {action} and no group in keys.toml claims it')
+    for action in sorted(set(seen) - bound):
+        fail(f'the {seen[action]} sheet group names {action}, which nothing binds in the listing')
+
+
 def generate(data):
-    for required in ('preset', 'sheet', 'pointer', 'digits'):
+    for required in ('preset', 'sheet', 'pointer', 'digits', 'sheetgroups'):
         if not data.get(required):
             fail(f'the {required} table is missing or empty')
     bindings = []
@@ -85,7 +110,9 @@ def generate(data):
     table('SHARED_KEYS', shared)
     emit('POINTER', data['pointer'])
     emit('BASE_SHEET', data['sheet'])
+    emit('SHEET_GROUPS', data['sheetgroups'])
     emit('DIGITS', data['digits'])
+    check_groups(data, bindings + shared)
     lines.append(r'''
 function applies(row, context, frontend) {
     return (row.context.split(",").indexOf(context) >= 0 || row.context === "all")
@@ -107,10 +134,6 @@ function presetMatch(name, key, text, modifiers, context, frontend) {
         }
     }
     return null
-}
-function lookupPreset(name, key, text, modifiers, context, frontend) {
-    var row = presetMatch(name, key, text, modifiers, context || "listing", frontend || "gui")
-    return row ? row.action : ""
 }
 function lookupFor(name, key, text, modifiers, context, frontend) {
     context = context || "listing"

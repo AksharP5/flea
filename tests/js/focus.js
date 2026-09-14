@@ -124,8 +124,7 @@ function run(check) {
     check("e is discarded over a media preview", Focus.lookup(e, pane(mediaOpen())), "")
     check("minus is discarded over a media preview", Focus.lookup(minus, pane(mediaOpen())), "")
 
-    // Left and Right serve two previews, the grid's own sideways step, and GM's fix: while browsing
-    // they are the letter pair's spelling, so they go up a level and into the row under the cursor.
+    // Left and Right serve two previews, the grid's own sideways step, and GM's fix: while browsing they are the letter pair's spelling, so they go up a level and into the row under the cursor.
     check("left turns a PDF page", Focus.lookup(left, pane(pdfOpen())), "seekBack")
     check("right turns a PDF page", Focus.lookup(right, pane(pdfOpen())), "seekForward")
     check("left still seeks media", Focus.lookup(left, pane(mediaOpen())), "seekBack")

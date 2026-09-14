@@ -124,7 +124,7 @@ mods = "ctrl"
 key = "1"
 keys = "ctrl-1"
 action = "viewList"
-label = "list view"
+label = "list"
 
 [[preset]]
 name = "default"
@@ -132,7 +132,7 @@ mods = "ctrl"
 key = "2"
 keys = "ctrl-2"
 action = "viewColumns"
-label = "columns view"
+label = "columns"
 
 [[preset]]
 name = "default"
@@ -140,7 +140,7 @@ mods = "ctrl"
 key = "3"
 keys = "ctrl-3"
 action = "viewGrid"
-label = "grid view"
+label = "grid"
 
 [[preset]]
 name = "vim"
@@ -148,7 +148,7 @@ mods = "ctrl"
 key = "1"
 keys = "ctrl-1"
 action = "viewList"
-label = "list view"
+label = "list"
 
 [[preset]]
 name = "vim"
@@ -156,7 +156,7 @@ mods = "ctrl"
 key = "2"
 keys = "ctrl-2"
 action = "viewColumns"
-label = "columns view"
+label = "columns"
 
 [[preset]]
 name = "vim"
@@ -164,7 +164,7 @@ mods = "ctrl"
 key = "3"
 keys = "ctrl-3"
 action = "viewGrid"
-label = "grid view"
+label = "grid"
 
 # Finder's own chords, read with Cmd as Ctrl the way Omarchy's universal clipboard already delivers
 # them; ui/js/Keymap.js's shared ctrl table keeps only the chords both platforms agree on.
@@ -174,7 +174,7 @@ mods = "ctrl"
 key = "1"
 keys = "ctrl-1"
 action = "viewList"
-label = "list view"
+label = "list"
 
 [[preset]]
 name = "mac"
@@ -182,7 +182,7 @@ mods = "ctrl"
 key = "2"
 keys = "ctrl-2"
 action = "viewColumns"
-label = "columns view"
+label = "columns"
 
 [[preset]]
 name = "mac"
@@ -190,7 +190,7 @@ mods = "ctrl"
 key = "3"
 keys = "ctrl-3"
 action = "viewGrid"
-label = "grid view"
+label = "grid"
 
 [[preset]]# Historical Ctrl navigation aliases remain additive.
 
@@ -245,7 +245,7 @@ mods = "ctrlshift"
 key = "1"
 keys = "ctrl-shift-1"
 action = "viewList"
-label = "list view"
+label = "list"
 
 [[preset]]
 name = "windows"
@@ -253,7 +253,7 @@ mods = "ctrlshift"
 key = "2"
 keys = "ctrl-shift-2"
 action = "viewColumns"
-label = "columns view"
+label = "columns"
 
 [[preset]]
 name = "windows"
@@ -261,7 +261,7 @@ mods = "ctrlshift"
 key = "3"
 keys = "ctrl-shift-3"
 action = "viewGrid"
-label = "grid view"
+label = "grid"
 
 [[shift]]
 key = "Down"
@@ -512,6 +512,26 @@ action = "expand"
 char = "l"
 action = "pageForward"
 
+# KeymapSheet.html rule 1: a binding gets a group and the sheet reads it. The group is named by
+# action rather than written on every binding, because one action is spelled four different ways
+# across the presets and its group is the same in all four; the generator fails the build if an
+# action the listing binds is missing here or named twice. The order is the order the sheet draws,
+# and the heading is the key with its first letter capitalised.
+# Move is where the cursor, the pane or the window goes. Look is what is drawn and how big. Find
+# narrows or orders what is already listed. Change writes something, or opens the surface that does.
+[sheetgroups]
+move = ["cursorDown", "cursorUp", "cursorFirst", "cursorLast", "pageDown", "pageUp", "open",
+        "parent", "pageForward", "historyBack", "historyForward", "focusNext", "focusPreview",
+        "tabNew", "tabClose", "tabNext", "tabPrevious", "windowNew", "escape"]
+look = ["viewList", "viewColumns", "viewGrid", "togglePreview", "loadPreview", "preview",
+        "toggleHidden", "zoomIn", "zoomOut", "expand", "textSizeUp", "textSizeDown",
+        "textSizeReset", "keymapSheet"]
+find = ["filter", "search", "reveal", "sortNext", "sortReverse", "pathBar"]
+change = ["copy", "cut", "paste", "movePaste", "duplicate", "rename", "trash",
+          "deletePermanently", "undo", "redo", "newFolder", "copydirpath", "toggleSelect",
+          "selectAll", "extendDown", "extendUp", "menu", "properties", "addNetwork", "eject",
+          "openTerminal", "settings"]
+
 # The digit range, expanded by the generator into tab1 through tab9.
 [digits]
 from = 1
@@ -545,12 +565,12 @@ label = "parent"
 [[sheet]]
 keys = "l"
 action = "pageForward"
-label = "browse forward"
+label = "browse in"
 
 [[sheet]]
 keys = "space"
 action = "preview"
-label = "preview"
+label = "quick look"
 
 # The canvas's Operations board draws / between space and f, and so does this.
 [[sheet]]
@@ -561,24 +581,24 @@ label = "filter"
 [[sheet]]
 keys = "f"
 action = "search"
-label = "find in subtree"
+label = "find"
 
 [[sheet]]
 keys = "o"
 action = "reveal"
-label = "reveal result"
+label = "reveal"
 
 # Issue 30 asked for a way to search the folder the pane is in, and tab on the query line is it, so
 # the sheet draws the key here rather than leaving the only control the issue got undocumented.
 [[sheet]]
 keys = "tab"
 action = "focusNext"
-label = "search scope, or focus"
+label = "scope / focus"
 
 [[sheet]]
 keys = ": ^l"
 action = "pathBar"
-label = "go to path"
+label = "path"
 
 [[sheet]]
 keys = "y ^c"
@@ -588,7 +608,7 @@ label = "copy"
 [[sheet]]
 keys = "Y"
 action = "copydirpath"
-label = "copy folder path"
+label = "folder path"
 
 [[sheet]]
 keys = "x ^x"
@@ -628,12 +648,12 @@ label = "select"
 [[sheet]]
 keys = "s"
 action = "sortNext"
-label = "sort column"
+label = "sort"
 
 [[sheet]]
 keys = "S"
 action = "sortReverse"
-label = "reverse sort"
+label = "reverse"
 
 [[sheet]]
 keys = ". ^>"
@@ -648,7 +668,7 @@ label = "add network place"
 [[sheet]]
 keys = "m"
 action = "menu"
-label = "context menu"
+label = "menu"
 
 [[sheet]]
 keys = "^e"
@@ -658,17 +678,22 @@ label = "eject"
 [[sheet]]
 keys = "^t"
 action = "openTerminal"
-label = "open terminal"
+label = "terminal"
 
 [[sheet]]
 keys = "^+"
 action = "textSizeUp"
-label = "text size up"
+label = "larger"
 
 [[sheet]]
 keys = "^-"
 action = "textSizeDown"
-label = "text size down"
+label = "smaller"
+
+[[sheet]]
+keys = "^)"
+action = "textSizeReset"
+label = "reset size"
 
 [[sheet]]
 keys = ","
@@ -678,7 +703,7 @@ label = "settings"
 [[sheet]]
 keys = "?"
 action = "keymapSheet"
-label = "this sheet"
+label = "keys"
 
 # The pointer contract, the mouse's half of this table. tools/flea-keymap-gen turns it into
 # Keymap.POINTER and tests/js/tap.js drives ui/js/Tap.js against every listing and neighbour row, so
@@ -962,7 +987,7 @@ mods = "alt"
 key = "P"
 keys = "alt-p"
 action = "togglePreview"
-label = "toggle preview column"
+label = "preview column"
 frontend = "all"
 context = "listing"
 
@@ -972,7 +997,7 @@ mods = "ctrl"
 key = "Space"
 keys = "ctrl-space"
 action = "loadPreview"
-label = "load selected into column"
+label = "preview"
 frontend = "all"
 context = "listing"
 
@@ -1002,7 +1027,7 @@ mods = "ctrl"
 key = "PageUp"
 keys = "ctrl-pageup"
 action = "tabPrevious"
-label = "previous tab"
+label = "prev tab"
 frontend = "all"
 context = "listing"
 
@@ -1012,7 +1037,7 @@ mods = "ctrl"
 key = "Tab"
 keys = "ctrl-tab"
 action = "focusPreview"
-label = "focus preview / list"
+label = "focus preview"
 frontend = "all"
 context = "listing"
 
@@ -1045,7 +1070,7 @@ mods = "text"
 key = "H"
 keys = "H"
 action = "historyBack"
-label = "history back"
+label = "back"
 frontend = "all"
 context = "listing"
 
@@ -1055,7 +1080,7 @@ mods = "text"
 key = "H"
 keys = "H"
 action = "historyBack"
-label = "history back"
+label = "back"
 frontend = "all"
 context = "listing"
 
@@ -1065,7 +1090,7 @@ mods = "text"
 key = "L"
 keys = "L"
 action = "historyForward"
-label = "history forward"
+label = "forward"
 frontend = "all"
 context = "listing"
 
@@ -1075,7 +1100,7 @@ mods = "text"
 key = "L"
 keys = "L"
 action = "historyForward"
-label = "history forward"
+label = "forward"
 frontend = "all"
 context = "listing"
 
@@ -1225,7 +1250,7 @@ mods = "superalt"
 key = "V"
 keys = "superalt-v"
 action = "movePaste"
-label = "move copied items here"
+label = "move here"
 frontend = "all"
 context = "listing"
 
@@ -1295,7 +1320,7 @@ mods = "super"
 key = "BracketLeft"
 keys = "super-bracketleft"
 action = "historyBack"
-label = "history back"
+label = "back"
 frontend = "all"
 context = "listing"
 
@@ -1305,7 +1330,7 @@ mods = "super"
 key = "BracketRight"
 keys = "super-bracketright"
 action = "historyForward"
-label = "history forward"
+label = "forward"
 frontend = "all"
 context = "listing"
 
@@ -1375,7 +1400,7 @@ mods = "alt"
 key = "Left"
 keys = "alt-left"
 action = "historyBack"
-label = "history back"
+label = "back"
 frontend = "all"
 context = "listing"
 
@@ -1385,7 +1410,7 @@ mods = "alt"
 key = "Right"
 keys = "alt-right"
 action = "historyForward"
-label = "history forward"
+label = "forward"
 frontend = "all"
 context = "listing"
 

@@ -11,6 +11,17 @@ Item {
     property bool opened: false
     property Item focusHolder: null
     readonly property var sheet: Keymap.sheetFor(ViewState.keysPreset, "gui", root.focusHolder ? root.focusHolder.dualMode : false)
+    // KeymapSheet rule 1: a binding gets a group in keys.toml and the sheet reads it, in the order
+    // that table lists them, with the heading its own key carries under a raised first letter.
+    readonly property var groups: {
+        var out = []
+        for (var name in Keymap.SHEET_GROUPS) {
+            var claimed = root.sheet.filter(function (row) { return Keymap.SHEET_GROUPS[name].indexOf(row.action) >= 0 })
+            if (claimed.length > 0)
+                out.push({ title: name.charAt(0).toUpperCase() + name.slice(1), rows: claimed })
+        }
+        return out
+    }
 
     // The canvas drew this panel at 300, the convert popup's width, beside four illustrative rows.
     // The real sheet is sixty rows whose chords run to eighteen characters: at 300 a cap took the
@@ -76,8 +87,11 @@ Item {
     // menuEntries() uses: one row per line, the cap and the wording it is drawn beside.
     function rows() {
         var out = []
-        for (var i = 0; i < root.sheet.length; i++)
-            out.push(root.sheet[i].keys + " " + root.sheet[i].label)
+        for (var g = 0; g < root.groups.length; g++) {
+            out.push(root.groups[g].title)
+            for (var i = 0; i < root.groups[g].rows.length; i++)
+                out.push(root.groups[g].rows[i].keys + " " + root.groups[g].rows[i].label)
+        }
         return out.join("\n")
     }
 
@@ -117,13 +131,31 @@ Item {
             width: parent.width
             spacing: Theme.spacing.gap
 
-            Text {
-                text: "Keys"
-                color: Theme.color.foreground
-                font.family: Theme.font.family
-                font.pixelSize: Theme.font.body
-                font.bold: true
-                textFormat: Text.PlainText
+            // Rule 2: the one clause a reader needs, in the corner every other surface puts it in.
+            Item {
+                width: parent.width
+                height: title.implicitHeight
+
+                Text {
+                    id: title
+                    anchors.left: parent.left
+                    text: "Keys"
+                    color: Theme.color.foreground
+                    font.family: Theme.font.family
+                    font.pixelSize: Theme.font.body
+                    font.bold: true
+                    textFormat: Text.PlainText
+                }
+
+                Text {
+                    anchors.right: parent.right
+                    anchors.baseline: title.baseline
+                    text: "esc closes"
+                    color: Theme.color.muted
+                    font.family: Theme.font.family
+                    font.pixelSize: Theme.font.caption
+                    textFormat: Text.PlainText
+                }
             }
 
             Grid {
@@ -132,68 +164,78 @@ Item {
                 columnSpacing: Theme.spacing.rowPaddingX
 
                 Repeater {
-                    model: root.sheet
+                    model: root.groups
 
-                    delegate: Item {
-                        id: entry
+                    // Equal halves, so the second column starts on one x the whole way down.
+                    delegate: Column {
+                        id: block
                         required property var modelData
-                        // Equal halves, so the second column starts on one x the whole way down.
                         width: (body.width - (root.columns - 1) * Theme.spacing.rowPaddingX) / root.columns
-                        height: root.capSize
-                        // Nothing this cell draws may reach the cell beside it, whatever it holds.
-                        clip: true
-
-                        Rectangle {
-                            id: capBox
-                            anchors.left: parent.left
-                            anchors.verticalCenter: parent.verticalCenter
-                            // The sheet's own cap column, never this row's text: see root.capWidth.
-                            width: root.capWidth
-                            height: root.capSize
-                            color: "transparent"
-                            border.width: Theme.spacing.hairline
-                            border.color: Theme.color.muted
-
-                            Text {
-                                id: cap
-                                anchors.fill: parent
-                                anchors.margins: Theme.spacing.hairline
-                                horizontalAlignment: Text.AlignHCenter
-                                verticalAlignment: Text.AlignVCenter
-                                text: entry.modelData.keys
-                                color: Theme.color.foreground
-                                font.family: Theme.font.family
-                                font.pixelSize: Theme.font.caption
-                                textFormat: Text.PlainText
-                                elide: Text.ElideRight
-                            }
-                        }
+                        spacing: Theme.spacing.gap
 
                         Text {
-                            anchors.left: capBox.right
-                            anchors.leftMargin: Theme.spacing.gap
-                            anchors.right: parent.right
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: entry.modelData.label
+                            text: block.modelData.title
                             color: Theme.color.muted
                             font.family: Theme.font.family
                             font.pixelSize: Theme.font.caption
+                            font.capitalization: Font.AllUppercase
+                            font.letterSpacing: Theme.spacing.hairline
                             textFormat: Text.PlainText
-                            elide: Text.ElideRight
+                        }
+
+                        Repeater {
+                            model: block.modelData.rows
+
+                            delegate: Item {
+                                id: entry
+                                required property var modelData
+                                width: block.width
+                                height: root.capSize
+                                // Nothing this cell draws may reach the cell beside it, whatever it holds.
+                                clip: true
+
+                                Rectangle {
+                                    id: capBox
+                                    anchors.left: parent.left
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    // The sheet's own cap column, never this row's text: see root.capWidth.
+                                    width: root.capWidth
+                                    height: root.capSize
+                                    color: "transparent"
+                                    border.width: Theme.spacing.hairline
+                                    border.color: Theme.color.muted
+
+                                    Text {
+                                        id: cap
+                                        anchors.fill: parent
+                                        anchors.margins: Theme.spacing.hairline
+                                        horizontalAlignment: Text.AlignHCenter
+                                        verticalAlignment: Text.AlignVCenter
+                                        text: entry.modelData.keys
+                                        color: Theme.color.foreground
+                                        font.family: Theme.font.family
+                                        font.pixelSize: Theme.font.caption
+                                        textFormat: Text.PlainText
+                                        elide: Text.ElideRight
+                                    }
+                                }
+
+                                Text {
+                                    anchors.left: capBox.right
+                                    anchors.leftMargin: Theme.spacing.gap
+                                    anchors.right: parent.right
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: entry.modelData.label
+                                    color: Theme.color.muted
+                                    font.family: Theme.font.family
+                                    font.pixelSize: Theme.font.caption
+                                    textFormat: Text.PlainText
+                                    elide: Text.ElideRight
+                                }
+                            }
                         }
                     }
                 }
-            }
-
-            // The canvas's own footer. One table, keys.toml, so the TUI's map cannot drift from this one.
-            Text {
-                width: parent.width
-                text: "esc closes, ^ is ctrl, no TUI yet, generated by flea-keymap-gen"
-                color: Theme.color.muted
-                font.family: Theme.font.family
-                font.pixelSize: Theme.font.caption
-                textFormat: Text.PlainText
-                wrapMode: Text.WordWrap
             }
         }
         }
