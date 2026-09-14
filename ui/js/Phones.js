@@ -39,8 +39,7 @@ function parsePhones(output) {
             blocks.push(v)
             continue
         }
-        // An AFC root mount prints at column zero rather than inside the volume block it belongs to,
-        // so these are collected before the same line ends the block below.
+        // An AFC root mounts outside the block that offered it, so these are collected first.
         var top = line.match(/^Mount\(\d+\):\s*.+?\s*->\s*(\S+)\s*$/)
         if (top) mounted[top[1]] = true
         // Any other column-zero line ends the block, the next Drive() or Mount() included.
@@ -60,9 +59,7 @@ function parsePhones(output) {
     for (var a = 0; a < blocks.length; a++) {
         if (blocks[a].monitor !== "Afc")
             continue
-        // gvfs-afc advertises the app documents volume, afc://<uuid>:3/, and the rail never mounts
-        // that one: the phone's own files are at the root, rebuilt here from the volume's own uuid.
-        // With no uuid there is no root to name, and a row pointing at that share is worse than none.
+        // gvfs-afc advertises afc://<uuid>:3/, the documents share; the phone's files are at the root.
         blocks[a].uri = blocks[a].uuid.length > 0 ? "afc://" + blocks[a].uuid + "/" : ""
     }
     var kept = []
@@ -70,8 +67,7 @@ function parsePhones(output) {
     var seen = {}
     for (var b = 0; b < blocks.length; b++) {
         var p = blocks[b]
-        // An Afc block's own indented Mount is its :3 documents volume, which gvfs may automount on
-        // its own, and never the root this row points at, so only the column-zero line counts there.
+        // An Afc block's own Mount is that documents share, so only the root's column-zero line counts.
         p.mounted = p.monitor === "Afc" ? mounted[p.uri] === true : (p.inBlock || mounted[p.uri] === true)
         // gvfs answers can_mount=0 for a volume that is already mounted, measured on this box's own
         // USB volume, so only a volume that can neither be mounted nor is mounted is not a row.
@@ -85,12 +81,10 @@ function parsePhones(output) {
             serials.push(p.uuid.replace(/-/g, "").toUpperCase())
         kept.push(p)
     }
-    // Folded against the rows that survived rather than against every block, so an iPhone whose AFC
-    // volume was dropped keeps its camera row instead of leaving the rail with nothing at all.
+    // Folded against rows that survived, so a dropped AFC volume cannot take the phone off the rail.
     var out = []
     for (var c = 0; c < kept.length; c++) {
-        // One phone, one row: an iPhone's GPhoto2 volume is the camera store that lists nothing on
-        // this iOS, and the serial it shares with the AFC uuid is what says they are one device.
+        // One phone, one row: the serial the two monitors share is what says they are one device.
         if (kept[c].monitor === "GPhoto2" && carriesOneOf(kept[c].uri, serials))
             continue
         out.push(entry(kept[c]))
