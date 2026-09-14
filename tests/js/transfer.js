@@ -52,6 +52,17 @@ function run(check) {
     var kept = Transfer.sampled(settled, 4, "plate-18.raw", 2 * megabyte, 0, 0)
     check("a sample with no total of its own keeps the one the scan settled on", kept.scanned, 8400 * megabyte)
     check("and a sample that brings one records it", Transfer.sampled(many, 4, "x", 1, 0, 77).scanned, 77)
+    // Directive 50: the walk runs beside the copy with no deadline, so the total can arrive at any
+    // sample, and the line has to take it then rather than having decided there is none.
+    // The same sample twice, so the only thing that changes is the total the walk brings with it.
+    var early = Transfer.sampled(many, 0, "one.bin", 100 * megabyte, 0, 0)
+    check("a sample before the walk settles carries no total",
+          Transfer.byteParts(early, megabyte).map(function (p) { return p.text }).join(""),
+          "400.0 MB copied · 1.0 MB/s")
+    var late = Transfer.sampled(early, 0, "one.bin", 100 * megabyte, 0, 8400 * megabyte)
+    check("and the one that brings the settled total draws it, and the time left with it",
+          Transfer.byteParts(late, megabyte).map(function (p) { return p.text }).join(""),
+          "400.0 MB of 8.4 GB · 1.0 MB/s · 2:13:20 left")
 
     // The case GM actually runs: one folder to the NAS. It is n === 1 with no total of its own, so
     // asking about the count rather than about the total would have thrown its sweep away.

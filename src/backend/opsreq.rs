@@ -134,21 +134,24 @@ pub fn run_transfer(
 
 // A tree this far in is a tree the operator is watching, so the sweep gives up rather than holding a
 // thread on a mount that has stopped answering; what it costs then is the estimate, never the copy.
-const TOTAL_SWEEP_MS: u64 = 30_000;
 
 // The scan a batch's total comes from, on its own thread so the first byte never waits for it. It
-// publishes into the cell every progress sample reads, and publishes nothing at all when it hit its
-// deadline: the card shows no total rather than a floor, and no time left with it. The cancel is read
-// between trees and once more before publishing, and inside one tree the deadline is what bounds it.
-fn spawn_total(paths: &[String], cancel: &Arc<AtomicBool>, settled: &Arc<AtomicU64>) {
+// publishes into the cell every progress sample reads, and publishes nothing at all when it stopped
+// early: the card shows no total rather than a floor, and no time left with it. Directive 50: the
+// walk answers to the transfer and not to a clock, so it runs until the copy cancels or finishes.
+fn spawn_total(paths: &[String], cancel: &Arc<AtomicBool>, settled: &Arc<AtomicU64>, sweeping: &Arc<AtomicBool>) {
     let paths: Vec<String> = paths.to_vec();
     let cancel = Arc::clone(cancel);
     let settled = Arc::clone(settled);
+    let sweeping = Arc::clone(sweeping);
     std::thread::spawn(move || {
-        let deadline = Instant::now() + Duration::from_millis(TOTAL_SWEEP_MS);
+        let done = |flags: &(Arc<AtomicBool>, Arc<AtomicBool>)| {
+            flags.0.load(Ordering::Relaxed) || !flags.1.load(Ordering::Relaxed)
+        };
+        let flags = (cancel, sweeping);
         let mut bytes = 0u64;
         for raw in &paths {
-            if cancel.load(Ordering::Relaxed) {
+            if done(&flags) {
                 return;
             }
             let meta = match std::fs::symlink_metadata(raw) {
@@ -160,13 +163,13 @@ fn spawn_total(paths: &[String], cancel: &Arc<AtomicBool>, settled: &Arc<AtomicU
                 bytes += meta.len();
                 continue;
             }
-            let seen = crate::backend::dirsize::walk_until(Path::new(raw), deadline);
+            let seen = crate::backend::dirsize::walk_while(Path::new(raw), &|| done(&flags));
             if seen.partial {
                 return;
             }
             bytes += seen.bytes;
         }
-        if cancel.load(Ordering::Relaxed) {
+        if done(&flags) {
             return;
         }
         settled.store(bytes, Ordering::Relaxed);
@@ -181,7 +184,9 @@ pub(crate) fn run_transfer_checked(
     // Directive 45: a batch gets a time left once it knows what it is copying, and a tree's size is
     // not known without a walk. This is that walk, beside the copy rather than before it.
     let settled = Arc::new(AtomicU64::new(0));
-    spawn_total(&paths, &cancel, &settled);
+    // The walk outlives nothing: it is told to stop when this function returns, however that happens.
+    let sweeping = Arc::new(AtomicBool::new(true));
+    spawn_total(&paths, &cancel, &settled, &sweeping);
     let mut steps: Vec<Step> = Vec::new();
     let mut retry = Vec::new();
     let (mut ok, mut failed, mut skipped) = (0usize, 0usize, 0usize);
@@ -263,6 +268,7 @@ pub(crate) fn run_transfer_checked(
             }
         }
     }
+    sweeping.store(false, Ordering::Relaxed);
     let entry = Entry { op: if moving { "move".to_string() } else { "copy".to_string() }, steps };
     let _ = tx.send(OpMsg::TransferDone { id, ok, failed, skipped, cancelled: was_cancelled, entry, retry });
 }
