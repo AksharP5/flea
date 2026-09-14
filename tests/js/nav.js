@@ -245,6 +245,18 @@ function run(check) {
     check("a path with nothing between its root and the two nearest is left whole",
           drawn(Nav.fitCrumbs(Nav.crumbs("/home/gm/one/two", "/home/gm"), 4)), "~/one/two")
 
+    // V7: at the floor width the leaf was cut by the strip's own edge, with no marker of any kind.
+    var long = Nav.crumbs("/home/gm/a-directory-with-a-deliberately-long-name", "/home/gm")
+    check("a leaf too long for what is left of the strip takes the ellipsis itself",
+          drawn(Nav.fitCrumbs(long, 20)), "~/a-directo\u2026ong-name")
+    check("and it still names the directory it stands for",
+          Nav.fitCrumbs(long, 20)[1].path, "/home/gm/a-directory-with-a-deliberately-long-name")
+    check("the collapsed form elides its leaf too, once the marker leaves it no room",
+          drawn(Nav.fitCrumbs(Nav.crumbs("/home/gm/one/two/three/a-very-long-leaf-name", "/home/gm"), 18)),
+          "~/\u2026/three/a-ve\u2026ame")
+    check("a short leaf is drawn whole rather than spending its characters on an ellipsis",
+          drawn(Nav.fitCrumbs(Nav.crumbs("/home/gm/one/two/three/four", "/home/gm"), 6)), "~/\u2026/three/four")
+
     // A keyboard rename reveals the row it renamed; one the pointer committed keeps the row the
     // click chose instead, because a write operation targets the selection ahead of the cursor.
     var typed = { renameKeepsPointerRow: false }

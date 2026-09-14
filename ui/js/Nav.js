@@ -225,9 +225,28 @@ function crumbs(path, home) {
 }
 
 // Chrome rule 2: a path too long for the strip reads as its root, one collapsed crumb and the segments nearest you, whole crumbs only, so the marker is a crumb of its own. budget is the strip's width in characters, monospace.
+// Below this a leaf gives up more to the ellipsis than the ellipsis saves, so it is drawn whole.
+var LEAF_FLOOR = 6
+
+// Chrome rule 2 collapses whole crumbs, but the leaf is the one crumb that cannot be dropped: when
+// even it does not fit, it takes the ellipsis in its own middle rather than a cut at the strip's edge.
+function elideLeaf(list, budget) {
+    var end = list[list.length - 1]
+    var room = budget - (crumbChars(list) - end.text.length)
+    if (room >= end.text.length || end.text.length <= LEAF_FLOOR) {
+        return list
+    }
+    // corner: a strip with less room than the floor draws the floor, which is short rather than cut.
+    var keep = Math.max(LEAF_FLOOR, room)
+    var head = Math.ceil((keep - 1) / 2)
+    var tail = keep - 1 - head
+    var cut = end.text.substring(0, head) + "\u2026" + (tail > 0 ? end.text.substring(end.text.length - tail) : "")
+    return list.slice(0, list.length - 1).concat([{ text: cut, path: end.path, last: true }])
+}
+
 function fitCrumbs(list, budget) {
     if (list.length < 4 || crumbChars(list) <= budget) {
-        return list
+        return elideLeaf(list, budget)
     }
     var shown = [list[0], { text: "\u2026/", path: "", last: false, elided: true },
                  list[list.length - 2], list[list.length - 1]]
@@ -240,7 +259,7 @@ function fitCrumbs(list, budget) {
         }
         shown = next
     }
-    return shown
+    return elideLeaf(shown, budget)
 }
 
 function crumbChars(list) {
