@@ -158,6 +158,28 @@ impl Shelf {
         })
     }
 
+    // Summon: clearing takes the whole pile out and hands it back, so the caller can keep it as the
+    // last pile. Read and write are one locked step, or a drop landing meanwhile would be lost.
+    pub fn clear(&self) -> Result<Vec<Json>, String> {
+        let mut taken = Vec::new();
+        self.write_pile(|items| {
+            taken = items;
+            Vec::new()
+        })?;
+        Ok(taken)
+    }
+
+    // And putting one back: what the pile was comes back, so a pile that was not empty becomes the
+    // last pile in its turn rather than disappearing under the one being restored.
+    pub fn put(&self, pile: Vec<Json>) -> Result<Vec<Json>, String> {
+        let mut was = Vec::new();
+        self.write_pile(|items| {
+            was = items;
+            pile
+        })?;
+        Ok(was)
+    }
+
     // Every write of the pile goes through one lock, so a click that adds and a move that settles
     // cannot land on top of each other.
     fn write_pile(&self, change: impl FnOnce(Vec<Json>) -> Vec<Json>) -> Result<(), String> {
@@ -260,113 +282,6 @@ pub fn size_of(path: &str) -> Result<(u64, bool), String> {
         return Ok((walked.bytes, walked.partial));
     }
     Ok((meta.len(), false))
-}
-
-// flea shelf <verb>: the plugin is another process, so the mint is a command rather than a wire line.
-pub fn command(args: &[String]) -> i32 {
-    match args.get(2).map(String::as_str) {
-        Some("drag-begin") => drag_begin(&args[3..]),
-        Some("size") => size(&args[3..]),
-        Some("forget") => forget(&args[3..]),
-        Some("add") => add(&args[3..]),
-        Some("captures") => crate::captures::command(&args[3..]),
-        _ => {
-            eprintln!("flea: shelf takes drag-begin, size, add, forget or captures");
-            2
-        }
-    }
-}
-
-fn size(rest: &[String]) -> i32 {
-    let path = match rest.first() {
-        Some(path) => path,
-        None => {
-            eprintln!("flea: shelf size takes one path");
-            return 2;
-        }
-    };
-    match size_of(path) {
-        Ok((bytes, partial)) => {
-            println!("{} {}", bytes, u8::from(partial));
-            0
-        }
-        Err(e) => {
-            eprintln!("flea: {}", e);
-            2
-        }
-    }
-}
-
-fn add(rest: &[String]) -> i32 {
-    if rest.is_empty() {
-        eprintln!("flea: shelf add takes at least one path");
-        return 2;
-    }
-    let shelf = match Shelf::user() {
-        Ok(shelf) => shelf,
-        Err(e) => {
-            eprintln!("flea: {}", e);
-            return 2;
-        }
-    };
-    match shelf.add(rest) {
-        Ok(()) => 0,
-        Err(e) => {
-            eprintln!("flea: {}", e);
-            2
-        }
-    }
-}
-
-fn forget(rest: &[String]) -> i32 {
-    if rest.is_empty() {
-        eprintln!("flea: shelf forget takes at least one path");
-        return 2;
-    }
-    let shelf = match Shelf::user() {
-        Ok(shelf) => shelf,
-        Err(e) => {
-            eprintln!("flea: {}", e);
-            return 2;
-        }
-    };
-    // Main rule 6: the row's own x is the same edit a completed move makes, and it never touches the file.
-    match shelf.settle(rest) {
-        Ok(()) => 0,
-        Err(e) => {
-            eprintln!("flea: {}", e);
-            2
-        }
-    }
-}
-
-fn drag_begin(rest: &[String]) -> i32 {
-    let moving = match rest.first().map(String::as_str) {
-        Some("move") => true,
-        Some("copy") => false,
-        _ => {
-            eprintln!("flea: shelf drag-begin takes move or copy, then the entries");
-            return 2;
-        }
-    };
-    let paths: Vec<String> = rest[1..].to_vec();
-    let shelf = match Shelf::user() {
-        Ok(shelf) => shelf,
-        Err(e) => {
-            eprintln!("flea: {}", e);
-            return 2;
-        }
-    };
-    match shelf.drag_begin(moving, &paths, now_ms()) {
-        Ok(token) => {
-            println!("{}", token);
-            0
-        }
-        Err(e) => {
-            eprintln!("flea: {}", e);
-            2
-        }
-    }
 }
 
 #[cfg(test)]

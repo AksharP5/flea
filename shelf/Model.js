@@ -226,6 +226,64 @@ function emptyHint(pile, captures, routes) {
   return routesHint(routes)
 }
 
+// ---- Summon: the bell, the cleared transient and the Recent piles rows ----
+
+// The bind writes a count, not a state: every write is one more ring, and the card answers each one.
+function ringsOf(text) {
+  var doc
+  try {
+    doc = JSON.parse(String(text || ""))
+  } catch (e) {
+    return 0
+  }
+  var n = doc ? Number(doc.summon) : 0
+  return isFinite(n) && n >= 0 ? n : 0
+}
+
+// Summon: clearing is reversible, and the transient says so for the four seconds it lives.
+function clearedText(count) {
+  var n = Number(count)
+  if (!isFinite(n) || n <= 0) {
+    return ""
+  }
+  return "Cleared " + n + (n === 1 ? " item" : " items") + " \u00b7 z restores"
+}
+
+// Sample input, one line per kept pile, newest first: the time it was cleared, then how many it held.
+// 1789426925000 4
+function parsePiles(text) {
+  var lines = String(text || "").split("\n")
+  var out = []
+  for (var i = 0; i < lines.length; i++) {
+    var parts = lines[i].split(" ")
+    if (parts.length !== 2) {
+      continue
+    }
+    var at = Number(parts[0])
+    var count = Number(parts[1])
+    if (!isFinite(at) || !isFinite(count)) {
+      continue
+    }
+    out.push({ at: at, count: count })
+  }
+  return out
+}
+
+// The one date format this project draws, which is Flea's own: 2026-09-12 19:04.
+function pileText(pile) {
+  var n = Number(pile.count)
+  return n + (n === 1 ? " item" : " items") + " \u00b7 " + stamp(pile.at)
+}
+
+function stamp(at) {
+  var when = new Date(Number(at))
+  if (!isFinite(when.getTime())) {
+    return ""
+  }
+  return when.getFullYear() + "-" + pad2(when.getMonth() + 1) + "-" + pad2(when.getDate())
+         + " " + pad2(when.getHours()) + ":" + pad2(when.getMinutes())
+}
+
 // Rule 2's header, which is also the pile's own count: the bar never draws one. An empty shelf says
 // so in the same slot, the way the ShelfEmpty board draws it.
 function headerText(state) {

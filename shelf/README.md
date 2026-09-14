@@ -11,8 +11,9 @@ with it.
 ## What ships today
 
 The bar presence, the card the mark opens, the sizes the card asks for row by row, the row's own
-remove, and the tray of recent captures. The keys, the screen-edge rail and the five actions land in
-the units that follow.
+remove, the tray of recent captures, and the ways back in: the keybind, a cleared pile and the last
+five piles. The screen-edge rail, the subset gesture and the five actions land in the units that
+follow.
 
 | Piece | What it is |
 |---|---|
@@ -22,6 +23,7 @@ the units that follow.
 | `Model.js` | pure functions, no QML imports: what the file's bytes mean |
 | `ShelfCard.qml` | the pile itself, a Flea listing's own row and strip heights |
 | `ShelfTray.qml` | the newest captures Omarchy has taken, on the card at all times |
+| `ShelfMenu.qml` | the card's own menu: the last five piles, and the way back to one |
 | `ShelfGlyph.qml` | one mark on the Omarchy cut, the way Flea draws its own |
 | `FleaShelfMark.qml` | Flea's own mark, reproduced rather than recut |
 
@@ -49,16 +51,32 @@ to the pile, drag it to take it straight out; either way the capture stays where
 
 ## State
 
-`$XDG_STATE_HOME/omarchy/flea-shelf/shelf.json`, or `~/.local/state/omarchy/flea-shelf/shelf.json`
-when that is unset. The shelf never writes it: `flea shelf` does.
+`$XDG_STATE_HOME/omarchy/flea-shelf/`, or `~/.local/state/omarchy/flea-shelf/` when that is unset:
+`shelf.json` is the pile, `piles.json` the last five it has held, `drags.json` the tokens a drag out
+carries, and `summon.json` the count the keybind writes. The plugin never writes any of them:
+`flea shelf` does, and the plugin watches.
 
 ## Keyboard
 
 | Key | What it does |
 |---|---|
-| `esc` | closes the card |
+| `super + d` | opens the shelf, or closes it, once you have installed the bind below |
+| `esc` | closes the card, and steps out of its menu |
+| `shift + x` | clears the shelf, and it becomes the last pile |
+| `z` | brings the last pile back |
+| `1` to `5` | in the menu, takes that pile back |
+| right click | on the bar mark: brings back the last pile you cleared; on the card: its menu |
 
 The card's action strip draws its own keys beside every action; they run the actions with them.
+
+The bind is a line in your own Hyprland config, not one this plugin writes. Add it to
+`~/.config/hypr/bindings.lua`:
+
+```lua
+o.bind("SUPER + D", "Drop shelf", "flea shelf toggle")
+```
+
+The empty card names that chord once the line is there, and says nothing about it while it is not.
 
 ## Install
 

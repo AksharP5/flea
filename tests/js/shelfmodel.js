@@ -80,6 +80,25 @@ function run(check) {
         Shelf.footerText("", "", "", "click to add") + "|" + Shelf.footerText("/x/a", "", "", "click to add"),
         "click to add|/x/a")
 
+  // Summon: the bell, the cleared transient, and what the Recent piles rows say.
+  check("a summon file nobody has written yet has rung nothing", Shelf.ringsOf(""), 0)
+  check("and one that is half written is not a ring either", Shelf.ringsOf('{"summ'), 0)
+  check("each write of the file is one more ring", Shelf.ringsOf('{"summon":7}'), 7)
+  check("the cleared transient says how to get it back",
+        Shelf.clearedText(4) + "|" + Shelf.clearedText(1),
+        "Cleared 4 items \u00b7 z restores|Cleared 1 item \u00b7 z restores")
+  check("clearing an empty shelf says nothing at all", Shelf.clearedText(0), "")
+
+  var kept = Shelf.parsePiles("1789426925000 4\n1789420000000 2\nnot a pile\n")
+  check("a kept pile is its time and its count, and a line that is neither is dropped", kept.length, 2)
+  var row = Shelf.pileText({ count: 4, at: 1789426925000 })
+  check("a pile row says how many and when, in the one date format this project draws",
+        row.slice(0, 10) + "|" + row.slice(10).length + "|" + row.charAt(14) + row.charAt(17) + row.charAt(23),
+        "4 items \u00b7 |16|--:")
+  check("a time that is not one leaves the stamp out rather than printing nonsense",
+        Shelf.stamp("never"), "")
+  check("and one item is one item", Shelf.pileText({ count: 1, at: 1789426925000 }).slice(0, 7), "1 item ")
+
   check("the tooltip says what is held, because the bar itself never draws a count",
           Shelf.tooltip(Shelf.empty()) + " / " + Shelf.tooltip(one) + " / " + Shelf.tooltip(mixed),
           "Flea shelf is empty / Flea shelf is holding 1 item / Flea shelf is holding 2 items")

@@ -24,6 +24,8 @@ Item {
 
   signal removeRequested(int index)
   signal captureAddRequested(int index)
+  // Summon: the pointer's way to the last five piles is the card's own menu.
+  signal menuRequested()
   signal actionRequested(string id)
   // Rule 2: the header is the handle the whole pile is carried by. The modifier is read at the
   // lift and never after it, because a platform drag runs a loop this window gets no keys in.
@@ -78,6 +80,14 @@ Item {
 
   implicitWidth: cardWidth
   implicitHeight: column.implicitHeight
+
+  // The pointer route to Recent piles. Only the right button, so every left press still reaches the
+  // header's lift, a row's x and the tray's own thumbs.
+  MouseArea {
+    anchors.fill: parent
+    acceptedButtons: Qt.RightButton
+    onClicked: root.menuRequested()
+  }
 
   Column {
     id: column

@@ -29,6 +29,14 @@ Panel {
   // The card's own slot, rule 5: one voice at a time, and the pile's own state owns neither.
   property string result: ""
   property string error: ""
+  // Summon: the card's menu holds the last five piles, and a cleared pile says how to get it back
+  // for the four seconds a transient lives.
+  property bool menu: false
+  readonly property int transientMs: 4000
+
+  // A card that closed while its menu was up must come back as the pile, not as the menu: the menu is
+  // a detour, and the shelf is what the next summon is asking for.
+  onOpenedChanged: if (!root.opened) root.menu = false
 
   ShelfService {
     id: shelf
@@ -36,8 +44,21 @@ Panel {
     // Rule 4's budget: sizes are asked for while the card is up and never while it is closed.
     drawing: root.opened
     onGrew: landing.restart()
+    // Summon: a keybind, a CLI call and the mark all arrive here, by the same path.
+    onSummoned: root.opened ? root.close() : root.open()
+    onCleared: function (count) {
+      root.error = ""
+      root.result = Model.clearedText(count)
+      transient.restart()
+    }
     onMinted: function (token, moving) { card.lift(token, !moving) }
     onFailed: function (why) { root.error = why }
+  }
+
+  Timer {
+    id: transient
+    interval: root.transientMs
+    onTriggered: root.result = ""
   }
 
   SequentialAnimation {
@@ -67,7 +88,16 @@ Panel {
         }
       }
     }
-    onPressed: function (buttonCode) { root.toggle() }
+    // Keys board: right click on the bar mark brings back the last pile you cleared, which is the
+    // route that survives when the card is closed and the keyboard is not where your hand is. The
+    // button itself already takes all three buttons and says which one in its signal.
+    onPressed: function (buttonCode) {
+      if (buttonCode === Qt.RightButton) {
+        shelf.restore(0)
+        return
+      }
+      root.toggle()
+    }
   }
 
   // The card is its own layer surface, sized to itself. The shell's KeyboardPanel is a full-screen
@@ -79,12 +109,36 @@ Panel {
     visible: root.opened
     color: "transparent"
     implicitWidth: card.implicitWidth + surface.contentLeftInset + surface.contentRightInset
-    implicitHeight: card.implicitHeight + surface.contentTopInset + surface.contentBottomInset
+    implicitHeight: (root.menu ? pileMenu.implicitHeight : card.implicitHeight)
+                    + surface.contentTopInset + surface.contentBottomInset
     anchors { top: true; right: true }
     margins { right: Style.gapsOut; top: Style.gapsOut }
     WlrLayershell.namespace: "flea-shelf-card"
     WlrLayershell.layer: WlrLayer.Overlay
-    WlrLayershell.keyboardFocus: root.opened ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
+    // The OEM keyboard panel's own prime: Hyprland gives an OnDemand surface focus only when it
+    // first maps, so a card summoned by the keybind would take no keys at all. Exclusive for the
+    // first commits, then OnDemand, which is what lets a click reach anything underneath again.
+    property bool focusPrimed: false
+    WlrLayershell.keyboardFocus: root.opened
+                                 ? (panel.focusPrimed ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.Exclusive)
+                                 : WlrKeyboardFocus.None
+
+    onVisibleChanged: {
+      panel.focusPrimed = false
+      if (panel.visible) {
+        focusPrime.restart()
+      }
+    }
+
+    Timer {
+      id: focusPrime
+      // The OEM panel's own 75 ms: enough Qt and Wayland commit cycles for the surface to be there.
+      interval: 75
+      onTriggered: {
+        panel.focusPrimed = true
+        surface.forceActiveFocus()
+      }
+    }
 
     // The ground, border and corner the shell's own popups draw: Ui/KeyboardPanel.qml and
     // Ui/PopupCard.qml both fill a BorderSurface this way, so the shelf card is an Omarchy card.
@@ -95,10 +149,49 @@ Panel {
       borderSpec: Border.surfaceSpec("popups", "border", Color.popups.border, Math.max(1, Style.space(2)))
       radius: Style.cornerRadius
       focus: root.opened
-      Keys.onEscapePressed: root.close()
+      Keys.onEscapePressed: root.menu ? root.menu = false : root.close()
+      // Keys board: shift-x clears and the pile becomes the last pile, z undoes it, and in the menu
+      // a number takes that pile straight back.
+      Keys.onPressed: function (event) {
+        if (root.menu) {
+          var chosen = event.key - Qt.Key_1
+          if (chosen >= 0 && chosen < shelf.piles.length) {
+            shelf.restore(chosen)
+            root.menu = false
+            event.accepted = true
+          }
+          return
+        }
+        if (event.key === Qt.Key_X && (event.modifiers & Qt.ShiftModifier)) {
+          shelf.clear()
+          event.accepted = true
+        } else if (event.key === Qt.Key_Z) {
+          shelf.restore(0)
+          event.accepted = true
+        }
+      }
+
+      ShelfMenu {
+        id: pileMenu
+        visible: root.menu
+        x: surface.contentLeftInset
+        y: surface.contentTopInset
+        width: surface.width - surface.contentLeftInset - surface.contentRightInset
+        piles: shelf.piles
+        foreground: Color.popups.text
+        pad: card.pad
+        stripHeight: card.stripHeight
+        rowHeight: card.rowHeight
+        onChosen: function (index) {
+          shelf.restore(index)
+          root.menu = false
+        }
+        onDismissed: root.menu = false
+      }
 
       ShelfCard {
         id: card
+        visible: !root.menu
         x: surface.contentLeftInset
         y: surface.contentTopInset
         width: surface.width - surface.contentLeftInset - surface.contentRightInset
@@ -107,7 +200,8 @@ Panel {
         captures: shelf.captures
         // The empty card names only the routes that are on: the mark is drawn today, the rail edge
         // and the summon bind arrive with the units that build them.
-        hint: Model.emptyHint(shelf.pile, shelf.captures, { edge: "", mark: true, bind: "" })
+        hint: Model.emptyHint(shelf.pile, shelf.captures,
+                              { edge: "", mark: true, bind: shelf.summonBind })
         foreground: Color.popups.text
         result: root.result
         error: root.error
@@ -118,6 +212,10 @@ Panel {
         onCaptureAddRequested: function (index) {
           root.error = ""
           shelf.add(shelf.captures[index].path)
+        }
+        onMenuRequested: {
+          shelf.askPiles()
+          root.menu = true
         }
         onActionRequested: function (id) { root.result = ""; root.error = id + " lands with the actions." }
         onLiftRequested: function (copying) { shelf.mintDrag(!copying) }

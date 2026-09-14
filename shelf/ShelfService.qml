@@ -203,6 +203,107 @@ Item {
     stderr: StdioCollector { waitForEnd: true }
   }
 
+  // Summon: the keybind, the CLI and the card all reach each other through the state directory, so
+  // none of them needs an IPC contract. The file carries a count rather than a state: every write is
+  // one ring of the bell, which the card answers by toggling, so the two can never disagree.
+  signal summoned()
+  signal cleared(int count)
+  property int rings: -1
+
+  function rang(text) {
+    var now = Model.ringsOf(text)
+    if (root.rings >= 0 && now !== root.rings) {
+      root.summoned()
+    }
+    root.rings = now
+  }
+
+  FileView {
+    id: bell
+    path: root.stateDir + "/summon.json"
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: root.rang(bell.text())
+    onLoadFailed: root.rang("")
+  }
+
+  // The verbs that change the pile and answer with one number: how many the shelf cleared or put back.
+  property string pending: ""
+
+  function clear() {
+    root.runVerb("clear", ["shelf", "clear"])
+  }
+
+  function restore(index) {
+    root.runVerb("restore", ["shelf", "restore", String(index + 1)])
+  }
+
+  function runVerb(name, argv) {
+    if (verb.running) {
+      return
+    }
+    root.pending = name
+    verb.command = [root.fleaCommand].concat(argv)
+    verb.running = true
+  }
+
+  Process {
+    id: verb
+    running: false
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        var count = parseInt(String(text).trim(), 10)
+        if (root.pending === "clear" && isFinite(count)) {
+          root.cleared(count)
+        }
+        root.pending = ""
+        file.reload()
+        root.askPiles()
+      }
+    }
+    stderr: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: if (String(text).trim().length > 0) root.failed("The shelf could not do that.")
+    }
+  }
+
+  // Summon rule 4: one shelf, plus the last five piles, which the card's own menu lists.
+  property var piles: []
+
+  function askPiles() {
+    if (pileList.running) {
+      return
+    }
+    pileList.command = [root.fleaCommand, "shelf", "piles"]
+    pileList.running = true
+  }
+
+  Process {
+    id: pileList
+    running: false
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.piles = Model.parsePiles(text)
+    }
+    stderr: StdioCollector { waitForEnd: true }
+  }
+
+  // The empty card names the bind only once it is installed, and the user's own config owns that line.
+  property string summonBind: ""
+
+  Process {
+    id: bindName
+    command: [root.fleaCommand, "shelf", "bind"]
+    running: true
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.summonBind = String(text).trim()
+    }
+    stderr: StdioCollector { waitForEnd: true }
+  }
+
   // A watch cannot fire for a file that does not exist yet, so the first drop is found by this.
   Timer {
     interval: root.refreshIntervalSec * root.millisecondsPerSecond
@@ -210,6 +311,7 @@ Item {
     repeat: true
     onTriggered: {
       file.reload()
+      bell.reload()
       // ShelfEmpty rule 4: the tray is listed on open and on each re-read while the card is up, so a
       // capture taken with the card open appears within one poll. A re-read of an unchanged pile
       // raises nothing, which is why this hangs off the poll itself rather than off the pile.

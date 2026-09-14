@@ -20,6 +20,8 @@ mod uistate;
 mod favourites;
 mod captures;
 mod shelf;
+mod shelfcli;
+mod summon;
 mod uistore;
 mod userfile;
 mod vulkan;
@@ -222,7 +224,7 @@ fn main() {
 
     // flea shelf <verb>: the drop shelf's own state, minted for a plugin that is another process.
     if args.get(1).map(String::as_str) == Some("shelf") {
-        exit(shelf::command(&args));
+        exit(shelfcli::command(&args));
     }
 
     let mut want_tui = false;
