@@ -295,8 +295,6 @@ ShellRoot {
                 total: view.currentPane.trash.opened ? view.currentPane.trash.total : view.currentPane.total
                 listingState: view.currentPane.listingState
                 pane: view.currentPane.trash.opened ? null : view.currentPane
-                // Trash open or not: its host is anchored to the same band, right of the rail.
-                axisPane: view.currentPane
                 selectionCount: view.currentPane.trash.opened ? view.currentPane.trash.selectedCount : view.currentPane.selectionCount()
                 fsName: view.currentPane.fsName
                 fsFree: view.currentPane.fsFree

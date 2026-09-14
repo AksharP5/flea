@@ -115,8 +115,6 @@ chrome_band_inset=2
 chrome_edge_sample_width=200
 # The rule is the house hairline, foreground at 12 percent, so a crumb glyph under it shows through: measured 2 of 255 on this box, against 23 for the surface an opaque fill would expose in its place.
 chrome_edge_max_spread=8
-# boxOf rounds each edge to a whole pixel, so a clamp recomputed from three of them carries about a pixel and a quarter of rounding before anything is wrong.
-centre_axis_tolerance=2
 # The Hyprland corner arc shows wallpaper through the window's own top-left pixels, so start past it.
 header_sample_x=16
 header_sample_width=600
@@ -2554,39 +2552,40 @@ case_columns() {
     kill_flea
 }
 
-# Directive 46: the strip speaks for the current pane, so its centre lane sits on that pane's own list slot axis. centreOffset is where the lane is less where it should be, in the strip's own pixels.
-centre_on_axis() {
-    local label="$1" state lane room slot off
+# Directive 48: there is no centre lane. The transient ends one padding before the text the disk facts
+# draw, and those facts never move: everything below is read off the rendered items, and the padding
+# comes from the theme's own token through ipc metrics rather than from the layout under test.
+transient_beside_disk() {
+    local label="$1" state lane disk padding gap disk_now
     state=$(ipc statusFooterState)
-    lane=$(jq -r '.lane' <<< "$state")
-    room=$(jq -r '.room' <<< "$state")
-    slot=$(jq -r '.slot' <<< "$state")
-    # Three fields each, because jq prints null for a field that is not there and an empty split reads as zero, which is the shape of a pass.
-    awk -v lane="$lane" -v room="$room" -v slot="$slot" 'BEGIN { exit (split(lane, l, " ") == 3 && split(room, r, " ") == 3 && split(slot, s, " ") == 3 && r[2] > 0 && s[2] > 0) ? 0 : 1 }' \
-        || fail "status: the $label strip reported no geometry: lane=[$lane] room=[$room] slot=[$slot]"
-    # Each is "x width centre" in window pixels, read off the rendered items. The awk is the clamp
-    # arithmetic recomputed here from those pixels, on purpose: a check that asks the code where the
-    # lane should be only ever agrees with itself, which is what the first version of this did.
-    # The right edge is pinned first and the left second, mirroring the Math.max outside the Math.min in ui/StatusBar.qml: a lane wider than the room goes to the room's left edge, not its right.
-    off=$(awk -v lane="$lane" -v room="$room" -v slot="$slot" 'BEGIN {
-        split(lane, l, " "); split(room, r, " "); split(slot, s, " ")
-        want = s[3]
-        if (want + l[2] / 2 > r[1] + r[2]) want = r[1] + r[2] - l[2] / 2
-        if (want - l[2] / 2 < r[1]) want = r[1] + l[2] / 2
-        d = want - l[3]
-        print (d < 0 ? -d : d)
-    }')
-    printf 'CENTRE %s lane=[%s] slot=[%s] off=%s\n' "$label" "$lane" "$slot" "$off"
-    awk -v o="$off" -v t="$centre_axis_tolerance" 'BEGIN { exit (o < t) ? 0 : 1 }' \
-        || fail "status: the $label centre lane [$lane] is $off px from the listing's axis [$slot] inside [$room]"
+    lane=$(jq -c '.lane' <<< "$state")
+    disk=$(jq -c '.disk' <<< "$state")
+    padding=$(ipc metrics | cut -d' ' -f3)
+    [[ "$padding" =~ ^[0-9]+$ ]] || fail "status: the $label strip reported no padding token, got [$padding]"
+    jq -e '(.lane.width | numbers) and (.disk.width | numbers) and .disk.width > 0' <<< "$state" >/dev/null \
+        || fail "status: the $label strip reported no geometry: lane=$lane disk=$disk"
+    # The facts are right aligned inside a fixed zone, so their text begins at its right edge less its own width.
+    gap=$(jq -r --argjson p "$padding" '(.disk.x + .disk.width - ([.disk.implicitWidth, .disk.width] | min))
+        - (.lane.x + .lane.width) - $p' <<< "$state")
+    printf 'TRANSIENT %s lane=%s disk=%s padding=%s gap=%s\n' "$label" "$lane" "$disk" "$padding" "$gap"
+    awk -v g="$gap" 'BEGIN { exit (g < 1 && g > -1) ? 0 : 1 }' \
+        || fail "status: the $label transient ends $gap px off one padding before the disk facts: lane=$lane disk=$disk"
+    # Rule 2: the facts keep their zone. status_disk_x is taken before any transient exists.
+    disk_now=$(jq -r '.disk.x' <<< "$state")
+    [[ -z "${status_disk_x:-}" || "$disk_now" == "$status_disk_x" ]] \
+        || fail "status: the $label transient moved the disk facts from $status_disk_x to $disk_now"
+    # And it stays inside the room it has, which is what makes it elide rather than push at any width.
+    jq -e --argjson p "$padding" '.lane.width <= (.disk.x + .disk.width - ([.disk.implicitWidth, .disk.width] | min)) - (.left.x + .left.width) - 2 * $p + 0.5' <<< "$state" >/dev/null \
+        || fail "status: the $label transient is wider than the room between the count and the disk facts: lane=$lane disk=$disk"
 }
-
 case_status() {
-    local dir="$fixture_root/status" failure
+    local dir="$fixture_root/status" failure status_disk_x
     sandbox_scratch "$dir"
     printf 'body\n' > "$dir/notes.txt"
     launch "$dir"
     wait_listing 1
+    status_disk_x=$(ipc statusFooterState | jq -r '.disk.x')
+    [[ "$status_disk_x" =~ ^[0-9.]+$ ]] || fail "status: the quiet strip reported no disk position, got [$status_disk_x]"
     sandbox_require "$dir"
     chmod u-w "$dir"
     click_row 0 right
@@ -2606,7 +2605,7 @@ case_status() {
     key -k Return >/dev/null
     settle
     [[ "$(ipc statusPrimary)" == "$failure" ]] || fail "status: search hid error"
-    centre_on_axis "single pane, error"
+    transient_beside_disk "single pane, error"
     [[ "$(ipc statusSecondary)" == *scanned* || "$(ipc statusSecondary)" == *result* ]] || fail "status: search lost secondary count"
     [[ "$(ipc statusColor)" == "$(ipc palette | cut -d' ' -f6)" ]] || fail "status: error lost its color"
     shot status-error-search
@@ -2617,18 +2616,28 @@ case_status() {
     settle
     [[ "$(ipc statusError)" == false ]] || fail "status: Escape did not acknowledge error"
     shot status-dismissed
-    centre_on_axis "single pane"
-    shot status-centre-axis
-    # The trash owns the pane without being one, and its host is anchored to the same band, so the
-    # lane keeps the listing's axis there too: this is the state that had been falling back to the window.
+    transient_beside_disk "single pane"
+    shot status-transient
+    # A selection widens the counts zone, which is what moves the leftover between the two zones and
+    # what the old centring followed. The strip's own midpoint does not move, so this state is the one
+    # that tells the two rules apart.
+    key -M ctrl -k a -m ctrl >/dev/null
+    settle
+    [[ "$(ipc statusFooterState | jq -r '.left.text')" == *selected* ]] \
+        || fail "status: select all did not widen the counts zone, it reads $(ipc statusFooterState | jq -r '.left.text')"
+    transient_beside_disk "single pane, selection"
+    shot status-transient-selection
+    key -k Escape >/dev/null
+    settle
+    # The trash takes the same midpoint, because the midpoint is the strip's own and not a listing's.
     click_rail_row "$(rail_row_of 'Trash')" left
     settle
     settle
     # Or the measurement below is the listing's again, taken under a name that says otherwise.
     [[ "$(ipc statusFooterState | jq -r '.path')" == "Trash" ]] \
         || fail "status: the Trash row did not open the trash, the strip still says $(ipc statusFooterState | jq -r '.path')"
-    centre_on_axis "trash"
-    shot status-centre-axis-trash
+    transient_beside_disk "trash"
+    shot status-transient-trash
     key -k Escape >/dev/null
     settle
     [[ "$(ipc statusFooterState | jq -r '.path')" == "$dir" ]] \
@@ -6695,14 +6704,14 @@ case_dual() {
     # A message first, or the lane is empty and its centre is a point rather than a measured box.
     key y >/dev/null
     settle
-    centre_on_axis "dual left"
-    shot dual-centre-axis-left
+    transient_beside_disk "dual left"
+    shot dual-transient-left
     key -k Tab >/dev/null
     settle
     key y >/dev/null
     settle
-    centre_on_axis "dual right"
-    shot dual-centre-axis-right
+    transient_beside_disk "dual right"
+    shot dual-transient-right
     key -k Tab >/dev/null
     settle
     key -k Tab >/dev/null

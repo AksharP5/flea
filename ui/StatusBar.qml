@@ -25,22 +25,14 @@ Item {
     property var errors: []
     readonly property string transient_: root.errors.length ? root.errors[0].text : root.notice
     readonly property string errorDetail: root.errors.length ? root.errors[0].detail : ""
-    // Directive 46: the strip spans the window and the listing does not, so a lane centred on the
-    // strip sits half a sidebar to the right of the rows it speaks for. This is the pane it speaks
-    // for, trash open or not, because the trash host is anchored to that same band.
-    property var axisPane: null
-    readonly property real listAxis: {
-        var p = root.axisPane
-        if (!p || !p.listSlot)
-            return strip.width / 2
-        var slot = p.listSlot
-        // The origin is a call, so this binding tracks the slot's geometry and the pane identity.
-        // What holds the rest is measurement, not this comment: tests/ui.sh centre_on_axis reads the
-        // drawn lane against the drawn slot after entering dual mode, where a stale origin would show.
-        return strip.mapFromItem(p, 0, 0).x + slot.x + slot.width / 2
-    }
-    // Where the rule puts the lane: the listing's axis, slid only as far as the standing zones force.
-    readonly property real centreWanted: Math.max(middleItem.x, Math.min(root.listAxis - centreItem.width / 2, middleItem.x + middleItem.width - centreItem.width))
+    // Directive 48, GM's final: no centre lane at all. The transient sits beside the disk facts, one
+    // padding before the text those facts actually draw, which is not the left edge of their fixed
+    // zone box: a short filesystem line would otherwise leave the pair drifting apart by the slack.
+    readonly property real diskTextWidth: Math.min(disk.implicitWidth, disk.width)
+    // From the count's right edge, one padding on, to one padding before that text. A transient elides
+    // inside this rather than growing into the facts, which is rule 2: they keep their zone and never move.
+    readonly property real transientRoom: Math.max(0, strip.width - 2 * Theme.spacing.rowPaddingX - root.diskTextWidth
+        - (counts.x + counts.width + Theme.spacing.rowPaddingX))
     readonly property var stripItem: background
     readonly property var transferCard: cardLoader.item
     readonly property var countsItem: counts
@@ -48,7 +40,6 @@ Item {
     readonly property var secondaryItem: secondary
     readonly property var diskItem: disk
     readonly property var centreItem: centre
-    readonly property var middleItem: middle
     readonly property bool transientIsError: root.errors.length > 0
     property var activities: []
     property var dragFeedbackOwner: null
@@ -243,25 +234,15 @@ Item {
         textFormat: Text.PlainText
     }
 
-    // Centre: what just happened, bounded by the two standing zones and centred in what is left.
-    Item {
-        id: middle
-        anchors.left: counts.right
-        anchors.right: disk.left
-        anchors.verticalCenter: strip.verticalCenter
-        height: strip.height
-    }
-
+    // Right, before the disk facts: what just happened, ending one padding short of their own text.
     Row {
         id: centre
-        // On the listing's axis, clamped into the lane the two standing zones leave: StatusBar rule 1
-        // is that the three never trade places, so the message slides just enough and elides as it did.
-        x: root.centreWanted
+        anchors.right: parent.right
+        anchors.rightMargin: 2 * Theme.spacing.rowPaddingX + root.diskTextWidth
         anchors.verticalCenter: strip.verticalCenter
-        // The hairline takes its own width out of the room the two texts share, or the pair clamps to
-        // a middle the bar is not in and the centre grows past its third: StatusBar rule 1 is that the
-        // three zones never trade places, and a running transfer was the one state that broke it.
-        readonly property real room: Math.max(0, middle.width - 2 * Theme.spacing.gap - bar.width)
+        // The hairline takes its own width out of the room the two texts share, or the pair grows into
+        // the facts beside it: rule 2 is that the disk keeps its zone whatever the transient says.
+        readonly property real room: Math.max(0, root.transientRoom - bar.width)
 
         Text {
             id: primary
