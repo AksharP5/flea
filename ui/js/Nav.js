@@ -224,7 +224,6 @@ function crumbs(path, home) {
     return out
 }
 
-// Chrome rule 2: a path too long for the strip reads as its root, one collapsed crumb and the segments nearest you, whole crumbs only, so the marker is a crumb of its own. budget is the strip's width in characters, monospace.
 // Below this a leaf gives up more to the ellipsis than the ellipsis saves, so it is drawn whole.
 var LEAF_FLOOR = 6
 
@@ -244,6 +243,7 @@ function elideLeaf(list, budget) {
     return list.slice(0, list.length - 1).concat([{ text: cut, path: end.path, last: true }])
 }
 
+// Chrome rule 2: a path too long for the strip reads as its root, one collapsed crumb and the segments nearest you, whole crumbs only, so the marker is a crumb of its own. budget is the strip's width in characters, monospace.
 function fitCrumbs(list, budget) {
     if (list.length < 4 || crumbChars(list) <= budget) {
         return elideLeaf(list, budget)

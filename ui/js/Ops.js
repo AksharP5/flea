@@ -23,7 +23,6 @@ function items(n) {
     return n + (n === 1 ? " item" : " items")
 }
 
-
 function started(id, moving, n) {
     return { id: id, moving: moving, n: n, index: 0, name: "", running: true,
              done: 0, bytes: 0, total: 0, moved: 0 }

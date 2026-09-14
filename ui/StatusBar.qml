@@ -63,7 +63,7 @@ Item {
     readonly property int messageMs: 4000
     readonly property real ruleOpacity: 0.12
     // The hint a result carries: the primary drops it and the secondary draws it, so no sentence on
-    // this strip ends in advice. ui/js/Ops.js owns both of them.
+    // this strip ends in advice. ui/js/Status.js owns the two of them.
     readonly property string noticeHint: root.transientIsError || root.stickyHere || root.searching
                                          ? "" : Status.hintOf(root.notice)
     readonly property bool hasUndo: root.noticeHint === Status.UNDO_HINT
