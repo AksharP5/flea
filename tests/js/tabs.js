@@ -260,4 +260,20 @@ function run(check) {
           pending.sorted.join(",") + "|" + pending.cursorIndex, "size:true|4")
     Tabs.applyPending(pending)
     check("the next rows reply restores the cursor", pending.cursorIndex, 9)
+
+    // Issue 91, nixfred: an order the fresh listing already has is spent on that same reply, cursor
+    // and all. Left pending it revived on the reply answering the user's next sort and reverted it.
+    var already = pane("/home/gm/a")
+    already.tabs = { items: [], index: 0, pendingCursor: 9, pendingSelected: null,
+                     pendingSortBy: "name", pendingSortDesc: false }
+    Tabs.applyPending(already)
+    check("an order the listing already has asks for no sort", already.sorted.length, 0)
+    check("and the cursor is restored on that same reply", already.cursorIndex, 9)
+    check("and the pending order is spent", already.tabs.pendingSortBy, "")
+    already.backend.sort("size", true)
+    already.sorted = []
+    already.tabs.pendingCursor = -1
+    Tabs.applyPending(already)
+    check("so a later user sort survives the reply that answers it",
+          already.sorted.length + "|" + already.backend.sortBy + ":" + already.backend.sortDesc, "0|size:true")
 }
