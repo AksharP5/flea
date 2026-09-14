@@ -254,14 +254,16 @@ function run(check) {
     check("the collapsed form elides its leaf too, once the marker leaves it no room",
           drawn(Nav.fitCrumbs(Nav.crumbs("/home/gm/one/two/three/a-very-long-leaf-name", "/home/gm"), 18)),
           "~/\u2026/three/a-ve\u2026ame")
-    check("a short leaf is drawn whole rather than spending its characters on an ellipsis",
+    check("a leaf that exactly fills what is left of the strip is drawn whole",
           drawn(Nav.fitCrumbs(Nav.crumbs("/home/gm/one/two/three/four", "/home/gm"), 14)), "~/\u2026/three/four")
     // A parent that leaves the leaf less than its floor is elided itself, rather than the leaf being
     // cut to nothing: rule 2 elides whole crumbs and the leaf is the one that may not be dropped.
     var wide = Nav.crumbs("/home/gm/one/two/a-parent-with-a-very-long-name-indeed/leaf-name", "/home/gm")
     check("a parent that leaves the leaf no room is elided with the middle",
           drawn(Nav.fitCrumbs(wide, 16)), "~/\u2026/leaf-name")
-    check("and a budget too small for even that draws the least it can rather than a cut",
+    // The floor itself: the leaf is shorter than it, so it is drawn whole rather than spending four
+    // of its characters on an ellipsis, and the strip draws the least it can rather than a cut.
+    check("and a budget too small for even that keeps the leaf whole rather than eliding it away",
           drawn(Nav.fitCrumbs(Nav.crumbs("/home/gm/one/two/three/four", "/home/gm"), 6)), "~/\u2026/four")
 
     // A keyboard rename reveals the row it renamed; one the pointer committed keeps the row the
