@@ -195,8 +195,8 @@ function leafOf(path) {
 // Issue 45: the chrome's path as the pieces a click can land on. text is what is drawn, including
 // the separator that follows it, so the pieces concatenate to exactly the one line they replace;
 // path is the directory the piece names, which is what ui/ChromeBar.qml hands to pathEntered. The
-// home test is ui/js/Search.js scopeRoot's and not Format.tilde's, because Format.tilde writes
-// /home/gmx as "~x" and a crumb built on that would carry a click to /home/gm, another directory.
+// home test is the whole-component one, home itself or home and a separator, which ui/js/Format.js
+// tilde and ui/js/Search.js scopeRoot now both make too: a sibling like /home/gmx is not inside home.
 function crumbs(path, home) {
     var text = String(path)
     var base = String(home)

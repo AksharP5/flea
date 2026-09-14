@@ -11,6 +11,11 @@ function run(check) {
           Format.tilde("/home/gm/Documents/claude", "/home/gm"), "~/Documents/claude")
     check("home itself is just the tilde",
           Format.tilde("/home/gm", "/home/gm"), "~")
+    // Issue 95, nixfred: a bare prefix test made a sibling directory wear home's name.
+    check("a sibling whose name starts with home's keeps its own",
+          Format.tilde("/home/gmx", "/home/gm"), "/home/gmx")
+    check("and so does everything under it",
+          Format.tilde("/home/gmx/Work", "/home/gm"), "/home/gmx/Work")
     check("a path outside home is left alone",
           Format.tilde("/usr/share/omarchy", "/home/gm"), "/usr/share/omarchy")
     check("an unknown home leaves every path alone",
