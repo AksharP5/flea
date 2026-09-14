@@ -199,6 +199,22 @@ function run(check) {
     Ops.trash(nomatch, 0)
     check("an operation on that cursor says so too", nomatch.said, "That row is hidden by the filter.")
     check("and no request went out", nomatch.trashed, undefined)
+    // The same stub, on a row the filter draws: without this the check above passes on a misspelled
+    // method name, which is the way a negative assertion stops meaning anything.
+    var acts = Fixture.pane("2026")
+    acts.cursorIndex = Filter.at(acts.shown, 0)
+    acts.backend = { trash: function (idx) { acts.trashed = idx.join(",") } }
+    acts.message = function (text, failed) { acts.said = text }
+    Ops.trash(acts, 0)
+    check("and the same call does go out for a row the filter draws", acts.trashed, String(acts.cursorIndex))
+    // No filter at all and no cursor: the sentence must not blame a filter that is not running.
+    var bare = Fixture.pane()
+    bare.cursorIndex = -1
+    bare.message = function (text, failed) { bare.said = text }
+    bare.backend = { trash: function () { bare.trashed = true } }
+    Ops.trash(bare, 0)
+    check("an empty listing is not the filter's doing", bare.said, "There is nothing to act on.")
+    check("and nothing went out for it either", bare.trashed, undefined)
     // Cleared first, and the opener writes its own field: the sentence below is the one Enter produced
     // rather than one the rename left, and a navigation cannot answer for it.
     nomatch.said = ""

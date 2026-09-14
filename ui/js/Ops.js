@@ -86,7 +86,7 @@ function copied(n, moving) {
 }
 
 function sayNoTarget(pane) {
-    pane.message("That row is hidden by the filter.", false)
+    pane.message(pane.shown === null ? "There is nothing to act on." : "That row is hidden by the filter.", false)
 }
 
 // The cursor is a target only while the filter draws it, the rule prune already applies to a selection.
