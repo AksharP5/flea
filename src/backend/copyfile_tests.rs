@@ -1,6 +1,6 @@
 use super::*;
 use crate::backend::testdir::TestDir;
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::sync::atomic::AtomicBool;
 
 fn quiet<'a>(flag: &'a AtomicBool, sink: &'a mut dyn FnMut(u64, u64)) -> Progress<'a> {
@@ -113,7 +113,10 @@ fn a_copy_takes_no_bit_the_umask_withholds() {
     let mut sink = |_: u64, _: u64| {};
     copy_any(&src, &d.join("open-copy.txt"), &mut quiet(&flag, &mut sink)).expect("copy");
     let mode = d.join("open-copy.txt").symlink_metadata().unwrap().permissions().mode() & 0o777;
-    assert_eq!(mode, keep_mode(0o666), "the source's bits, narrowed by this process's own umask");
+    let control = d.join("control.txt");
+    std::fs::OpenOptions::new().write(true).create_new(true).mode(0o666).open(&control).unwrap();
+    let fresh = control.symlink_metadata().unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode, fresh, "what a fresh create at the source's bits lands at under this umask");
     assert_eq!(mode & !0o666, 0, "and never a bit the source did not carry");
 }
 
@@ -155,10 +158,11 @@ fn a_parent_swapped_between_two_children_cannot_redirect_the_copy() {
         }
     };
     let clone = d.join("clone");
-    let _ = copy_any(&src, &clone, &mut quiet(&flag, &mut sink));
-    for name in ["a.txt", "b.txt"] {
-        let landed = std::fs::read_to_string(clone.join(name)).unwrap_or_default();
-        assert!(!landed.contains("PRIVATE"), "{name} was read through the replacement symlink: {landed:?}");
+    // The held descriptors outlive the rename, so the copy finishes from the directory that moved.
+    copy_any(&src, &clone, &mut quiet(&flag, &mut sink)).expect("the copy reads on through the swap");
+    for (name, public) in [("a.txt", "public a"), ("b.txt", "public b")] {
+        let landed = std::fs::read_to_string(clone.join(name)).expect("the child the selection named");
+        assert_eq!(landed, public, "{name} was read through the replacement symlink");
     }
 }
 
@@ -306,4 +310,49 @@ fn a_move_onto_an_existing_name_refuses_and_keeps_the_source() {
     assert_eq!(error.msg, "already exists");
     assert!(src.exists(), "the source is untouched when the move is refused");
     assert_eq!(std::fs::read_to_string(d.join("b.txt")).unwrap(), "destination");
+}
+
+// F7 of the C1 copy review: a 0500 source directory is copied to a 0500 destination, so every later
+// write into it, the cancel path's own removal included, has to put the owner's bits back first.
+#[test]
+fn a_source_directory_the_owner_cannot_write_is_copied_with_that_mode() {
+    let d = TestDir::new("copyreadonlydir");
+    let src = d.dir("tree");
+    let sub = d.dir("tree/sub");
+    std::fs::write(sub.join("f.txt"), "s").unwrap();
+    std::fs::set_permissions(&sub, std::fs::Permissions::from_mode(0o500)).unwrap();
+    let flag = AtomicBool::new(false);
+    let mut sink = |_: u64, _: u64| {};
+    let clone = d.join("clone");
+    copy_any(&src, &clone, &mut quiet(&flag, &mut sink)).expect("copy");
+    let mode = clone.join("sub").symlink_metadata().unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode, 0o500, "the source's own mode is carried, write bit and all");
+    assert_eq!(std::fs::read_to_string(clone.join("sub/f.txt")).unwrap(), "s");
+    std::fs::set_permissions(clone.join("sub"), std::fs::Permissions::from_mode(0o700)).unwrap();
+}
+
+#[test]
+fn a_cancel_removes_a_tree_holding_a_directory_the_copy_made_unwritable() {
+    let d = TestDir::new("copyreadonlycancel");
+    let src = d.dir("tree");
+    // Both children are 0500, so whichever read_dir yields first is complete and unwritable by the
+    // time the second one's bytes raise the cancel, whatever order the filesystem hands them back.
+    for name in ["one", "two"] {
+        let sub = d.dir(&format!("tree/{}", name));
+        std::fs::write(sub.join("f.bin"), "x".repeat(8)).unwrap();
+        std::fs::set_permissions(&sub, std::fs::Permissions::from_mode(0o500)).unwrap();
+    }
+    let clone = d.join("clone");
+    let flag = AtomicBool::new(false);
+    let mut chunks = 0;
+    let mut sink = |_: u64, _: u64| {
+        chunks += 1;
+        if chunks == 2 {
+            flag.store(true, Ordering::Relaxed);
+        }
+    };
+    d.assert_contains(&clone);
+    let e = copy_any(&src, &clone, &mut quiet(&flag, &mut sink)).expect_err("cancelled");
+    assert_eq!(e.msg, "cancelled");
+    assert!(!clone.exists(), "a half-copied tree goes, even when the copy left it unwritable");
 }

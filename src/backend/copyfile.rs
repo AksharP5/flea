@@ -41,6 +41,9 @@ fn here(path: &Path) -> At<'_> {
 }
 
 // Copies one regular file, creating the destination exclusively so an existing file is never destroyed.
+// The product reaches this through copy_any, so the only caller left of the path-taking form is the
+// test in src/backend/copynode.rs that hands it the fifo copy_any would have routed away.
+#[cfg(test)]
 pub fn copy_file(src: &Path, dst: &Path, total: u64, p: &mut Progress) -> Result<(), FleaError> {
     copy_file_at(here(src), here(dst), total, p)
 }
@@ -102,18 +105,21 @@ pub fn keep_mode(mode: u32) -> u32 {
     mode & 0o777 & !umask()
 }
 
-// Sample input, one line of /proc/self/status: "Umask:	0022". Reading it costs no dependency and no
-// libc call, and a kernel that does not publish it leaves the conservative default in place.
+// Sample input, one line of /proc/self/status: "Umask:	0022". Read once, because a copy asks per file
+// and per directory and this process cannot change its own umask while one runs.
 fn umask() -> u32 {
-    let status = std::fs::read_to_string("/proc/self/status").unwrap_or_default();
-    for line in status.lines() {
-        if let Some(value) = line.strip_prefix("Umask:") {
-            if let Ok(bits) = u32::from_str_radix(value.trim(), 8) {
-                return bits & 0o777;
+    static READ: std::sync::OnceLock<u32> = std::sync::OnceLock::new();
+    *READ.get_or_init(|| {
+        let status = std::fs::read_to_string("/proc/self/status").unwrap_or_default();
+        for line in status.lines() {
+            if let Some(value) = line.strip_prefix("Umask:") {
+                if let Ok(bits) = u32::from_str_radix(value.trim(), 8) {
+                    return bits & 0o777;
+                }
             }
         }
-    }
-    0o022
+        0o022
+    })
 }
 
 // A failure after the destination was created, and not a cancel: the partial stays, and is reported for the journal.
@@ -123,10 +129,6 @@ fn left_partial(p: &mut Progress, dst: &Path, e: FleaError) -> FleaError {
 }
 
 // A symlink is copied as a symlink and never followed, matching cp -a and every rival in the parity audit.
-pub fn copy_symlink(src: &Path, dst: &Path) -> Result<(), FleaError> {
-    copy_symlink_at(here(src), here(dst))
-}
-
 fn copy_symlink_at(src: At, dst: At) -> Result<(), FleaError> {
     let target = std::fs::read_link(src.at).map_err(|e| from_io("copy", &src.named.to_string_lossy(), &e))?;
     std::os::unix::fs::symlink(&target, dst.at).map_err(|e| from_io("copy", &dst.named.to_string_lossy(), &e))
@@ -160,8 +162,8 @@ fn copy_at(src: At, dst: At, p: &mut Progress) -> Result<(), FleaError> {
 fn copy_dir_at(src: At, dst: At, p: &mut Progress) -> Result<(), FleaError> {
     // Issue 110: both ends are held open and every child is reached through those descriptors, because
     // resolving a child from its path again lets a parent renamed aside mid-copy redirect the rest of
-    // the tree through a symlink. corner: one descriptor a level, so a tree deeper than this process's
-    // open-file limit fails where it used to recurse.
+    // the tree through a symlink. corner: three descriptors a level, the two ends and the read_dir on
+    // the source, so a deep enough tree meets this process's open-file limit where it used to recurse.
     let from = open_dir(src.at).map_err(|e| from_io("copy", &src.named.to_string_lossy(), &e))?;
     // Issue 109 again, one level up: a 0700 directory landed 0755 and its contents were readable by
     // anyone while the copy ran. It is created with nothing the source does not grant and with the
@@ -185,8 +187,13 @@ fn copy_dir_at(src: At, dst: At, p: &mut Progress) -> Result<(), FleaError> {
             // The tree goes with the cancel, the same rule copy_file already applies to a partial file: a
             // half-copied directory is not a result anyone asked for, and no journal step records one.
             // Gated on the flag rather than the message, because a nested copy_file returns its own cancel.
-            let _ = std::fs::remove_dir_all(dst.at);
-            p.partial = None;
+            // A directory copied from a 0500 source refuses its own removal, so the owner's bits go back
+            // on first, and a tree that still will not go is recorded rather than reported as gone.
+            reopen_for_removal(&into_held);
+            p.partial = match std::fs::remove_dir_all(dst.at) {
+                Ok(()) => None,
+                Err(_) => Some(dst.named.to_path_buf()),
+            };
         } else {
             // Any other failure leaves what was copied, since removing it would destroy data on a
             // transient error, and reports the whole tree as the one partial the journal records.
@@ -194,10 +201,11 @@ fn copy_dir_at(src: At, dst: At, p: &mut Progress) -> Result<(), FleaError> {
         }
         return r;
     }
-    // Last, so a directory this run still has to write into is not made unwritable halfway through.
+    // Last, so a directory this run still has to write into is not made unwritable halfway through, and
+    // best effort: a destination with no mode bits of its own refuses the call, and a copy that carried
+    // every byte is not a failure. What it keeps then is the source's own bits plus the owner's three.
     if let Some(mode) = keep {
-        std::fs::set_permissions(&into_held, std::fs::Permissions::from_mode(mode))
-            .map_err(|e| from_io("copy", &dst.named.to_string_lossy(), &e))?;
+        let _ = std::fs::set_permissions(&into_held, std::fs::Permissions::from_mode(mode));
     }
     r
 }
@@ -219,6 +227,21 @@ fn copy_dir_entries(src: At, dst: At, p: &mut Progress) -> Result<(), FleaError>
         )?;
     }
     Ok(())
+}
+
+// Owner bits back on every directory this copy made, because a mode it carried from a 0500 source is a
+// directory nothing can remove from, including the cancel path below.
+fn reopen_for_removal(root: &Path) {
+    let _ = std::fs::set_permissions(root, std::fs::Permissions::from_mode(0o700));
+    let entries = match std::fs::read_dir(root) {
+        Ok(entries) => entries,
+        Err(_) => return,
+    };
+    for entry in entries.flatten() {
+        if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+            reopen_for_removal(&entry.path());
+        }
+    }
 }
 
 // The path that reaches a held directory through this process's own descriptor table, so no rename of
