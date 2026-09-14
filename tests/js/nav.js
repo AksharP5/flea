@@ -261,9 +261,8 @@ function run(check) {
     var wide = Nav.crumbs("/home/gm/one/two/a-parent-with-a-very-long-name-indeed/leaf-name", "/home/gm")
     check("a parent that leaves the leaf no room is elided with the middle",
           drawn(Nav.fitCrumbs(wide, 16)), "~/\u2026/leaf-name")
-    // The floor itself: the leaf is shorter than it, so it is drawn whole rather than spending four
-    // of its characters on an ellipsis, and the strip draws the least it can rather than a cut.
-    check("and a budget too small for even that keeps the leaf whole rather than eliding it away",
+    // The floor's own case: a leaf shorter than it gives up more to the ellipsis than that saves.
+    check("and a budget too small for even that keeps the leaf whole rather than cutting it to an ellipsis",
           drawn(Nav.fitCrumbs(Nav.crumbs("/home/gm/one/two/three/four", "/home/gm"), 6)), "~/\u2026/four")
 
     // A keyboard rename reveals the row it renamed; one the pointer committed keeps the row the
