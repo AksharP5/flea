@@ -9,6 +9,7 @@ const CHUNK: usize = 256 * 1024;
 // rename(2) sets EXDEV when the two paths are on different filesystems, which is the one failure that means "copy instead".
 const EXDEV: i32 = 18;
 use crate::oflags::O_NOFOLLOW;
+use std::os::unix::fs::PermissionsExt;
 
 // What a copy reports as it runs; a directory has no total without a sweep, so it reports 0 and renders indeterminate.
 pub struct Progress<'a> {
@@ -67,10 +68,38 @@ pub fn copy_file(src: &Path, dst: &Path, total: u64, p: &mut Progress) -> Result
     if let Err(e) = w.flush() {
         return Err(left_partial(p, dst, from_io("copy", &dst.to_string_lossy(), &e)));
     }
+    // Issue 109: a create takes the umask, so a 0600 source landed 0644 and the copy published what the
+    // original kept private. The source's own bits are carried, narrowed by the umask and never widened.
+    if let Ok(meta) = r.metadata() {
+        let mode = keep_mode(meta.permissions().mode());
+        if let Err(e) = w.set_permissions(std::fs::Permissions::from_mode(mode)) {
+            return Err(left_partial(p, dst, from_io("copy", &dst.to_string_lossy(), &e)));
+        }
+    }
     if let Some(carried) = p.tree.as_mut() {
         *carried += done;
     }
     Ok(())
+}
+
+// The permission bits a copy carries: the source's own, minus anything the umask withholds, and never
+// setuid, setgid or the sticky bit, which belong to the file somebody installed and not to its copy.
+pub fn keep_mode(mode: u32) -> u32 {
+    mode & 0o777 & !umask()
+}
+
+// Sample input, one line of /proc/self/status: "Umask:	0022". Reading it costs no dependency and no
+// libc call, and a kernel that does not publish it leaves the conservative default in place.
+fn umask() -> u32 {
+    let status = std::fs::read_to_string("/proc/self/status").unwrap_or_default();
+    for line in status.lines() {
+        if let Some(value) = line.strip_prefix("Umask:") {
+            if let Ok(bits) = u32::from_str_radix(value.trim(), 8) {
+                return bits & 0o777;
+            }
+        }
+    }
+    0o022
 }
 
 // A failure after the destination was created, and not a cancel: the partial stays, and is reported for the journal.
@@ -107,6 +136,9 @@ pub fn copy_any(src: &Path, dst: &Path, p: &mut Progress) -> Result<(), FleaErro
 
 fn copy_dir(src: &Path, dst: &Path, p: &mut Progress) -> Result<(), FleaError> {
     std::fs::create_dir(dst).map_err(|e| from_io("copy", &dst.to_string_lossy(), &e))?;
+    // Issue 109 again, one level up: a 0700 directory landed 0755 and its contents were readable by
+    // anyone. The mode is set after the entries are copied, at the end of copy_dir below.
+    let keep = std::fs::symlink_metadata(src).ok().map(|m| keep_mode(m.permissions().mode()));
     // Set once at the top of the tree, so a directory inside it goes on counting rather than starting again.
     if p.tree.is_none() {
         p.tree = Some(0);
@@ -124,6 +156,12 @@ fn copy_dir(src: &Path, dst: &Path, p: &mut Progress) -> Result<(), FleaError> {
             // transient error, and reports the whole tree as the one partial the journal records.
             p.partial = Some(dst.to_path_buf());
         }
+        return r;
+    }
+    // Last, so a directory this run still has to write into is not made unwritable halfway through.
+    if let Some(mode) = keep {
+        std::fs::set_permissions(dst, std::fs::Permissions::from_mode(mode))
+            .map_err(|e| from_io("copy", &dst.to_string_lossy(), &e))?;
     }
     r
 }

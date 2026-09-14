@@ -1,5 +1,6 @@
 use super::*;
 use crate::backend::testdir::TestDir;
+use std::os::unix::fs::PermissionsExt;
 use std::sync::atomic::AtomicBool;
 
 fn quiet<'a>(flag: &'a AtomicBool, sink: &'a mut dyn FnMut(u64, u64)) -> Progress<'a> {
@@ -80,6 +81,40 @@ fn a_directory_copy_reports_one_running_count_for_the_whole_tree() {
     let counts: Vec<u64> = seen.iter().map(|(done, _)| *done).collect();
     assert!(counts.windows(2).all(|pair| pair[1] > pair[0]), "the count only ever rises, got {:?}", counts);
     assert_eq!(counts.last().copied(), Some(14), "and ends at the bytes the tree really holds");
+}
+
+// Issue 109 (gardnmi): under umask 022 a 0600 file landed 0644 and a 0700 directory 0755, so a copy
+// published what the original kept private. A copy is never more permissive than its source.
+#[test]
+fn a_copy_keeps_the_private_modes_of_what_it_copied() {
+    let d = TestDir::new("copymodes");
+    let src = d.dir("tree");
+    std::fs::write(src.join("secret.txt"), "s").unwrap();
+    std::fs::set_permissions(src.join("secret.txt"), std::fs::Permissions::from_mode(0o600)).unwrap();
+    std::fs::set_permissions(&src, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let flag = AtomicBool::new(false);
+    let mut sink = |_: u64, _: u64| {};
+    copy_any(&src, &d.join("clone"), &mut quiet(&flag, &mut sink)).expect("copy");
+    let dir_mode = d.join("clone").symlink_metadata().unwrap().permissions().mode() & 0o777;
+    let file_mode = d.join("clone/secret.txt").symlink_metadata().unwrap().permissions().mode() & 0o777;
+    assert_eq!(dir_mode, 0o700, "the directory's own mode is carried");
+    assert_eq!(file_mode, 0o600, "and so is the file's");
+    assert_eq!(file_mode & !0o600, 0, "a copy is never more permissive than its source");
+}
+
+// The umask narrows and never widens: a group and world writable source lands without those bits
+// wherever the process umask withholds them, which is what a fresh create has always done.
+#[test]
+fn a_copy_takes_no_bit_the_umask_withholds() {
+    let d = TestDir::new("copyumask");
+    let src = d.file("open.txt", "o");
+    std::fs::set_permissions(&src, std::fs::Permissions::from_mode(0o666)).unwrap();
+    let flag = AtomicBool::new(false);
+    let mut sink = |_: u64, _: u64| {};
+    copy_any(&src, &d.join("open-copy.txt"), &mut quiet(&flag, &mut sink)).expect("copy");
+    let mode = d.join("open-copy.txt").symlink_metadata().unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode, keep_mode(0o666), "the source's bits, narrowed by this process's own umask");
+    assert_eq!(mode & !0o666, 0, "and never a bit the source did not carry");
 }
 
 #[test]
