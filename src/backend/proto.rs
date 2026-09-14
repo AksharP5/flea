@@ -1,8 +1,8 @@
 use crate::error::FleaError;
+use crate::json::{escape, field_bool, field_str, field_str_array, field_usize, field_usize_array};
 
 // The one spelling of the token the reader thread also matches; see src/backend/events.rs.
 pub const TRANSFER_CANCEL: &str = "transfercancel";
-use crate::json::{escape, field_bool, field_str, field_str_array, field_usize, field_usize_array};
 
 pub enum Request {
     List { path: String, first: usize, hidden: bool },

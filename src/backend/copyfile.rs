@@ -41,8 +41,7 @@ fn here(path: &Path) -> At<'_> {
 }
 
 // Copies one regular file, creating the destination exclusively so an existing file is never destroyed.
-// The product reaches this through copy_any, so the only caller left of the path-taking form is the
-// test in src/backend/copynode.rs that hands it the fifo copy_any would have routed away.
+// Test only: copy_any routes the product's copies, and copynode's fifo test is the last caller by path.
 #[cfg(test)]
 pub fn copy_file(src: &Path, dst: &Path, total: u64, p: &mut Progress) -> Result<(), FleaError> {
     copy_file_at(here(src), here(dst), total, p)
@@ -187,12 +186,10 @@ fn copy_dir_at(src: At, dst: At, p: &mut Progress) -> Result<(), FleaError> {
             // The tree goes with the cancel, the same rule copy_file already applies to a partial file: a
             // half-copied directory is not a result anyone asked for, and no journal step records one.
             // Gated on the flag rather than the message, because a nested copy_file returns its own cancel.
-            // A directory copied from a 0500 source refuses its own removal, so the owner's bits go back
-            // on first, and a tree that still will not go is recorded rather than reported as gone.
-            reopen_for_removal(&into_held);
-            p.partial = match std::fs::remove_dir_all(dst.at) {
+            p.partial = match remove_tree(dst.at, &into_held) {
                 Ok(()) => None,
-                Err(_) => Some(dst.named.to_path_buf()),
+                // Still there, so the journal is told where it is rather than that nothing was left.
+                Err(()) => Some(dst.named.to_path_buf()),
             };
         } else {
             // Any other failure leaves what was copied, since removing it would destroy data on a
@@ -201,9 +198,9 @@ fn copy_dir_at(src: At, dst: At, p: &mut Progress) -> Result<(), FleaError> {
         }
         return r;
     }
-    // Last, so a directory this run still has to write into is not made unwritable halfway through, and
-    // best effort: a destination with no mode bits of its own refuses the call, and a copy that carried
-    // every byte is not a failure. What it keeps then is the source's own bits plus the owner's three.
+    // Last, so a directory this run still has to write into is not made unwritable halfway through.
+    // Best effort: a destination with no mode bits of its own refuses this, and a copy that carried
+    // every byte is not a failure. What it keeps then is the source's bits widened by the owner's three.
     if let Some(mode) = keep {
         let _ = std::fs::set_permissions(&into_held, std::fs::Permissions::from_mode(mode));
     }
@@ -229,9 +226,17 @@ fn copy_dir_entries(src: At, dst: At, p: &mut Progress) -> Result<(), FleaError>
     Ok(())
 }
 
-// Owner bits back on every directory this copy made, because a mode it carried from a 0500 source is a
-// directory nothing can remove from, including the cancel path below.
-fn reopen_for_removal(root: &Path) {
+// A copy of a 0500 source is itself 0500, and nothing can be removed from one. The owner's bits go
+// back on only after a removal has actually failed, so a tree without such a directory pays nothing.
+fn remove_tree(at: &Path, held: &Path) -> Result<(), ()> {
+    if std::fs::remove_dir_all(at).is_ok() {
+        return Ok(());
+    }
+    owner_can_write(held);
+    std::fs::remove_dir_all(at).map_err(|_| ())
+}
+
+fn owner_can_write(root: &Path) {
     let _ = std::fs::set_permissions(root, std::fs::Permissions::from_mode(0o700));
     let entries = match std::fs::read_dir(root) {
         Ok(entries) => entries,
@@ -239,7 +244,7 @@ fn reopen_for_removal(root: &Path) {
     };
     for entry in entries.flatten() {
         if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-            reopen_for_removal(&entry.path());
+            owner_can_write(&entry.path());
         }
     }
 }
