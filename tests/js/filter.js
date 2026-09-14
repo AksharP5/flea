@@ -193,6 +193,12 @@ function run(check) {
     nomatch.renamingIndex = -1
     Ops.startRename(nomatch)
     check("a rename opens no editor over a row with no delegate", nomatch.renamingIndex, -1)
+    check("and says so rather than ignoring the key", nomatch.said, "That row is hidden by the filter.")
+    nomatch.said = ""
+    nomatch.backend = { trash: function () { nomatch.trashed = true } }
+    Ops.trash(nomatch, 0)
+    check("an operation on that cursor says so too", nomatch.said, "That row is hidden by the filter.")
+    check("and no request went out", nomatch.trashed, undefined)
     // Cleared first, and the opener writes its own field: the sentence below is the one Enter produced
     // rather than one the rename left, and a navigation cannot answer for it.
     nomatch.said = ""

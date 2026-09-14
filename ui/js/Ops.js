@@ -85,6 +85,10 @@ function copied(n, moving) {
     return (moving ? "Cut " : "Copied ") + items(n) + ", p pastes."
 }
 
+function sayNoTarget(pane) {
+    pane.message("That row is hidden by the filter.", false)
+}
+
 // The cursor is a target only while the filter draws it, the rule prune already applies to a selection.
 function targetIndices(pane) {
     var picked = pane.selectedIndices()
@@ -130,18 +134,18 @@ function newFolder(pane) {
 // over its active column, see ui/ColumnPane.qml's own corner.
 function startRename(pane, menuId, index) {
     if (pane.renamePending) return
-    // The row the request named, not wherever the cursor has reached by the time the reply lands, and
-    // a hidden row has no delegate to draw the editor in: it would open on the filter clearing instead.
+    // The row the request named, not wherever the cursor has reached by the time the reply lands.
     var named = index !== undefined && index >= 0
     var at = named ? index : pane.cursorIndex
     var row = pane.rowFor(at)
-    if (row && (named || Filter.cursorShown(pane))) {
-        pane.setCursor(at)
-        pane.renameError = ""
-        pane.renameSource = pane.join(pane.path, row.n)
-        pane.renameMenuId = menuId || 0
-        pane.renamingIndex = at
-    }
+    if (!row) return
+    // A hidden row has no delegate to draw the editor in, so it would open on the filter clearing.
+    if (!named && !Filter.cursorShown(pane)) return sayNoTarget(pane)
+    pane.setCursor(at)
+    pane.renameError = ""
+    pane.renameSource = pane.join(pane.path, row.n)
+    pane.renameMenuId = menuId || 0
+    pane.renamingIndex = at
 }
 
 // Closing before acceptance loses the draft on a refused write; only success or Escape closes it.
@@ -166,9 +170,8 @@ function commitRename(pane, newName) {
 // Indices, not paths: trash acts on the listing that is up right now, so the backend resolves them.
 function trash(pane, menuId) {
     var idx = targetIndices(pane)
-    if (idx.length === 0) {
-        return
-    }
+    if (idx.length === 0)
+        return sayNoTarget(pane)
     pane.backend.trash(idx, menuId)
 }
 
@@ -181,9 +184,8 @@ function clip(pane, moving, paths) {
         return
     }
     var idx = targetIndices(pane)
-    if (idx.length === 0) {
-        return
-    }
+    if (idx.length === 0)
+        return sayNoTarget(pane)
     pane.clipPending = moving
     pane.backend.askPaths(idx)
 }
@@ -253,9 +255,8 @@ function sendTaildrop(pane, taildrop, peerId, path) {
 // before the request goes out, and the backend refuses a destination that appeared meanwhile anyway.
 function compress(pane, format) {
     var idx = targetIndices(pane)
-    if (idx.length === 0) {
-        return
-    }
+    if (idx.length === 0)
+        return sayNoTarget(pane)
     // The archive request names paths and has no rows form, so the indices are resolved first and the
     // request is built in compressResolved. Naming them here would drop every row outside the window.
     pane.pathsPending = { kind: "compress", format: format }
@@ -318,9 +319,9 @@ function convert(pane, source, format, strip, requestId) {
 // where "does this need to exist at all" answers no: no new wire, no new Rust.
 function moveToDropbox(pane, dropboxPath, menuId) {
     var idx = targetIndices(pane)
-    if (idx.length === 0 || dropboxPath.length === 0) {
-        return
-    }
+    if (dropboxPath.length === 0) return
+    if (idx.length === 0)
+        return sayNoTarget(pane)
     // Deliberately does not touch pane.clipboard: this is its own move, and clobbering what the
     // operator cut or copied earlier would lose it with no way back.
     // Rows, not paths: a selection reaches past the window the client holds, and targetPaths drops

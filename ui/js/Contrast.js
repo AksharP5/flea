@@ -79,8 +79,7 @@ function ensureRatio(fgHex, bgHex, minRatio) {
     return stepped(hexOf(best), bgHex, need, toward)
 }
 
-// Rounding the search's answer to 8 bits can land just under the ratio asked for, 2.99 for 3 on 20 of
-// the 22 stock palettes, so it walks on in whole steps toward the same extreme and stops there.
+// Rounding to 8 bits can land just under the ratio asked for, 2.99 for 3 on 20 of the 22 stock palettes.
 function stepped(hex, bgHex, need, toward) {
     var c = parse(hex)
     var step = toward[0] > 0.5 ? 1 / 255 : -1 / 255
@@ -88,9 +87,9 @@ function stepped(hex, bgHex, need, toward) {
     for (var i = 0; i < 255; i++) {
         if (ratioOf(c, bg) >= need)
             break
-        // Every channel is clamped on its own: one that has reached the extreme must not carry the
-        // other two out of range, and a step that moves no channel at all is the extreme itself.
+        // Each channel clamps on its own, so one already at the extreme cannot carry the others out.
         var next = [clamp(c[0] + step), clamp(c[1] + step), clamp(c[2] + step)]
+        // A step that moves no channel at all is the extreme itself, and there is nowhere further to go.
         if (hexOf(next) === hexOf(c))
             break
         c = next

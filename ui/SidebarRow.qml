@@ -100,8 +100,9 @@ Item {
         visible: !root.renaming
         anchors.left: mark.right
         anchors.leftMargin: Style.spacing.rowGap
-        // The numbers column bounds a label only on a row that draws a number; a row with no detail runs
-        // to the 12 px slot, whose own air is the gap. Measured: a phone needs 126 px and had 110.
+        // The numbers column bounds a label only on a row that draws a number; a row with no detail
+        // runs its label to the 12 px slot itself, whose own 3 px of air either side of the dot is
+        // the gap. Measured: a phone's label needs 126 px and the numbers column left it 110.
         anchors.right: root.detail.length > 0 ? detailText.left : dot.left
         anchors.rightMargin: root.detail.length > 0 ? Style.spacing.rowGap : 0
         anchors.verticalCenter: parent.verticalCenter
