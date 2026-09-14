@@ -23,10 +23,22 @@ Item {
         if (root.columns === 1)
             return [flat]
         var half = Math.ceil(flat.length / 2)
-        // A heading never ends a column: it would name a group whose rows all sit in the next one.
-        if (half > 0 && flat[half - 1].heading.length > 0)
-            half -= 1
-        return [flat.slice(0, half), flat.slice(half)]
+        // The fold prefers a group's own boundary, which costs at most one row of imbalance here.
+        for (var b = half - 1; b <= half + 1; b++)
+            if (b > 0 && b < flat.length && flat[b].heading.length > 0)
+                return [flat.slice(0, b), flat.slice(b)]
+        // It cannot always: a group longer than a column has to break inside itself, and then the
+        // continuation names it again, so no row on this sheet ever sits under no heading at all.
+        var owner = ""
+        for (var k = half - 1; k >= 0; k--)
+            if (flat[k].heading.length > 0) {
+                owner = flat[k].heading
+                break
+            }
+        var tail = flat.slice(half)
+        if (owner.length > 0)
+            tail = [{ heading: owner, row: null }].concat(tail)
+        return [flat.slice(0, half), tail]
     }
 
     // KeymapSheet rule 1: a binding gets a group in keys.toml and the sheet reads it, in the order
