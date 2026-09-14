@@ -16,7 +16,7 @@ cleanup_extract() {
 }
 trap cleanup_extract EXIT
 
-required_packages=(expect gvfs gvfs-smb gvfs-dnssd gvfs-nfs)
+required_packages=(expect gvfs gvfs-smb gvfs-dnssd gvfs-nfs gvfs-mtp gvfs-gphoto2)
 for package in "${required_packages[@]}"; do
     found=false
     for dependency in "${depends[@]}"; do
