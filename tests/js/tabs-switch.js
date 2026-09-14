@@ -65,6 +65,20 @@ function run(check) {
     check("a different order in the other tab drops the selection and both row-indexed caches",
           reordered.selectedIndices().length + "|" + (reordered.thumbState === "stale") + "|" + (reordered.dirSizeState === "stale"),
           "0|false|false")
+    check("and the order that tab recorded is the one asked for, with its first window",
+          reordered.sorted.join(",") + "|" + reordered.backend.sortBy + ":" + reordered.backend.sortDesc
+          + "|" + reordered.windows.join(","), "size:true|size:true|0:40")
+
+    // A half-typed search or a filter leaves the pane's own rows in place, so only "results" re-lists:
+    // widening that test would drop a selection and re-read a directory on every switch with one open.
+    var typing = Fixture.pane("/home/gm")
+    Tabs.openNew(typing)
+    typing.listed = []
+    typing.searchMode = "typing"
+    typing.selection.toggle(2)
+    Tabs.selectAt(typing, 0)
+    check("switching with the search field open but no results re-lists nothing",
+          typing.listed.join(","), "")
 
     // Issue 91, nixfred: an order the fresh listing already has is spent on that same reply, cursor
     // and all. Left pending it revived on the reply answering the user's next sort and reverted it.
