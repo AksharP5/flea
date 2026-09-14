@@ -137,8 +137,9 @@ pub fn run_transfer(
 const TOTAL_SWEEP_MS: u64 = 30_000;
 
 // The scan a batch's total comes from, on its own thread so the first byte never waits for it. It
-// publishes into the cell every progress sample reads, and a walk that hits the deadline or meets a
-// cancel publishes nothing: the card shows no total rather than a floor, and no time left with it.
+// publishes into the cell every progress sample reads, and publishes nothing at all when it hit its
+// deadline: the card shows no total rather than a floor, and no time left with it. The cancel is read
+// between trees and once more before publishing, and inside one tree the deadline is what bounds it.
 fn spawn_total(paths: &[String], cancel: &Arc<AtomicBool>, settled: &Arc<AtomicU64>) {
     let paths: Vec<String> = paths.to_vec();
     let cancel = Arc::clone(cancel);
@@ -164,6 +165,9 @@ fn spawn_total(paths: &[String], cancel: &Arc<AtomicBool>, settled: &Arc<AtomicU
                 return;
             }
             bytes += seen.bytes;
+        }
+        if cancel.load(Ordering::Relaxed) {
+            return;
         }
         settled.store(bytes, Ordering::Relaxed);
     });

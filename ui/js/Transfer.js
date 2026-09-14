@@ -8,8 +8,7 @@
 // The byte sample for the item in flight. done is the count already finished, so it stays where it
 // was: a sample fills the item in, it does not complete it.
 function sampled(t, index, name, bytes, total, scanned) {
-    // scanned is the whole batch's own total and only arrives once the sweep beside the copy settles,
-    // so a sample that carries none must not unset the one an earlier sample already brought.
+    // A sample carrying none must not unset the total an earlier one already brought.
     var settled = scanned > 0 ? scanned : (t.scanned || 0)
     return Object.assign({}, t, {index: index, name: name, done: index, bytes: bytes, total: total, scanned: settled})
 }
@@ -36,9 +35,9 @@ function byteParts(t, rate) {
     if (moved <= 0) {
         return []
     }
-    // Directive 45: the item's own total when the transfer is one file, the batch's sweep otherwise,
-    // and a batch has none until that sweep settles, which is the counting state the board describes.
-    var total = t.n === 1 ? t.total : (t.scanned || 0)
+    // t.total is the item in flight's, so it is the transfer's only when the transfer is that one
+    // item. One directory is n === 1 with no total of its own, and the sweep is what answers for it.
+    var total = t.n === 1 && t.total > 0 ? t.total : (t.scanned || 0)
     var parts = [figure(Format.size(moved))]
     if (total > 0) {
         parts.push(word(" of "), figure(Format.size(total)))
@@ -48,7 +47,8 @@ function byteParts(t, rate) {
     parts.push(word(" · "), figure(Format.size(rate) + "/s"))
     // Rule 3b: an estimate needs both a total and a rate, and a stall has neither to divide by.
     if (total > 0 && rate > 0) {
-        parts.push(word(" · "), figure(Format.duration((total - moved) / rate * 1000)), word(" left"))
+        // Clamped: the sweep and the copy count separately, so a file appended mid-copy can pass it.
+        parts.push(word(" · "), figure(Format.duration(Math.max(0, total - moved) / rate * 1000)), word(" left"))
     }
     return parts
 }

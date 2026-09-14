@@ -53,6 +53,18 @@ function run(check) {
     check("a sample with no total of its own keeps the one the scan settled on", kept.scanned, 8400 * megabyte)
     check("and a sample that brings one records it", Transfer.sampled(many, 4, "x", 1, 0, 77).scanned, 77)
 
+    // The case GM actually runs: one folder to the NAS. It is n === 1 with no total of its own, so
+    // asking about the count rather than about the total would have thrown its sweep away.
+    var oneTree = { id: 5, n: 1, moving: false, index: 0, name: "captures", done: 0,
+                    bytes: 300 * megabyte, total: 0, moved: 0, scanned: 8400 * megabyte }
+    check("one directory names the total its own scan found",
+          drawn(Transfer.byteParts(oneTree, megabyte)),
+          "300.0 MB| of |8.4 GB| · |1.0 MB/s| · |2:15:00| left")
+    // The sweep and the copy count separately, so a file appended mid-copy can pass the total.
+    check("a copy that outran its own total offers no negative estimate",
+          drawn(Transfer.byteParts(Object.assign({}, oneTree, { bytes: 9000 * megabyte }), megabyte)),
+          "9.0 GB| of |8.4 GB| · |1.0 MB/s| · |0:00| left")
+
     // Rule 4: the line is absent, not blank, until the first sample lands.
     check("no byte sample draws no line at all",
           Transfer.byteParts({ id: 3, n: 1, moving: false, index: 0, name: "captures", done: 0,
