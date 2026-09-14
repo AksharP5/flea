@@ -205,8 +205,9 @@ for colours in "$themes_dir"/*/colors.toml "$synthetic"; do
             || fail "$theme: the caption draws $muted, not this theme's own $want_muted"
     fi
     # And with no muted key at all the window darkens the foreground rather than drawing it, which is
-    # the fallback tests/js/themes.js mirrors and the reason the no-muted palette above is in this list.
-    if [ -z "$want_muted" ]; then
+    # the fallback tests/js/themes.js mirrors. The value is this palette's own, so the rule is its own:
+    # an installed theme that ships no muted would darken a different foreground and is not this case.
+    if [ "$theme" = no-muted ]; then
         [ "$muted" = "$no_muted_caption" ] \
             || fail "$theme: with no muted of its own the caption is $muted, not the darkened $no_muted_caption"
     fi
