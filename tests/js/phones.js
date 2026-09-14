@@ -52,7 +52,7 @@ function run(check) {
     check("a mounted volume that can no longer be mounted is still a row", live0.length, 1)
     check("and it reads as mounted, so the rail offers its Unmount",
           live0.length === 1 ? live0[0].mounted + "|" + Mounts.railMenu(live0[0]).map(function (r) { return r.action }).join(",")
-                             : "no row", "true|unmountPhone")
+                             : "no row", "true|openPhone,unmountPhone")
     check("the indented Mount() flips it to mounted", mounted[0].mounted, true)
     check("the shadow mount is not a network row either", Mounts.parseMounts(live).length, 0)
 
@@ -105,18 +105,23 @@ function run(check) {
     check("the second's mount is its own", pair[1].mounted + "|" + pair[1].uri, "true|mtp://Google_Pixel_7_1A2B/")
 
     // The rail's shared plumbing: menu, key and release, the same contract volumes and shares hold.
-    check("a mounted phone offers Unmount and only Unmount",
-          Mounts.railMenu(mounted[0]).map(function (r) { return r.action }).join(","), "unmountPhone")
-    check("an unmounted phone offers nothing", Mounts.railMenu(rows[0]).length, 0)
+    check("a mounted phone offers its open and its release, never an eject",
+          Mounts.railMenu(mounted[0]).map(function (r) { return r.action }).join(","), "openPhone,unmountPhone")
+    check("an unmounted phone offers the mount its own row does",
+          Mounts.railMenu(rows[0]).map(function (r) { return r.action }).join(","), "mountPhone")
     check("a phone's key is its uri", Mounts.railKey(mounted[0]), "mtp://SAMSUNG_SAMSUNG_Android_RQGL705T0NR/")
     check("rowMenu adds no share rows to a phone",
-          Mounts.rowMenu(mounted[0]).map(function (r) { return r.action }).join(","), "unmountPhone")
+          Mounts.rowMenu(mounted[0]).map(function (r) { return r.action }).join(","), "openPhone,unmountPhone")
 
     // Release resolves through the sidebar, which owns the phone Service; a stale key does nothing.
     var releasedKey = ""
-    var sidebar = { deviceEntries: [mounted[0]], releasePhone: function (key) { releasedKey = key } }
+    var openedKey = ""
+    var sidebar = { deviceEntries: [mounted[0]], releasePhone: function (key) { releasedKey = key },
+                    openPhone: function (key) { openedKey = key } }
     Mounts.release("unmountPhone", "mtp://SAMSUNG_SAMSUNG_Android_RQGL705T0NR/", null, null, sidebar)
     check("unmountPhone hands the key to the sidebar", releasedKey, "mtp://SAMSUNG_SAMSUNG_Android_RQGL705T0NR/")
+    Mounts.release("mountPhone", "mtp://Google_Pixel_7_1A2B/", null, null, sidebar)
+    check("mountPhone hands its own key to the same row's activation", openedKey, "mtp://Google_Pixel_7_1A2B/")
 
     // An unchanged poll must not assign, and a mount-state flip must: the two sides of sameEntries.
     check("an unchanged poll compares equal", Mounts.sameEntries(rows, Phones.parsePhones(idle)), true)

@@ -202,8 +202,7 @@ Item {
         root.openRailMenu(root.cursorIndex, row.mapToItem(null, Style.spacing.rowPaddingX, row.height))
     }
 
-    // A chosen menu row, arriving with the row's key rather than its position; which row that
-    // names is Mounts.release', so tests/js/network.js drives the resolution with no rail.
+    // A chosen row arrives with its key rather than its position, and Mounts.release names the row.
     function releaseChosen(action, key) {
         if (key === "trash") return
         if (action === "removeFavourite" && key.indexOf("favourite:") === 0) {
@@ -221,8 +220,7 @@ Item {
         function onRailChosen(action, key) { root.releaseChosen(action, key) }
     }
 
-    // A favourite's path is already real and opens directly; a network share or a removable volume
-    // may need mounting first, which is its own Service's job.
+    // A favourite's path is already real and opens directly; a share or a volume may need its Service.
     function openFavourite(index) {
         var entry = root.userFavouriteEntries[index]
         if (!entry) return
@@ -252,6 +250,11 @@ Item {
 
     // Mounts.release hands the phone action back here, because the phone Service is this rail's own child.
     function releasePhone(key) { phones.release(key) }
+    // Its Mount and Open rows are the row's own activation, resolved by key because the poll renumbers.
+    function openPhone(key) {
+        var e = phones.entries[Mounts.rowByKey(phones.entries, key)]
+        if (e) mounts.openShare(e.uri, e.mounted, e.label)
+    }
 
     // Network only: neither a favourite nor a device has a bookmark line of its own shape for
     // Places.relabel to find, and a volume's label lives on the filesystem, not in a rail file.
@@ -311,8 +314,7 @@ Item {
             scroller.contentY = p.y + row.height - scroller.height
     }
 
-    // The rail's rows live in a viewport, not the bare Column they were: a rail taller than its
-    // own height could not show its bottom rows by any means, wheel included.
+    // The rows live in a viewport: a rail taller than its own height could show no bottom row at all.
     Timer {
         id: availability
         interval: 120
@@ -477,8 +479,7 @@ Item {
                 height: Style.spacing.panelGap
             }
 
-            // Self-hides with its list below on a box lsblk reports no disk for; there is no header
-            // over an empty group. Unlike NETWORK it carries no add mark: nothing here is bookmarked.
+            // Self-hides with its list where lsblk reports no disk, and carries no add mark: nothing here is bookmarked.
             Text {
                 id: devHeading
                 visible: root.deviceEntries.length > 0

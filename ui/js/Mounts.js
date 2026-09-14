@@ -137,14 +137,19 @@ function sameEntry(x, y) {
 // An internal drive is a volume row as well now, and it is the removable flag that keeps Eject off
 // it: a fixed disk is somewhere to browse, not something to pull out.
 function railMenu(entry) {
-    if (!entry || !entry.mounted)
+    if (!entry)
+        return []
+    // RailAdditions rule 2, which PhoneMark's own menu specimen draws: an unmounted volume offers the
+    // mount the row's own activation does, and a mounted one offers the open beside its release.
+    if (entry.group === "device" && entry.kind === "phone")
+        return entry.mounted
+            ? [{ label: "Open", action: "openPhone", glyph: "folder" },
+               { label: "Unmount", action: "unmountPhone", glyph: "eject" }]
+            : [{ label: "Mount", action: "mountPhone", glyph: "drive" }]
+    if (!entry.mounted)
         return []
     if (entry.group === "device" && entry.kind === "volume" && entry.removable === true)
         return [{ label: "Eject", action: "eject", glyph: "eject" }]
-    // A phone unmounts rather than ejects: gvfs answers can_eject=0 for the MTP monitor, and the
-    // action name is its own so release below can never resolve it against the share list.
-    if (entry.group === "device" && entry.kind === "phone")
-        return [{ label: "Unmount", action: "unmountPhone", glyph: "eject" }]
     if (entry.group === "network" && entry.kind === "share")
         return [{ label: "Unmount", action: "unmount", glyph: "eject" }]
     return []
@@ -231,9 +236,15 @@ function release(action, key, devices, mounts, sidebar) {
             devices.eject(volume)
         return
     }
-    // The phone Service is the sidebar's own child, so the sidebar resolves the key against it.
+    // The phone Service is the sidebar's own child, so the sidebar resolves the key against it; a
+    // phone unmounts rather than ejects, because gvfs answers can_eject=0 for the MTP monitor.
     if (action === "unmountPhone") {
         sidebar.releasePhone(key)
+        return
+    }
+    // Mount and Open are the row's own activation, which mounts when it has to and opens either way.
+    if (action === "mountPhone" || action === "openPhone") {
+        sidebar.openPhone(key)
         return
     }
     var share = rowByKey(sidebar.networkEntries, key)

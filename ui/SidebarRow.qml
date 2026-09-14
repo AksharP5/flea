@@ -96,11 +96,15 @@ Item {
     }
 
     Text {
+        id: label
         visible: !root.renaming
         anchors.left: mark.right
         anchors.leftMargin: Style.spacing.rowGap
-        anchors.right: detailText.left
-        anchors.rightMargin: root.detail.length > 0 || dot.width > 0 ? Style.spacing.rowGap : 0
+        // The numbers column bounds a label only on a row that draws a number; a row with no detail
+        // runs its label to the 12 px slot itself, whose own 3 px of air either side of the dot is
+        // the gap. Measured: a phone's label needs 126 px and the numbers column left it 110.
+        anchors.right: root.detail.length > 0 ? detailText.left : dot.left
+        anchors.rightMargin: root.detail.length > 0 ? Style.spacing.rowGap : 0
         anchors.verticalCenter: parent.verticalCenter
         text: root.modelData.label
         color: root.modelData.error ? Theme.color.error : Theme.color.foreground
@@ -121,8 +125,8 @@ Item {
         visible: root.renaming
         anchors.left: mark.right
         anchors.leftMargin: Style.spacing.rowGap
-        anchors.right: detailText.left
-        anchors.rightMargin: root.detail.length > 0 || dot.width > 0 ? Style.spacing.rowGap : 0
+        anchors.right: root.detail.length > 0 ? detailText.left : dot.left
+        anchors.rightMargin: root.detail.length > 0 ? Style.spacing.rowGap : 0
         anchors.verticalCenter: parent.verticalCenter
         height: Theme.railRowHeight - 2 * Theme.spacing.rowPaddingY
         name: root.modelData.label
@@ -136,6 +140,7 @@ Item {
     // The rail's real trailing indicator slot, so ui/Ipc.qml measures this dot instead of recomputing it.
     readonly property Item indicatorSlot: dot
     readonly property Item detailItem: detailText
+    readonly property Item labelItem: label
     readonly property bool indicatorVisible: root.showsDot
 
     Text {

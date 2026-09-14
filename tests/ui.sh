@@ -5942,11 +5942,13 @@ EOS
         and all(.[]; .detail == "" and .indicatorVisible)' >/dev/null \
         || fail "phones: a phone row drew a size or lost its indicator, got $(ipc railDetails | jq -c '[.rows[]|select(.kind=="phone")|{detail,indicatorVisible}]')"
 
-    # An unmounted volume offers no release, so it opens no menu at all, exactly as a volume does.
+    # An unmounted volume offers the mount its own row does, per RailAdditions rule 2.
     click_rail_row "$(rail_row_of 'SAMSUNG Android')" right
     settle
-    [[ "$(ipc contextMenuVisible)" == "false" ]] \
-        || fail "phones: an unmounted phone opened the menu $(ipc contextMenuEntries)"
+    [[ "$(ipc contextMenuVisible)" == "true" && "$(ipc contextMenuEntries)" == "Mount" ]] \
+        || fail "phones: an unmounted phone's menu is $(ipc contextMenuEntries), not Mount alone"
+    key -k Escape >/dev/null
+    settle
 
     # Activating it mounts, resolves the folder and opens it, the way a share does.
     click_rail_row "$(rail_row_of 'SAMSUNG Android')" left
@@ -5998,8 +6000,9 @@ EOS
     # Unmount is the release a phone offers, never Eject, and the key that carries it is its uri.
     click_rail_row "$(rail_row_of 'SAMSUNG Android')" right
     settle
-    [[ "$(ipc contextMenuEntries)" == "Unmount" ]] \
-        || fail "phones: the mounted phone's menu is $(ipc contextMenuEntries), not Unmount alone"
+    [[ "$(ipc contextMenuEntries)" == "Open|Unmount" ]] \
+        || fail "phones: the mounted phone's menu is $(ipc contextMenuEntries), not Open then Unmount"
+    menu_seek Unmount
     key -k Return >/dev/null
     for _attempt in $(seq 1 200); do
         [[ -s "$unmount_log" ]] && break
