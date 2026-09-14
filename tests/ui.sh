@@ -2561,7 +2561,9 @@ centre_on_axis() {
     lane=$(jq -r '.lane' <<< "$state")
     room=$(jq -r '.room' <<< "$state")
     slot=$(jq -r '.slot' <<< "$state")
-    [[ -n "$lane" && -n "$room" && -n "$slot" ]] || fail "status: the $label strip reported no geometry: lane=[$lane] room=[$room] slot=[$slot]"
+    # Three fields each, because jq prints null for a field that is not there and an empty split reads as zero, which is the shape of a pass.
+    awk -v lane="$lane" -v room="$room" -v slot="$slot" 'BEGIN { exit (split(lane, l, " ") == 3 && split(room, r, " ") == 3 && split(slot, s, " ") == 3) ? 0 : 1 }' \
+        || fail "status: the $label strip reported no geometry: lane=[$lane] room=[$room] slot=[$slot]"
     # Each is "x width centre" in window pixels, read off the rendered items. The awk is the clamp
     # arithmetic recomputed here from those pixels, on purpose: a check that asks the code where the
     # lane should be only ever agrees with itself, which is what the first version of this did.
@@ -2629,6 +2631,8 @@ case_status() {
     shot status-centre-axis-trash
     key -k Escape >/dev/null
     settle
+    [[ "$(ipc statusFooterState | jq -r '.path')" != "Trash" ]] \
+        || fail "status: Escape left the trash open, so anything measured after this is in the wrong state"
     kill_flea
 }
 

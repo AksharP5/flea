@@ -34,9 +34,9 @@ Item {
         if (!p || !p.listSlot)
             return strip.width / 2
         var slot = p.listSlot
-        // The origin is a call, so this binding tracks the slot's geometry and the pane identity, and
-        // every way a pane moves here changes one of them. tests/ui.sh centre_on_axis is what holds
-        // that: it measures the drawn lane after entering dual mode, where a stale origin would show.
+        // The origin is a call, so this binding tracks the slot's geometry and the pane identity.
+        // What holds the rest is measurement, not this comment: tests/ui.sh centre_on_axis reads the
+        // drawn lane against the drawn slot after entering dual mode, where a stale origin would show.
         return strip.mapFromItem(p, 0, 0).x + slot.x + slot.width / 2
     }
     // Where the rule puts the lane: the listing's axis, slid only as far as the standing zones force.
