@@ -22,11 +22,12 @@ var SELECTED_FILL = 0.18    // Style.selectedFillAlpha, the OEM default a theme'
 var DISABLED = 0.55         // Theme.disabledOpacity.
 
 // gvfs-free file read: qml6 allows it only with QML_XHR_ALLOW_FILE_READ, which tests/js.sh sets.
+// The status rides along, because an empty body is otherwise a theme this suite quietly skips.
 function read(url) {
     var request = new XMLHttpRequest()
     request.open("GET", url, false)
     request.send()
-    return String(request.responseText || "")
+    return { body: String(request.responseText || ""), status: request.status }
 }
 
 // Commons/Color.qml's own mapping from colors.toml, key for key, plus the roles ui/Theme.qml derives
@@ -84,8 +85,9 @@ function atLeast(check, theme, rule, got, floor) {
 function mirrorFallbacks(check) {
     var ground = "background = \"#1e1e2e\"\nforeground = \"#cdd6f4\"\naccent = \"#89b4fa\"\nred = \"#f38ba8\"\n"
     var none = roles(ground)
-    check("a palette with no muted takes a darkened foreground, not the foreground itself",
-          none.muted !== none.foreground, true)
+    // The value tests/themes.sh measured off the running window for this exact palette, which is what
+    // binds this mirror's darker() to ui/Theme.qml's own Qt.darker(c, 1.4).
+    check("a palette with no muted takes the darkened foreground the window renders", none.muted, "#9299ae")
     atLeast(check, "a palette with no muted", "its derived caption still clears the floor",
             Contrast.ratio(none.muted, none.background), CAPTION_MIN)
     var eight = roles(ground + "color8 = \"#585b70\"\n")
@@ -100,8 +102,10 @@ function run(check) {
     check("the table still names the themes this box ships", THEMES.length >= 22, true)
     for (var i = 0; i < THEMES.length; i++) {
         var name = THEMES[i]
-        var body = read(THEME_DIR + name + "/colors.toml")
-        check(name + ": colors.toml parses to a palette", Palette.isPalette(Palette.parse(body)), true)
+        var got = read(THEME_DIR + name + "/colors.toml")
+        var body = got.body
+        check(name + ": colors.toml reads and parses to a palette, status " + got.status,
+              Palette.isPalette(Palette.parse(body)), true)
         // A theme that did not read is one red check, not a throw that leaves the rest unmeasured.
         if (body.length === 0)
             continue

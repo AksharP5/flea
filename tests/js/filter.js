@@ -186,11 +186,20 @@ function run(check) {
     nomatch.join = function (base, name) { return base + "/" + name }
     nomatch.path = "/fixture"
     nomatch.message = function (text, failed) { nomatch.said = text }
+    // The two a rename reaches once its guard lets it through, so the mutation reddens as a check
+    // rather than throwing on a stub that is not there.
+    nomatch.setCursor = function (i) { nomatch.cursorIndex = i }
+    nomatch.renameError = ""
     nomatch.renamingIndex = -1
     Ops.startRename(nomatch)
     check("a rename opens no editor over a row with no delegate", nomatch.renamingIndex, -1)
-    Nav.openCursor(nomatch, { open: function () { nomatch.said = "opened" } })
+    // Cleared first, and the opener writes its own field: the sentence below is the one Enter produced
+    // rather than one the rename left, and a navigation cannot answer for it.
+    nomatch.said = ""
+    nomatch.opened = ""
+    Nav.openCursor(nomatch, { open: function (path) { nomatch.opened = path } })
     check("and Enter says so rather than navigating away", nomatch.said, "That row is hidden by the filter.")
+    check("and nothing was opened", nomatch.opened, "")
 
     var visible = Fixture.pane("2026")
     visible.cursorIndex = Filter.at(visible.shown, 0)

@@ -62,6 +62,11 @@ printf 'one\n' > "$sandbox/files/alpha.txt"
 printf 'two\n' > "$sandbox/files/beta.txt"
 printf 'three\n' > "$sandbox/files/gamma-needle.txt"
 printf '{"view":"list","places":{"driveSize":true,"trashCount":true}}\n' > "$sandbox/state/flea/ui.json"
+# A palette that sets no muted of its own, which no installed theme does and a third-party theme can:
+# it is the one way to drive ui/Theme.qml's darkened-foreground fallback through the real window.
+synthetic="$sandbox/no-muted/colors.toml"
+mkdir -p "$(dirname "$synthetic")"
+printf 'background = "#1e1e2e"\nforeground = "#cdd6f4"\naccent = "#89b4fa"\nred = "#f38ba8"\n' > "$synthetic"
 
 ipc() { omarchy-drive ipc -p "$flea_ui" flea "$@"; }
 key() { omarchy-drive key "$@" >/dev/null; }
@@ -89,6 +94,16 @@ at_least() {
     awk -v g="$got" -v f="$floor" 'BEGIN { exit !(g >= f) }' \
         || fail "$theme: $rule is $got, under $floor"
 }
+# Does this ratio clear that floor? A ratio that came back empty is a measurement this sweep did not
+# take, so it reddens here rather than skipping the rule it gates in silence.
+clears() {
+    local theme="$1" got="$2" floor="$3"
+    if [ -z "$got" ]; then
+        fail "$theme: no ratio came back for a rule that needs one"
+        return 1
+    fi
+    awk -v g="$got" -v f="$floor" 'BEGIN { exit !(g >= f) }'
+}
 # The first of these keys colors.toml sets, as "#rrggbb". Sample input, one line of the file:
 #   background = "#1e1e2e"   # the canvas
 colour_for() {
@@ -96,7 +111,8 @@ colour_for() {
     shift
     for key in "$@"; do
         line=$(grep -m1 -E "^$key[[:space:]]*=" "$file")
-        hex=$(printf '%s\n' "$line" | grep -o '#[0-9A-Fa-f]\{6\}' | tr 'A-F' 'a-f')
+        # The first hex on the line and no other: a trailing comment on that line carries its own.
+        hex=$(printf '%s\n' "$line" | grep -o '#[0-9A-Fa-f]\{6\}' | head -1 | tr 'A-F' 'a-f')
         if [ -n "$hex" ]; then
             printf '%s' "$hex"
             return
@@ -123,7 +139,7 @@ print("near" if all(abs(a - b) <= steps for a, b in zip(got, want)) else "off")
     [ "$near" = "near" ] || fail "$theme: $rule draws #$got, not $want"
 }
 
-for colours in "$themes_dir"/*/colors.toml; do
+for colours in "$themes_dir"/*/colors.toml "$synthetic"; do
     theme=$(basename "$(dirname "$colours")")
     # One theme at a time while a rule is being written; the battery runs them all.
     [ -n "${THEMES_ONLY:-}" ] && [ "$theme" != "${THEMES_ONLY}" ] && continue
@@ -175,15 +191,21 @@ for colours in "$themes_dir"/*/colors.toml; do
     at_least "$theme" "the primary frame on the card's surface" "$(ratio "$accentframe" "$surface")" "$mark_min"
     # The role is the accent lifted onto the card, so a theme whose accent already clears the floor
     # reports that accent itself, exactly: both come from one palette read, with no shot between them.
-    if awk -v r="$(ratio "$accent" "$surface")" -v f="$mark_min" 'BEGIN { exit !(r >= f) }'; then
+    if clears "$theme" "$(ratio "$accent" "$surface")" "$mark_min"; then
         [ "$accentframe" = "$accent" ] \
             || fail "$theme: the primary frame is $accentframe, not this theme's own accent $accent"
     fi
     # The caption is the palette's own muted lifted to that same floor, so a theme already clearing it
     # reports that muted itself: this is what binds the role tests/js/themes.js mirrors to the file.
-    if [ -n "$want_muted" ] && awk -v r="$(ratio "$want_muted" "$bg")" -v f="$caption_min" 'BEGIN { exit !(r >= f) }'; then
+    if [ -n "$want_muted" ] && clears "$theme" "$(ratio "$want_muted" "$bg")" "$caption_min"; then
         [ "$want_muted" = "$muted" ] \
             || fail "$theme: the caption draws $muted, not this theme's own $want_muted"
+    fi
+    # And with no muted key at all the window darkens the foreground rather than drawing it, which is
+    # the fallback tests/js/themes.js mirrors and the reason the no-muted palette above is in this list.
+    if [ -z "$want_muted" ]; then
+        [ "$muted" != "$fg" ] \
+            || fail "$theme: with no muted of its own the caption is the foreground itself, $muted"
     fi
 
     # The cursor row's own accent edge, marked and hovered rows beside it: a shot of all three.

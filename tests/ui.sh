@@ -5981,6 +5981,9 @@ EOS
         || fail "phones: an MTP path still offers Move to Trash: $(ipc contextMenuEntries)"
     key -k Escape >/dev/null
     settle
+    # The listing holds the keyboard here, so the silence below is the guard refusing and not a key
+    # that went to the rail: asserted before the key rather than recovered from afterwards.
+    [[ "$(ipc focusView)" == "list" ]] || fail "phones: the listing does not hold the keyboard, focus is $(ipc focusView)"
     key d >/dev/null
     # 50 ms apart cannot step over an arm that stands for four seconds, and a second of them outlasts the key's own round trip.
     for _attempt in $(seq 1 20); do
@@ -5990,12 +5993,6 @@ EOS
     done
     # One directory up is the folder the mount sits in rather than the mount, so the same key does arm
     # there: the silence above is the guard and not a keyboard that stopped answering.
-    for _attempt in 1 2 3 4; do
-        [[ "$(ipc focusView)" == "list" ]] && break
-        key -k Tab >/dev/null
-        settle
-    done
-    [[ "$(ipc focusView)" == "list" ]] || fail "phones: the listing never took the keyboard back, focus is $(ipc focusView)"
     key h >/dev/null
     wait_path "$dir/gvfs"
     wait_listing 1
