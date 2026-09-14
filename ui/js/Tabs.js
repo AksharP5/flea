@@ -2,6 +2,7 @@
 
 .import "Filter.js" as Filter
 .import "Format.js" as Format
+.import "Sort.js" as Sort
 .import "Startup.js" as Startup
 
 // Hidden tabs are snapshots, so the pane and backend still own only one listing.
@@ -32,6 +33,9 @@ function snapshot(pane, path) {
         selected: elsewhere ? [] : pane.selectedIndices().slice(),
         sortBy: pane.backend.sortBy,
         sortDesc: pane.backend.sortDesc,
+        // Issue 94, nixfred: the counter every list bumps, the watch's own re-read included. A
+        // selection is row indices, so it may only be restored onto the listing it was made on.
+        listRequests: pane.backend.listRequests,
         // The directory's filesystem, so a drop on this tab while another shows decides move against copy.
         dev: elsewhere ? 0 : pane.backend.dirDev
     }
@@ -150,17 +154,22 @@ function apply(pane, item, dropped) {
     pane.showHidden = item.showHidden
     if (same) {
         if (pane.backend && (pane.backend.sortBy !== item.sortBy || pane.backend.sortDesc !== item.sortDesc)) {
-            pane.backend.sort(item.sortBy, item.sortDesc)
-            pane.backend.sortBy = item.sortBy
-            pane.backend.sortDesc = item.sortDesc
-            pane.backend.window(0, pane.windowSize)
+            // Issue 94: one reset for a reorder, ui/js/Sort.js's own, which this branch had reimplemented
+            // without it: a reorder moves every row, so the caches and the selection keyed by a row index
+            // are as stale as a new listing's.
+            Sort.resort(pane, item.sortBy, item.sortDesc)
             pane.tabs.pendingCursor = item.cursorIndex
             return
         }
         // The one switch that re-reads nothing, so the rows behind these indices are the rows the
-        // selection was made on and restoring it is safe. Every other path below drops it.
+        // selection was made on. A list while the tab was hidden renumbers them, and the counter is
+        // what says so: the watch's own re-read and the refresh after a write both bump it.
         pane.setCursor(item.cursorIndex)
-        restoreSelection(pane, item.selected)
+        if (pane.backend && item.listRequests === pane.backend.listRequests) {
+            restoreSelection(pane, item.selected)
+            return
+        }
+        pane.clearSelection()
         return
     }
     pane.tabs.pendingCursor = item.cursorIndex

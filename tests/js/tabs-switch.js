@@ -33,6 +33,39 @@ function run(check) {
     check("closing a searching tab onto one on that scope lists it again",
           closing.listed.join(","), "/home/gm")
 
+    // Issue 94, nixfred: a selection is row indices, and the one switch that re-lists nothing was
+    // restoring it verbatim. Two things renumber the rows under a hidden tab and neither was checked.
+    var same = Fixture.pane("/home/gm/Work")
+    same.selection.toggle(3)
+    same.selection.toggle(4)
+    var unchanged = Tabs.snapshot(same)
+    same.clearSelection()
+    Tabs.apply(same, unchanged)
+    check("an unchanged directory restores the selection it recorded",
+          same.selectedIndices().join(","), "3,4")
+
+    var reread = Fixture.pane("/home/gm/Work")
+    reread.selection.toggle(3)
+    reread.selection.toggle(4)
+    var stale = Tabs.snapshot(reread)
+    reread.backend.listRequests += 1
+    Tabs.apply(reread, stale)
+    check("a listing re-read while the tab was hidden carries none of it back",
+          reread.selectedIndices().join(","), "")
+
+    var reordered = Fixture.pane("/home/gm/Work")
+    reordered.selection.toggle(3)
+    reordered.thumbState = "stale"
+    reordered.dirSizeState = "stale"
+    reordered.tabs = { items: [], index: 0, pendingCursor: -1, pendingSortBy: "", pendingSortDesc: false }
+    var otherOrder = Tabs.snapshot(reordered)
+    otherOrder.sortBy = "size"
+    otherOrder.sortDesc = true
+    Tabs.apply(reordered, otherOrder)
+    check("a different order in the other tab drops the selection and both row-indexed caches",
+          reordered.selectedIndices().length + "|" + (reordered.thumbState === "stale") + "|" + (reordered.dirSizeState === "stale"),
+          "0|false|false")
+
     // Issue 91, nixfred: an order the fresh listing already has is spent on that same reply, cursor
     // and all. Left pending it revived on the reply answering the user's next sort and reverted it.
     var already = Fixture.pane("/home/gm/a")

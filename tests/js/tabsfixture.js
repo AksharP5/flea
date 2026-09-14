@@ -38,6 +38,8 @@ function pane(path) {
     p.backend = {
         sortBy: "name",
         sortDesc: false,
+        // Every list bumps this, the watch's own re-read included: see ui/Backend.qml.
+        listRequests: 0,
         sort: function (by, desc) { p.sorted.push(by + ":" + desc); this.sortBy = by; this.sortDesc = desc },
         window: function (start, count) { p.windows.push(start + ":" + count) },
         searchcancel: function () { p.searchRunning = false }
