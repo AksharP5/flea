@@ -18,6 +18,7 @@ failures=0
 # The same floors tests/js/themes.js names, and the same rules behind them.
 text_min=4.5      # body text on its own ground, WCAG AA
 caption_min=3     # a muted caption, large-text AA
+mark_min=3        # a drawn mark or frame is a graphical object, AA at 3:1
 role_steps=4      # how far a screenshot's round trip may move a role, measured over all 22 themes
 
 command -v omarchy-drive >/dev/null || { echo "themes.sh: omarchy-drive is not installed"; exit 1; }
@@ -171,10 +172,10 @@ for colours in "$themes_dir"/*/colors.toml; do
     at_least "$theme" "error on background" "$(ratio "$error" "$bg")" "$text_min"
     at_least "$theme" "symlink on background" "$(ratio "$symlink" "$bg")" "$text_min"
     at_least "$theme" "executable on background" "$(ratio "$executable" "$bg")" "$text_min"
-    at_least "$theme" "the primary frame on the card's surface" "$(ratio "$accentframe" "$surface")" "$caption_min"
+    at_least "$theme" "the primary frame on the card's surface" "$(ratio "$accentframe" "$surface")" "$mark_min"
     # The role is the accent lifted onto the card, so a theme whose accent already clears the floor
     # reports that accent itself, exactly: both come from one palette read, with no shot between them.
-    if awk -v r="$(ratio "$accent" "$surface")" -v f="$caption_min" 'BEGIN { exit !(r >= f) }'; then
+    if awk -v r="$(ratio "$accent" "$surface")" -v f="$mark_min" 'BEGIN { exit !(r >= f) }'; then
         [ "$accentframe" = "$accent" ] \
             || fail "$theme: the primary frame is $accentframe, not this theme's own accent $accent"
     fi

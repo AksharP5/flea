@@ -5954,29 +5954,10 @@ EOS
     settle
     [[ "$(ipc contextMenuVisible)" == "true" && "$(ipc contextMenuEntries)" == "Mount" ]] \
         || fail "phones: an unmounted phone's menu is $(ipc contextMenuEntries), not Mount alone"
-    key -k Return >/dev/null
-    wait_path "$fuse"
-    wait_listing 1
-    for _attempt in $(seq 1 200); do
-        [[ "$(ipc deviceEntries)" == *"SAMSUNG Android|device|phone|true"* ]] && break
-        sleep 0.05
-    done
-    [[ "$(ipc deviceEntries)" == *"SAMSUNG Android|device|phone|true"* ]] \
-        || fail "phones: the menu's Mount did not mount the row, got $(ipc deviceEntries)"
-
-    # And the row's own click does the same from the other side, which is what a share row does too.
-    # The pane is walked off the mount first: the menu leg above already opened it, so a click asserted
-    # from there would pass with the click deleted.
-    key -k Tab >/dev/null
+    key -k Escape >/dev/null
     settle
-    for _attempt in 1 2 3 4; do
-        [[ "$(ipc focusView)" == "list" ]] && break
-        key -k Tab >/dev/null
-        settle
-    done
-    key h >/dev/null
-    wait_path "$dir/gvfs"
-    wait_listing 1
+
+    # Activating the unmounted row mounts it, resolves the folder and opens it, the way a share does.
     click_rail_row "$(rail_row_of 'SAMSUNG Android')" left
     wait_path "$fuse"
     wait_listing 1
@@ -6049,6 +6030,22 @@ EOS
     done
     [[ "$(ipc deviceEntries)" == *"SAMSUNG Android|device|phone|false"* ]] \
         || fail "phones: the row never came back unmounted, got $(ipc deviceEntries)"
+
+    # And the menu's own Mount drives the same activation, on the row the unmount above just released:
+    # this is the only thing that reaches Sidebar.openPhone through the menu.
+    click_rail_row "$(rail_row_of 'SAMSUNG Android')" right
+    settle
+    [[ "$(ipc contextMenuEntries)" == "Mount" ]] \
+        || fail "phones: the released phone's menu is $(ipc contextMenuEntries), not Mount alone"
+    key -k Return >/dev/null
+    wait_path "$fuse"
+    wait_listing 1
+    for _attempt in $(seq 1 200); do
+        [[ "$(ipc deviceEntries)" == *"SAMSUNG Android|device|phone|true"* ]] && break
+        sleep 0.05
+    done
+    [[ "$(ipc deviceEntries)" == *"SAMSUNG Android|device|phone|true"* ]] \
+        || fail "phones: the menu's Mount did not mount the row, got $(ipc deviceEntries)"
 
     printf 'PHONES rows=ok marks=ok mount=ok trash-guard=ok unmount=ok\n'
     export PATH="$saved_path"
