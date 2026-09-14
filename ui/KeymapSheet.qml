@@ -11,6 +11,24 @@ Item {
     property bool opened: false
     property Item focusHolder: null
     readonly property var sheet: Keymap.sheetFor(ViewState.keysPreset, "gui", root.focusHolder ? root.focusHolder.dualMode : false)
+    // Directive 18's footprint: the four blocks flow into two columns of equal length rather than a
+    // 2x2 grid, which paid twice for the taller block of each pair and grew the card to the screen.
+    readonly property var columnSlots: {
+        var flat = []
+        for (var g = 0; g < root.groups.length; g++) {
+            flat.push({ heading: root.groups[g].title, row: null })
+            for (var i = 0; i < root.groups[g].rows.length; i++)
+                flat.push({ heading: "", row: root.groups[g].rows[i] })
+        }
+        if (root.columns === 1)
+            return [flat]
+        var half = Math.ceil(flat.length / 2)
+        // A heading never ends a column: it would name a group whose rows all sit in the next one.
+        if (half > 0 && flat[half - 1].heading.length > 0)
+            half -= 1
+        return [flat.slice(0, half), flat.slice(half)]
+    }
+
     // KeymapSheet rule 1: a binding gets a group in keys.toml and the sheet reads it, in the order
     // that table lists them, with the heading its own key carries under a raised first letter.
     readonly property var groups: {
@@ -40,9 +58,11 @@ Item {
     readonly property var cardItem: card
     // A cap is sized from the type scale, never from the text inside it, so every cap is one height.
     readonly property int capSize: Theme.markSize
-    // The board's own rhythm, measured off its drawing at GM's text size: a 32px row around the 19px
-    // cap, which is the row padding above and below it, and the wording a gap clear of the cap's box.
-    readonly property int rowPitch: root.capSize + 2 * Theme.spacing.rowPaddingY
+    // The 0.2.1 sheet's own row, which directive 18 makes the ceiling: the cap with one row padding
+    // under it. The board draws 32 around a 19 cap, but its pane holds 36 rows and this one holds 56.
+    readonly property int rowPitch: root.capSize + Theme.spacing.rowPaddingY
+    // A heading carries no cap box, so it takes the cap's own height rather than a whole row's.
+    readonly property int headingPitch: root.capSize
     readonly property int capGap: Theme.spacing.gap
 
     // One cap column for the whole sheet, measured off the widest chord this preset spells. Sizing
@@ -174,15 +194,11 @@ Item {
                 }
             }
 
-            Grid {
-                columns: root.columns
-                // The heading above each block is the air between two of them; a row gap here would
-                // be a second one, and the board draws the four blocks on one rhythm.
-                rowSpacing: 0
-                columnSpacing: Theme.spacing.rowPaddingX
+            Row {
+                spacing: Theme.spacing.rowPaddingX
 
                 Repeater {
-                    model: root.groups
+                    model: root.columnSlots
 
                     // Equal halves, so the second column starts on one x the whole way down.
                     delegate: Column {
@@ -190,35 +206,37 @@ Item {
                         required property var modelData
                         width: (body.width - (root.columns - 1) * Theme.spacing.rowPaddingX) / root.columns
 
-                        // The heading carries its own air, above and below, rather than a spacing
-                        // every row would take as well: a row's pitch is inside its own box.
-                        Text {
-                            text: block.modelData.title
-                            topPadding: Theme.spacing.gap
-                            bottomPadding: Theme.spacing.hairline * 4
-                            color: Theme.color.muted
-                            font.family: Theme.font.family
-                            font.pixelSize: Theme.font.caption
-                            font.capitalization: Font.AllUppercase
-                            font.letterSpacing: Theme.spacing.hairline
-                            textFormat: Text.PlainText
-                        }
-
                         Repeater {
-                            model: block.modelData.rows
+                            model: block.modelData
 
                             delegate: Item {
-                                id: entry
+                                id: slot
                                 required property var modelData
                                 width: block.width
-                                height: root.rowPitch
+                                height: slot.modelData.heading.length > 0 ? root.headingPitch : root.rowPitch
                                 // Nothing this cell draws may reach the cell beside it, whatever it holds.
                                 clip: true
+
+                                // A heading takes a row's own slot, so both columns keep one rhythm.
+                                Text {
+                                    anchors.left: parent.left
+                                    anchors.bottom: parent.bottom
+                                    anchors.bottomMargin: Theme.spacing.hairline * 2
+                                    visible: slot.modelData.heading.length > 0
+                                    text: slot.modelData.heading
+                                    color: Theme.color.muted
+                                    font.family: Theme.font.family
+                                    font.pixelSize: Theme.font.caption
+                                    font.capitalization: Font.AllUppercase
+                                    font.letterSpacing: Theme.spacing.hairline
+                                    textFormat: Text.PlainText
+                                }
 
                                 Rectangle {
                                     id: capBox
                                     anchors.left: parent.left
                                     anchors.verticalCenter: parent.verticalCenter
+                                    visible: slot.modelData.row !== null
                                     // The sheet's own cap column, never this row's text: see root.capWidth.
                                     width: root.capWidth
                                     height: root.capSize
@@ -227,12 +245,11 @@ Item {
                                     border.color: Theme.color.muted
 
                                     Text {
-                                        id: cap
                                         anchors.fill: parent
                                         anchors.margins: Theme.spacing.hairline
                                         horizontalAlignment: Text.AlignHCenter
                                         verticalAlignment: Text.AlignVCenter
-                                        text: entry.modelData.keys
+                                        text: slot.modelData.row ? slot.modelData.row.keys : ""
                                         color: Theme.color.foreground
                                         font.family: Theme.font.family
                                         font.pixelSize: Theme.font.caption
@@ -246,7 +263,8 @@ Item {
                                     anchors.leftMargin: root.capGap
                                     anchors.right: parent.right
                                     anchors.verticalCenter: parent.verticalCenter
-                                    text: entry.modelData.label
+                                    visible: slot.modelData.row !== null
+                                    text: slot.modelData.row ? slot.modelData.row.label : ""
                                     // The wording is the sheet's own running text, so it takes the
                                     // foreground the board draws it in; muted is for the headings.
                                     color: Theme.color.foreground
