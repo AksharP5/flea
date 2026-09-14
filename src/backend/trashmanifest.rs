@@ -39,6 +39,18 @@ pub struct Manifest {
     file: Arc<File>,
     end: u64,
 }
+// PR 135, reverb256: the kernel does not sequence a flock release after close(2) completes, so a
+// thread could still see the record locked once the descriptor had closed, which is the intermittent
+// recovery failure they measured. Released explicitly, and only by the last holder, because Records
+// clones share this descriptor and the lock goes with it.
+impl Drop for Manifest {
+    fn drop(&mut self) {
+        if Arc::strong_count(&self.file) == 1 {
+            let _ = self.file.unlock();
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Records {
     file: Arc<File>,
