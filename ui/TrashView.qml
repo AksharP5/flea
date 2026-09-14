@@ -330,7 +330,7 @@ FocusScope {
                     enabled: false
                 }
                 Text {
-                    width: Math.max(0, parent.width - 2 * Theme.hitMin - countLabel.width - emptyAction.width - 4 * parent.spacing)
+                    id: trashTitle
                     anchors.verticalCenter: parent.verticalCenter
                     text: "Trash"
                     textFormat: Text.PlainText
@@ -340,7 +340,8 @@ FocusScope {
                 }
                 Text {
                     id: countLabel
-                    width: Math.min(implicitWidth, parent.width / 2)
+                    // Both board cells put the count against the title and the action at the far edge, so this row's spare width rides here rather than under the title.
+                    width: Math.max(implicitWidth, parent.width - 2 * Theme.hitMin - trashTitle.width - emptyAction.width - 4 * parent.spacing)
                     anchors.verticalCenter: parent.verticalCenter
                     text: root.total + (root.total === 1 ? " item" : " items") + (root.bytesReady ? " · " + (root.bytesPartial ? "≥ " : "") + Format.size(root.totalBytes) : "")
                     textFormat: Text.PlainText

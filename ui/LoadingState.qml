@@ -21,11 +21,26 @@ Item {
 
     onVisibleChanged: if (!root.visible) root.armed = false
 
-    Spinner {
+    Column {
         anchors.centerIn: parent
-        // The same brand mark as EmptyState's hero, which States.dc.html draws at 48; two row heights was 74.
-        width: Theme.heroMarkSize
-        height: Theme.heroMarkSize
+        spacing: Theme.spacing.gap
         visible: root.armed
+
+        Spinner {
+            anchors.horizontalCenter: parent.horizontalCenter
+            // The same brand mark as EmptyState's hero, which States.dc.html draws at 48; two row heights was 74.
+            width: Theme.heroMarkSize
+            height: Theme.heroMarkSize
+        }
+
+        // States draws the crawl with one word under it, and one word is the whole of what it knows.
+        Text {
+            anchors.horizontalCenter: parent.horizontalCenter
+            text: "reading"
+            color: Theme.color.muted
+            font.family: Theme.font.family
+            font.pixelSize: Theme.font.caption
+            textFormat: Text.PlainText
+        }
     }
 }

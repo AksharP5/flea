@@ -102,7 +102,9 @@ Item {
         font.family: Theme.font.family
         font.pixelSize: Theme.font.body
         // SettingsRest rule 5: a share reads "minipc · nvme-share" and the tail is the half that names it, so a label too long for the rail loses its middle rather than the end that identifies it.
-        elide: Text.ElideMiddle
+        // Board rule 5: a rail label elides from the head, because the tail is the name that tells
+        // two places apart; the middle-elide this carried was the overseer's, and GM overruled it.
+        elide: Text.ElideLeft
         textFormat: Text.PlainText
     }
 

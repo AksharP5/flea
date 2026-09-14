@@ -229,8 +229,9 @@ function menuRows(hidden, keyHints) {
     out.push({ kind: "group", label: "Shortcuts" })
     out.push({ kind: "check", id: "keyHints", label: "Show keyboard hints", glyph: "keyboard",
                on: keyHints === true })
-    out.push({ kind: "hint", label: "Draws each row's key beside it, and the next move under an "
-                                    + "empty folder. Every key stays bound either way." })
+    // HANDOFF rule 8: one short line. The switch's own label says what it draws, so the hint keeps
+    // only the part it cannot: turning it off binds nothing differently.
+    out.push({ kind: "hint", label: "Every key stays bound either way." })
     out.push({ kind: "group", label: "Always shown" })
     for (var l = 0; l < LOCKED.length; l++)
         out.push({ kind: "lock", id: LOCKED[l], label: label(LOCKED[l]), glyph: GLYPHS[LOCKED[l]] })

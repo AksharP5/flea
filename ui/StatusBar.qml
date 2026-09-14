@@ -56,7 +56,10 @@ Item {
     readonly property real ruleOpacity: 0.12
     readonly property bool hasUndo: !root.transientIsError && !root.stickyHere && !root.searching
                                     && root.notice.indexOf(Ops.UNDO_HINT) >= 0
-    readonly property string keyHint: root.transientIsError ? "esc dismisses"
+    // Round two, StatusBar rule 4: a refusal is drawn alone. When the strip's error is the pane's own
+    // state sentence, the block under it is already saying so and the key is not information.
+    readonly property string keyHint: root.transientIsError
+        ? (root.pane && root.errors[0].text === root.pane.stateMessage ? "" : "esc dismisses")
         : root.transfer.running ? (root.activity.cancelling ? "cancelling" : "esc cancels")
         : root.searchRunning ? "esc cancels" : root.searching ? root.searchKeys
         : root.hasUndo ? "z undoes" : ""
