@@ -23,12 +23,16 @@ function head(t) {
 }
 
 // The card's second row: the item in flight and how big it is. total is 0 for a directory, whose
-// size is not known in advance without a sweep, so that one names itself and claims nothing more.
+// size is not known in advance without a sweep, so that one reports what it has copied so far
+// instead: a running count is the only honest progress a tree has, and it is what moves on screen.
 function fileLine(t) {
     if (t.name.length === 0) {
         return ""
     }
-    return t.total > 0 ? t.name + " · " + Format.size(t.total) : t.name
+    if (t.total > 0) {
+        return t.name + " · " + Format.size(t.total)
+    }
+    return t.bytes > 0 ? t.name + " · " + Format.size(t.bytes) + " so far" : t.name
 }
 
 // The bar is the whole transfer, never the one file: done carries the items already finished and

@@ -89,7 +89,7 @@ fn needs_rclone_fallback_in(from: &Path, error: &io::Error, mountinfo: &str) -> 
 pub(crate) fn copy_then_remove(from: &Path, to: &Path) -> Result<(), FleaError> {
     let cancel = AtomicBool::new(false);
     let mut sink = |_: u64, _: u64| {};
-    let mut progress = Progress { cancel: &cancel, on_bytes: &mut sink, partial: None };
+    let mut progress = Progress { cancel: &cancel, on_bytes: &mut sink, partial: None, tree: None };
     if let Err(error) = copy_any(from, to, &mut progress) {
         if progress.partial.as_deref() == Some(to) {
             if let Err(cleanup) = remove_any(to) {

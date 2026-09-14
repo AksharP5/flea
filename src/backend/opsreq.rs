@@ -220,8 +220,8 @@ pub(crate) fn run_transfer_checked(
     let _ = tx.send(OpMsg::TransferDone { id, ok, failed, skipped, cancelled: was_cancelled, entry, retry });
 }
 
-// A directory has no total without a sweep, so only a file item reports bytes at all. Its journal
-// steps land in `steps` either way: a failure that created its destination left a partial there.
+// A directory reports the bytes its tree has copied so far and no total, see copyfile.rs Progress.
+// Its journal steps land in `steps` either way: a failure that created its destination left a partial there.
 fn one_item(
     id: usize,
     index: usize,
@@ -234,10 +234,9 @@ fn one_item(
     tx: &Sender<OpMsg>,
     steps: &mut Vec<Step>,
 ) -> Result<(), FleaError> {
-    let is_file = src.symlink_metadata().map(|m| m.is_file()).unwrap_or(false);
     let mut last = Instant::now() - PROGRESS_EVERY;
     let mut sink = |done: u64, total: u64| {
-        if !is_file || last.elapsed() < PROGRESS_EVERY {
+        if last.elapsed() < PROGRESS_EVERY {
             return;
         }
         last = Instant::now();
@@ -249,7 +248,7 @@ fn one_item(
             total,
         });
     };
-    let mut p = Progress { cancel, on_bytes: &mut sink, partial: None };
+    let mut p = Progress { cancel, on_bytes: &mut sink, partial: None, tree: None };
     let outcome = if moving { move_any(src, dst, &mut p) } else { copy_any(src, dst, &mut p) };
     match &outcome {
         Ok(()) if moving => steps.push(undo::moved(src, dst, source)?),

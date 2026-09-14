@@ -133,7 +133,7 @@ fn apply(saved: &ReplayStep, id: usize, index: usize, cancel: &AtomicBool, tx: &
                     let _ = tx.send(OpMsg::Progress { id, index, name: name.clone(), bytes, total });
                 }
             };
-            let mut progress = Progress { cancel, on_bytes: &mut sink, partial: None };
+            let mut progress = Progress { cancel, on_bytes: &mut sink, partial: None, tree: None };
             let moving = matches!(saved.step, Step::Moved { .. });
             let result = if moving { move_any(from, to, &mut progress) } else { copy_any(from, to, &mut progress) };
             if result.is_ok() {

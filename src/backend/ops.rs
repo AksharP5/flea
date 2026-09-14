@@ -82,7 +82,7 @@ pub fn duplicate(path: &Path) -> (Result<PathBuf, FleaError>, Vec<Step>) {
     };
     let flag = AtomicBool::new(false);
     let mut sink = |_: u64, _: u64| {};
-    let mut p = Progress { cancel: &flag, on_bytes: &mut sink, partial: None };
+    let mut p = Progress { cancel: &flag, on_bytes: &mut sink, partial: None, tree: None };
     match copy_any(path, &dst, &mut p) {
         Ok(()) => match undo::copied(path, &dst, source) {
             Ok(step) => (Ok(dst), vec![step]),

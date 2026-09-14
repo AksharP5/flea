@@ -14,6 +14,10 @@ use crate::oflags::O_NOFOLLOW;
 pub struct Progress<'a> {
     pub cancel: &'a AtomicBool,
     pub on_bytes: &'a mut dyn FnMut(u64, u64),
+    // Some once the copy is inside a directory tree, holding the bytes its earlier files already
+    // copied. A tree then reports one running count for the whole item instead of restarting at
+    // every file in it, and no total, because the size of a tree is not known without a sweep.
+    pub tree: Option<u64>,
     // The destination a copy created and then failed to finish for a reason other than a cancel. It
     // stays on disk, because removing it would destroy data on a transient error, and the caller
     // journals it so undo removes it as one step. A cancel never sets it: the cancel path removes.
@@ -56,10 +60,17 @@ pub fn copy_file(src: &Path, dst: &Path, total: u64, p: &mut Progress) -> Result
             return Err(left_partial(p, dst, from_io("copy", &dst.to_string_lossy(), &e)));
         }
         done += n as u64;
-        (p.on_bytes)(done, total);
+        let (reported, against) = match p.tree {
+            Some(carried) => (carried + done, 0),
+            None => (done, total),
+        };
+        (p.on_bytes)(reported, against);
     }
     if let Err(e) = w.flush() {
         return Err(left_partial(p, dst, from_io("copy", &dst.to_string_lossy(), &e)));
+    }
+    if let Some(carried) = p.tree.as_mut() {
+        *carried += done;
     }
     Ok(())
 }
@@ -98,6 +109,10 @@ pub fn copy_any(src: &Path, dst: &Path, p: &mut Progress) -> Result<(), FleaErro
 
 fn copy_dir(src: &Path, dst: &Path, p: &mut Progress) -> Result<(), FleaError> {
     std::fs::create_dir(dst).map_err(|e| from_io("copy", &dst.to_string_lossy(), &e))?;
+    // Set once at the top of the tree, so a directory inside it goes on counting rather than starting again.
+    if p.tree.is_none() {
+        p.tree = Some(0);
+    }
     let r = copy_dir_entries(src, dst, p);
     if r.is_err() {
         if cancelled(p) {
@@ -166,7 +181,7 @@ mod tests {
     use std::sync::atomic::AtomicBool;
 
     fn quiet<'a>(flag: &'a AtomicBool, sink: &'a mut dyn FnMut(u64, u64)) -> Progress<'a> {
-        Progress { cancel: flag, on_bytes: sink, partial: None }
+        Progress { cancel: flag, on_bytes: sink, partial: None, tree: None }
     }
 
     // copy_any sends a symlink to copy_symlink, so a symlink reaching copy_file was swapped in after
@@ -224,6 +239,25 @@ mod tests {
             std::fs::read_link(d.join("copied.txt")).unwrap(),
             std::path::PathBuf::from("target.txt")
         );
+    }
+
+    // The Copying card sat still for a whole tree because a directory item reported nothing at all:
+    // no name, no bytes, an empty bar. What a tree can report without a sweep is its running count.
+    #[test]
+    fn a_directory_copy_reports_one_running_count_for_the_whole_tree() {
+        let d = TestDir::new("copytreebytes");
+        let src = d.dir("tree");
+        std::fs::write(src.join("a.bin"), "a".repeat(10)).unwrap();
+        std::fs::create_dir(src.join("sub")).unwrap();
+        std::fs::write(src.join("sub/b.bin"), "b".repeat(4)).unwrap();
+        let flag = AtomicBool::new(false);
+        let mut seen: Vec<(u64, u64)> = Vec::new();
+        let mut sink = |done: u64, total: u64| seen.push((done, total));
+        copy_any(&src, &d.join("clone"), &mut quiet(&flag, &mut sink)).expect("copy");
+        assert!(seen.iter().all(|(_, total)| *total == 0), "a tree claims no total, got {:?}", seen);
+        let counts: Vec<u64> = seen.iter().map(|(done, _)| *done).collect();
+        assert!(counts.windows(2).all(|pair| pair[1] > pair[0]), "the count only ever rises, got {:?}", counts);
+        assert_eq!(counts.last().copied(), Some(14), "and ends at the bytes the tree really holds");
     }
 
     #[test]
