@@ -5973,7 +5973,7 @@ EOS
     key -k Escape >/dev/null
     settle
     key d >/dev/null
-    # The arm sentence stands for four seconds, so a second of samples cannot miss one that appears.
+    # 50 ms apart cannot step over an arm that stands for four seconds, and a second of them outlasts the key's own round trip.
     for _attempt in $(seq 1 20); do
         [[ "$(ipc statusPrimary)" != *"Press d again"* ]] \
             || fail "phones: d armed a trash that can only fail, the bar reads $(ipc statusPrimary)"
