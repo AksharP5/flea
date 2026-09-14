@@ -14,16 +14,46 @@ fn claimed(id: usize) -> (Live, Arc<AtomicBool>) {
 #[test]
 fn a_cancel_line_reaches_the_operation_before_the_loop_reads_it() {
     let (live, flag) = claimed(4);
-    let event = read_line("{\"c\":\"transfercancel\",\"id\":4}".into(), &live);
+    let line = "{\"c\":\"transfercancel\",\"id\":4}";
+    let event = read_line(line.into(), &live);
     assert!(flag.load(Ordering::Relaxed), "the reader thread sets the flag itself");
-    assert!(matches!(event, Event::Request(_)), "and the line still reaches the loop");
+    match event {
+        Event::Request(l) => assert_eq!(l, line, "and the line still reaches the loop, unchanged"),
+        _ => panic!("a request line is forwarded as a request"),
+    }
+}
+
+// The whole loop, not just the one line, because acting on the cancel is what issue 144 changed here.
+#[test]
+fn the_reader_loop_cancels_on_its_own_thread_and_forwards_every_line() {
+    let (live, flag) = claimed(4);
+    let (tx, rx) = std::sync::mpsc::channel();
+    let lines = "{\"c\":\"list\",\"path\":\"/tmp\"}\n{\"c\":\"transfercancel\",\"id\":4}\n";
+    read_lines(std::io::Cursor::new(lines), &tx, &live);
+    assert!(flag.load(Ordering::Relaxed), "the loop acted on the cancel rather than only forwarding it");
+    // The sender outlives the loop here, so the receiver is read to the end rather than waited on.
+    drop(tx);
+    let seen: Vec<Event> = rx.iter().collect();
+    assert_eq!(seen.len(), 3, "both lines and the close reach the event loop");
+    assert!(matches!(seen[2], Event::Closed), "and the reader reports the stream ending");
 }
 
 #[test]
-fn a_cancel_names_the_operation_it_stops_and_leaves_another_running() {
+fn a_cancel_names_the_operation_it_stops_and_leaves_the_other_running() {
     let (live, flag) = claimed(4);
     read_line("{\"c\":\"transfercancel\",\"id\":5}".into(), &live);
     assert!(!flag.load(Ordering::Relaxed), "a cancel aimed at another operation reaches nothing");
+    assert_eq!(live.running(), Some(4), "and the one that is running is still running");
+}
+
+// The token can arrive as data rather than as the command, which is the one thing the substring
+// pre-filter in cancel_in can get wrong: it passes the line on, and the parse is what decides.
+#[test]
+fn a_path_that_carries_the_token_is_not_a_cancel() {
+    let (live, flag) = claimed(4);
+    read_line("{\"c\":\"list\",\"path\":\"/tmp/transfercancel\",\"id\":4}".into(), &live);
+    assert!(!flag.load(Ordering::Relaxed), "the command decides, not the spelling anywhere on the line");
+    assert_eq!(live.running(), Some(4));
 }
 
 #[test]

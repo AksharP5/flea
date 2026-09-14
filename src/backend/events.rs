@@ -27,24 +27,26 @@ pub enum Event {
 // Issue 144: a cancel is acted on here rather than only forwarded, because the loop that would act on
 // it can be inside a read_dir on a FUSE mount for as long as the device takes to answer.
 pub fn spawn_reader(tx: Sender<Event>, live: Arc<Live>) {
-    thread::spawn(move || {
-        let stdin = io::stdin();
-        for line in stdin.lock().lines() {
-            let event = match line {
-                Ok(l) => read_line(l, &live),
-                // The reader has no writer, so the decode failure is handed back for the loop to report.
-                Err(e) => Event::ReadError(from_io("read", "stdin", &e)),
-            };
-            let fatal = matches!(event, Event::ReadError(_));
-            if tx.send(event).is_err() || fatal {
-                return;
-            }
-        }
-        let _ = tx.send(Event::Closed);
-    });
+    thread::spawn(move || read_lines(io::stdin().lock(), &tx, &live));
 }
 
-// One line's worth of the reader thread's job, split out so the cancel it acts on has a test.
+// The loop itself, over any reader, so what this thread does with a line is asserted without a stdin.
+fn read_lines(source: impl BufRead, tx: &Sender<Event>, live: &Live) {
+    for line in source.lines() {
+        let event = match line {
+            Ok(l) => read_line(l, live),
+            // The reader has no writer, so the decode failure is handed back for the loop to report.
+            Err(e) => Event::ReadError(from_io("read", "stdin", &e)),
+        };
+        let fatal = matches!(event, Event::ReadError(_));
+        if tx.send(event).is_err() || fatal {
+            return;
+        }
+    }
+    let _ = tx.send(Event::Closed);
+}
+
+// One line's worth of that job, split out so a cancel and an ordinary request are asserted apart.
 fn read_line(line: String, live: &Live) -> Event {
     if let Some(Request::TransferCancel { id }) = cancel_in(&line) {
         live.cancel(id);
