@@ -92,7 +92,10 @@ function currentIndex(pane) {
     return pane.tabs ? pane.tabs.index : 0
 }
 
+// Issue 93, nixfred: answers whether it dropped a results listing, because the rows on the pane are
+// then a walk's and not the directory's, and every path below re-lists on that as well as on a move.
 function dropOverlay(pane) {
+    var dropped = pane.searchMode === "results"
     if (pane.searchMode.length > 0) {
         if (pane.searchRunning)
             pane.backend.searchcancel()
@@ -104,6 +107,7 @@ function dropOverlay(pane) {
         pane.searchScanned = 0
     }
     Filter.close(pane)
+    return dropped
 }
 
 function closePreview(pane) {
@@ -136,8 +140,10 @@ function restoreSelection(pane, selected) {
         pane.selectionVersion++
 }
 
-function apply(pane, item) {
-    var same = pane.path === item.path && pane.showHidden === item.showHidden
+function apply(pane, item, dropped) {
+    // Issue 93: rows that are a walk's results are not the directory's, so "same path" is not the one
+    // switch that re-lists nothing when a search was just dropped onto the scope it walked.
+    var same = pane.path === item.path && pane.showHidden === item.showHidden && dropped !== true
     pane.history = item.history.slice()
     pane.forwardHistory = (item.forwardHistory || []).slice()
     pane.viewMode = item.viewMode
@@ -205,7 +211,7 @@ function openNew(pane) {
     }
     var here = restingPath(pane)
     closePreview(pane)
-    dropOverlay(pane)
+    var dropped = dropOverlay(pane)
     // Settings > View > Opening decides where the new tab lands; it cloned the current folder before
     // 0.2.1 and that is still the default. The tab the operator leaves keeps the path it was on.
     var target = Startup.newTabPath(pane.uiState, here, pane.home)
@@ -214,9 +220,9 @@ function openNew(pane) {
     items[index] = snapshot(pane, here)
     items.push(snapshot(pane, target))
     pane.tabs = pack(items, items.length - 1)
-    // dropOverlay clears the search but leaves the pane on the scope it walked, so the new tab has
-    // to land on the path it just recorded; this is what Escape out of a search already does.
-    if (pane.path !== target)
+    // dropOverlay clears the search but leaves the pane on the scope it walked and its rows on that
+    // walk's results, so a target equal to the scope still has to be listed again. Escape already does.
+    if (pane.path !== target || dropped)
         pane.openWithoutHistory(target)
 }
 
@@ -233,10 +239,10 @@ function selectAt(pane, i) {
     if (i === index)
         return
     closePreview(pane)
-    dropOverlay(pane)
+    var dropped = dropOverlay(pane)
     items[index] = snapshot(pane, here)
     pane.tabs = pack(items, i)
-    apply(pane, items[i])
+    apply(pane, items[i], dropped)
 }
 
 function closeAt(pane, i) {
@@ -260,9 +266,9 @@ function closeAt(pane, i) {
         next = Math.min(i, items.length - 1)
     if (i === index) {
         closePreview(pane)
-        dropOverlay(pane)
+        var dropped = dropOverlay(pane)
         pane.tabs = pack(items, next)
-        apply(pane, items[next])
+        apply(pane, items[next], dropped)
     } else {
         pane.tabs = pack(items, next)
     }

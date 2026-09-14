@@ -261,6 +261,34 @@ function run(check) {
     Tabs.applyPending(pending)
     check("the next rows reply restores the cursor", pending.cursorIndex, 9)
 
+    // Issue 93, nixfred: a search begun in home walks home, so its scope is where the user already
+    // was. Dropping it leaves the pane's rows on the walk's results, and a destination equal to that
+    // scope used to look like the one switch that re-lists nothing: the new tab showed search rows.
+    var scoped = pane("/home/gm")
+    scoped.searchMode = "results"
+    scoped.searchFrom = "/home/gm"
+    Tabs.openNew(scoped)
+    check("a tab opened onto the scope its search walked lists it again",
+          scoped.listed.join(","), "/home/gm")
+
+    var switching = pane("/home/gm")
+    Tabs.openNew(switching)
+    switching.listed = []
+    switching.searchMode = "results"
+    switching.searchFrom = "/home/gm"
+    Tabs.selectAt(switching, 0)
+    check("switching to a tab standing on that scope lists it again",
+          switching.listed.join(","), "/home/gm")
+
+    var closing = pane("/home/gm")
+    Tabs.openNew(closing)
+    closing.listed = []
+    closing.searchMode = "results"
+    closing.searchFrom = "/home/gm"
+    Tabs.closeAt(closing, 1)
+    check("closing a searching tab onto one on that scope lists it again",
+          closing.listed.join(","), "/home/gm")
+
     // Issue 91, nixfred: an order the fresh listing already has is spent on that same reply, cursor
     // and all. Left pending it revived on the reply answering the user's next sort and reverted it.
     var already = pane("/home/gm/a")
