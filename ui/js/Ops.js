@@ -4,6 +4,7 @@
 .import "Convert.js" as Convert
 .import "Filter.js" as Filter
 .import "Transfer.js" as Transfer
+.import "Status.js" as Status
 
 // The clipboard is entirely client-side: the backend knows about a transfer, never about a pending paste.
 function emptyClipboard() {
@@ -22,8 +23,6 @@ function items(n) {
     return n + (n === 1 ? " item" : " items")
 }
 
-// A finished operation names its own reversal, which is why none of them needs a confirmation step.
-var UNDO_HINT = " · z undoes"
 
 function started(id, moving, n) {
     return { id: id, moving: moving, n: n, index: 0, name: "", running: true,
@@ -42,7 +41,7 @@ function transferDone(t, ok, failed, skipped, cancelled) {
     if (failed > 0) line += " · " + failed + " failed"
     if (skipped > 0) line += " · " + skipped + " skipped"
     if (cancelled) line += " · cancelled"
-    return line + (ok > 0 ? UNDO_HINT : "")
+    return line + (ok > 0 ? Status.UNDO_HINT : "")
 }
 
 function transferFailure(t, name, error) {
@@ -62,7 +61,7 @@ function trashed(ok, failed) {
     var line = "Moved " + items(ok) + " to Trash"
     if (failed > 0)
         line += ", " + failed + " failed"
-    return line + UNDO_HINT
+    return line + Status.UNDO_HINT
 }
 
 // The op an undone line carries is the backend's own word for the operation it reversed.
@@ -78,11 +77,11 @@ function undone(op) {
 
 // The created folder's own line, carrying the same reversal hint the transfer and trash lines do.
 function made(path) {
-    return "Created " + leaf(path) + UNDO_HINT
+    return "Created " + leaf(path) + Status.UNDO_HINT
 }
 
 function copied(n, moving) {
-    return (moving ? "Cut " : "Copied ") + items(n) + ", p pastes."
+    return (moving ? "Cut " : "Copied ") + items(n) + Status.PASTE_HINT
 }
 
 // The three reasons a cursor is not a target, asked in the order ui/js/Nav.js asks them of Enter.

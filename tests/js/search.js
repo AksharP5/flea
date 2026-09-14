@@ -8,8 +8,12 @@ function run(check) {
     check("a finished walk with nothing says done", Search.note(0, false, false), "done")
     check("a cancelled walk with nothing says stopped", Search.note(0, false, true), "stopped")
 
-    check("a running walk counts what it scanned", Search.statusLine(true, 12, 4120, 300), "Searching, 4,120 scanned")
-    check("a finished walk reports the whole scan", Search.statusLine(false, 0, 18204, 412), "18,204 scanned in 0.4 s")
+    // V7: the SearchFilter board's own status cell, the count beside the state that changes it.
+    check("a running walk pairs what it found with what it scanned",
+          Search.statusLine(true, 12, 4120, 300), "12 found · Searching, 4,120 scanned")
+    check("a finished walk reports what it found and how long it took",
+          Search.statusLine(false, 1, 18204, 412), "1 found in 0.4 s")
+    check("and nothing found still says so", Search.statusLine(false, 0, 18204, 412), "0 found in 0.4 s")
 
 
     check("the home prefix reads as a tilde", Search.scope("/home/gm/Work/claude/flea", "/home/gm"), "~/Work/claude/flea")
@@ -32,8 +36,6 @@ function run(check) {
     check("the strip says esc stops the walk and then leaves", Search.wayOut(true), "esc cancels, then returns")
     check("and once the walk is done esc only leaves", Search.wayOut(false), "esc returns")
 
-    check("a running walk offers cancel, open and reveal", Search.statusKeys(true), "esc cancels, enter opens, o reveals")
-    check("a finished walk offers only the way back", Search.statusKeys(false), "esc returns to the listing")
 
     // The pointer's own contract: a double click on a result reveals it, and opens a row anywhere
     // else. ui/js/Tap.js asks this rather than deciding it, so the rule lives beside the reveal.

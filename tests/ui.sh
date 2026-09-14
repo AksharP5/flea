@@ -2604,7 +2604,10 @@ case_status() {
     settle
     [[ "$(ipc statusPrimary)" == "$failure" ]] || fail "status: search hid error"
     transient_beside_disk "single pane, error"
-    [[ "$(ipc statusSecondary)" == *scanned* || "$(ipc statusSecondary)" == *result* ]] || fail "status: search lost secondary count"
+    # V7, StatusBar rule 4: a refusal is drawn alone, so the walk's own count yields while one stands
+    # and comes back when it is acknowledged. Before this the two shared the zone in one sentence.
+    [[ "$(ipc statusSecondary)" == " · esc dismisses" ]] \
+        || fail "status: the refusal kept company other than its own key: $(ipc statusSecondary)"
     [[ "$(ipc statusColor)" == "$(ipc palette | cut -d' ' -f6)" ]] || fail "status: error lost its color"
     shot status-error-search
     key -k Escape >/dev/null
@@ -2613,6 +2616,10 @@ case_status() {
     key -k Escape >/dev/null
     settle
     [[ "$(ipc statusError)" == false ]] || fail "status: Escape did not acknowledge error"
+    # V7: a result's hint is drawn on the secondary the way the undo hint is, so the sentence itself
+    # is one fact and does not end in advice. The clipboard note put up before the search says both.
+    [[ "$(ipc statusPrimary)" == "Copied 1 item" && "$(ipc statusSecondary)" == " · p pastes" ]] \
+        || fail "status: the clipboard note reads $(ipc statusPrimary)$(ipc statusSecondary)"
     shot status-dismissed
     transient_beside_disk "single pane"
     shot status-transient

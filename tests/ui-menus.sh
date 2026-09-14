@@ -370,7 +370,7 @@ menus_actions() {
 
     menus_file_menu source.txt menu-letter
     menus_choose copy
-    menus_message 'Copied 1 item, p pastes.' "$preset Copy captures source"
+    menus_message 'Copied 1 item' "$preset Copy captures source"
     menus_file_menu destination menu-key
     menus_choose open
     wait_path "$directory/destination"
@@ -385,7 +385,7 @@ menus_actions() {
     menus_file_menu move.txt key
     menus_guard "$directory/move.txt"
     menus_choose cut
-    menus_message 'Cut 1 item, p pastes.' "$preset Cut captures source"
+    menus_message 'Cut 1 item' "$preset Cut captures source"
     menus_file_menu destination
     menus_choose open pointer
     wait_path "$directory/destination"
@@ -469,7 +469,7 @@ menus_stale_actions() {
         menus_visit "$directory" 3
         menus_file_menu sentinel.txt
         menus_choose copy
-        menus_message 'Copied 1 item, p pastes.' "$action refusal starts with a known copy clipboard"
+        menus_message 'Copied 1 item' "$action refusal starts with a known copy clipboard"
         menus_file_menu target.txt key
         menus_seek "$action"
         token=$(ipc menuState | jq -r .snapshotId)

@@ -10,7 +10,7 @@ function slot(over) {
         transient: "",
         transientIsError: false,
         searching: false,
-        searchKeys: "",
+        searchLine: "",
         stickyHere: false,
         sticky: ""
     }
@@ -26,15 +26,15 @@ function run(check) {
     check("an idle centre is empty rather than borrowing the disk's zone", Status.centreText(quiet), "")
     check("and an empty centre keeps the board's foreground role", Status.centreRole(quiet), "foreground")
 
-    var searching = slot({ searching: true, searchKeys: "esc cancels" })
-    check("a search on its own owns the slot", Status.centreText(searching), "esc cancels")
+    var searching = slot({ searching: true, searchLine: "3 found · Searching, 12 scanned" })
+    check("a search on its own owns the slot", Status.centreText(searching), "3 found · Searching, 12 scanned")
     check("a running search uses foreground text", Status.centreRole(searching), "foreground")
 
     var working = slot({ stickyHere: true, sticky: "Compressing 2 of 5" })
     check("a running operation owns the slot", Status.centreText(working), "Compressing 2 of 5")
     check("and reads at full contrast", Status.centreRole(working), "foreground")
 
-    var both = slot({ searching: true, searchKeys: "esc cancels", stickyHere: true, sticky: "Copying 2 of 5" })
+    var both = slot({ searching: true, searchLine: "3 found · Searching, 12 scanned", stickyHere: true, sticky: "Copying 2 of 5" })
     check("transfer precedes search", Status.centreText(both), "Copying 2 of 5")
     check("transfer retains foreground during search", Status.centreRole(both), "foreground")
 
@@ -48,7 +48,7 @@ function run(check) {
         transient: "Copy failed: photo.heic · disk full",
         transientIsError: true,
         searching: true,
-        searchKeys: "esc cancels"
+        searchLine: "3 found · Searching, 12 scanned"
     })
     check("a search never hides an unacknowledged error",
           Status.centreText(failedWhileSearching), "Copy failed: photo.heic · disk full")
@@ -72,10 +72,18 @@ function run(check) {
     var noticeWhileSearching = slot({
         transient: "Moved 4 items to Trash",
         searching: true,
-        searchKeys: "esc cancels"
+        searchLine: "3 found · Searching, 12 scanned"
     })
     check("a plain notice still yields to the search",
-          Status.centreText(noticeWhileSearching), "esc cancels")
+          Status.centreText(noticeWhileSearching), "3 found · Searching, 12 scanned")
+
+    // V7: the clipboard's own hint joins the undo hint on the secondary, so no sentence here ends
+    // in advice. ui/js/Ops.js builds both into its result lines and this is what takes them apart.
+    check("an undoable result carries the undo hint", Status.hintOf("Moved 4 items to Trash · z undoes"), " · z undoes")
+    check("a clipboard result carries the paste hint", Status.hintOf("Copied 1 item · p pastes"), " · p pastes")
+    check("a plain result carries neither", Status.hintOf("Renamed to notes.txt"), "")
+    check("and the secondary is handed the key alone, because it draws its own separator",
+          Status.hintKey(Status.UNDO_HINT) + "|" + Status.hintKey(Status.PASTE_HINT), "z undoes|p pastes")
 
     // StatusBar board rule 3: the byte total appears only when every selected row is held and every
     // size is known and complete, and nothing here starts a sweep to fill a gap.

@@ -29,6 +29,8 @@ operations_secondary() {
     menus_equal "$2" "$1" "$(ipc statusSecondary)"
 }
 
+# F4, directive 48: two zones. The transient no longer sits in a lane of its own between the count
+# and the disk box; it ends where the disk's own text begins, which is what the last clause measures.
 operations_footer_geometry() {
     local body caption inset row muted
     read -r body caption inset row <<< "$(ipc metrics)"
@@ -42,7 +44,7 @@ operations_footer_geometry() {
         and (.secondary.text == \"\" or (.secondary.text | startswith(\" · \")))
         and (.secondary.text | contains(\"|\") | not)
         and .centre.x >= .left.x + .left.width
-        and .disk.x >= .centre.x + .centre.width" "$1 matches the three zones and their semantic roles"
+        and .centre.x + .centre.width <= .disk.x + .disk.width - .disk.implicitWidth" "$1 matches the two zones and their semantic roles"
     printf 'OPERATIONS_FOOTER label=%q state=%s\n' "$1" "$(ipc statusFooterState)"
 }
 
@@ -122,15 +124,16 @@ operations_search_footer() (
     key f >/dev/null
     key c.txt -k Return >/dev/null
     menus_expect keyDeliveryState '.searchMode == "results" and .searchQuery == "c.txt" and .searchRunning' "native Search submits while its owned backend is stopped"
-    menus_expect statusFooterState '.listingState == "loading" and .left.text == .counts and .left.text == "" and .centre.text == "Search: 0 scanned"' "submitted search displays its actual initial scanned count"
-    operations_secondary " · esc cancels" "initial Search names its native cancellation key"
+    menus_expect statusFooterState '.listingState == "loading" and .left.text == .counts and .left.text == "" and .centre.text == "0 found · Searching, 0 scanned"' "submitted search pairs its found count with its actual initial scan"
+    # V7: StatusBar rule 4 drops advice from this zone, so the way out is the search strip's alone.
+    operations_secondary "" "a running Search leaves the strip to say how to leave it"
     operations_footer_geometry "initial search progress"
     shot operations-search-submitted
     permissions_resume_stopped "$operations_stopped" || fail "operations: search backend could not resume"
     operations_stopped=""
     menus_expect keyDeliveryState '.searchMode == "results" and .searchQuery == "c.txt" and (.searchRunning | not)' "resumed backend completes the real native search"
     wait_listing 1
-    menus_expect statusFooterState '.left.text == "1 item" and (.centre.text | test("^Search: 5 scanned in [0-9]+\\.[0-9] s$"))' "completed search reports one result from its five scanned fixture files"
+    menus_expect statusFooterState '.left.text == "1 item" and (.centre.text | test("^1 found in [0-9]+\\.[0-9] s$"))' "completed search reports what it found and how long it took"
     [[ "$(ipc rowAt 0)" == c.txt\|file\|* ]] || fail "operations: Search returned another fixture identity"
     shot operations-search-completed
     key -k Escape >/dev/null
@@ -598,7 +601,7 @@ PY
     jq -e --arg query "$query" --argjson count "$directory_count" '.searchMode == "results" and .searchQuery == $query and .searchRunning and (.searchCancelled | not) and .searchScanned == $count' <<< "$state" >/dev/null \
         || fail "operations: Search did not expose the real positive scan before deadline: $state"
     footer=$(ipc statusFooterState) || fail "operations: live Search footer unavailable"
-    if ! jq -e '.centre.text == "Search: 100,000 scanned" and .secondary.text == " · esc cancels"' <<< "$footer" >/dev/null; then
+    if ! jq -e '(.centre.text | test("^[0-9,]+ found · Searching, 100,000 scanned$")) and .secondary.text == ""' <<< "$footer" >/dev/null; then
         state=$(ipc keyDeliveryState) || fail "operations: Search state unavailable after footer mismatch"
         if jq -e '.searchMode == "results" and (.searchRunning | not)' <<< "$state" >/dev/null; then
             operations_missed_window search-footer "$state footer=$footer"
@@ -787,7 +790,7 @@ PY
     menus_expect keyDeliveryState '.searchMode == "results" and .searchRunning and .searchScanned == 100010 and (.searchCancelled | not)' 'real Search scans its populated root while descendant work remains'
     wait_listing 10
     [[ "$(ipc rowAt 0)" == "$query-"* ]] || fail 'footer: populated Search has not delivered an actual fixture match'
-    operations_footer_capture search '.listingState == "ready" and .total == 10 and .selected == 0 and .left.text == "10 items" and .centre.text == "Search: 100,010 scanned" and .secondary.text == " · esc cancels"'
+    operations_footer_capture search '.listingState == "ready" and .total == 10 and .selected == 0 and .left.text == "10 items" and (.centre.text | test("^10 found · Searching, 100,010 scanned$")) and .secondary.text == ""'
     state=$(ipc keyDeliveryState) || fail 'footer: captured Search state unavailable'
     jq -e '.searchRunning and (.searchCancelled | not)' <<< "$state" >/dev/null || fail 'footer: Search finished during its capture'
     key -k Escape >/dev/null || fail 'footer: Search cancellation failed'

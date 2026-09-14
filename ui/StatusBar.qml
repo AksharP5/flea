@@ -57,25 +57,26 @@ Item {
     readonly property var barTransfer: cardLoader.item ? cardLoader.item.shown : root.transfer
     readonly property bool stickyHere: root.sticky.length > 0
     property string searchLine: ""
-    property string searchKeys: ""
     property string retryLine: ""
     property bool searchRunning: false
     readonly property bool searching: root.searchLine.length > 0
     readonly property int messageMs: 4000
     readonly property real ruleOpacity: 0.12
-    readonly property bool hasUndo: !root.transientIsError && !root.stickyHere && !root.searching
-                                    && root.notice.indexOf(Ops.UNDO_HINT) >= 0
+    // The hint a result carries: the primary drops it and the secondary draws it, so no sentence on
+    // this strip ends in advice. ui/js/Ops.js owns both of them.
+    readonly property string noticeHint: root.transientIsError || root.stickyHere || root.searching
+                                         ? "" : Status.hintOf(root.notice)
+    readonly property bool hasUndo: root.noticeHint === Status.UNDO_HINT
     // Round two, StatusBar rule 4: a refusal is drawn alone. When the strip's error is the pane's own
     // state sentence, the block under it is already saying so and the key is not information.
     readonly property string keyHint: root.transientIsError
         ? (root.pane && root.errors[0].text === root.pane.stateMessage ? "" : "esc dismisses")
         : root.transfer.running ? (root.activity.cancelling ? "cancelling" : "esc cancels")
-        : root.searchRunning ? "esc cancels" : root.searching ? root.searchKeys
-        : root.hasUndo ? "z undoes" : ""
+        : root.noticeHint.length > 0 ? Status.hintKey(root.noticeHint) : ""
     readonly property string secondaryText: [root.keyHint,
         root.transientIsError && root.stickyHere ? root.sticky : "",
         root.activities.slice(1).map(function (entry) { return entry.text }).join(" · "),
-        (root.transientIsError || root.stickyHere) && root.searching ? root.searchText() : "",
+        root.stickyHere && !root.transientIsError && root.searching ? root.searchLine : "",
         root.transientIsError ? "" : root.retryLine]
         .filter(function (s) { return s.length > 0 }).map(function (s) { return " · " + s }).join("")
     // Three zones that never trade places: the board fixes the outer two at a third of the strip
@@ -129,7 +130,7 @@ Item {
     // A completion hidden by an error or live activity keeps its full display time after acknowledgement.
     function syncNoticeTimer() {
         if (root.notice && !root.transientIsError && !root.stickyHere && !root.searching
-                && root.notice.indexOf(Ops.UNDO_HINT) < 0)
+                && root.notice.indexOf(Status.UNDO_HINT) < 0)
             clear.restart()
         else clear.stop()
     }
@@ -170,17 +171,15 @@ Item {
         return root.fsName.length ? root.fsName + " · " + Format.size(root.fsFree) + " free" : "unknown"
     }
 
-    function searchText() { return "Search: " + root.searchLine.replace(/^Searching, /, "") }
-
     function slot() {
         return { transient: root.transient_, transientIsError: root.transientIsError,
-                 searching: root.searching, searchKeys: root.searchText(),
+                 searching: root.searching, searchLine: root.searchLine,
                  stickyHere: root.stickyHere, sticky: root.sticky }
     }
 
     function centreText() {
         var text = Status.centreText(root.slot())
-        return root.hasUndo ? text.replace(Ops.UNDO_HINT, "") : text
+        return root.noticeHint.length > 0 ? text.replace(root.noticeHint, "") : text
     }
     function centreColor() { return Theme.color[Status.centreRole(root.slot())] }
 

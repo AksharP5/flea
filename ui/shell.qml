@@ -302,7 +302,6 @@ ShellRoot {
                 searchLine: view.currentPane.searchMode === "results"
                             ? Search.statusLine(view.currentPane.searchRunning, view.currentPane.total, view.currentPane.searchScanned, view.currentPane.searchMs)
                             : ""
-                searchKeys: Search.statusKeys(view.currentPane.searchRunning)
                 retryLine: view.currentPane.trash.opened ? "" : view.currentPane.retrySelectionText
                 onTransferCancelRequested: function (id) { bar.transferOwner.backend.transfercancel(id) }
             }

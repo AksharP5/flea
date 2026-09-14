@@ -2,7 +2,25 @@
 
 .import "DirSizes.js" as DirSizes
 
-// Sample input: { transient: "Copy failed", transientIsError: true, searching: true, searchKeys: "esc cancels", stickyHere: true, sticky: "Copying 2 of 5" }
+// A finished operation names its own reversal and the clipboard names the key that spends it. The
+// strip draws either in its secondary, so no sentence it shows ends in advice of its own.
+var UNDO_HINT = " \u00b7 z undoes"
+var PASTE_HINT = " \u00b7 p pastes"
+
+// Which hint a result carries, if any.
+function hintOf(notice) {
+    if (notice.indexOf(UNDO_HINT) >= 0) {
+        return UNDO_HINT
+    }
+    return notice.indexOf(PASTE_HINT) >= 0 ? PASTE_HINT : ""
+}
+
+// The key it names. ui/StatusBar.qml draws the separator itself, so the key arrives without one.
+function hintKey(hint) {
+    return hint.replace(" \u00b7 ", "")
+}
+
+// Sample input: { transient: "Copy failed", transientIsError: true, searching: true, searchLine: "3 found in 1.6 s", stickyHere: true, sticky: "Copying 2 of 5" }
 function errorHere(slot) {
     return slot.transient.length > 0 && slot.transientIsError
 }
@@ -16,7 +34,7 @@ function centreText(slot) {
     if (slot.stickyHere)
         return slot.sticky
     if (slot.searching)
-        return slot.searchKeys
+        return slot.searchLine
     return slot.transient
 }
 

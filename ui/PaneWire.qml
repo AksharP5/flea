@@ -5,6 +5,7 @@ import "js/Errors.js" as Errors
 import "js/Anchor.js" as Anchor
 import "js/Nav.js" as Nav
 import "js/Ops.js" as Ops
+import "js/Status.js" as Status
 import "js/Search.js" as Search
 import "js/Tabs.js" as Tabs
 import "js/Thumbs.js" as Thumbs
@@ -347,7 +348,7 @@ Item {
         }
 
         function onDuplicated(ok, path) {
-            pane.message("Duplicated to " + Ops.leaf(path) + Ops.UNDO_HINT, false)
+            pane.message("Duplicated to " + Ops.leaf(path) + Status.UNDO_HINT, false)
             pane.refresh(path)
         }
 
@@ -366,7 +367,7 @@ Item {
         function onRedone(op, ok) {
             pane.transfer = Ops.emptyTransfer()
             pane.sticky("")
-            pane.message("Redid the " + op + Ops.UNDO_HINT, false)
+            pane.message("Redid the " + op + Status.UNDO_HINT, false)
             pane.refresh("")
         }
 

@@ -98,7 +98,7 @@ function run(check) {
 
     check("the clipboard says what it took and how to use it",
           Ops.copied(2, true) + " / " + Ops.copied(1, false),
-          "Cut 2 items, p pastes. / Copied 1 item, p pastes.")
+          "Cut 2 items · p pastes / Copied 1 item · p pastes")
 
     check("a leaf is the part after the last separator",
           Ops.leaf("/home/gm/photo copy.jpg"),

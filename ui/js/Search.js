@@ -203,15 +203,9 @@ function scope(path, home) {
 
 // The status bar's own left half while a search is up, the two lines the canvas draws.
 function statusLine(running, total, scanned, ms) {
+    var found = Format.count(total) + " found"
     if (running) {
-        return "Searching, " + Format.count(scanned) + " scanned"
+        return found + " · Searching, " + Format.count(scanned) + " scanned"
     }
-    return Format.count(scanned) + " scanned in " + (ms / 1000).toFixed(1) + " s"
-}
-
-// The status bar's right half: what the keys do, which changes the moment the walk stops.
-function statusKeys(running) {
-    return running
-        ? "esc cancels, enter opens, o reveals"
-        : "esc returns to the listing"
+    return found + " in " + (ms / 1000).toFixed(1) + " s"
 }
