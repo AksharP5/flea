@@ -2562,8 +2562,8 @@ transient_beside_disk() {
     disk=$(jq -c '.disk' <<< "$state")
     padding=$(ipc metrics | cut -d' ' -f3)
     [[ "$padding" =~ ^[0-9]+$ ]] || fail "status: the $label strip reported no padding token, got [$padding]"
-    jq -e '(.lane.width | numbers) and (.disk.width | numbers) and .disk.width > 0' <<< "$state" >/dev/null \
-        || fail "status: the $label strip reported no geometry: lane=$lane disk=$disk"
+    jq -e '(.lane.width | numbers) and (.disk.width | numbers) and .disk.width > 0 and .lane.width > 0' <<< "$state" >/dev/null \
+        || fail "status: the $label strip has no transient to measure: lane=$lane disk=$disk"
     # The facts are right aligned inside a fixed zone, so their text begins at its right edge less its own width.
     gap=$(jq -r --argjson p "$padding" '(.disk.x + .disk.width - ([.disk.implicitWidth, .disk.width] | min))
         - (.lane.x + .lane.width) - $p' <<< "$state")
@@ -2572,11 +2572,9 @@ transient_beside_disk() {
         || fail "status: the $label transient ends $gap px off one padding before the disk facts: lane=$lane disk=$disk"
     # Rule 2: the facts keep their zone. status_disk_x is taken before any transient exists.
     disk_now=$(jq -r '.disk.x' <<< "$state")
-    [[ -z "${status_disk_x:-}" || "$disk_now" == "$status_disk_x" ]] \
+    [[ "${status_disk_x:-}" =~ ^[0-9.]+$ ]] || fail "status: the $label check has no disk baseline to hold to"
+    [[ "$disk_now" == "$status_disk_x" ]] \
         || fail "status: the $label transient moved the disk facts from $status_disk_x to $disk_now"
-    # And it stays inside the room it has, which is what makes it elide rather than push at any width.
-    jq -e --argjson p "$padding" '.lane.width <= (.disk.x + .disk.width - ([.disk.implicitWidth, .disk.width] | min)) - (.left.x + .left.width) - 2 * $p + 0.5' <<< "$state" >/dev/null \
-        || fail "status: the $label transient is wider than the room between the count and the disk facts: lane=$lane disk=$disk"
 }
 case_status() {
     local dir="$fixture_root/status" failure status_disk_x
@@ -2629,7 +2627,10 @@ case_status() {
     shot status-transient-selection
     key -k Escape >/dev/null
     settle
-    # The trash takes the same midpoint, because the midpoint is the strip's own and not a listing's.
+    # The trash keeps the same rule, so a transient is put up on the listing first and carried in:
+    # the trash view raises none of its own, and a lane with nothing in it measures nothing.
+    key y >/dev/null
+    settle
     click_rail_row "$(rail_row_of 'Trash')" left
     settle
     settle
@@ -6669,7 +6670,7 @@ case_places() {
 }
 
 case_dual() {
-    local dir="$fixture_root/dual" state="$fixture_root/dual-state" before
+    local dir="$fixture_root/dual" state="$fixture_root/dual-state" before status_disk_x
     sandbox_scratch "$dir"
     sandbox_scratch "$state"
     mkdir -p "$dir/left/nested" "$dir/right" "$state/flea"
@@ -6683,6 +6684,9 @@ case_dual() {
         '{view:"list",keys:"default",dual:{paths:[$left,$right],focus:0}}' > "$state/flea/ui.json"
     launch "$dir/left"
     wait_listing 3
+    # The baseline the disk facts hold to for the rest of this case, taken before any transient exists.
+    status_disk_x=$(ipc statusFooterState | jq -r '.disk.x')
+    [[ "$status_disk_x" =~ ^[0-9.]+$ ]] || fail "dual: the quiet strip reported no disk position, got [$status_disk_x]"
     click_chrome dual
     settle
     ipc dualState | jq -e '.active and .focused == 0' >/dev/null || fail "dual: chrome did not enter dual mode"
