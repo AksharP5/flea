@@ -43,13 +43,27 @@ when that is unset. The shelf never writes it: `flea shelf` does.
 
 ## Keyboard
 
-Nothing yet. The card's own keys arrive with the card.
+| Key | What it does |
+|---|---|
+| `esc` | closes the card |
+
+The card's action strip draws its own keys beside every action; they run the actions with them.
 
 ## Install
 
 ```bash
 omarchy plugin add https://github.com/thisisgm/flea-shelf.git --enable --yes
 ```
+
+## Uninstall
+
+```bash
+omarchy plugin remove io.github.thisisgm.flea-shelf
+rm -rf ~/.local/state/omarchy/flea-shelf
+```
+
+That directory is the pile itself and the drag tokens Flea mints for it, so removing it empties the
+shelf. Flea and the files the shelf was holding are untouched.
 
 ## Support
 
