@@ -212,13 +212,15 @@ function run(check) {
           noUuidRows[0].glyph + "|" + noUuidRows[0].uri,
           "camera|gphoto2://Apple_Inc._iPhone_00008130001641411883401C/")
 
-    // gvfs may automount the documents share and then answer can_mount=0 for it, and neither fact is
-    // about the root: the phone is plugged in, so the row stands and offers the mount it names.
+    // Neither the share's can_mount nor its mount is about the root the row names.
     var automounted = phone.replace("  activation_root=afc://00008130-001641411883401C:3/\n  can_mount=1\n",
                                     "  activation_root=afc://00008130-001641411883401C:3/\n  can_mount=0\n"
                                   + "  Mount(1): Documents on GM\u2019s iPhone -> afc://00008130-001641411883401C:3/\n")
     var autoRows = Phones.parsePhones(automounted)
-    check("an automounted documents share does not decide the phone's row", autoRows.length, 1)
+    // Not the row count: when the AFC row goes, its camera twin is left standing and the count is
+    // still one, so what says the phone survived is the row being the phone's own root.
+    check("an automounted documents share does not decide the phone's row",
+          autoRows[0].uri, "afc://00008130-001641411883401C/")
     check("the row is still the phone", autoRows[0].glyph, "smartphone")
     check("and it still offers its mount rather than an unmount", autoRows[0].mounted, false)
 
