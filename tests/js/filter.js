@@ -182,7 +182,6 @@ function run(check) {
     nomatch.cursorIndex = 3
     check("a cursor the filter hides is not a row the pane can act on", Filter.cursorShown(nomatch), false)
     check("and its target list is empty rather than that hidden row", JSON.stringify(Ops.targetIndices(nomatch)), "[]")
-    nomatch.rowFor = function (i) { return nomatch.rows[i] }
     nomatch.join = function (base, name) { return base + "/" + name }
     nomatch.path = "/fixture"
     nomatch.message = function (text, failed) { nomatch.said = text }
@@ -199,8 +198,8 @@ function run(check) {
     Ops.trash(nomatch, 0)
     check("an operation on that cursor says so too", nomatch.said, "That row is hidden by the filter.")
     check("and no request went out", nomatch.trashed, undefined)
-    // The same stub, on a row the filter draws: without this the check above passes on a misspelled
-    // method name, which is the way a negative assertion stops meaning anything.
+    // The same stub on a drawn row, because a negative assertion a misspelled method would satisfy
+    // is not an assertion.
     var acts = Fixture.pane("2026")
     acts.cursorIndex = Filter.at(acts.shown, 0)
     acts.backend = { trash: function (idx) { acts.trashed = idx.join(",") } }
@@ -215,6 +214,12 @@ function run(check) {
     Ops.trash(bare, 0)
     check("an empty listing is not the filter's doing", bare.said, "There is nothing to act on.")
     check("and nothing went out for it either", bare.trashed, undefined)
+    // A filter is running and there is still no row under the cursor: the row is what decides.
+    var under = Fixture.pane("zzz")
+    under.cursorIndex = -1
+    under.message = function (text, failed) { under.said = text }
+    Ops.trash(under, 0)
+    check("a filter with no row under the cursor is nothing to act on either", under.said, "There is nothing to act on.")
     // Cleared first, and the opener writes its own field: the sentence below is the one Enter produced
     // rather than one the rename left, and a navigation cannot answer for it.
     nomatch.said = ""

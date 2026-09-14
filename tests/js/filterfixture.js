@@ -50,6 +50,11 @@ function pane(query, held) {
         scrolled: -1,
         picked: {}
     }
+    // ui/Pane.qml's own: the window starts at held, and an index outside it has no row at all.
+    p.rowFor = function (index) {
+        var offset = index - p.held
+        return offset < 0 || offset >= p.rows.length ? null : p.rows[offset]
+    }
     p.showRow = function (view) { p.scrolled = view }
     p.selection = {
         count: function () { return p.selectedIndices().length },
