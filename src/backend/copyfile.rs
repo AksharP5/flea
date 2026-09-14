@@ -9,7 +9,7 @@ const CHUNK: usize = 256 * 1024;
 // rename(2) sets EXDEV when the two paths are on different filesystems, which is the one failure that means "copy instead".
 const EXDEV: i32 = 18;
 use crate::oflags::{O_DIRECTORY, O_NOFOLLOW};
-use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
 use std::os::unix::io::AsRawFd;
 
 // What a copy reports as it runs; a directory has no total without a sweep, so it reports 0 and renders indeterminate.
@@ -50,9 +50,14 @@ fn copy_file_at(src: At, dst: At, total: u64, p: &mut Progress) -> Result<(), Fl
     // O_NOFOLLOW refuses a symlink, and regfile's non-blocking open and fstat refuse every other kind.
     let mut r = crate::backend::regfile::open_if_regular(src.at, O_NOFOLLOW)
         .map_err(|e| from_io("copy", &src.named.to_string_lossy(), &e))?;
+    // Issue 109: a create takes the umask, so a 0600 source landed 0644 and the copy published what
+    // the original kept private. The source's own bits are carried by the create itself, so there is
+    // no window where the bytes are on disk under a wider mode, narrowed by the umask and never widened.
+    let mode = r.metadata().map(|m| keep_mode(m.permissions().mode())).unwrap_or(0o600);
     let mut w = std::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
+        .mode(mode)
         .open(dst.at)
         .map_err(|e| from_io("copy", &dst.named.to_string_lossy(), &e))?;
     // From here the destination exists, and every failure below leaves it for the caller to journal.
@@ -84,14 +89,6 @@ fn copy_file_at(src: At, dst: At, total: u64, p: &mut Progress) -> Result<(), Fl
     }
     if let Err(e) = w.flush() {
         return Err(left_partial(p, dst.named, from_io("copy", &dst.named.to_string_lossy(), &e)));
-    }
-    // Issue 109: a create takes the umask, so a 0600 source landed 0644 and the copy published what the
-    // original kept private. The source's own bits are carried, narrowed by the umask and never widened.
-    if let Ok(meta) = r.metadata() {
-        let mode = keep_mode(meta.permissions().mode());
-        if let Err(e) = w.set_permissions(std::fs::Permissions::from_mode(mode)) {
-            return Err(left_partial(p, dst.named, from_io("copy", &dst.named.to_string_lossy(), &e)));
-        }
     }
     if let Some(carried) = p.tree.as_mut() {
         *carried += done;
@@ -166,12 +163,14 @@ fn copy_dir_at(src: At, dst: At, p: &mut Progress) -> Result<(), FleaError> {
     // the tree through a symlink. corner: one descriptor a level, so a tree deeper than this process's
     // open-file limit fails where it used to recurse.
     let from = open_dir(src.at).map_err(|e| from_io("copy", &src.named.to_string_lossy(), &e))?;
-    std::fs::create_dir(dst.at).map_err(|e| from_io("copy", &dst.named.to_string_lossy(), &e))?;
+    // Issue 109 again, one level up: a 0700 directory landed 0755 and its contents were readable by
+    // anyone while the copy ran. It is created with nothing the source does not grant and with the
+    // owner's own three bits, which this run needs to write into it, and takes its exact mode at the end.
+    let keep = from.metadata().ok().map(|m| keep_mode(m.permissions().mode()));
+    std::fs::DirBuilder::new().mode(keep.unwrap_or(0o700) | 0o700).create(dst.at)
+        .map_err(|e| from_io("copy", &dst.named.to_string_lossy(), &e))?;
     let into = open_dir(dst.at).map_err(|e| from_io("copy", &dst.named.to_string_lossy(), &e))?;
     let (from_held, into_held) = (held_path(&from), held_path(&into));
-    // Issue 109 again, one level up: a 0700 directory landed 0755 and its contents were readable by
-    // anyone. The mode is set after the entries are copied, at the end of this function.
-    let keep = from.metadata().ok().map(|m| keep_mode(m.permissions().mode()));
     // Set once at the top of the tree, so a directory inside it goes on counting rather than starting again.
     if p.tree.is_none() {
         p.tree = Some(0);

@@ -22,7 +22,7 @@ var SELECTED_FILL = 0.18    // Style.selectedFillAlpha, the OEM default a theme'
 var DISABLED = 0.55         // Theme.disabledOpacity.
 
 // gvfs-free file read: qml6 allows it only with QML_XHR_ALLOW_FILE_READ, which tests/js.sh sets.
-// The status rides along, because an empty body is otherwise a theme this suite quietly skips.
+// Measured on this box: a file that reads answers status 200, and one that is not there answers 0.
 function read(url) {
     var request = new XMLHttpRequest()
     request.open("GET", url, false)
@@ -104,8 +104,8 @@ function run(check) {
         var name = THEMES[i]
         var got = read(THEME_DIR + name + "/colors.toml")
         var body = got.body
-        check(name + ": colors.toml reads and parses to a palette, status " + got.status,
-              Palette.isPalette(Palette.parse(body)), true)
+        check(name + ": colors.toml is there to read", got.status, 200)
+        check(name + ": colors.toml parses to a palette", Palette.isPalette(Palette.parse(body)), true)
         // A theme that did not read is one red check, not a throw that leaves the rest unmeasured.
         if (body.length === 0)
             continue

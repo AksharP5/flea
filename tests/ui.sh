@@ -5983,7 +5983,8 @@ EOS
     settle
     # The listing holds the keyboard here, so the silence below is the guard refusing and not a key
     # that went to the rail: asserted before the key rather than recovered from afterwards.
-    [[ "$(ipc focusView)" == "list" ]] || fail "phones: the listing does not hold the keyboard, focus is $(ipc focusView)"
+    focus_now=$(ipc focusView)
+    [[ "$focus_now" == "list" ]] || fail "phones: the listing does not hold the keyboard, focus is $focus_now"
     key d >/dev/null
     # 50 ms apart cannot step over an arm that stands for four seconds, and a second of them outlasts the key's own round trip.
     for _attempt in $(seq 1 20); do

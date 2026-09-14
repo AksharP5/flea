@@ -67,6 +67,9 @@ printf '{"view":"list","places":{"driveSize":true,"trashCount":true}}\n' > "$san
 synthetic="$sandbox/no-muted/colors.toml"
 mkdir -p "$(dirname "$synthetic")"
 printf 'background = "#1e1e2e"\nforeground = "#cdd6f4"\naccent = "#89b4fa"\nred = "#f38ba8"\n' > "$synthetic"
+# Qt.darker(#cdd6f4, 1.4) as ui/Theme.qml applies it, which tests/js/themes.js pins as the same
+# literal: the two halves meeting on this value is what binds that mirror to the running window.
+no_muted_caption="#9299ae"
 
 ipc() { omarchy-drive ipc -p "$flea_ui" flea "$@"; }
 key() { omarchy-drive key "$@" >/dev/null; }
@@ -97,9 +100,9 @@ at_least() {
 # Does this ratio clear that floor? A ratio that came back empty is a measurement this sweep did not
 # take, so it reddens here rather than skipping the rule it gates in silence.
 clears() {
-    local theme="$1" got="$2" floor="$3"
+    local theme="$1" rule="$2" got="$3" floor="$4"
     if [ -z "$got" ]; then
-        fail "$theme: no ratio came back for a rule that needs one"
+        fail "$theme: no ratio came back for $rule"
         return 1
     fi
     awk -v g="$got" -v f="$floor" 'BEGIN { exit !(g >= f) }'
@@ -191,21 +194,21 @@ for colours in "$themes_dir"/*/colors.toml "$synthetic"; do
     at_least "$theme" "the primary frame on the card's surface" "$(ratio "$accentframe" "$surface")" "$mark_min"
     # The role is the accent lifted onto the card, so a theme whose accent already clears the floor
     # reports that accent itself, exactly: both come from one palette read, with no shot between them.
-    if clears "$theme" "$(ratio "$accent" "$surface")" "$mark_min"; then
+    if clears "$theme" "the accent on the card's surface" "$(ratio "$accent" "$surface")" "$mark_min"; then
         [ "$accentframe" = "$accent" ] \
             || fail "$theme: the primary frame is $accentframe, not this theme's own accent $accent"
     fi
     # The caption is the palette's own muted lifted to that same floor, so a theme already clearing it
     # reports that muted itself: this is what binds the role tests/js/themes.js mirrors to the file.
-    if [ -n "$want_muted" ] && clears "$theme" "$(ratio "$want_muted" "$bg")" "$caption_min"; then
+    if [ -n "$want_muted" ] && clears "$theme" "the file's own muted on the background" "$(ratio "$want_muted" "$bg")" "$caption_min"; then
         [ "$want_muted" = "$muted" ] \
             || fail "$theme: the caption draws $muted, not this theme's own $want_muted"
     fi
     # And with no muted key at all the window darkens the foreground rather than drawing it, which is
     # the fallback tests/js/themes.js mirrors and the reason the no-muted palette above is in this list.
     if [ -z "$want_muted" ]; then
-        [ "$muted" != "$fg" ] \
-            || fail "$theme: with no muted of its own the caption is the foreground itself, $muted"
+        [ "$muted" = "$no_muted_caption" ] \
+            || fail "$theme: with no muted of its own the caption is $muted, not the darkened $no_muted_caption"
     fi
 
     # The cursor row's own accent edge, marked and hovered rows beside it: a shot of all three.
