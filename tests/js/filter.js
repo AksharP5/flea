@@ -178,19 +178,19 @@ function run(check) {
 
     // Issue 92, nixfred: the same rule for the cursor, which the fallback target reads when nothing is
     // selected. A query matching nothing leaves it on the row it was on, and that row is not drawn.
-    var hidden = Fixture.pane("zzz")
-    hidden.cursorIndex = 3
-    check("a cursor the filter hides is not a row the pane can act on", Filter.cursorShown(hidden), false)
-    check("and its target list is empty rather than that hidden row", JSON.stringify(Ops.targetIndices(hidden)), "[]")
-    hidden.rowFor = function (i) { return hidden.rows[i] }
-    hidden.join = function (base, name) { return base + "/" + name }
-    hidden.path = "/fixture"
-    hidden.message = function (text, failed) { hidden.said = text }
-    hidden.renamingIndex = -1
-    Ops.startRename(hidden)
-    check("a rename opens no editor over a row with no delegate", hidden.renamingIndex, -1)
-    Nav.openCursor(hidden, { open: function () { hidden.said = "opened" } })
-    check("and Enter says so rather than navigating away", hidden.said, "That row is hidden by the filter.")
+    var nomatch = Fixture.pane("zzz")
+    nomatch.cursorIndex = 3
+    check("a cursor the filter hides is not a row the pane can act on", Filter.cursorShown(nomatch), false)
+    check("and its target list is empty rather than that hidden row", JSON.stringify(Ops.targetIndices(nomatch)), "[]")
+    nomatch.rowFor = function (i) { return nomatch.rows[i] }
+    nomatch.join = function (base, name) { return base + "/" + name }
+    nomatch.path = "/fixture"
+    nomatch.message = function (text, failed) { nomatch.said = text }
+    nomatch.renamingIndex = -1
+    Ops.startRename(nomatch)
+    check("a rename opens no editor over a row with no delegate", nomatch.renamingIndex, -1)
+    Nav.openCursor(nomatch, { open: function () { nomatch.said = "opened" } })
+    check("and Enter says so rather than navigating away", nomatch.said, "That row is hidden by the filter.")
 
     var visible = Fixture.pane("2026")
     visible.cursorIndex = Filter.at(visible.shown, 0)
