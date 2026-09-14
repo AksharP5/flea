@@ -5884,6 +5884,7 @@ case "\$1 \${2:-}" in
         printf '    Type: GProxyShadowMount (GProxyVolumeMonitorMTP)\n'
         printf 'Mount(0): mtp -> $mtp_uri\n'
         printf '  Type: GDaemonMount\n'
+        printf '  is_shadowed=1\n'
     else
         printf '  can_mount=1\n'
     fi
@@ -5903,7 +5904,8 @@ case "\$1 \${2:-}" in
     printf 'local path: %s\n' "$fuse"
     exit 0 ;;
 esac
-exit 0
+# Everything else is the real tool's, so the Trash count and its monitor keep working under the stub.
+exec /usr/bin/gio "\$@"
 EOS
     chmod +x "$dir/bin/gio"
 
@@ -5928,9 +5930,9 @@ EOS
     [[ "$(ipc deviceEntries)" == *"SAMSUNG Android|device|phone|false"* \
         && "$(ipc deviceEntries)" == *"NIKON DSC D3500|device|phone|false"* ]] \
         || fail "phones: the two volumes are not two unmounted DEVICES rows, got $(ipc deviceEntries)"
-    # Behind the block devices, per the DEVICES rule: the phones are the tail of that group.
+    # Behind the block devices, per the DEVICES rule: a block device leads and the phones are the tail.
     ipc railEntries | jq -e '[.[] | select(.group == "device") | .kind] | index("phone") as $i
-        | ($i != null) and (.[$i:] | all(. == "phone"))' >/dev/null \
+        | ($i != null) and ($i > 0) and (.[$i:] | all(. == "phone")) and (.[0:$i] | all(. != "phone"))' >/dev/null \
         || fail "phones: the phone rows do not sit behind the block devices, got $(ipc railEntries | jq -c '[.[]|select(.group=="device")|.kind]')"
     # PhoneMark rule 1: the monitor picks the mark, MTP the phone and GPhoto2 the camera.
     ipc railEntries | jq -e '[.[] | select(.kind == "phone") | .glyph] == ["smartphone", "camera"]' >/dev/null \
@@ -5939,6 +5941,15 @@ EOS
     ipc railDetails | jq -e '[.rows[] | select(.kind == "phone")] | length == 2
         and all(.[]; .detail == "" and .indicatorVisible)' >/dev/null \
         || fail "phones: a phone row drew a size or lost its indicator, got $(ipc railDetails | jq -c '[.rows[]|select(.kind=="phone")|{detail,indicatorVisible}]')"
+
+    # The control for the guard below: d on this fixture's own local path does arm, so the silence
+    # on the phone's path is the guard and not a keyboard that stopped answering.
+    key j >/dev/null
+    settle
+    key d >/dev/null
+    wait_message "Press d again to trash, or Delete on its own."
+    key -k Escape >/dev/null
+    settle
 
     # An unmounted volume offers no release, so it opens no menu at all, exactly as a volume does.
     click_rail_row "$(rail_row_of 'SAMSUNG Android')" right
@@ -5957,18 +5968,22 @@ EOS
     done
     [[ "$(ipc deviceEntries)" == *"SAMSUNG Android|device|phone|true"* ]] \
         || fail "phones: the row did not survive its own mount, got $(ipc deviceEntries)"
+    [[ -z "$(ipc networkEntries)" ]] \
+        || fail "phones: gio's shadow mount became a NETWORK row as well, got $(ipc networkEntries)"
     shot phones-mounted
 
     # Issue 133: gio cannot trash into this mount, so neither the row nor the key is offered here.
     click_row 0 right
     settle
+    [[ "$(ipc contextMenuVisible)" == "true" && "$(ipc contextMenuEntries)" == *"Move to Dropbox"* ]] \
+        || fail "phones: the listing menu did not open on the phone's own row, got $(ipc contextMenuEntries)"
     [[ "$(ipc contextMenuEntries)" != *"Move to Trash"* ]] \
         || fail "phones: an MTP path still offers Move to Trash: $(ipc contextMenuEntries)"
     key -k Escape >/dev/null
     settle
     key d >/dev/null
     settle
-    [[ "$(ipc statusPrimary)" != *"trash"* ]] \
+    [[ "$(ipc statusPrimary)" != *"Press d again"* ]] \
         || fail "phones: d armed a trash that can only fail, the bar reads $(ipc statusPrimary)"
 
     # Unmount is the release a phone offers, never Eject, and the key that carries it is its uri.

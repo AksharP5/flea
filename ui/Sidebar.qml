@@ -154,8 +154,7 @@ Item {
         root.homeEntries = root.placesState.showHome === false ? [] : Places.homeEntries(home, userDirsFile.text(), Icons.sidebarGlyphFor)
     }
 
-    // A watch set up before its parent directory existed never fires, so NetworkDialog's saved() drives this reload instead.
-    // It blocks because "forget" derives its body from this text: measured here, two rail edits in one turn over an asynchronous reload put the removed line back.
+    // NetworkDialog's saved() drives this reload because a watch set up before its parent directory existed never fires, and it blocks because "forget" derives its body from this text: measured here, an asynchronous reload put a removed line back.
     function reloadBookmarks() {
         bookmarksFile.reload()
         bookmarksFile.waitForJob()

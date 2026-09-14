@@ -49,8 +49,7 @@ function parsePhones(output) {
     return out
 }
 
-// path stays "" because only "gio info" after a mount knows the FUSE folder, and size is null rather
-// than absent because ui/SidebarRow.qml reads a device row's detail off "size !== null".
+// path is "" until "gio info" resolves the FUSE folder, and size is null because ui/SidebarRow.qml reads a device row's detail off "size !== null".
 function entry(v) {
     return { path: "", label: v.label, group: "device", kind: "phone", uri: v.uri, size: null,
              mounted: v.mounted, glyph: v.monitor === "GPhoto2" ? "camera" : "smartphone" }

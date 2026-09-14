@@ -51,7 +51,8 @@ function run(check) {
     var live0 = Phones.parsePhones(mountedNoRemount)
     check("a mounted volume that can no longer be mounted is still a row", live0.length, 1)
     check("and it reads as mounted, so the rail offers its Unmount",
-          live0.length === 1 ? live0[0].mounted + "|" + Mounts.railMenu(live0[0]).length : "no row", "true|1")
+          live0.length === 1 ? live0[0].mounted + "|" + Mounts.railMenu(live0[0]).map(function (r) { return r.action }).join(",")
+                             : "no row", "true|unmountPhone")
     check("the indented Mount() flips it to mounted", mounted[0].mounted, true)
     check("the shadow mount is not a network row either", Mounts.parseMounts(live).length, 0)
 
