@@ -79,7 +79,22 @@ function atLeast(check, theme, rule, got, floor) {
           got >= floor ? "ok" : "under " + floor.toFixed(2) + " at " + got.toFixed(4), "ok")
 }
 
+// The two palette shapes no installed theme has: one setting no muted at all, and one setting color8
+// instead. ui/Theme.qml takes neither as the caption, so the mirror must not either.
+function mirrorFallbacks(check) {
+    var ground = "background = \"#1e1e2e\"\nforeground = \"#cdd6f4\"\naccent = \"#89b4fa\"\nred = \"#f38ba8\"\n"
+    var none = roles(ground)
+    check("a palette with no muted takes a darkened foreground, not the foreground itself",
+          none.muted !== none.foreground, true)
+    atLeast(check, "a palette with no muted", "its derived caption still clears the floor",
+            Contrast.ratio(none.muted, none.background), CAPTION_MIN)
+    var eight = roles(ground + "color8 = \"#585b70\"\n")
+    check("and color8 is not the caption either, because ui/Theme.qml does not read it",
+          eight.muted, none.muted)
+}
+
 function run(check) {
+    mirrorFallbacks(check)
     // A truncated table would iterate few times and report every check it did run as green, so the
     // table's own size is checked first; tests/themes.sh compares it with the directory itself.
     check("the table still names the themes this box ships", THEMES.length >= 22, true)
@@ -128,6 +143,10 @@ function run(check) {
     }
     // Measured: while the walk bounded red alone, 46 colour and ground pairs with a channel at 0 or 255
     // came back under the floor, this one at 2.9996 for a requested 3.
-    atLeast(check, "a channel at the extreme", "the lift still delivers the floor",
+    atLeast(check, "a channel at the extreme", "the lift toward black still delivers the floor",
             Contrast.ratio(Contrast.ensureRatio("#0099ff", "#ffffff", MARK_MIN), "#ffffff"), MARK_MIN)
+    // The other direction, where the bounded channel is the one already at the extreme: measured at
+    // 4.4943 for a requested 4.5, on the ground catppuccin actually ships.
+    atLeast(check, "a channel at the extreme", "the lift toward white still delivers the floor",
+            Contrast.ratio(Contrast.ensureRatio("#ff0000", "#1e1e2e", TEXT_MIN), "#1e1e2e"), TEXT_MIN)
 }
