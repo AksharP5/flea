@@ -34,26 +34,33 @@ impl Cancellation {
     }
 }
 
-#[derive(Debug)]
-pub struct Manifest {
-    file: Arc<File>,
-    end: u64,
-}
 // PR 135, reverb256: the kernel does not sequence a flock release after close(2) completes, so a
 // thread could still see the record locked once the descriptor had closed, which is the intermittent
-// recovery failure they measured. Released explicitly, and only by the last holder, because Records
-// clones share this descriptor and the lock goes with it.
-impl Drop for Manifest {
+// recovery failure they measured. The release lives inside the Arc, so it runs exactly once, at the
+// last holder, on whichever thread gets there, and always before the descriptor closes.
+#[derive(Debug)]
+pub struct LockedFile(File);
+impl Drop for LockedFile {
     fn drop(&mut self) {
-        if Arc::strong_count(&self.file) == 1 {
-            let _ = self.file.unlock();
-        }
+        let _ = self.0.unlock();
     }
+}
+impl std::ops::Deref for LockedFile {
+    type Target = File;
+    fn deref(&self) -> &File {
+        &self.0
+    }
+}
+
+#[derive(Debug)]
+pub struct Manifest {
+    file: Arc<LockedFile>,
+    end: u64,
 }
 
 #[derive(Clone, Debug)]
 pub struct Records {
-    file: Arc<File>,
+    file: Arc<LockedFile>,
     start: u64,
     end: u64,
 }
@@ -63,7 +70,7 @@ impl Manifest {
             .custom_flags(crate::oflags::O_NOFOLLOW).open(path)
             .map_err(|e| format!("Could not create recovery record {}: {}", path.display(), e))?;
         file.lock().map_err(|e| format!("Could not lock recovery record: {}", e))?;
-        Ok(Self { file: Arc::new(file), end: 0 })
+        Ok(Self { file: Arc::new(LockedFile(file)), end: 0 })
     }
     pub fn open_inactive(path: &Path) -> Result<Option<Self>, String> {
         let file = crate::backend::regfile::open_if_regular(path, crate::oflags::O_NOFOLLOW)
@@ -78,7 +85,7 @@ impl Manifest {
         }
         let metadata = file.metadata().map_err(|e| e.to_string())?;
         if !metadata.is_file() { return Err("Recovery record is not a regular file.".into()); }
-        Ok(Some(Self { file: Arc::new(file), end: metadata.len() }))
+        Ok(Some(Self { file: Arc::new(LockedFile(file)), end: metadata.len() }))
     }
     pub fn file(&self) -> &File { &self.file }
     pub fn sync(&self) -> Result<(), String> {
@@ -92,7 +99,7 @@ impl Manifest {
             .custom_flags(O_TMPFILE)
             .open(root)
             .map_err(|e| format!("Could not create anonymous Trash review in {}: {}", root.display(), e))?;
-        Ok(Self { file: Arc::new(file), end: 0 })
+        Ok(Self { file: Arc::new(LockedFile(file)), end: 0 })
     }
     pub fn len(&self) -> u64 { self.end }
     pub fn append(&mut self, bytes: &[u8]) -> Result<(), String> {
