@@ -2562,7 +2562,7 @@ centre_on_axis() {
     room=$(jq -r '.room' <<< "$state")
     slot=$(jq -r '.slot' <<< "$state")
     # Three fields each, because jq prints null for a field that is not there and an empty split reads as zero, which is the shape of a pass.
-    awk -v lane="$lane" -v room="$room" -v slot="$slot" 'BEGIN { exit (split(lane, l, " ") == 3 && split(room, r, " ") == 3 && split(slot, s, " ") == 3) ? 0 : 1 }' \
+    awk -v lane="$lane" -v room="$room" -v slot="$slot" 'BEGIN { exit (split(lane, l, " ") == 3 && split(room, r, " ") == 3 && split(slot, s, " ") == 3 && r[2] > 0 && s[2] > 0) ? 0 : 1 }' \
         || fail "status: the $label strip reported no geometry: lane=[$lane] room=[$room] slot=[$slot]"
     # Each is "x width centre" in window pixels, read off the rendered items. The awk is the clamp
     # arithmetic recomputed here from those pixels, on purpose: a check that asks the code where the
@@ -2631,8 +2631,8 @@ case_status() {
     shot status-centre-axis-trash
     key -k Escape >/dev/null
     settle
-    [[ "$(ipc statusFooterState | jq -r '.path')" != "Trash" ]] \
-        || fail "status: Escape left the trash open, so anything measured after this is in the wrong state"
+    [[ "$(ipc statusFooterState | jq -r '.path')" == "$dir" ]] \
+        || fail "status: Escape did not return the strip to $dir, it says $(ipc statusFooterState | jq -r '.path')"
     kill_flea
 }
 
