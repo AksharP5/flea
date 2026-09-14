@@ -63,7 +63,6 @@ fn le16(b: &[u8], at: usize) -> Option<u32> {
     Some(u16::from_le_bytes([s[0], s[1]]) as u32)
 }
 
-
 // Sample input: 89 50 4E 47 0D 0A 1A 0A | 00 00 00 0D "IHDR" | width(4) height(4)
 fn png(b: &[u8]) -> Option<(u32, u32)> {
     if b.get(12..16)? != b"IHDR" {
