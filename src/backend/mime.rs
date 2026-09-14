@@ -70,7 +70,7 @@ impl Db {
         Db { by_suffix_cs, by_suffix, by_name_cs, by_name }
     }
 
-    // Takes a file name, never a path: a directory component must not be read as an extension.
+    // Takes a name or a path, and answers on the last component: a directory's own dot is not a suffix.
     pub fn lookup(&self, name: &str) -> Option<&str> {
         // Issue 89, nixfred: a search or listpaths row is a path relative to the base, and the by-name
         // globs are keyed on bare names, so the component is taken here and every caller is covered.
