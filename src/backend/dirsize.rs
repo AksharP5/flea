@@ -169,13 +169,11 @@ mod tests {
         let seen = std::sync::atomic::AtomicUsize::new(0);
         let cut = walk_while(&d, &|| seen.fetch_add(1, std::sync::atomic::Ordering::Relaxed) >= 3);
         assert!(cut.partial, "a stop that fires leaves a floor, which publishes no total at all");
-        // The root's own entry is counted before the walk starts, so what proves it saw an entry is
-        // the bytes above that, and which entry readdir handed back first does not decide it.
+        // The root's own entry is counted before the walk starts, so an entry seen is bytes above that.
         let root_only = fs::symlink_metadata(&d).unwrap().size();
         assert!(cut.bytes > root_only, "and it keeps what it saw before the stop: {} against {}", cut.bytes, root_only);
         assert!(cut.bytes < whole.bytes, "which is less than the whole tree: {} against {}", cut.bytes, whole.bytes);
-        // The other entry point on the same tree: the listing's clock still bounds it, and the copy's
-        // walk cannot be given one at all, which is what its signature says and this pins.
+        // The other entry point on the same tree, whose clock still bounds it where the copy's has none.
         let past = Instant::now() - Duration::from_secs(1);
         assert!(walk_until(&d, past).partial, "the listing's own deadline still bounds it");
     }
