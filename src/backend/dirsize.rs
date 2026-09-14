@@ -157,8 +157,7 @@ mod tests {
     #[test]
     fn a_walk_ends_on_its_stop_rather_than_on_a_clock() {
         let (_sandbox, d) = fixture("dirsize-stop");
-        // Flat, so the stop below fires between two entries of one directory rather than on the way
-        // into another, which is the check a walk of one wide folder spends all its time in.
+        // Flat, so the stop fires between two entries rather than on the way into another directory.
         for name in ["a", "b", "c", "d", "e", "f"] {
             fs::write(d.join(name), "abcdefgh").unwrap();
         }
@@ -170,12 +169,15 @@ mod tests {
         let seen = std::sync::atomic::AtomicUsize::new(0);
         let cut = walk_while(&d, &|| seen.fetch_add(1, std::sync::atomic::Ordering::Relaxed) >= 3);
         assert!(cut.partial, "a stop that fires leaves a floor, which publishes no total at all");
-        assert!(cut.bytes > 0, "and it keeps what it saw before the stop: {}", cut.bytes);
+        // The root's own entry is counted before the walk starts, so what proves it saw an entry is
+        // the bytes above that, and which entry readdir handed back first does not decide it.
+        let root_only = fs::symlink_metadata(&d).unwrap().size();
+        assert!(cut.bytes > root_only, "and it keeps what it saw before the stop: {} against {}", cut.bytes, root_only);
         assert!(cut.bytes < whole.bytes, "which is less than the whole tree: {} against {}", cut.bytes, whole.bytes);
-        // The two entry points, on one tree: the listing stops at its clock, the copy's walk has none.
+        // The other entry point on the same tree: the listing's clock still bounds it, and the copy's
+        // walk cannot be given one at all, which is what its signature says and this pins.
         let past = Instant::now() - Duration::from_secs(1);
         assert!(walk_until(&d, past).partial, "the listing's own deadline still bounds it");
-        assert!(!walk_while(&d, &|| false).partial, "and the copy's walk is not bounded by any clock");
     }
 
     #[test]

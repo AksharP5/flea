@@ -40,6 +40,15 @@ function run(check) {
     check("an activity precedes search", Status.centreText(both), "Copy 1 item to dest")
     check("and retains foreground during search", Status.centreRole(both), "foreground")
 
+    // Directive 51's own shape: a transfer is running, so the sticky is empty whatever else is up,
+    // and an error that lands while the card reports still owns this slot and its role.
+    var errorWhileCardUp = slot({ transient: "Copy failed: c.txt · already exists", transientIsError: true,
+                                  searching: true, searchLine: "3 found in 1.6 s" })
+    check("an error during a transfer still owns the slot",
+          Status.centreText(errorWhileCardUp), "Copy failed: c.txt · already exists")
+    check("and the search behind it does not take the slot back",
+          Status.centreRole(errorWhileCardUp), "error")
+
     var failed = slot({ transient: "Copy failed: photo.heic · disk full", transientIsError: true })
     check("a failure owns the slot", Status.centreText(failed), "Copy failed: photo.heic · disk full")
     check("and takes the error role", Status.centreRole(failed), "error")
