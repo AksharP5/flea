@@ -375,7 +375,9 @@ function aboutRows(facts) {
         { kind: "fact", label: "File manager", glyph: "folder", elide: "head", value: facts.handler || "Not reported" },
         { kind: "action", id: "keyboardSheet", label: "Keyboard sheet", glyph: "keyboard", value: "?" },
         { kind: "action", id: "reportIssue", label: "Report an issue", glyph: "network", value: "Open" },
-        { kind: "action", id: "support", label: "Support Flea", glyph: "star", value: "buymeacoffee" }
+        // SettingsGrammar rule 6: a brand is never given a generic glyph, and the mark set holds no
+        // GitHub reproduction, so this row names the destination and draws no mark at all.
+        { kind: "action", id: "support", label: "Support Flea", value: "GitHub Sponsors" }
     ]
 }
 

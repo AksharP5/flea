@@ -120,7 +120,7 @@ Item {
             return
         }
         if (row.id === "reportIssue" || row.id === "support") {
-            Qt.openUrlExternally(row.id === "support" ? "https://buymeacoffee.com/thisisgm"
+            Qt.openUrlExternally(row.id === "support" ? "https://github.com/sponsors/thisisgm"
                                                      : "https://github.com/thisisgm/flea/issues")
             return
         }
