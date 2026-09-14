@@ -26,8 +26,7 @@ function shareBrowserHere(root) {
 // The one lookup Pane.qml's Keys.onPressed calls. "addNetwork" is a rail-only action (the
 // dialog is reached from the rail's own "+" mark), so "a" does nothing in the list;
 // filtering it here, not in Keymap.js, keeps the generated file a pure keys.toml mirror.
-// seekBack/seekForward get the same treatment, scoped to an open MEDIA preview instead of the
-// rail, so Left/Right stay silent everywhere else rather than reaching act()'s "not built yet".
+// seekBack/seekForward get the same treatment, scoped to an open MEDIA preview instead of the rail.
 function lookup(event, root) {
     var context = root.preview.active ? (root.preview.isPdf ? "pdf" : root.preview.isMedia ? "media" : "preview")
                   : shareBrowserHere(root) ? "menu" : root.focusView === RAIL ? "rail" : "listing"
@@ -42,16 +41,11 @@ function lookup(event, root) {
     // List and Grid filter held rows; search owns the header while its results are active.
     if (action === "filter")
         return (root.viewMode !== "columns" && root.searchMode.length === 0) ? action : ""
-    // Left and Right seek inside a media preview and turn the page in a PDF one. With no preview
-    // open they are free, and in the grid they are the only sensible way to move one tile sideways,
-    // so the grid claims them there.
-    if (action === "seekBack" || action === "seekForward") {
-        if (root.preview.active && (root.preview.isMedia || root.preview.isPdf))
-            return action
-        if (root.viewMode === "grid")
-            return action === "seekBack" ? "cursorLeft" : "cursorRight"
-        return ""
-    }
+    // Left and Right seek inside a media preview and turn the page in a PDF one, which is the only
+    // place the map binds either action now that the browsing pair is parent and browse-in; the grid
+    // takes the bare arrows above, before the map is consulted.
+    if (action === "seekBack" || action === "seekForward")
+        return root.preview.active && (root.preview.isMedia || root.preview.isPdf) ? action : ""
     // Minus, plus and e mean nothing outside a PDF. l is h's forward: page, else enter or preview.
     if (action === "zoomOut" || action === "zoomIn" || action === "expand")
         return (root.preview.active && root.preview.isPdf) ? action : ""

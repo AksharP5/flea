@@ -338,16 +338,19 @@ action = "preview"
 key = "F2"
 action = "rename"
 
-# Task 22: seeking, reachable only with a MEDIA preview open. ui/js/Focus.js's lookup discards
-# these the same way it already discards addNetwork outside the rail, so Left/Right stay silent
-# everywhere else rather than surfacing act()'s "not built yet" fallback while browsing.
+# GM's fix, 2026-09-13: the arrows are the letter pair's own spelling, so Left is h's parent and
+# Right is l's browse-in, in the list, the columns and both dual panes. A preview takes them back
+# through the preview-context rows at the end of this file, where they seek in media and turn the
+# page in a PDF, and the grid claims them as its own sideways move in ui/js/Focus.js before the map
+# is consulted at all. They were seekBack and seekForward here, which ui/js/Focus.js then discarded
+# everywhere but the grid, so the two arrows did nothing at all while browsing.
 [[code]]
 key = "Left"
-action = "seekBack"
+action = "parent"
 
 [[code]]
 key = "Right"
-action = "seekForward"
+action = "pageForward"
 
 # The character is authoritative for letters, so shift-g is distinguishable from g.
 [[text]]
@@ -533,6 +536,11 @@ label = "move"
 keys = "enter"
 action = "open"
 label = "open"
+
+[[sheet]]
+keys = "h"
+action = "parent"
+label = "parent"
 
 [[sheet]]
 keys = "l"
@@ -1028,11 +1036,14 @@ label = "paste"
 frontend = "tui"
 context = "listing"
 
+# H and L, not h and l: the character is authoritative for letters, and h and l are the shared
+# table's parent and browse-in. The cap has to spell what is bound or the sheet advertises a key
+# that does something else.
 [[preset]]
 name = "default"
 mods = "text"
 key = "H"
-keys = "h"
+keys = "H"
 action = "historyBack"
 label = "history back"
 frontend = "all"
@@ -1042,7 +1053,7 @@ context = "listing"
 name = "vim"
 mods = "text"
 key = "H"
-keys = "h"
+keys = "H"
 action = "historyBack"
 label = "history back"
 frontend = "all"
@@ -1052,7 +1063,7 @@ context = "listing"
 name = "default"
 mods = "text"
 key = "L"
-keys = "l"
+keys = "L"
 action = "historyForward"
 label = "history forward"
 frontend = "all"
@@ -1062,7 +1073,7 @@ context = "listing"
 name = "vim"
 mods = "text"
 key = "L"
-keys = "l"
+keys = "L"
 action = "historyForward"
 label = "history forward"
 frontend = "all"

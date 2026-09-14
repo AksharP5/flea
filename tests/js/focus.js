@@ -124,11 +124,12 @@ function run(check) {
     check("e is discarded over a media preview", Focus.lookup(e, pane(mediaOpen())), "")
     check("minus is discarded over a media preview", Focus.lookup(minus, pane(mediaOpen())), "")
 
-    // Left and Right now serve two previews, and must still serve the grid and nothing else.
+    // Left and Right serve two previews, the grid's own sideways step, and GM's fix: while browsing
+    // they are the letter pair's spelling, so they go up a level and into the row under the cursor.
     check("left turns a PDF page", Focus.lookup(left, pane(pdfOpen())), "seekBack")
     check("right turns a PDF page", Focus.lookup(right, pane(pdfOpen())), "seekForward")
     check("left still seeks media", Focus.lookup(left, pane(mediaOpen())), "seekBack")
-    check("left is discarded in the list", Focus.lookup(left, pane(closed())), "")
+    check("left goes up a level in the list", Focus.lookup(left, pane(closed())), "parent")
     check("left still steps a grid tile", Focus.lookup(left, pane(closed(), "grid")), "cursorLeft")
     check("right still steps a grid tile", Focus.lookup(right, pane(closed(), "grid")), "cursorRight")
 
