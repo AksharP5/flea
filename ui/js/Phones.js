@@ -19,8 +19,7 @@
 //   activation_root=afc://00008130-001641411883401C:3/
 //   can_mount=1
 // Mount(2): GM's iPhone -> afc://00008130-001641411883401C/
-// That last line is the root, at column zero. The documents share answers can_mount=0 and prints its
-// own indented Mount() once gvfs automounts it, which is the pair the mount branch below ignores.
+// The root is that column-zero line; the share answers can_mount=0 with its own indented Mount when gvfs automounts it.
 // Only a COLUMN-ZERO Volume() block can be a phone: a udisks volume prints indented under its own
 // Drive() block, and the Type line is required anyway, so only the three gvfs monitors with no block
 // device behind them qualify, MTP for Android, AFC for an iPhone's files and GPhoto2 for cameras.
