@@ -23,7 +23,8 @@ pub fn dimensions(path: &Path) -> Option<(u32, u32)> {
     // and the frame header sits behind it, so a JPEG's chain is walked over the file and not the probe.
     if buf.starts_with(&[0xFF, 0xD8]) {
         f.seek(SeekFrom::Start(2)).ok()?;
-        return jpeg(&mut f);
+        // Buffered, because the walk resyncs a byte at a time and a raw File makes that a syscall each.
+        return jpeg(&mut std::io::BufReader::new(&mut f));
     }
     from_header(&buf)
 }
@@ -33,7 +34,7 @@ pub fn from_header(b: &[u8]) -> Option<(u32, u32)> {
         return png(b);
     }
     if b.starts_with(&[0xFF, 0xD8]) {
-        // The same walk over the bytes in hand, so the two callers cannot answer differently.
+        // The same walk, so bytes in hand and a file on disk decode a JPEG by one rule and not two.
         return jpeg(&mut std::io::Cursor::new(&b[2..]));
     }
     if b.starts_with(GIF_MAGIC) {
@@ -71,22 +72,32 @@ fn png(b: &[u8]) -> Option<(u32, u32)> {
     Some((be32(b, 16)?, be32(b, 20)?))
 }
 
+// How far into a file the frame header is looked for. A camera's EXIF preview is tens of kilobytes,
+// so this is generous; past it the file is not answering and this runs on the preview path.
+const JPEG_WALK: u64 = 1024 * 1024;
+
+// One byte, and the walk's own bound with it: a file that never names a marker must not be read whole.
+fn step<R: Read>(r: &mut R, walked: &mut u64) -> Option<u8> {
+    if *walked >= JPEG_WALK {
+        return None;
+    }
+    let mut byte = [0u8; 1];
+    r.read_exact(&mut byte).ok()?;
+    *walked += 1;
+    Some(byte[0])
+}
+
 // Sample input: FF D8 | FF C0 <len:2> <precision:1> <height:2> <width:2> ..., with any number of
 // other FF xx segments before that frame header.
 fn jpeg<R: Read + Seek>(r: &mut R) -> Option<(u32, u32)> {
+    let mut walked: u64 = 0;
     loop {
         // Any run of FF is padding before the marker, so only the byte that ends the run is one.
-        let mut byte = [0u8; 1];
-        loop {
-            r.read_exact(&mut byte).ok()?;
-            if byte[0] == 0xFF {
-                break;
-            }
-        }
+        while step(r, &mut walked)? != 0xFF {}
         let marker = loop {
-            r.read_exact(&mut byte).ok()?;
-            if byte[0] != 0xFF {
-                break byte[0];
+            let b = step(r, &mut walked)?;
+            if b != 0xFF {
+                break b;
             }
         };
         // TEM, the restart markers and a repeated SOI stand alone: no length follows them.
@@ -97,9 +108,7 @@ fn jpeg<R: Read + Seek>(r: &mut R) -> Option<(u32, u32)> {
         if marker == 0xDA || marker == 0xD9 {
             return None;
         }
-        let mut len = [0u8; 2];
-        r.read_exact(&mut len).ok()?;
-        let len = u16::from_be_bytes(len);
+        let len = u16::from_be_bytes([step(r, &mut walked)?, step(r, &mut walked)?]);
         if len < 2 {
             return None;
         }
@@ -115,6 +124,7 @@ fn jpeg<R: Read + Seek>(r: &mut R) -> Option<(u32, u32)> {
         }
         // Seeked rather than read: an EXIF segment is tens of kilobytes and none of it is wanted.
         r.seek(SeekFrom::Current(i64::from(len) - 2)).ok()?;
+        walked += u64::from(len) - 2;
     }
 }
 
@@ -206,6 +216,18 @@ mod tests {
         std::fs::write(&path, &v).unwrap();
         assert_eq!(dimensions(&path), Some((640, 480)), "the frame header is behind the EXIF, not in the probe");
         assert_eq!(from_header(&v[..PROBE]), None, "and the probe alone cannot reach it, which is why the file is walked");
+    }
+
+    // The bound, because the walk is no longer held to the probe: a file that starts FFD8 and never
+    // names a marker used to be read to its end, 44.8 s for 64 MB on this box measured before the cap.
+    #[test]
+    fn a_file_that_never_names_a_marker_is_not_read_to_its_end() {
+        let mut quiet = std::io::Cursor::new(vec![0u8; JPEG_WALK as usize * 2]);
+        assert_eq!(jpeg(&mut quiet), None, "no marker is ever found, so the walk gives up");
+        assert!(quiet.position() <= JPEG_WALK, "at the bound, not at the end: {}", quiet.position());
+        let mut padding = std::io::Cursor::new(vec![0xFFu8; JPEG_WALK as usize * 2]);
+        assert_eq!(jpeg(&mut padding), None, "and a file that is all padding names no marker either");
+        assert!(padding.position() <= JPEG_WALK, "at the bound, not at the end: {}", padding.position());
     }
 
     // The shapes the old byte walker stepped over: fill bytes before a marker, a marker that carries
