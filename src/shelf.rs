@@ -13,6 +13,7 @@ const DIR: &str = "omarchy/flea-shelf";
 const PILE: &str = "shelf.json";
 const DRAGS: &str = "drags.json";
 const DRAGS_LOCK: &str = "drags.json.lock";
+const PILE_LOCK: &str = "shelf.json.lock";
 
 // A drag is a gesture, not a session: a token older than this is refused however it was stored.
 const TOKEN_LIFE_MS: u64 = 120_000;
@@ -22,13 +23,13 @@ const TOKEN_BYTES: usize = 16;
 
 pub struct Shelf {
     pile: PathBuf,
+    pile_lock: PathBuf,
     drags: PathBuf,
     lock: PathBuf,
 }
 
 // What a redeemed token asks for: the entries as they were at the lift, and the intent fixed there.
 pub struct Redeemed {
-    pub token: String,
     pub moving: bool,
     pub paths: Vec<String>,
 }
@@ -40,7 +41,12 @@ impl Shelf {
 
     pub fn at(state_dir: &Path) -> Shelf {
         let dir = state_dir.join(DIR);
-        Shelf { pile: dir.join(PILE), drags: dir.join(DRAGS), lock: dir.join(DRAGS_LOCK) }
+        Shelf {
+            pile: dir.join(PILE),
+            pile_lock: dir.join(PILE_LOCK),
+            drags: dir.join(DRAGS),
+            lock: dir.join(DRAGS_LOCK),
+        }
     }
 
     pub fn pile_file(&self) -> &Path {
@@ -111,7 +117,7 @@ impl Shelf {
         for entry in &entries {
             paths.push(unchanged(entry)?);
         }
-        Ok(Redeemed { token: token.to_string(), moving, paths })
+        Ok(Redeemed { moving, paths })
     }
 
     // Rule 3: the shelf changes only after completion. A copy leaves every reference, a move removes
@@ -120,19 +126,51 @@ impl Shelf {
         if moved.is_empty() {
             return Ok(());
         }
+        self.write_pile(|items| {
+            items
+                .into_iter()
+                .filter(|item| match item.get("path").and_then(Json::as_str) {
+                    Some(path) => !moved.iter().any(|gone| gone == path),
+                    None => false,
+                })
+                .collect()
+        })
+    }
+
+    // Actions rule 6: Add to shelf is the same call a drop makes, and a path the shelf already holds
+    // is not added twice, because what the shelf holds is a reference and not a copy.
+    pub fn add(&self, paths: &[String]) -> Result<(), String> {
+        let mut entries = Vec::new();
+        for path in paths {
+            entries.push(item_of(path)?);
+        }
+        self.write_pile(move |mut items| {
+            for entry in entries {
+                let path = entry.get("path").and_then(Json::as_str).map(String::from);
+                let held = items
+                    .iter()
+                    .any(|item| item.get("path").and_then(Json::as_str).map(String::from) == path);
+                if !held {
+                    items.push(entry);
+                }
+            }
+            items
+        })
+    }
+
+    // Every write of the pile goes through one lock, so a click that adds and a move that settles
+    // cannot land on top of each other.
+    fn write_pile(&self, change: impl FnOnce(Vec<Json>) -> Vec<Json>) -> Result<(), String> {
+        let dir = self.pile.parent().ok_or("the shelf has no directory to write in")?;
+        uistore::make_dir(dir)?;
+        let lock = uistore::take_lock(&self.pile_lock)?;
         let text = fs::read_to_string(&self.pile).unwrap_or_default();
         let doc = jsondoc::parse(&text).unwrap_or(Json::Obj(Vec::new()));
         let items: Vec<Json> = doc.get("items").and_then(Json::as_array).map(<[Json]>::to_vec).unwrap_or_default();
-        let kept: Vec<Json> = items
-            .into_iter()
-            .filter(|item| match item.get("path").and_then(Json::as_str) {
-                Some(path) => !moved.iter().any(|gone| gone == path),
-                None => false,
-            })
-            .collect();
-        let next = Json::Obj(vec![("items".to_string(), Json::Arr(kept))]);
-        uistore::make_dir(self.pile.parent().ok_or("the shelf has no directory to write in")?)?;
-        uistore::replace(&self.pile, &jsondoc::render(&next))
+        let next = Json::Obj(vec![("items".to_string(), Json::Arr(change(items)))]);
+        let written = uistore::replace(&self.pile, &jsondoc::render(&next));
+        lock.unlock().map_err(|e| format!("{} could not be unlocked ({:?})", self.pile_lock.display(), e.kind()))?;
+        written
     }
 
     fn write_drags(&self, change: impl FnOnce(&Json) -> Result<Json, String>) -> Result<(), String> {
@@ -165,6 +203,17 @@ fn live_drags(drags: &Json, now_ms: u64) -> Vec<Json> {
                 .collect()
         })
         .unwrap_or_default()
+}
+
+// A pile entry: the path the shelf holds and whether the card draws it as a folder. The size is not
+// recorded, because the card asks for it per drawn row and a folder's answer goes stale on its own.
+fn item_of(path: &str) -> Result<Json, String> {
+    let full = std::path::absolute(path).map_err(|e| format!("{} could not be read ({:?})", path, e.kind()))?;
+    let meta = fs::symlink_metadata(&full).map_err(|e| format!("{} could not be read ({:?})", path, e.kind()))?;
+    Ok(Json::Obj(vec![
+        ("path".to_string(), Json::Str(full.to_string_lossy().to_string())),
+        ("folder".to_string(), Json::Bool(meta.is_dir())),
+    ]))
 }
 
 // The source identity the lift recorded, which is what makes a token name a file rather than a name.
@@ -219,8 +268,10 @@ pub fn command(args: &[String]) -> i32 {
         Some("drag-begin") => drag_begin(&args[3..]),
         Some("size") => size(&args[3..]),
         Some("forget") => forget(&args[3..]),
+        Some("add") => add(&args[3..]),
+        Some("captures") => crate::captures::command(&args[3..]),
         _ => {
-            eprintln!("flea: shelf takes drag-begin <move|copy> <path>..., size <path> or forget <path>...");
+            eprintln!("flea: shelf takes drag-begin, size, add, forget or captures");
             2
         }
     }
@@ -239,6 +290,27 @@ fn size(rest: &[String]) -> i32 {
             println!("{} {}", bytes, u8::from(partial));
             0
         }
+        Err(e) => {
+            eprintln!("flea: {}", e);
+            2
+        }
+    }
+}
+
+fn add(rest: &[String]) -> i32 {
+    if rest.is_empty() {
+        eprintln!("flea: shelf add takes at least one path");
+        return 2;
+    }
+    let shelf = match Shelf::user() {
+        Ok(shelf) => shelf,
+        Err(e) => {
+            eprintln!("flea: {}", e);
+            return 2;
+        }
+    };
+    match shelf.add(rest) {
+        Ok(()) => 0,
         Err(e) => {
             eprintln!("flea: {}", e);
             2

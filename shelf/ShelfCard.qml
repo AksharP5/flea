@@ -18,8 +18,12 @@ Item {
   property string error: ""
   property int hoveredIndex: -1
   property int cursorIndex: -1
+  // ShelfEmpty rules 2 and 5: the tray is on the card whether the pile is empty or not.
+  property var captures: []
+  property string hint: ""
 
   signal removeRequested(int index)
+  signal captureAddRequested(int index)
   signal actionRequested(string id)
   // Rule 2: the header is the handle the whole pile is carried by. The modifier is read at the
   // lift and never after it, because a platform drag runs a loop this window gets no keys in.
@@ -197,6 +201,49 @@ Item {
       }
     }
 
+    // ShelfEmpty rule 6: empty is a state, not a failure. One mark, one caption, and the footer's
+    // own hint line beneath it; no apology copy and no onboarding card.
+    Item {
+      width: parent.width
+      height: visible ? Math.round(root.rowHeight * 4) : 0
+      visible: root.pile.items.length === 0 && root.captures.length === 0
+
+      Column {
+        anchors.centerIn: parent
+        spacing: Style.space(12)
+
+        ShelfGlyph {
+          anchors.horizontalCenter: parent.horizontalCenter
+          width: Style.space(44)
+          height: width
+          path: Model.SHELF_GLYPH
+          color: root.muted
+        }
+
+        Text {
+          anchors.horizontalCenter: parent.horizontalCenter
+          text: "NOTHING ON THE SHELF"
+          color: root.muted
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.caption
+          font.bold: true
+          font.letterSpacing: 1.2
+          textFormat: Text.PlainText
+        }
+      }
+    }
+
+    ShelfTray {
+      width: parent.width
+      captures: root.captures
+      foreground: root.foreground
+      muted: root.muted
+      fontFamily: root.fontFamily
+      pad: root.pad
+      stripHeight: root.stripHeight
+      onAddRequested: function (index) { root.captureAddRequested(index) }
+    }
+
     // Rule 5: the footer is one slot with one voice, and it says nothing rather than two things.
     Item {
       width: parent.width
@@ -207,7 +254,8 @@ Item {
         x: root.pad
         width: parent.width - 2 * root.pad
         text: Model.footerText(root.hoveredIndex >= 0 && root.pile.items[root.hoveredIndex]
-                   ? root.pile.items[root.hoveredIndex].path : "", root.result, root.error)
+                               ? root.pile.items[root.hoveredIndex].path : "",
+                               root.result, root.error, root.hint)
         color: root.error ? Color.urgent : root.muted
         font.family: root.fontFamily
         font.pixelSize: Style.font.caption
@@ -220,7 +268,9 @@ Item {
     // keyHints toggle does not govern this strip. Zip takes a, because z is undo everywhere.
     Row {
       width: parent.width
-      height: root.stripHeight
+      // ShelfEmpty rule 1: absent, not greyed. Five dead buttons teach the eye to ignore the strip.
+      visible: root.pile.items.length > 0
+      height: visible ? root.stripHeight : 0
       spacing: Style.space(14)
       leftPadding: root.pad
 

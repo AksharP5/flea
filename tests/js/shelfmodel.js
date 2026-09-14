@@ -52,7 +52,35 @@ function run(check) {
     check("a size the card is no longer drawing is not kept",
           (pruned["/b/big"] === undefined) + "|" + pruned["/c"].bytes, "true|-1")
 
-    check("the tooltip says what is held, because the bar itself never draws a count",
+    // ShelfEmpty rules 2, 4, 5 and 7: the tray, what it says, and the routes the empty card names.
+  var shots = Shelf.parseCaptures("1757890932000 /home/gm/Pictures/screenshot-2026-09-14_19-02-11.png\n"
+                                  + "1757889660000 /home/gm/Videos/screenrecording-2026-09-14_18-41-00.mp4\n"
+                                  + "bad line with no time\n")
+  check("a capture line is its time and its path, and a line that is neither is dropped", shots.length, 2)
+  check("a recording is known by its own extension and never decoded",
+        shots[0].recording + "|" + shots[1].recording, "false|true")
+  check("the tray says the time of day, in the one clock this project draws",
+        Shelf.captureTime(shots[0].at).length + "|" + Shelf.captureTime(shots[0].at).charAt(2), "5|:")
+  check("a time that is not one draws nothing", Shelf.captureTime("not a time"), "")
+
+  check("the empty card names only the routes that are on",
+        Shelf.routesHint({ edge: "right", mark: false, bind: "super+d" }),
+        "throw at the right edge \u00b7 super+d opens")
+  check("and with only the mark on, it names that one", Shelf.routesHint({ edge: "", mark: true, bind: "" }),
+        "the bar mark opens")
+  check("with every route off it advertises no gesture at all", Shelf.routesHint({}), "")
+  check("an empty shelf with shots to hand says what the tray does",
+        Shelf.emptyHint(Shelf.empty(), shots, { mark: true }), "click to add \u00b7 drag to take it straight out")
+  check("an empty shelf with nothing recent names the routes instead",
+        Shelf.emptyHint(Shelf.empty(), [], { edge: "right", mark: true, bind: "" }),
+        "throw at the right edge \u00b7 the bar mark opens")
+  check("and a shelf that is holding says none of it", Shelf.emptyHint(one, shots, { mark: true }), "")
+  check("the header says an empty shelf is empty", Shelf.headerText(Shelf.empty()), "Shelf  empty")
+  check("the hint is the footer's last voice, behind the hovered row and the error",
+        Shelf.footerText("", "", "", "click to add") + "|" + Shelf.footerText("/x/a", "", "", "click to add"),
+        "click to add|/x/a")
+
+  check("the tooltip says what is held, because the bar itself never draws a count",
           Shelf.tooltip(Shelf.empty()) + " / " + Shelf.tooltip(one) + " / " + Shelf.tooltip(mixed),
           "Flea shelf is empty / Flea shelf is holding 1 item / Flea shelf is holding 2 items")
 }

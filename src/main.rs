@@ -18,6 +18,7 @@ mod thp;
 mod uischema;
 mod uistate;
 mod favourites;
+mod captures;
 mod shelf;
 mod uistore;
 mod userfile;

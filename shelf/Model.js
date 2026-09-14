@@ -66,6 +66,8 @@ function tooltip(state) {
 // ---- what the card draws, Main board rules 4, 5 and 7 ----
 
 // The two marks a row can take, on the Omarchy cut, the same paths ui/js/Icons.js draws them from.
+// Flea's own mark, which is what an empty shelf draws rather than a stand-in for one.
+var SHELF_GLYPH = "M21 21H3V3h18v14H7V7h10v6h-6"
 var FOLDER_GLYPH = "M2 20V3h6l2 3h12v14H2z"
 var FILE_GLYPH = "M4 22V2h10l6 6v14H4z M14 2v6h6"
 
@@ -138,21 +140,97 @@ function sized(pile, sizes) {
 }
 
 // Rule 5: one slot with one voice. The hovered row's path, or the last result, or the one error, and
-// never two of them at once; the order is the one the card was drawn with.
-function footerText(hoveredPath, result, error) {
+// never two of them at once; the order is the one the card was drawn with. The hint is last, because
+// an empty shelf has no row to hover and nothing has happened on it yet.
+function footerText(hoveredPath, result, error, hint) {
   if (error) {
     return String(error)
   }
   if (hoveredPath) {
     return String(hoveredPath)
   }
-  return String(result || "")
+  if (result) {
+    return String(result)
+  }
+  return String(hint || "")
 }
 
-// Rule 2's header, which is also the pile's own count: the bar never draws one.
+// ---- the recent captures tray, ShelfEmpty rules 2, 4, 5 and 7 ----
+
+// A recording is drawn by its mark and never decoded, so it needs one: the Omarchy cut's play square.
+var RECORDING_GLYPH = "M4 3h16v18H4z M10 9l6 3l-6 3z"
+
+// Sample input, one line per capture, newest first, the mtime in milliseconds then the path:
+// 1757890932000 /home/gm/Pictures/screenshot-2026-09-14_19-02-11.png
+function parseCaptures(text) {
+  var lines = String(text || "").split("\n")
+  var out = []
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i]
+    var cut = line.indexOf(" ")
+    if (cut < 1) {
+      continue
+    }
+    var at = Number(line.substring(0, cut))
+    var path = line.substring(cut + 1)
+    if (!isFinite(at) || path.length === 0) {
+      continue
+    }
+    out.push({ path: path, at: at, recording: isRecording(path) })
+  }
+  return out
+}
+
+function isRecording(path) {
+  return String(path).slice(-4).toLowerCase() === ".mp4"
+}
+
+// The one clock this project draws, cut to the part a tray of three needs.
+function captureTime(at) {
+  var when = new Date(Number(at))
+  if (!isFinite(when.getTime())) {
+    return ""
+  }
+  return pad2(when.getHours()) + ":" + pad2(when.getMinutes())
+}
+
+function pad2(n) {
+  return n < 10 ? "0" + n : String(n)
+}
+
+// The empty card names only the routes that are on, so it never advertises a gesture that will not
+// work. The edge and the bind arrive with the units that build them; the mark is drawn today.
+function routesHint(routes) {
+  var parts = []
+  if (routes && routes.edge) {
+    parts.push("throw at the " + routes.edge + " edge")
+  }
+  if (routes && routes.mark) {
+    parts.push("the bar mark opens")
+  }
+  if (routes && routes.bind) {
+    parts.push(routes.bind + " opens")
+  }
+  return parts.join(" \u00b7 ")
+}
+
+// What the one footer slot says on a card with nothing on it: how to use the tray when there is one,
+// and how to fill the shelf when there is not.
+function emptyHint(pile, captures, routes) {
+  if (pile && pile.count > 0) {
+    return ""
+  }
+  if (captures && captures.length > 0) {
+    return "click to add \u00b7 drag to take it straight out"
+  }
+  return routesHint(routes)
+}
+
+// Rule 2's header, which is also the pile's own count: the bar never draws one. An empty shelf says
+// so in the same slot, the way the ShelfEmpty board draws it.
 function headerText(state) {
   if (!state || state.count === 0) {
-    return "Shelf"
+    return "Shelf  empty"
   }
   return "Shelf  " + state.count + (state.count === 1 ? " item" : " items")
 }

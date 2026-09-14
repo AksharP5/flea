@@ -31,6 +31,8 @@ Item {
   }
 
   readonly property int refreshIntervalSec: root.intSetting("refreshIntervalSec", 5, 1, 120)
+  // ShelfEmpty rule 7: the tray's count is a clamped setting, and zero removes the tray.
+  readonly property int recentCaptures: root.intSetting("recentCaptures", 3, 0, 6)
   // The command that owns the pile. It is "flea" on an installed box and a path on a development
   // tree, and it is a setting because the plugin ships as its own repository beside the app.
   readonly property string fleaCommand: {
@@ -118,7 +120,10 @@ Item {
   property var sizes: ({})
   property string asking: ""
 
-  onDrawingChanged: root.askSize()
+  onDrawingChanged: {
+    root.askSize()
+    root.askCaptures()
+  }
   onPileChanged: {
     root.sizes = Model.keep(root.sizes, root.pile)
     root.askSize()
@@ -154,6 +159,40 @@ Item {
     root.askSize()
   }
 
+  // ShelfEmpty rule 4: the two capture directories are resolved by the backend, exactly the way
+  // Omarchy's own capture scripts resolve them, so the widget stays a display.
+  property var captures: []
+
+  function askCaptures() {
+    if (list.running || !root.drawing || root.recentCaptures === 0) {
+      return
+    }
+    list.command = [root.fleaCommand, "shelf", "captures", String(root.recentCaptures)]
+    list.running = true
+  }
+
+  Process {
+    id: list
+    running: false
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.captures = Model.parseCaptures(text)
+    }
+    stderr: StdioCollector { waitForEnd: true }
+  }
+
+  // ShelfEmpty rule 5: a click on a capture adds it to the pile, the same call a drop makes.
+  function add(path) {
+    addOne.command = [root.fleaCommand, "shelf", "add", path]
+    addOne.running = true
+  }
+
+  Process {
+    id: addOne
+    running: false
+    onExited: function (code) { if (code !== 0) root.failed("The shelf could not take that one.") }
+  }
+
   Process {
     id: measure
     running: false
@@ -169,6 +208,12 @@ Item {
     interval: root.refreshIntervalSec * root.millisecondsPerSecond
     running: true
     repeat: true
-    onTriggered: file.reload()
+    onTriggered: {
+      file.reload()
+      // ShelfEmpty rule 4: the tray is listed on open and on each re-read while the card is up, so a
+      // capture taken with the card open appears within one poll. A re-read of an unchanged pile
+      // raises nothing, which is why this hangs off the poll itself rather than off the pile.
+      root.askCaptures()
+    }
   }
 }

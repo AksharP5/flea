@@ -104,12 +104,20 @@ Panel {
         width: surface.width - surface.contentLeftInset - surface.contentRightInset
         height: surface.height - surface.contentTopInset - surface.contentBottomInset
         pile: Model.sized(shelf.pile, shelf.sizes)
+        captures: shelf.captures
+        // The empty card names only the routes that are on: the mark is drawn today, the rail edge
+        // and the summon bind arrive with the units that build them.
+        hint: Model.emptyHint(shelf.pile, shelf.captures, { edge: "", mark: true, bind: "" })
         foreground: Color.popups.text
         result: root.result
         error: root.error
         onRemoveRequested: function (index) {
           root.error = ""
           shelf.forget(shelf.pile.items[index].path)
+        }
+        onCaptureAddRequested: function (index) {
+          root.error = ""
+          shelf.add(shelf.captures[index].path)
         }
         onActionRequested: function (id) { root.result = ""; root.error = id + " lands with the actions." }
         onLiftRequested: function (copying) { shelf.mintDrag(!copying) }

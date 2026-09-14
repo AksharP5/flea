@@ -20,7 +20,8 @@
     "defaultSection": "right",
     "defaults": {
       "refreshIntervalSec": 5,
-      "fleaCommand": "flea"
+      "fleaCommand": "flea",
+      "recentCaptures": 3
     },
     "schema": [
       {
@@ -37,6 +38,15 @@
         "type": "string",
         "label": "The flea command that owns the pile",
         "defaultValue": "flea"
+      },
+      {
+        "key": "recentCaptures",
+        "type": "integer",
+        "label": "Recent captures on the card",
+        "defaultValue": 3,
+        "min": 0,
+        "max": 6,
+        "step": 1
       }
     ]
   }

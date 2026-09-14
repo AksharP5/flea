@@ -124,3 +124,24 @@ fn the_row_x_takes_the_reference_off_and_leaves_the_file() {
     assert_eq!(shelf.pile(), vec![two], "the reference leaves the pile");
     assert!(std::fs::metadata(&one).is_ok(), "and the file it named is still there");
 }
+
+#[test]
+fn a_reference_is_added_once_and_a_folder_says_it_is_one() {
+    let (dir, shelf) = shelf("shelfadd");
+    let one = file(&dir, "one.txt");
+    let tree = dir.dir("tree").to_string_lossy().to_string();
+    shelf.add(&[one.clone()]).unwrap();
+    shelf.add(&[one.clone(), tree.clone()]).unwrap();
+    assert_eq!(shelf.pile(), vec![one, tree.clone()], "the second add of a held path changes nothing");
+    let text = std::fs::read_to_string(shelf.pile_file()).unwrap();
+    assert!(text.contains("\"folder\": true"), "the card draws a folder from the entry, so it is recorded: {}", text);
+}
+
+#[test]
+fn a_path_that_is_not_there_is_not_added_at_all() {
+    let (dir, shelf) = shelf("shelfaddgone");
+    let one = file(&dir, "one.txt");
+    let gone = dir.path().join("never-written").to_string_lossy().to_string();
+    assert!(shelf.add(&[one, gone]).is_err());
+    assert!(shelf.pile().is_empty(), "one bad path adds none of them, rather than half a batch");
+}
