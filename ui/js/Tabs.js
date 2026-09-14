@@ -33,8 +33,7 @@ function snapshot(pane, path) {
         selected: elsewhere ? [] : pane.selectedIndices().slice(),
         sortBy: pane.backend.sortBy,
         sortDesc: pane.backend.sortDesc,
-        // Issue 94, nixfred: the counter every list bumps, the watch's own re-read included. A
-        // selection is row indices, so it may only be restored onto the listing it was made on.
+        // Issue 94, nixfred: the counter every list bumps, so a selection only returns to its own rows.
         listRequests: pane.backend.listRequests,
         // The directory's filesystem, so a drop on this tab while another shows decides move against copy.
         dev: elsewhere ? 0 : pane.backend.dirDev
@@ -96,8 +95,7 @@ function currentIndex(pane) {
     return pane.tabs ? pane.tabs.index : 0
 }
 
-// Issue 93, nixfred: answers whether it dropped a results listing, because the rows on the pane are
-// then a walk's and not the directory's, and every path below re-lists on that as well as on a move.
+// Issue 93, nixfred: says whether it dropped a walk's results, which are not the directory's rows.
 function dropOverlay(pane) {
     var dropped = pane.searchMode === "results"
     if (pane.searchMode.length > 0) {
@@ -145,8 +143,7 @@ function restoreSelection(pane, selected) {
 }
 
 function apply(pane, item, dropped) {
-    // Issue 93: rows that are a walk's results are not the directory's, so "same path" is not the one
-    // switch that re-lists nothing when a search was just dropped onto the scope it walked.
+    // Issue 93: a search dropped onto the scope it walked leaves rows that are not that directory's.
     var same = pane.path === item.path && pane.showHidden === item.showHidden && dropped !== true
     pane.history = item.history.slice()
     pane.forwardHistory = (item.forwardHistory || []).slice()
@@ -154,16 +151,12 @@ function apply(pane, item, dropped) {
     pane.showHidden = item.showHidden
     if (same) {
         if (pane.backend && (pane.backend.sortBy !== item.sortBy || pane.backend.sortDesc !== item.sortDesc)) {
-            // Issue 94: one reset for a reorder, ui/js/Sort.js's own, which this branch had reimplemented
-            // without it: a reorder moves every row, so the caches and the selection keyed by a row index
-            // are as stale as a new listing's.
+            // Issue 94: the one reset a reorder takes, ui/js/Sort.js's, which this branch half repeated.
             Sort.resort(pane, item.sortBy, item.sortDesc)
             pane.tabs.pendingCursor = item.cursorIndex
             return
         }
-        // The one switch that re-reads nothing, so the rows behind these indices are the rows the
-        // selection was made on. A list while the tab was hidden renumbers them, and the counter is
-        // what says so: the watch's own re-read and the refresh after a write both bump it.
+        // The switch that re-reads nothing, unless something else did: the watch and a write both list.
         pane.setCursor(item.cursorIndex)
         if (pane.backend && item.listRequests === pane.backend.listRequests) {
             restoreSelection(pane, item.selected)
@@ -182,9 +175,7 @@ function applyPending(pane) {
     if (!pane.tabs)
         return
     var t = pane.tabs
-    // Issue 91, nixfred: the pending order is spent on the first rows reply whichever way this goes.
-    // Cleared only when it differed, an order the fresh listing already had stayed pending for the
-    // life of the tab and revived on the reply answering the user's next sort, reverting it.
+    // Issue 91, nixfred: spent on the first reply either way, or an order already in force never was.
     if (t.pendingSortBy && t.pendingSortBy.length > 0 && pane.backend) {
         var by = t.pendingSortBy
         var desc = t.pendingSortDesc
