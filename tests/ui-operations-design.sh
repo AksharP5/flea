@@ -749,10 +749,10 @@ case_footertransfer() (
     (( before_bytes > 0 && before_bytes < operations_bytes )) || fail 'footer: transfer finished before capture pause'
     click_row "$(row_index_of photo.heic)" left
     menus_expect selectionCount '. == 1' 'transfer specimen displays one native selection'
-    # Operations rule 1: the footer draws the card's published 250 ms sample, not the wire's 150 ms
-    # heartbeat, so the line the capture is about arrives on the card's beat and not with the event.
-    menus_expect statusFooterState '.centre.text == "Copying 2 of 5 · photo.heic"' 'the footer reaches the card sample it draws'
-    operations_footer_capture transfer '(.left.text | startswith("1 of 10 selected")) and .centre.text == "Copying 2 of 5 · photo.heic" and .secondary.text == " · esc cancels"'
+    # Directive 51, StatusBar rule 8: the card owns a transfer's progress and it is up whenever one
+    # runs, so the strip stays at rest rather than drawing the same count and a second hairline.
+    menus_expect statusFooterState '.centre.text == "" and .secondary.text == ""' 'the strip stays at rest while the card reports'
+    operations_footer_capture transfer '(.left.text | startswith("1 of 10 selected")) and .centre.text == "" and .secondary.text == ""'
     after_bytes=$(stat -c '%s' "$menu_box/destination/photo.heic") || fail 'footer: captured partial disappeared'
     menus_equal 'controlled capture keeps the same incomplete copy' "$before_bytes" "$after_bytes"
     printf 'FOOTER_TRANSFER controlled_pause=true bytes=%s total=%s unpaused_proof=existing-operationslive\n' "$after_bytes" "$operations_bytes"

@@ -4,7 +4,6 @@ import "js/Format.js" as Format
 import "js/Filter.js" as Filter
 import "js/Ops.js" as Ops
 import "js/Status.js" as Status
-import "js/Transfer.js" as Transfer
 
 Item {
     id: root
@@ -44,17 +43,11 @@ Item {
     property var activities: []
     property var dragFeedbackOwner: null
     readonly property var activity: root.activities.length ? root.activities[0] : null
-    // Operations rule 1: one operation reports at one rate. A transfer's line is rebuilt from the
-    // card's published sample rather than the text the wire pushed, because the wire's byte heartbeat
-    // is 150 ms and the card publishes every 250 ms, so on anything small the two named two different
-    // files in the same frame. The card's beat was already chosen for the eye; this reads it.
-    readonly property string sticky: !root.activity ? ""
-        : root.barTransfer.running && root.barTransfer.id === root.transfer.id
-          ? Ops.progressLine(root.barTransfer) : root.activity.text
+    // StatusBar rule 8: the card owns a transfer's progress and it is up whenever one runs, so the
+    // strip draws nothing for it at all. A drag's own feedback is not a transfer and still reports.
+    readonly property string sticky: root.activity && !root.activity.transfer.running ? root.activity.text : ""
     readonly property var transfer: root.activity ? root.activity.transfer : Ops.emptyTransfer()
     readonly property var transferOwner: root.activity ? root.activity.owner : null
-    // The card samples every 250 ms and publishes it; the strip's own hairline reads that sample.
-    readonly property var barTransfer: cardLoader.item ? cardLoader.item.shown : root.transfer
     readonly property bool stickyHere: root.sticky.length > 0
     property string searchLine: ""
     property string retryLine: ""
@@ -71,7 +64,6 @@ Item {
     // state sentence, the block under it is already saying so and the key is not information.
     readonly property string keyHint: root.transientIsError
         ? (root.pane && root.errors[0].text === root.pane.stateMessage ? "" : "esc dismisses")
-        : root.transfer.running ? (root.activity.cancelling ? "cancelling" : "esc cancels")
         : root.noticeHint.length > 0 ? Status.hintKey(root.noticeHint) : ""
     readonly property string secondaryText: [root.keyHint,
         root.transientIsError && root.stickyHere ? root.sticky : "",
@@ -239,9 +231,9 @@ Item {
         anchors.right: parent.right
         anchors.rightMargin: 2 * Theme.spacing.rowPaddingX + root.diskTextWidth
         anchors.verticalCenter: strip.verticalCenter
-        // The hairline takes its own width out of the room the two texts share, or the pair grows into
-        // the facts beside it: rule 2 is that the disk keeps its zone whatever the transient says.
-        readonly property real room: Math.max(0, root.transientRoom - bar.width)
+        // Rule 2: the disk keeps its zone whatever the transient says, so the pair share this and elide
+        // inside it rather than growing into the facts beside them.
+        readonly property real room: root.transientRoom
 
         Text {
             id: primary
@@ -252,33 +244,6 @@ Item {
             font.pixelSize: Theme.font.caption
             elide: Text.ElideMiddle
             textFormat: Text.PlainText
-        }
-
-        // The board's own hairline beside the count. It reads the card's published sample rather than
-        // the live transfer, so the strip and the card can never report different progress.
-        Item {
-            id: bar
-            visible: root.transfer.running
-            width: visible ? Math.round(Theme.column.kind / 2) + 2 * Theme.spacing.gap : 0
-            height: strip.height
-
-            Rectangle {
-                anchors.centerIn: parent
-                width: Math.round(Theme.column.kind / 2)
-                height: Math.round(Theme.font.caption / 2)
-
-                Rectangle {
-                    anchors.fill: parent
-                    color: Theme.color.muted
-                    opacity: 0.25
-                }
-
-                Rectangle {
-                    width: parent.width * Transfer.fraction(root.barTransfer)
-                    height: parent.height
-                    color: Theme.color.accent
-                }
-            }
         }
 
         Text {

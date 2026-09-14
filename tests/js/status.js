@@ -34,9 +34,19 @@ function run(check) {
     check("a running operation owns the slot", Status.centreText(working), "Compressing 2 of 5")
     check("and reads at full contrast", Status.centreRole(working), "foreground")
 
-    var both = slot({ searching: true, searchLine: "3 found · Searching, 12 scanned", stickyHere: true, sticky: "Copying 2 of 5" })
-    check("transfer precedes search", Status.centreText(both), "Copying 2 of 5")
-    check("transfer retains foreground during search", Status.centreRole(both), "foreground")
+    // Directive 51: a transfer's own progress never reaches this slot any more, the card draws it, so
+    // the activity that can still hold one is a drag's feedback. The precedence itself is unchanged.
+    var both = slot({ searching: true, searchLine: "3 found · Searching, 12 scanned", stickyHere: true, sticky: "Copy 1 item to dest" })
+    check("an activity precedes search", Status.centreText(both), "Copy 1 item to dest")
+    check("and retains foreground during search", Status.centreRole(both), "foreground")
+
+    // The half F5 had to leave working: the card is up and an error lands, so the strip draws it even
+    // though it draws nothing for the transfer under it.
+    var errorWhileCardUp = slot({ transient: "Copy failed: c.txt · already exists", transientIsError: true })
+    check("an error during a transfer still owns the slot",
+          Status.centreText(errorWhileCardUp), "Copy failed: c.txt · already exists")
+    check("and takes the error role with nothing else in the slot",
+          Status.centreRole(errorWhileCardUp), "error")
 
     var failed = slot({ transient: "Copy failed: photo.heic · disk full", transientIsError: true })
     check("a failure owns the slot", Status.centreText(failed), "Copy failed: photo.heic · disk full")
