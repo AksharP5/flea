@@ -1,4 +1,5 @@
 .import "../../shelf/Model.js" as Shelf
+.import "../../shelf/Run.js" as Run
 
 // The shelf plugin's own pure half. It lives here while the plugin lives in this tree; it moves with
 // shelf/ when GM splits it into its own repository, which is why it imports across rather than up.
@@ -133,6 +134,34 @@ function run(check) {
   check("and the footer says what the five actions will take",
         Shelf.chosenSentence(2, 4) + "|" + Shelf.chosenSentence(0, 4),
         "5 actions take 2 chosen \u00b7 none chosen: all 4|")
+
+  // Actions: what an action says while it runs and when it lands.
+  var run = Run.sampled(Run.idle(), '{"t":"transferstarted","id":0,"n":4,"moving":true}')
+  check("a started transfer names its verb and how many", Run.runText(run), "Moving 1 of 4")
+  run = Run.sampled(run, '{"t":"transferprogress","id":0,"index":1,"name":"plate-2.raw","bytes":40,"total":100,"scanned":0}')
+  check("and a sample says which one, counted from one", Run.runText(run), "Moving 2 of 4")
+  check("the bar is the fraction of the one in flight", Run.runFraction(run), 0.4)
+  check("the footer carries the keyboard's own half", Run.runFooter(run), "Moving 2 of 4 \u00b7 esc cancels")
+  check("a line that is not one of ours changes nothing", Run.runText(Run.sampled(run, "not json")), "Moving 2 of 4")
+  check("and a done leaves nothing running",
+        Run.sampled(run, '{"t":"transferdone","id":0,"ok":4,"failed":0,"skipped":0,"cancelled":false,"retryPaths":[]}').running,
+        false)
+
+  check("a clean move says where they went and that it can be undone",
+        Run.movedText("Moved", 4, 0, 4, "drafts", ""), "Moved 4 items to drafts \u00b7 z undoes")
+  check("a copy leaves the pile, so it offers no undo",
+        Run.movedText("Copied", 4, 0, 4, "drafts", ""), "Copied 4 items to drafts")
+  check("a partial failure is one sentence, not two lines",
+        Run.movedText("Moved", 3, 1, 4, "drafts", "drafts is read-only for cover-grade.jpg"),
+        "Moved 3 of 4 \u00b7 drafts is read-only for cover-grade.jpg")
+  check("the other three actions say what they did",
+        Run.zippedText(4) + "|" + Run.copiedPathsText(4) + "|" + Run.sentText(1, "macbookair"),
+        "Zipped 4 items into one archive|Copied 4 paths|Sent 1 item to macbookair")
+  check("the flyout says what is about to happen to how many",
+        Run.flyoutTitle("move", 4) + "|" + Run.flyoutTitle("send", 1), "Move 4 items to|Send 1 item to")
+  check("a destination is named by its leaf, because the flyout said the whole path",
+        Run.destName("/home/gm/Work/drafts/"), "drafts")
+  check("a listing is its non-empty lines", Run.lines("a\n\n b \n").join("|"), "a|b")
 
   check("the tooltip says what is held, because the bar itself never draws a count",
           Shelf.tooltip(Shelf.empty()) + " / " + Shelf.tooltip(one) + " / " + Shelf.tooltip(mixed),

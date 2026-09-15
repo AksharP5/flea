@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import "Model.js" as Model
+import "Run.js" as Run
 
 // The only thing here that touches the outside world: the pile's own state file, which the
 // `flea shelf` backend writes and this reads. The widget never learns how a file got into the pile.
@@ -57,6 +58,11 @@ Item {
   // BarMark's Land: the pile grew, by any route, which is one of the few things this widget itself
   // can see. Nothing is emitted for the first read, which is a shelf that was already holding.
   signal grew()
+
+  // An action changed the pile under us, so the file is read again rather than waited for.
+  function reread() {
+    file.reload()
+  }
 
   function load(text) {
     var next = Model.parse(text)

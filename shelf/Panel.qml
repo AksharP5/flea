@@ -4,6 +4,7 @@ import Quickshell.Wayland
 import qs.Commons
 import qs.Ui
 import "Model.js" as Model
+import "Run.js" as Run
 
 // The shelf's presence in the bar, and nothing else yet: the card, the drop target, the keys and
 // the actions are their own units. BarMark rule 6: it never self-hides, so its slot never moves.
@@ -89,6 +90,69 @@ Panel {
     onOpened: root.toggle()
   }
 
+  // Actions: the doing half, which the card's strip and its five letters reach through here.
+  ShelfActions {
+    id: doing
+    fleaCommand: shelf.fleaCommand
+    held: shelf.count
+    onRan: shelf.reread()
+    onLanded: function (sentence) {
+      root.error = ""
+      root.result = sentence
+      transient.restart()
+    }
+    onBrowsed: function (dest) { root.runChosen(dest) }
+  }
+
+  // What the strip asked for and has not been given a destination for yet.
+  property string pending: ""
+  property var flyoutRows: []
+
+  function actOn(id) {
+    var paths = Model.actionPaths(card.chosen, shelf.pile.items)
+    if (paths.length === 0) {
+      return
+    }
+    if (id === "paths") {
+      Quickshell.clipboardText = doing.yank(paths)
+      root.error = ""
+      root.result = Run.copiedPathsText(paths.length)
+      transient.restart()
+      return
+    }
+    if (id === "zip") {
+      doing.zip(Model.stamp(Date.now()).substring(0, 10), paths)
+      return
+    }
+    if (id === "send") {
+      doing.askPeers()
+      root.pending = "send"
+      root.flyoutRows = doing.peers
+      return
+    }
+    doing.askPlaces()
+    root.pending = id
+    root.flyoutRows = doing.places
+  }
+
+  // The flyout's rows arrive a moment after it opens, because the list is another process's answer.
+  Connections {
+    target: doing
+    function onPlacesChanged() { if (root.pending === "move" || root.pending === "copy") root.flyoutRows = doing.places }
+    function onPeersChanged() { if (root.pending === "send") root.flyoutRows = doing.peers }
+  }
+
+  function runChosen(dest) {
+    var paths = Model.actionPaths(card.chosen, shelf.pile.items)
+    if (root.pending === "send") {
+      doing.send(dest, paths)
+    } else if (root.pending.length > 0) {
+      doing.transfer(root.pending === "move", dest, paths)
+    }
+    root.pending = ""
+    card.chosen = ({})
+  }
+
   SequentialAnimation {
     id: landing
     PropertyAction { target: root; property: "landAccent"; value: 1 }
@@ -167,10 +231,26 @@ Panel {
       borderSpec: Border.surfaceSpec("popups", "border", Color.popups.border, Math.max(1, Style.space(2)))
       radius: Style.cornerRadius
       focus: root.opened
-      Keys.onEscapePressed: root.menu ? root.menu = false : root.close()
+      // Actions: while an action runs the first esc cancels it and the card stays; with nothing
+      // running esc leaves the flyout, then the menu, and only then closes the card.
+      Keys.onEscapePressed: {
+        if (doing.run.running) {
+          doing.cancelRun()
+        } else if (root.pending.length > 0) {
+          root.pending = ""
+        } else if (root.menu) {
+          root.menu = false
+        } else {
+          root.close()
+        }
+      }
       // Keys board: shift-x clears and the pile becomes the last pile, z undoes it, and in the menu
       // a number takes that pile straight back.
       Keys.onPressed: function (event) {
+        if (root.pending.length > 0) {
+          flyout.key(event)
+          return
+        }
         if (root.menu) {
           var chosen = event.key - Qt.Key_1
           if (chosen >= 0 && chosen < shelf.piles.length) {
@@ -212,9 +292,30 @@ Panel {
         onDismissed: root.menu = false
       }
 
+      ShelfFlyout {
+        id: flyout
+        visible: root.pending.length > 0
+        x: surface.contentLeftInset
+        y: surface.contentTopInset
+        width: surface.width - surface.contentLeftInset - surface.contentRightInset
+        title: Run.flyoutTitle(root.pending, Model.actionPaths(card.chosen, shelf.pile.items).length)
+        rows: root.flyoutRows
+        browsable: root.pending === "move" || root.pending === "copy"
+        foreground: Color.popups.text
+        pad: card.pad
+        stripHeight: card.stripHeight
+        rowHeight: card.rowHeight
+        onChosen: function (index) { root.runChosen(root.flyoutRows[index]) }
+        onBrowse: {
+          doing.choose(flyout.title, root.flyoutRows.length > 0 ? root.flyoutRows[0] : "")
+          root.pending = ""
+        }
+        onDismissed: root.pending = ""
+      }
+
       ShelfCard {
         id: card
-        visible: !root.menu
+        visible: !root.menu && root.pending.length === 0
         x: surface.contentLeftInset
         y: surface.contentTopInset
         width: surface.width - surface.contentLeftInset - surface.contentRightInset
@@ -245,7 +346,9 @@ Panel {
           shelf.askPiles()
           root.menu = true
         }
-        onActionRequested: function (id) { root.result = ""; root.error = id + " lands with the actions." }
+        onActionRequested: function (id) { root.actOn(id) }
+        onCancelRequested: doing.cancelRun()
+        run: doing.run
         onLiftRequested: function (copying) { shelf.mintDrag(!copying) }
       }
     }

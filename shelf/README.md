@@ -10,10 +10,10 @@ with it.
 
 ## What ships today
 
-The bar presence, the card the mark opens, the sizes the card asks for row by row, the row's own
-remove, the tray of recent captures, the ways back in (the keybind, a cleared pile and the last five
-piles), and the screen-edge rail you throw a drag at. The subset gesture and the five actions land in
-the units that follow.
+Everything the boards draw except the drag out of the card, which is the unit after this one: the bar
+presence, the card the mark opens, the sizes it asks for row by row, the row's own remove, the tray of
+recent captures, the ways back in (the keybind, a cleared pile and the last five piles), the
+screen-edge rail you throw a drag at, the subset gesture, and the five actions.
 
 | Piece | What it is |
 |---|---|
@@ -25,6 +25,10 @@ the units that follow.
 | `ShelfTray.qml` | the newest captures Omarchy has taken, on the card at all times |
 | `ShelfMenu.qml` | the card's own menu: the last five piles, and the way back to one |
 | `ShelfRail.qml` | the screen edge you throw a drag at, and the notch that says what is held |
+| `ShelfActions.qml` | the doing half: the five actions, what they say, and the rows a flyout offers |
+| `ShelfFlyout.qml` | one flyout, two verbs and the send: places and peers, numbered |
+| `ShelfRun.qml` | the transfer surface while an action runs, and its cancel |
+| `Run.js` | pure functions again: the running line, and the sentence each action lands with |
 | `ShelfGlyph.qml` | one mark on the Omarchy cut, the way Flea draws its own |
 | `FleaShelfMark.qml` | Flea's own mark, reproduced rather than recut |
 
@@ -77,13 +81,19 @@ carries, and `summon.json` the count the keybind writes. The plugin never writes
 | `x` | takes the cursor row off the shelf. The file is untouched |
 | `enter` | opens the file, or reveals the folder in Flea |
 | `tab` | jumps to the action strip, and back; the arrows walk it and `enter` runs it |
+| `m` `c` | move or copy the chosen rows, or the whole pile, to a folder |
+| `a` | zip them into one archive, which lands on the shelf |
+| `t` | send them with Taildrop |
+| `y` | yank the paths to the clipboard |
+| `1` to `9` | in a flyout, take that destination or that peer |
 | `shift + x` | clears the shelf, and it becomes the last pile |
 | `z` | brings the last pile back |
 | `1` to `5` | in the menu, takes that pile back |
 | right click | on the bar mark: brings back the last pile you cleared; on the card: its menu |
 
-Every file action is chosen-or-whole: with rows chosen it takes those, with none chosen it takes the
-pile. The card says which in its header and its footer while a subset is being chosen.
+While an action runs, the card is its transfer surface and `esc` cancels it rather than closing the
+card. Every file action is chosen-or-whole: with rows chosen it takes those, with none chosen it takes
+the pile. The card says which in its header and its footer while a subset is being chosen.
 
 The card's action strip draws its own keys beside every action; they run the actions with them.
 

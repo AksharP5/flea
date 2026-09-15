@@ -1,6 +1,7 @@
 import QtQuick
 import qs.Commons
 import "Model.js" as Model
+import "Run.js" as Run
 
 // The pile itself, Main board rules 2 to 8. The card is the shelf's own surface: it reads like a
 // Flea listing on purpose, the same strip height, the same row pitch and the same mark slot, so the
@@ -23,6 +24,9 @@ Item {
   property string hint: ""
   // EdgeRail: how many a drag over the rail is offering, which the header says and the line shows.
   property int incoming: 0
+  // Actions: what is running, which the body draws and the footer's own half names.
+  property var run: Run.idle()
+  signal cancelRequested()
   // Keys: the subset gesture. Chosen by path, and the cursor is its own rung on top of it.
   property var chosen: ({})
   readonly property int chosenCount: Model.chosenCount(root.chosen, root.pile.items)
@@ -93,10 +97,22 @@ Item {
       root.openRequested(items[Math.max(0, root.cursorIndex)].path)
     } else if (event.key === Qt.Key_Tab) {
       root.stripIndex = 0
+    } else if (root.actionFor(event.key).length > 0) {
+      root.actionRequested(root.actionFor(event.key))
     } else {
       return
     }
     event.accepted = true
+  }
+
+  // Every action carries its key inline on the strip, and this is the same table read backwards.
+  function actionFor(key) {
+    for (var i = 0; i < root.actions.length; i++) {
+      if (key === root.actions[i].key.toUpperCase().charCodeAt(0)) {
+        return root.actions[i].id
+      }
+    }
+    return ""
   }
 
   // Tab jumps to the action strip; from there the arrows walk it, enter runs it and tab comes back.
@@ -196,7 +212,8 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         anchors.right: parent.right
         anchors.rightMargin: root.pad
-        text: Model.headerRight(root.incoming, root.chosenCount, root.pile.items.length)
+        text: root.run.running ? String(root.pile.items.length)
+                               : Model.headerRight(root.incoming, root.chosenCount, root.pile.items.length)
         color: root.muted
         font.family: root.fontFamily
         font.pixelSize: Style.font.caption
@@ -204,8 +221,20 @@ Item {
       }
     }
 
+    ShelfRun {
+      width: parent.width
+      state: root.run
+      foreground: root.foreground
+      muted: root.muted
+      accent: root.accent
+      fontFamily: root.fontFamily
+      pad: root.pad
+      onCancelRequested: root.cancelRequested()
+    }
+
     Repeater {
-      model: root.pile.items
+      // While an action runs the body is the transfer surface, not the pile: the card has one body.
+      model: root.run.running ? [] : root.pile.items
 
       // Rule 4: one line per row, mark, name and size, and no source path: a pile spanning five
       // folders would otherwise read as five different kinds of row.
@@ -352,6 +381,7 @@ Item {
 
     ShelfTray {
       width: parent.width
+      visible: !root.run.running && root.captures.length > 0
       captures: root.captures
       foreground: root.foreground
       muted: root.muted
@@ -370,10 +400,12 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         x: root.pad
         width: parent.width - 2 * root.pad
-        text: Model.footerText(root.hoveredIndex >= 0 && root.pile.items[root.hoveredIndex]
-                               ? root.pile.items[root.hoveredIndex].path : "",
-                               root.result, root.error, root.hint,
-                               Model.chosenSentence(root.chosenCount, root.pile.items.length))
+        // Rule 5: one slot, one voice. While an action runs the voice is the action's own.
+        text: root.run.running ? Run.runFooter(root.run)
+                               : Model.footerText(root.hoveredIndex >= 0 && root.pile.items[root.hoveredIndex]
+                                                  ? root.pile.items[root.hoveredIndex].path : "",
+                                                  root.result, root.error, root.hint,
+                                                  Model.chosenSentence(root.chosenCount, root.pile.items.length))
         color: root.error ? Color.urgent : root.muted
         font.family: root.fontFamily
         font.pixelSize: Style.font.caption
@@ -387,7 +419,7 @@ Item {
     Row {
       width: parent.width
       // ShelfEmpty rule 1: absent, not greyed. Five dead buttons teach the eye to ignore the strip.
-      visible: root.pile.items.length > 0
+      visible: root.pile.items.length > 0 && !root.run.running
       height: visible ? root.stripHeight : 0
       spacing: Style.space(14)
       leftPadding: root.pad
