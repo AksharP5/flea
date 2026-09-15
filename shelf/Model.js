@@ -50,17 +50,20 @@ function leaf(path) {
 }
 
 // A size the writer did not answer is not a zero, so it is carried as -1 and drawn as nothing.
+// Number(null) and Number("") are both 0, which is why the type is checked before the value.
 function bytesOf(item) {
-  var n = Number(item.bytes)
+  var n = typeof item.bytes === "number" ? item.bytes : -1
   return isFinite(n) && n >= 0 ? n : -1
 }
 
-// BarMark rule 3: the count is never in the bar itself, so this is what the hover tooltip says.
+// BarMark rule 3: the count is never in the bar itself, so this is what the hover tooltip says. It
+// counts the pile alone, as rule 12 does, because a pinned row is not an item anybody sent.
 function tooltip(state) {
-  if (!state || state.count === 0) {
+  var n = state ? loose(state.items).length : 0
+  if (n === 0) {
     return "Flea shelf is empty"
   }
-  return state.count === 1 ? "Flea shelf is holding 1 item" : "Flea shelf is holding " + state.count + " items"
+  return n === 1 ? "Flea shelf is holding 1 item" : "Flea shelf is holding " + n + " items"
 }
 
 // ---- what the card draws, Main board rules 4, 5 and 7 ----
@@ -68,11 +71,8 @@ function tooltip(state) {
 // The two marks a row can take, on the Omarchy cut, the same paths ui/js/Icons.js draws them from.
 // Flea's own mark, which is what an empty shelf draws rather than a stand-in for one.
 var SHELF_GLYPH = "M21 21H3V3h18v14H7V7h10v6h-6"
-// Rule 14: the actions are icon buttons, and the ink is Flea's own recut set at the names its menu
-// rows use, copied here because a plugin cannot import the app's Icons.js: folder-plus for Move to,
-// copy for Copy to, archive for Compress, file-text for Copy path, pin, and x for the row's own.
-// Send carries Tailscale's own mark instead, drawn by ShelfTailscaleMark, because a brand row keeps
-// the brand's mark.
+// The strip's ink, at the names Flea's own menu rows use, copied here because a plugin cannot import
+// the app's Icons.js. Send has no path: it carries Tailscale's own mark, which ShelfActionButton draws.
 var ACTION_GLYPHS = {
   move: "M2 20V3h6l2 3h12v14H2z M12 10v6 M9 13h6",
   copy: "M9 8h12v13H9z M4 16V3h13",
@@ -83,6 +83,8 @@ var ACTION_GLYPHS = {
   remove: "M6 6l12 12 M18 6 6 18"
 }
 var FOLDER_GLYPH = "M2 20V3h6l2 3h12v14H2z"
+// A recording is drawn by its mark and never decoded: the Omarchy cut's play square.
+var RECORDING_GLYPH = "M4 3h16v18H4z M10 9l6 3l-6 3z"
 var FILE_GLYPH = "M4 22V2h10l6 6v14H4z M14 2v6h6"
 
 // Rule 4: a folder shows bytes, never an item count, because that is what the backend answers. A
@@ -95,7 +97,10 @@ function sizeText(item) {
 }
 
 function glyphFor(item) {
-  return item && item.folder === true ? FOLDER_GLYPH : FILE_GLYPH
+  if (item && item.folder === true) {
+    return FOLDER_GLYPH
+  }
+  return item && item.recording === true ? RECORDING_GLYPH : FILE_GLYPH
 }
 
 // A size in the same words Flea's own list uses, so the shelf reads as Flea and not as a second app.
@@ -139,43 +144,8 @@ function keep(sizes, list) {
   return kept
 }
 
-// The pile the card draws: the writer's own bytes where it had them, the answered size where it did
-// not. An answer of -1 is a path that could not be read, which draws as the same dot as a pending one.
-function sized(pile, sizes) {
-  var items = []
-  for (var i = 0; i < pile.items.length; i++) {
-    var item = pile.items[i]
-    var answer = item.bytes < 0 ? sizes[item.path] : undefined
-    items.push(answer === undefined ? item
-               : { path: item.path, name: item.name, bytes: answer.bytes,
-                   folder: item.folder, partial: answer.partial })
-  }
-  return { items: items, count: pile.count, ok: pile.ok }
-}
-
-// Rule 5: one slot with one voice. The hovered row's path, or the last result, or the one error, and
-// never two of them at once; the order is the one the card was drawn with. The hint is last, because
-// an empty shelf has no row to hover and nothing has happened on it yet.
-function footerText(hoveredPath, result, error, hint, chosen) {
-  if (error) {
-    return String(error)
-  }
-  if (hoveredPath) {
-    return String(hoveredPath)
-  }
-  if (result) {
-    return String(result)
-  }
-  if (chosen) {
-    return String(chosen)
-  }
-  return String(hint || "")
-}
 
 // ---- the recent captures tray, ShelfEmpty rules 2, 4, 5 and 7 ----
-
-// A recording is drawn by its mark and never decoded, so it needs one: the Omarchy cut's play square.
-var RECORDING_GLYPH = "M4 3h16v18H4z M10 9l6 3l-6 3z"
 
 // Sample input, one line per capture, newest first, the mtime in milliseconds then the path:
 // 1757890932000 /home/gm/Pictures/screenshot-2026-09-14_19-02-11.png
@@ -220,23 +190,35 @@ function pathsFromUris(text) {
     if (line.length === 0 || line.charAt(0) === "#" || line.indexOf("file://") !== 0) {
       continue
     }
-    out.push(decodeURIComponent(line.substring("file://".length)))
+    out.push(decodedPath(line.substring("file://".length)))
   }
   return out
 }
 
+// A URI another toolkit wrote can carry a percent escape that is not one, and decodeURIComponent
+// throws on it: the raw text is then the best answer this has, and the rest of the drop still lands.
+function decodedPath(text) {
+  try {
+    return decodeURIComponent(text)
+  } catch (e) {
+    return text
+  }
+}
+
 // ---- Summon: the bell, the cleared transient and the Recent piles rows ----
 
-// The bind writes a count, not a state: every write is one more ring, and the card answers each one.
+// Sample input, the whole of summon.json: {"summon":7}
+// The bind writes a count, not a state: every write is one more ring, and a file that is missing,
+// half written or not JSON answers -1, which is no reading rather than a count of zero.
 function ringsOf(text) {
   var doc
   try {
     doc = JSON.parse(String(text || ""))
   } catch (e) {
-    return 0
+    return -1
   }
-  var n = doc ? Number(doc.summon) : 0
-  return isFinite(n) && n >= 0 ? n : 0
+  var n = doc ? Number(doc.summon) : -1
+  return isFinite(n) && n >= 0 ? n : -1
 }
 
 // Summon: clearing is reversible, and the transient says so for the four seconds it lives.
@@ -304,6 +286,8 @@ function shelfDefaults() {
 }
 
 var EDGES = ["off", "left", "right", "bottom"]
+// The most the card will list, which is the largest stop Settings offers plus the one above it.
+var MOST_CAPTURES = 6
 
 // SettingsRest rules 1 to 3: Flea's Settings owns the shelf's switches and this plugin only reads
 // them. A value this build cannot honour falls back to the same default a fresh ui.json holds.
@@ -317,7 +301,7 @@ function shelfOf(text) {
     rail: EDGES.indexOf(String(shelf.rail)) >= 0 ? String(shelf.rail) : "off",
     screenshots: shelf.screenshots !== false,
     recordings: shelf.recordings !== false,
-    recent: isFinite(recent) && recent >= 0 ? recent : 3
+    recent: isFinite(recent) && recent >= 0 && recent <= MOST_CAPTURES ? recent : 3
   }
 }
 
@@ -330,12 +314,17 @@ function parsedOr(text) {
   }
 }
 
-// Which kinds the captures listing is asked for, which is one word on the command line.
+// Which kinds the captures listing is asked for, which is one word on the command line. With neither
+// kind checked there is nothing to ask for, and the card draws no captures group at all.
 function kindsArg(settings) {
   if (settings.screenshots && settings.recordings) {
     return "both"
   }
   return settings.screenshots ? "screenshots" : "recordings"
+}
+
+function wantsCaptures(settings) {
+  return settings.recent > 0 && (settings.screenshots || settings.recordings)
 }
 
 // ---- Main rules 9 and 10: the card is one list of three sections ----
@@ -465,16 +454,6 @@ function capturesCaption(kinds) {
   return kinds.screenshots ? "Screenshots" : "Recordings"
 }
 
-function sectionCount(list, section) {
-  var n = 0
-  for (var i = 0; i < list.length; i++) {
-    if (list[i].section === section) {
-      n += 1
-    }
-  }
-  return n
-}
-
 // ---- Keys: the subset gesture, which every file action reads ----
 
 // Chosen by path rather than by row, so a pile that changes underneath cannot leave a row chosen by
@@ -599,38 +578,8 @@ function dragMoves(paths, items, wantsMove) {
   return true
 }
 
-// The footer while a subset is being chosen: what the five actions will take, and what none means.
-function chosenSentence(count, total) {
-  var n = Number(count)
-  if (!isFinite(n) || n <= 0) {
-    return ""
-  }
-  return "5 actions take " + n + " chosen \u00b7 none chosen: all " + total
-}
 
-// EdgeRail: while a drag hovers the rail the header says what letting go would do, and the way out
-// is not what the eye needs at that moment.
-function headerRight(incoming, chosen, total) {
-  var n = Number(incoming)
-  if (isFinite(n) && n > 0) {
-    return "drop to add " + n
-  }
-  var picked = Number(chosen)
-  if (isFinite(picked) && picked > 0) {
-    return picked + " of " + total + " chosen"
-  }
-  return "esc"
-}
 
-// Rule 2's header, which is also the pile's own count: the bar never draws one. An empty shelf says
-// so in the same slot, the way the ShelfEmpty board draws it.
-function headerText(state) {
-  var n = state ? loose(state.items).length : 0
-  if (n === 0) {
-    return "Shelf  empty"
-  }
-  return "Shelf  " + n + (n === 1 ? " item" : " items")
-}
 
 // Main rule 12: the header counts the pile alone, because pinned rows and captures are not items
 // anybody sent to the shelf.

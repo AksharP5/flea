@@ -61,12 +61,13 @@ function flyoutTitle(pending, count) {
   return verb + " " + n + (n === 1 ? " item" : " items") + " to"
 }
 
-// One line per row, which is how every flea shelf listing answers.
+// One line per row, which is how every flea shelf listing answers. Only the line ending is stripped,
+// because a path may legally begin or end with a space and these lines carry paths.
 function lines(text) {
   var out = []
   var split = String(text || "").split("\n")
   for (var i = 0; i < split.length; i++) {
-    var line = split[i].trim()
+    var line = split[i].replace("\r", "")
     if (line.length > 0) {
       out.push(line)
     }

@@ -260,7 +260,8 @@ Item {
   property var captures: []
 
   function askCaptures() {
-    if (list.running || !root.drawing || root.shelfSettings.recent === 0) {
+    if (list.running || !root.drawing || !Model.wantsCaptures(root.shelfSettings)) {
+      root.captures = []
       return
     }
     list.command = [root.fleaCommand, "shelf", "captures",
@@ -340,6 +341,9 @@ Item {
 
   function rang(text) {
     var now = Model.ringsOf(text)
+    if (now < 0) {
+      return
+    }
     if (root.rings >= 0 && now !== root.rings) {
       root.summoned()
     }

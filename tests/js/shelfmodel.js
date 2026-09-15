@@ -32,11 +32,6 @@ function run(check) {
     check("a size not yet answered is a dot", Shelf.sizeText(folder.items[0]), "\u00b7")
     check("a size that is known reads as Flea's own", Shelf.sizeText({ bytes: 4600000 }), "4.6 MB")
     check("and a walk cut short keeps its own prefix", Shelf.sizeText({ bytes: 138, partial: true }), ">138 B")
-    // Rule 5: one slot, one voice, in the order the card draws them.
-    check("the footer says the error before anything else", Shelf.footerText("/x/a", "Copied", "That failed."), "That failed.")
-    check("then the hovered row's own path", Shelf.footerText("/x/a", "Copied", ""), "/x/a")
-    check("then the last result, and nothing at all when there is none", 
-          Shelf.footerText("", "Copied", "") + "|" + Shelf.footerText("", "", ""), "Copied|")
 
   // Main rule 4's budget: one request per drawn path, never twice, and never for a path off the card.
   var pile = Shelf.parse('{"items":[{"path":"/a","bytes":12},{"path":"/b/big","folder":true},{"path":"/c"}]}')
@@ -63,7 +58,28 @@ function run(check) {
   check("a recording is known by its own extension and never decoded",
         shots[0].recording + "|" + shots[1].recording, "false|true")
 
-  check("the header says an empty shelf is empty", Shelf.headerText(Shelf.empty()), "Shelf  empty")
+
+  // The advloop round on shelf/*.js: four the reviewers found, each pinned by the case that failed.
+  check("a uri with an escape that is not one still lands, and takes the rest of the drop with it",
+        Shelf.pathsFromUris("file:///home/gm/50%.png\nfile:///home/gm/two.txt\n").join("|"),
+        "/home/gm/50%.png|/home/gm/two.txt")
+  check("the bar's tooltip counts the pile alone, the way the card does",
+        Shelf.tooltip(Shelf.parse('{"items":[{"path":"/p/a"},{"path":"/p/b","pinned":true}]}')),
+        "Flea shelf is holding 1 item")
+  check("a bell that cannot be read is no reading, not a count of zero",
+        Shelf.ringsOf("") + "|" + Shelf.ringsOf("{oh no") + "|" + Shelf.ringsOf('{"summon":0}'),
+        "-1|-1|0")
+  check("neither capture kind checked asks for no captures at all",
+        Shelf.wantsCaptures({ screenshots: false, recordings: false, recent: 3 }) + "|"
+        + Shelf.wantsCaptures({ screenshots: true, recordings: false, recent: 3 }) + "|"
+        + Shelf.wantsCaptures({ screenshots: true, recordings: true, recent: 0 }),
+        "false|true|false")
+  check("a hand-edited count above the largest stop falls back to the default",
+        Shelf.shelfOf('{"shelf":{"recent":100000}}').recent + "|"
+        + Shelf.shelfOf('{"shelf":{"recent":5}}').recent, "3|5")
+  check("a listing line keeps a path's own spaces, and drops only the line ending",
+        Run.lines("/home/gm/two words \r\n\n /leading\n").join("|"),
+        "/home/gm/two words | /leading")
 
   // Main rules 9, 10 and 12: one list of three sections, and the header counts the pile alone.
   var sections = Shelf.parse('{"items":[{"path":"/p/one"},{"path":"/p/pinned","pinned":true},{"path":"/p/two"}]}')
@@ -73,7 +89,6 @@ function run(check) {
   check("the pile comes first, then the pins, then the captures",
         list.map(function (r) { return r.section }).join("|"),
         "pile|pile|pinned|capture|capture")
-  check("and the header counts the pile alone", Shelf.headerText(sections), "Shelf  2 items")
   check("a caption sits above the first row of a section and nowhere else",
         [Shelf.captionFor(list, 0), Shelf.captionFor(list, 1), Shelf.captionFor(list, 2),
          Shelf.captionFor(list, 3), Shelf.captionFor(list, 4)].join("|"),
@@ -82,9 +97,6 @@ function run(check) {
         Shelf.capturesCaption({ screenshots: true, recordings: false }) + "|"
         + Shelf.capturesCaption({ screenshots: false, recordings: true }),
         "Screenshots|Recordings")
-  check("each section says how many it holds",
-        Shelf.sectionCount(list, "pile") + "|" + Shelf.sectionCount(list, "pinned") + "|"
-        + Shelf.sectionCount(list, "capture"), "2|1|2")
   check("a capture row has no size of its own until one is answered",
         Shelf.sizeText(list[3]) + "|" + Shelf.sizeText(Shelf.rows(sections, shots, { "/s/screenshot-a.png": { bytes: 2048, partial: false } })[3]),
         "\u00b7|2.0 kB")
@@ -141,13 +153,10 @@ function run(check) {
   check("the kinds cross the command line as one word",
         Shelf.kindsArg({ screenshots: true, recordings: true }) + "|"
         + Shelf.kindsArg({ screenshots: false, recordings: true }), "both|recordings")
-  check("the hint is the footer's last voice, behind the hovered row and the error",
-        Shelf.footerText("", "", "", "click to add") + "|" + Shelf.footerText("/x/a", "", "", "click to add"),
-        "click to add|/x/a")
 
   // Summon: the bell, the cleared transient, and what the Recent piles rows say.
-  check("a summon file nobody has written yet has rung nothing", Shelf.ringsOf(""), 0)
-  check("and one that is half written is not a ring either", Shelf.ringsOf('{"summ'), 0)
+  check("a summon file nobody has written yet is no reading at all", Shelf.ringsOf(""), -1)
+  check("and one that is half written is not a ring either", Shelf.ringsOf('{"summ'), -1)
   check("each write of the file is one more ring", Shelf.ringsOf('{"summon":7}'), 7)
   check("the cleared transient says how to get it back",
         Shelf.clearedText(4) + "|" + Shelf.clearedText(1),
@@ -171,8 +180,6 @@ function run(check) {
   check("a comment line and a foreign scheme are not paths",
         Shelf.pathsFromUris("# a comment\nhttps://example.com/x\nfile:///tmp/b\n").join("|"), "/tmp/b")
   check("and a drop carrying nothing is no paths at all", Shelf.pathsFromUris("").length, 0)
-  check("the header says what letting go would do, and the way out when nothing is coming",
-        Shelf.headerRight(2) + "|" + Shelf.headerRight(0), "drop to add 2|esc")
 
   // Keys: the subset gesture, and what the card says while one is being chosen.
   var four = Shelf.parse('{"items":[{"path":"/p/a"},{"path":"/p/b"},{"path":"/p/c"},{"path":"/p/d"}]}')
@@ -192,12 +199,6 @@ function run(check) {
         Shelf.actionPaths(ranged, four.items).join("|"), "/p/b|/p/c|/p/d")
   check("and the whole pile when nothing is chosen",
         Shelf.actionPaths({}, four.items).join("|"), "/p/a|/p/b|/p/c|/p/d")
-  check("the header says how many of how many are chosen",
-        Shelf.headerRight(0, 2, 4) + "|" + Shelf.headerRight(0, 0, 4) + "|" + Shelf.headerRight(3, 2, 4),
-        "2 of 4 chosen|esc|drop to add 3")
-  check("and the footer says what the five actions will take",
-        Shelf.chosenSentence(2, 4) + "|" + Shelf.chosenSentence(0, 4),
-        "5 actions take 2 chosen \u00b7 none chosen: all 4|")
 
   // Actions: what an action says while it runs and when it lands.
   var run = Run.sampled(Run.idle(), '{"t":"transferstarted","id":0,"n":4,"moving":true}')
@@ -225,7 +226,7 @@ function run(check) {
         Run.flyoutTitle("move", 4) + "|" + Run.flyoutTitle("send", 1), "Move 4 items to|Send 1 item to")
   check("a destination is named by its leaf, because the flyout said the whole path",
         Run.destName("/home/gm/Work/drafts/"), "drafts")
-  check("a listing is its non-empty lines", Run.lines("a\n\n b \n").join("|"), "a|b")
+  check("a listing is its non-empty lines, spaces and all", Run.lines("a\n\n b \n").join("|"), "a| b ")
 
   check("the tooltip says what is held, because the bar itself never draws a count",
           Shelf.tooltip(Shelf.empty()) + " / " + Shelf.tooltip(one) + " / " + Shelf.tooltip(mixed),
