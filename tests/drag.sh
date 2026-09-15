@@ -987,6 +987,11 @@ read -r wx wy ww wh floating <<< "$geometry"
 check "the window is floating where this case put it" "$floating $wx $wy" "true 400 300"
 point=$(ipc pathCentre) || die "R11 path area has no geometry"
 read -r cx cy <<< "$point"
+# Inside this window's own chrome, never the shell bar at the top of the screen: the press point is
+# the path area's centre mapped through the window's origin, and it is printed so the row can say so.
+check "the press lands inside the window" \
+      "$([ "$cy" -lt "$(ipc chromeHeight)" ] && [ "$((wy + cy))" -gt "$wy" ] && echo inside || echo "outside at $((wy + cy))")" "inside"
+note "press at $((wx + cx)),$((wy + cy)) with the window at $wx,$wy and its chrome $(ipc chromeHeight) tall"
 glide_to "$((wx + cx))" "$((wy + cy))"
 sleep 0.3
 press
