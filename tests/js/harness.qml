@@ -38,6 +38,7 @@ import "search.js" as SearchSuite
 import "selection.js" as SelectionSuite
 import "settings.js" as SettingsSuite
 import "settingsmenus.js" as SettingsMenusSuite
+import "settingsshelf.js" as SettingsShelfSuite
 import "themes.js" as ThemesSuite
 import "transfer.js" as TransferSuite
 import "sort.js" as SortSuite
@@ -89,7 +90,7 @@ Item {
             ["recent", RecentSuite],
             ["renderer", RendererSuite],
             ["scroll", ScrollSuite], ["search", SearchSuite],
-            ["selection", SelectionSuite], ["settings", SettingsSuite], ["settingsmenus", SettingsMenusSuite],
+            ["selection", SelectionSuite], ["settings", SettingsSuite], ["settingsmenus", SettingsMenusSuite], ["settingsshelf", SettingsShelfSuite],
             ["sort", SortSuite], ["startup", StartupSuite], ["trashdates", TrashDatesSuite], ["permissions", PermissionsSuite], ["status", StatusSuite], ["taildrop", TaildropSuite], ["textsize", TextSizeSuite],
             ["trash", TrashSuite], ["tap", TapSuite], ["marquee", MarqueeSuite], ["tabs", TabsSuite], ["tabs-switch", TabsSwitchSuite], ["shelfmodel", ShelfModelSuite],
             ["themes", ThemesSuite], ["thumbs", ThumbsSuite], ["transfer", TransferSuite], ["uistate", UiStateSuite],

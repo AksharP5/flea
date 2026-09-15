@@ -16,6 +16,7 @@ pub fn command(args: &[String]) -> i32 {
         Some("add") => add(&args[3..]),
         Some("pin") => pin(&args[3..], true),
         Some("unpin") => pin(&args[3..], false),
+        Some("order") => order(&args[3..]),
         Some("captures") => captures::command(&args[3..]),
         Some("thumb") => shelfthumb::command(&args[3..]),
         Some("open") => open(&args[3..]),
@@ -34,7 +35,32 @@ pub fn command(args: &[String]) -> i32 {
         Some("toggle") => summon::toggle(),
         Some("bind") => summon::bind(),
         _ => {
-            eprintln!("flea: shelf takes drag-begin, size, add, open, move, copy, pin, unpin, zip, send, peers, paths, places, choose, cancel, forget, captures, thumb, clear, restore, piles, toggle or bind");
+            eprintln!("flea: shelf takes drag-begin, size, add, open, move, copy, pin, unpin, order, zip, send, peers, paths, places, choose, cancel, forget, captures, thumb, clear, restore, piles, toggle or bind");
+            2
+        }
+    }
+}
+
+// SettingsRest rule 4: `flea shelf order <path> <index>` puts a pin at that place among the pins.
+fn order(rest: &[String]) -> i32 {
+    let (path, to) = match (rest.first(), rest.get(1).and_then(|n| n.parse::<usize>().ok())) {
+        (Some(path), Some(to)) => (path, to),
+        _ => {
+            eprintln!("flea: shelf order takes a path and a position");
+            return 2;
+        }
+    };
+    let shelf = match Shelf::user() {
+        Ok(shelf) => shelf,
+        Err(e) => {
+            eprintln!("flea: {}", e);
+            return 2;
+        }
+    };
+    match shelf.order(path, to) {
+        Ok(()) => 0,
+        Err(e) => {
+            eprintln!("flea: {}", e);
             2
         }
     }

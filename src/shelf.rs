@@ -178,6 +178,28 @@ impl Shelf {
         })
     }
 
+    // SettingsRest rule 4: the panel orders the pins, which is a move within the pile's own pinned
+    // entries; the loose entries keep their places.
+    pub fn order(&self, path: &str, to: usize) -> Result<(), String> {
+        let wanted = path.to_string();
+        self.write_pile(move |items| {
+            let slots: Vec<usize> = (0..items.len()).filter(|at| is_pinned(&items[*at])).collect();
+            let named = |at: &&usize| items[**at].get("path").and_then(Json::as_str) == Some(wanted.as_str());
+            let from = match slots.iter().position(|at| named(&at)) {
+                Some(at) if to < slots.len() => at,
+                _ => return items,
+            };
+            let mut pinned: Vec<Json> = slots.iter().map(|at| items[*at].clone()).collect();
+            let moved = pinned.remove(from);
+            pinned.insert(to, moved);
+            let mut out = items;
+            for (slot, item) in slots.into_iter().zip(pinned) {
+                out[slot] = item;
+            }
+            out
+        })
+    }
+
     // Rule 10 again: Move on a pinned row moves the file and the pin follows it to the new path.
     pub fn repoint(&self, moved: &[(String, String)]) -> Result<(), String> {
         if moved.is_empty() {

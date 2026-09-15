@@ -41,6 +41,7 @@ Item {
         data: ViewState.state,
         home: Quickshell.env("HOME"),
         favouriteStatuses: Favourites.statuses,
+        pins: ShelfPins.records,
         selectedFavourite: root.selectedFavourite,
         about: aboutFacts.facts,
         saveStatus: ViewState.saveStatus,
@@ -96,6 +97,8 @@ Item {
         if (!row || !Settings.focusable(row))
             return
         if (row.kind === "favourite") {
+            // A pin opens the folder it names, the way the sidebar opens a favourite.
+            if (row.pinPath !== undefined) { root.openPin(row.pinPath); return }
             root.selectedFavourite = row.favouriteIndex
             if (root.focusHolder && root.focusHolder.sidebar) root.focusHolder.sidebar.openFavourite(row.favouriteIndex)
             return
@@ -103,6 +106,9 @@ Item {
         // The only headings the cursor can reach: the one carrying its group's master, and the one carrying Places' own Add.
         if (row.kind === "group") {
             if (row.action === "addFavourite") root.addFavourite()
+            else if (row.action === "pinFolder") root.pinFolder()
+            // The shelf's master is one stored boolean rather than a set of menu ids.
+            else if (row.id === "shelf.enabled") ViewState.changeSetting(row.id, row.state !== "all")
             else ViewState.toggleMenuGroup(row.ids)
             return
         }
@@ -175,11 +181,18 @@ Item {
     }
 
     // Rule 4: removal is addressed by the row it acts on, from the row's own mark or from the x key on it.
+    // A pin is the shelf's own entry, so its x unpins it rather than touching Places.
     function removeFavourite(index) {
         var row = root.rows[index]
-        if (row && row.kind === "favourite")
-            root.favouriteActionPending = Favourites.remove(row.favouriteIndex)
+        if (!row || row.kind !== "favourite") return
+        if (row.pinPath !== undefined) { ShelfPins.unpin(row.pinPath); return }
+        root.favouriteActionPending = Favourites.remove(row.favouriteIndex)
     }
+
+    // SettingsRest rule 4: the shelf's own Add, the folder the panel was opened over.
+    function pinFolder() { if (root.focusHolder) ShelfPins.pin(root.focusHolder.path) }
+
+    function openPin(path) { if (root.focusHolder && root.focusHolder.sidebar) root.focusHolder.sidebar.opened(path) }
 
     function pickRowStop(index, stop) {
         var row = root.rows[index]
@@ -472,6 +485,8 @@ Item {
             if (root.side === "pane" && row && row.kind === "favourite" && (event.modifiers & Qt.ShiftModifier)
                     && (event.key === Qt.Key_J || event.key === Qt.Key_K)) {
                 var direction = event.key === Qt.Key_J ? 1 : -1
+                // A pin moves within the shelf's own pile, the list this row came from.
+                if (row.pinPath !== undefined) { ShelfPins.move(row.pinPath, direction); return }
                 var to = Math.max(0, Math.min(Favourites.records.length - 1, row.favouriteIndex + direction))
                 if (to !== row.favouriteIndex && Favourites.move(row.favouriteIndex, to)) root.favouriteMoveTarget = to
                 return

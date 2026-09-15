@@ -31,18 +31,12 @@ Item {
   }
 
   readonly property int refreshIntervalSec: root.intSetting("refreshIntervalSec", 5, 1, 120)
-  // EdgeRail rules 3 and 5: the dwell is clamped on every read, and the edge is one of four words.
-  readonly property int railDwellMs: root.intSetting("railDwell", 120, 60, 600)
+  // EdgeRail rule 3: how long a drag rests on the rail before the card opens. A constant now, since
+  // the manifest keeps only the two technical values and Settings offers no row for a dwell.
+  readonly property int railDwellMs: 120
   property string barPosition: "top"
-  readonly property string railEdge: {
-    var raw = root.settings ? root.settings["railEdge"] : undefined
-    var name = String(raw === undefined || raw === null ? "" : raw).trim().toLowerCase()
-    if (name === "off" || name === "left" || name === "right" || name === "bottom") {
-      return name
-    }
-    // The edge opposite the bar, and the right edge when that would be the bar's own.
-    return root.barPosition === "left" ? "right" : (root.barPosition === "right" ? "left" : "bottom")
-  }
+  // SettingsRest rule 2: the edge is Flea's own setting, and the master takes the rail away with it.
+  readonly property string railEdge: root.shelfSettings.enabled ? root.shelfSettings.rail : "off"
   // The command that owns the pile. It is "flea" on an installed box and a path on a development
   // tree, and it is a setting because the plugin ships as its own repository beside the app.
   readonly property string fleaCommand: {

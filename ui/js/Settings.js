@@ -2,11 +2,13 @@
 .import "TextSize.js" as TextSize
 .import "Places.js" as Places
 .import "Keymap.js" as Keymap
+.import "SettingsShelf.js" as Shelf
 
 // Sections follow the current Desktop boards; their state uses the shared ui.json updater.
 var SECTIONS = [
     { id: "view", label: "View", glyph: "sliders" },
     { id: "places", label: "Places", glyph: "star" },
+    { id: "shelf", label: "Shelf", glyph: "shelf" },
     { id: "preview", label: "Preview", glyph: "preview" },
     { id: "keys", label: "Keys", glyph: "keyboard" },
     { id: "display", label: "Display", glyph: "maximize" },
@@ -153,6 +155,8 @@ function rows(section, state) {
         return columnRows(state)
     if (section === "places")
         return placesRows(state)
+    if (section === "shelf")
+        return Shelf.rows(state, choice)
     if (section === "view")
         return viewRows(state)
     if (section === "preview")

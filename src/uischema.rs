@@ -26,6 +26,10 @@ pub const DEFAULTS: &str = r#"{
     "showDevices": true, "showTrash": true,
     "driveSize": false, "trashCount": false, "sidebarWidth": 192
   },
+  "shelf": {
+    "enabled": true, "bar": true, "rail": "off",
+    "screenshots": true, "recordings": true, "recent": 3
+  },
   "preview": {
     "column": true, "loadOn": "automatic",
     "thumbnails": "media", "thumbSize": "medium",
@@ -81,6 +85,17 @@ pub const PLACES: &[(&str, Rule)] = &[
     ("sidebarWidth", Rule::SidebarWidth),
 ];
 
+// The shelf's own six. The count is the card's capture group, 0 removing it; the rail is the edge a
+// drag is thrown at, off by default (SettingsRest rule 2).
+pub const SHELF: &[(&str, Rule)] = &[
+    ("enabled", Rule::Bool),
+    ("bar", Rule::Bool),
+    ("rail", Rule::Word(&["off", "left", "right", "bottom"])),
+    ("screenshots", Rule::Bool),
+    ("recordings", Rule::Bool),
+    ("recent", Rule::Count(0.0, 6.0)),
+];
+
 pub const PREVIEW: &[(&str, Rule)] = &[
     ("column", Rule::Bool),
     ("loadOn", Rule::Word(&["automatic", "manual"])),
@@ -125,6 +140,9 @@ pub const SCHEMA: &[(&str, Rule)] = &[
     ("trashAutoEmpty", Rule::Bool),
     ("trashSweptOn", Rule::Count(0.0, 4000000.0)),
     ("places", Rule::Group(PLACES)),
+    // Settings > Shelf, which the bar plugin reads from this file and never writes; SettingsRest
+    // rules 1 to 4 and ledger directive 59.
+    ("shelf", Rule::Group(SHELF)),
     ("preview", Rule::Group(PREVIEW)),
     // SettingsKeys.html's four-value chooser over ui/js/Keymap.js's shared tables. A stored name
     // this build cannot honour falls back to default, which is also what a fresh ui.json holds.
@@ -183,7 +201,8 @@ mod tests {
             [
                 "view", "density", "columns", "addressBar", "sort", "dual", "foldersFirst",
                 "groupByKind", "hidden", "wrapAtEnds", "keyHints", "startIn", "startFolder",
-                "lastPath", "newTab", "trashAutoEmpty", "trashSweptOn", "places", "preview", "keys",
+                "lastPath", "newTab", "trashAutoEmpty", "trashSweptOn", "places", "shelf",
+                "preview", "keys",
                 "display", "menu"
             ]
         );
@@ -208,6 +227,10 @@ mod tests {
         assert_eq!(d.get("sort").and_then(|s| s.get("reverse")).and_then(Json::as_bool), Some(false));
         assert_eq!(d.get("dual").and_then(|s| s.get("paths")).and_then(Json::as_array).map(<[Json]>::len), Some(0));
         assert_eq!(d.get("dual").and_then(|s| s.get("focus")).and_then(Json::as_f64), Some(0.0));
+        assert_eq!(d.get("shelf").and_then(|s| s.get("enabled")).and_then(Json::as_bool), Some(true));
+        assert_eq!(d.get("shelf").and_then(|s| s.get("bar")).and_then(Json::as_bool), Some(true));
+        assert_eq!(d.get("shelf").and_then(|s| s.get("rail")).and_then(Json::as_str), Some("off"));
+        assert_eq!(d.get("shelf").and_then(|s| s.get("recent")).and_then(Json::as_f64), Some(3.0));
         assert_eq!(d.get("places").and_then(|p| p.get("sidebarWidth")).and_then(Json::as_f64), Some(192.0));
         assert_eq!(d.get("places").and_then(|p| p.get("driveSize")).and_then(Json::as_bool), Some(false));
         assert_eq!(d.get("places").and_then(|p| p.get("trashCount")).and_then(Json::as_bool), Some(false));

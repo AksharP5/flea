@@ -13,7 +13,9 @@ Panel {
   moduleName: "io.github.thisisgm.flea-shelf"
 
   // Without these the bar allocates a zero-width slot: the widget draws nothing and logs nothing.
-  implicitWidth: button.implicitWidth
+  // SettingsRest rule 2: with the master off, or the bar row off, the slot is the one that goes.
+  readonly property bool inBar: shelf.shelfSettings.enabled && shelf.shelfSettings.bar
+  implicitWidth: root.inBar ? button.implicitWidth : 0
   implicitHeight: button.implicitHeight
 
   // BarMark rule 2: empty is 55 percent present and holding is 100, and nothing else changes.
@@ -69,8 +71,14 @@ Panel {
     // Rule 4's budget: sizes are asked for while the card is up and never while it is closed.
     drawing: root.opened
     onGrew: landing.restart()
-    // Summon: a keybind, a CLI call and the mark all arrive here, by the same path.
-    onSummoned: root.opened ? root.close() : root.open()
+    // Summon: a keybind, a CLI call and the mark all arrive here, by the same path, and the master
+    // makes every one of them inert without touching the pile.
+    onSummoned: {
+      if (!shelf.shelfSettings.enabled) {
+        return
+      }
+      root.opened ? root.close() : root.open()
+    }
     onCleared: function (count) {
       root.error = ""
       root.result = Model.clearedText(count)
@@ -188,6 +196,7 @@ Panel {
   BarIconButton {
     id: button
     anchors.fill: parent
+    visible: root.inBar
     bar: root.bar
     // Rule 3: the count lives in the tooltip, the card and the edge notch, never in the bar.
     tooltipText: Model.tooltip(shelf.pile)

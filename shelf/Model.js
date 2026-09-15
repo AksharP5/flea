@@ -332,14 +332,21 @@ function keyHintsOf(text) {
 }
 
 function shelfDefaults() {
-  return { screenshots: true, recordings: true, recent: 3 }
+  return { enabled: true, bar: true, rail: "off", screenshots: true, recordings: true, recent: 3 }
 }
 
+var EDGES = ["off", "left", "right", "bottom"]
+
+// SettingsRest rules 1 to 3: Flea's Settings owns the shelf's switches and this plugin only reads
+// them. A value this build cannot honour falls back to the same default a fresh ui.json holds.
 function shelfOf(text) {
   var doc = parsedOr(text)
   var shelf = doc.shelf && typeof doc.shelf === "object" ? doc.shelf : {}
   var recent = Number(shelf.recent)
   return {
+    enabled: shelf.enabled !== false,
+    bar: shelf.bar !== false,
+    rail: EDGES.indexOf(String(shelf.rail)) >= 0 ? String(shelf.rail) : "off",
     screenshots: shelf.screenshots !== false,
     recordings: shelf.recordings !== false,
     recent: isFinite(recent) && recent >= 0 ? recent : 3

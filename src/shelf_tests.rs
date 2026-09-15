@@ -176,3 +176,29 @@ fn pinning_a_path_the_shelf_is_not_holding_puts_it_on_the_shelf() {
     let text = std::fs::read_to_string(shelf.pile_file()).unwrap();
     assert!(text.contains("\"pinned\": false"), "{}", text);
 }
+
+// SettingsRest rule 4: the panel orders the pins, and the loose entries keep their own places.
+#[test]
+fn order_moves_a_pin_among_the_pins_only() {
+    let (dir, shelf) = shelf("shelforder");
+    shelf.add(&[file(&dir, "loose.txt")]).unwrap();
+    shelf.pin(&[file(&dir, "one.txt"), file(&dir, "two.txt")], true).unwrap();
+    let two_again = file(&dir, "two.txt");
+    shelf.order(&two_again, 0).unwrap();
+    let leaves: Vec<String> = shelf
+        .pile()
+        .iter()
+        .map(|path| path.rsplit('/').next().unwrap_or(path).to_string())
+        .collect();
+    assert_eq!(leaves, vec!["loose.txt", "two.txt", "one.txt"]);
+}
+
+#[test]
+fn order_ignores_a_path_that_is_not_pinned_and_a_place_that_is_not_there() {
+    let (dir, shelf) = shelf("shelforderbad");
+    let one = file(&dir, "one.txt");
+    shelf.pin(&[one.clone()], true).unwrap();
+    shelf.order("/nowhere", 0).unwrap();
+    shelf.order(&one, 9).unwrap();
+    assert_eq!(shelf.pile().len(), 1);
+}

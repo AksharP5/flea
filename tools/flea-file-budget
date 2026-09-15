@@ -45,7 +45,7 @@ ui/PaneWire.qml 481
 ui/PermissionsDialog.qml 426
 ui/PreviewColumn.qml 463
 ui/Row.qml 410
-ui/SettingsPanel.qml 517
+ui/SettingsPanel.qml 531
 ui/SettingsRow.qml 409
 ui/Sidebar.qml 535
 ui/TrashView.qml 466
@@ -53,7 +53,7 @@ ui/js/Filter.js 301
 ui/js/Focus.js 341
 ui/js/Keymap.js 310
 ui/js/Ops.js 331
-ui/js/Settings.js 423
+ui/js/Settings.js 427
 ui/picker.qml 635
 ui/shell.qml 532"
 

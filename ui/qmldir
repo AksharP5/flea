@@ -88,6 +88,7 @@ AboutFacts 1.0 AboutFacts.qml
 SelectionPreview 1.0 SelectionPreview.qml
 PermissionsDialog 1.0 PermissionsDialog.qml
 singleton Favourites 1.0 Favourites.qml
+singleton ShelfPins 1.0 ShelfPins.qml
 SettingsFavourite 1.0 SettingsFavourite.qml
 TrashView 1.0 TrashView.qml
 TrashConfirm 1.0 TrashConfirm.qml

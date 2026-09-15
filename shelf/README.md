@@ -29,6 +29,7 @@ screen-edge rail you throw a drag at, the subset gesture, and the five actions.
 | `ShelfRun.qml` | the transfer surface while an action runs, and its cancel |
 | `Run.js` | pure functions again: the running line, and the sentence each action lands with |
 | `ShelfActionButton.qml` | Ui/PanelActionButton's shape with a mark on the Omarchy cut as its ink |
+| `ShelfRow.qml` | one row of the card: its group's separator and header, then the row itself |
 | `ShelfGlyph.qml` | one mark on the Omarchy cut, the way Flea draws its own |
 | `FleaShelfMark.qml` | Flea's own mark, reproduced rather than recut |
 
@@ -43,8 +44,6 @@ screen-edge rail you throw a drag at, the subset gesture, and the five actions.
 |---|---|---|
 | `refreshIntervalSec` | how often the pile is re-read when no change has been signalled | 5 |
 | `fleaCommand` | the flea that owns the pile, a name on PATH or a path of its own | `flea` |
-| `railEdge` | the drop rail's edge: `off`, `left`, `right`, `bottom`, or empty for the edge opposite the bar | empty |
-| `railDwell` | how long a drag rests on the rail before the card opens, in milliseconds, 60 to 600 | 120 |
 
 The pile's file is watched, so a change is drawn as it happens; the interval is what finds the
 first item, because a watch cannot fire for a file that does not exist yet.
@@ -70,9 +69,10 @@ frame and re-read every second while it is up. A capture row takes the actions a
 gesture like any other, and `p` pins one. A pinned row is always there: its drag out is a copy, a
 move takes the file and the pin follows it, and `x` is what takes it off the shelf.
 
-Which kinds the captures section lists, how many, and whether the shelf is in the bar at all are
-Flea's own settings, in its Settings panel under Shelf; this plugin reads them from Flea's
-`ui.json` and never writes them. An action's tooltip carries its key only while Flea's own
+Every switch is Flea's own, in its Settings panel under Shelf: the master, `Show in bar`, the edge
+rail, which capture kinds to list and how many, and the pinned rows. This plugin reads them from
+Flea's `ui.json` and never writes them, and its manifest keeps only the two technical values above.
+With the master off there is no bar mark, no rail and Super+D does nothing, and the pile is kept. An action's tooltip carries its key only while Flea's own
 keyboard-hints setting is on.
 
 ## State

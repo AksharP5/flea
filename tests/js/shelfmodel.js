@@ -137,6 +137,12 @@ function run(check) {
         "true|false|false|false|false")
 
   // Rule 11 and directive 59: Flea's own settings, read and never written.
+  check("the shelf's own settings come from Flea's file, with its defaults when they do not",
+        JSON.stringify(Shelf.shelfOf("")) + "|" + JSON.stringify(Shelf.shelfDefaults()),
+        JSON.stringify(Shelf.shelfDefaults()) + "|" + JSON.stringify(Shelf.shelfDefaults()))
+  check("and a stored value this build cannot honour falls back to its default",
+        JSON.stringify(Shelf.shelfOf('{"shelf":{"enabled":false,"bar":false,"rail":"diagonal","recent":2}}')),
+        '{"enabled":false,"bar":false,"rail":"off","screenshots":true,"recordings":true,"recent":2}')
   check("key hints are off until Flea's own file says otherwise",
         Shelf.keyHintsOf("") + "|" + Shelf.keyHintsOf('{"keyHints":true}'), "false|true")
   var settings = Shelf.shelfOf('{"shelf":{"screenshots":false,"recent":1}}')

@@ -20,9 +20,7 @@
     "defaultSection": "right",
     "defaults": {
       "refreshIntervalSec": 5,
-      "fleaCommand": "flea",
-      "railEdge": "",
-      "railDwell": 120
+      "fleaCommand": "flea"
     },
     "schema": [
       {
@@ -39,21 +37,6 @@
         "type": "string",
         "label": "The flea command that owns the pile",
         "defaultValue": "flea"
-      },
-      {
-        "key": "railEdge",
-        "type": "string",
-        "label": "Drop rail edge: off, left, right, bottom, or empty for the edge opposite the bar",
-        "defaultValue": ""
-      },
-      {
-        "key": "railDwell",
-        "type": "integer",
-        "label": "Card opens after the drag rests (ms)",
-        "defaultValue": 120,
-        "min": 60,
-        "max": 600,
-        "step": 10
       }
     ]
   }
