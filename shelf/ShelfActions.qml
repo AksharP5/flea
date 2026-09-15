@@ -11,11 +11,10 @@ Item {
 
   // The flea that owns the pile, which the service resolved from the plugin's own setting.
   property string fleaCommand: "flea"
-  // How many the pile holds, which is what a send reports having handed over.
-  property int held: 0
-
   property var run: Run.idle()
   signal landed(string sentence)
+  // An action asked for while one is already running: the card says so rather than losing it.
+  signal refused(string why)
   // The pile changed under an action, so whoever owns the file is told to read it again.
   signal ran()
   // What the running action is, so its result can be named when it lands.
@@ -25,7 +24,11 @@ Item {
   property string runError: ""
 
   function transfer(moving, dest, paths) {
-    if (action.running || paths.length === 0) {
+    if (paths.length === 0) {
+      return
+    }
+    if (action.running) {
+      root.refused("The shelf is still busy with the last one.")
       return
     }
     root.runVerb = moving ? "Moved" : "Copied"
@@ -37,7 +40,11 @@ Item {
   }
 
   function zip(date, paths) {
-    if (action.running || paths.length === 0) {
+    if (paths.length === 0) {
+      return
+    }
+    if (action.running) {
+      root.refused("The shelf is still busy with the last one.")
       return
     }
     root.runVerb = "Zipped"
@@ -47,17 +54,26 @@ Item {
   }
 
   function send(peer, paths) {
-    if (action.running || paths.length === 0) {
+    if (paths.length === 0) {
+      return
+    }
+    if (action.running) {
+      root.refused("The shelf is still busy with the last one.")
       return
     }
     root.runVerb = "Sent"
     root.runDest = peer
+    // What this send handed over, which is the chosen rows and not the whole pile.
+    root.sending = paths.length
     action.command = [root.fleaCommand, "shelf", "send", peer].concat(paths)
     action.running = true
   }
 
   // esc while an action runs, which the transfer reads as its own cancel rather than a kill.
   function cancelRun() {
+    if (stop.running) {
+      return
+    }
     stop.command = [root.fleaCommand, "shelf", "cancel"]
     stop.running = true
   }
@@ -101,6 +117,7 @@ Item {
   }
 
   property int ok: 0
+  property int sending: 0
   property bool cancelled: false
 
   function finished(code) {
@@ -109,7 +126,7 @@ Item {
     if (root.runVerb === "Zipped") {
       root.landed(code === 0 ? Run.zippedText(Number(root.runDest)) : "That pile could not be zipped.")
     } else if (root.runVerb === "Sent") {
-      root.landed(code === 0 ? Run.sentText(root.held, root.runDest) : "That send did not go.")
+      root.landed(code === 0 ? Run.sentText(root.sending, root.runDest) : "That send did not go.")
     } else if (root.runVerb.length > 0) {
       root.landed(root.cancelled
                   ? "Cancelled"

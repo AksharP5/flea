@@ -1,13 +1,12 @@
 import QtQuick
 import Quickshell
-import Quickshell.Wayland
 import qs.Commons
 import qs.Ui
 import "Model.js" as Model
 import "Run.js" as Run
 
-// The shelf's presence in the bar, and nothing else yet: the card, the drop target, the keys and
-// the actions are their own units. BarMark rule 6: it never self-hides, so its slot never moves.
+// The shelf's presence in the bar, and the host of everything the mark opens: the card, the rail,
+// the menus and the keys. BarMark rule 6: it never self-hides, so its slot never moves.
 Panel {
   id: root
   moduleName: "io.github.thisisgm.flea-shelf"
@@ -126,8 +125,12 @@ Panel {
   ShelfActions {
     id: doing
     fleaCommand: shelf.fleaCommand
-    held: shelf.count
     onRan: shelf.reread()
+    onRefused: function (why) {
+      root.result = ""
+      root.error = why
+      transient.restart()
+    }
     onLanded: function (sentence) {
       root.error = ""
       root.result = sentence

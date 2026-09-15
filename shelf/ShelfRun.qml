@@ -1,5 +1,6 @@
 import QtQuick
 import qs.Commons
+import qs.Ui
 import "Run.js" as Run
 
 // The transfer surface the shelf already has: the pointer's cancellation control and the figures,
@@ -19,7 +20,6 @@ Item {
 
   readonly property real gap: Style.space(9)
   readonly property real barHeight: Style.space(5)
-  readonly property real buttonHeight: Style.space(24)
 
   visible: root.run.running
   implicitHeight: visible ? column.implicitHeight + 2 * root.gap : 0
@@ -62,30 +62,19 @@ Item {
       }
     }
 
+    // Rule 2: the shell's own button, the way every OEM panel spends one.
     Item {
       width: parent.width
-      height: root.buttonHeight
+      height: cancel.implicitHeight
 
-      Rectangle {
+      Button {
+        id: cancel
         anchors.right: parent.right
-        height: parent.height
-        width: cancel.implicitWidth + 2 * Style.space(11)
-        color: "transparent"
-        border.width: 1
-        border.color: cancelHover.hovered ? root.foreground : root.muted
-
-        Text {
-          id: cancel
-          anchors.centerIn: parent
-          text: "× Cancel"
-          color: root.foreground
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.caption
-          textFormat: Text.PlainText
-        }
-
-        HoverHandler { id: cancelHover }
-        TapHandler { onSingleTapped: root.cancelRequested() }
+        text: "Cancel"
+        bordered: true
+        foreground: root.foreground
+        fontFamily: root.fontFamily
+        onClicked: root.cancelRequested()
       }
     }
   }
