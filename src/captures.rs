@@ -93,24 +93,31 @@ fn read_user_dirs(home: &str) -> String {
 
 // Sample input, one line of ~/.config/user-dirs.dirs, which the capture scripts source as shell:
 // XDG_PICTURES_DIR="$HOME/Pictures"
+pub fn user_dirs_line(line: &str, home: &str) -> Option<(String, String)> {
+    let line = line.trim();
+    if line.starts_with('#') {
+        return None;
+    }
+    let (name, value) = line.split_once('=')?;
+    let value = value.trim().trim_matches('"');
+    if value.is_empty() {
+        return None;
+    }
+    Some((name.trim().to_string(), value.replace("$HOME", home)))
+}
+
 pub fn user_dirs_entry(text: &str, key: &str, home: &str) -> Option<String> {
     for line in text.lines() {
-        let line = line.trim();
-        if line.starts_with('#') {
+        let trimmed = line.trim();
+        if trimmed.starts_with('#') {
             continue;
         }
-        let (name, value) = match line.split_once('=') {
-            Some(pair) => pair,
-            None => continue,
-        };
+        let Some((name, _)) = trimmed.split_once('=') else { continue };
         if name.trim() != key {
             continue;
         }
-        let value = value.trim().trim_matches('"');
-        if value.is_empty() {
-            return None;
-        }
-        return Some(value.replace("$HOME", home));
+        // The named key is the answer even when its value is empty, and an empty one is no directory.
+        return user_dirs_line(line, home).map(|(_, value)| value);
     }
     None
 }

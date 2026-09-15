@@ -12,12 +12,13 @@ const RECENTS: &str = "dests.json";
 // Five, the same number of piles the card's own menu keeps, and the same reason: a list, not a log.
 const KEPT: usize = 5;
 
-pub fn file() -> PathBuf {
-    uistore::state_home().unwrap_or_else(|_| PathBuf::from("/tmp")).join(DIR).join(RECENTS)
+fn file() -> Result<PathBuf, String> {
+    Ok(uistore::state_home()?.join(DIR).join(RECENTS))
 }
 
 pub fn recents() -> Vec<String> {
-    let text = fs::read_to_string(file()).unwrap_or_default();
+    let Ok(path) = file() else { return Vec::new() };
+    let text = fs::read_to_string(path).unwrap_or_default();
     let doc = match jsondoc::parse(&text) {
         Ok(doc) => doc,
         Err(_) => return Vec::new(),
@@ -29,15 +30,20 @@ pub fn recents() -> Vec<String> {
 }
 
 // A destination used again moves to the front rather than appearing twice.
-pub fn remember(dest: &str) -> Result<(), String> {
-    let mut kept: Vec<String> = recents().into_iter().filter(|held| held != dest).collect();
+fn ordered(held: &[String], dest: &str) -> Vec<String> {
+    let mut kept: Vec<String> = held.iter().filter(|one| one.as_str() != dest).cloned().collect();
     kept.insert(0, dest.to_string());
     kept.truncate(KEPT);
+    kept
+}
+
+pub fn remember(dest: &str) -> Result<(), String> {
+    let kept = ordered(&recents(), dest);
     let doc = Json::Obj(vec![(
         "dests".to_string(),
         Json::Arr(kept.into_iter().map(Json::Str).collect()),
     )]);
-    let path = file();
+    let path = file()?;
     uistore::make_dir(path.parent().ok_or("the shelf has no directory to write in")?)?;
     uistore::replace(&path, &jsondoc::render(&doc))
 }
@@ -81,8 +87,18 @@ pub fn places() -> Vec<String> {
 pub fn choose(rest: &[String]) -> i32 {
     let title = rest.first().map(String::as_str).unwrap_or("Choose a folder");
     let start = rest.get(1).map(String::as_str).unwrap_or("");
-    let reply = uistore::state_home().unwrap_or_else(|_| PathBuf::from("/tmp")).join(DIR).join("reply.json");
-    if let Err(e) = uistore::make_dir(reply.parent().unwrap_or(Path::new("/tmp"))) {
+    let reply = match uistore::state_home() {
+        Ok(state) => state.join(DIR).join("reply.json"),
+        Err(e) => {
+            eprintln!("flea: {}", e);
+            return 2;
+        }
+    };
+    let Some(dir) = reply.parent() else {
+        eprintln!("flea: the shelf has no directory to write in");
+        return 2;
+    };
+    if let Err(e) = uistore::make_dir(dir) {
         eprintln!("flea: {}", e);
         return 2;
     }
@@ -106,7 +122,15 @@ pub fn choose(rest: &[String]) -> i32 {
         eprintln!("flea: the chooser could not be opened");
         return 2;
     }
-    let answer = fs::read_to_string(&reply).unwrap_or_default();
+    // The picker writes its reply whichever way it ends, esc included, so a missing file is a
+    // chooser that died rather than an operator who changed their mind.
+    let answer = match fs::read_to_string(&reply) {
+        Ok(answer) => answer,
+        Err(e) => {
+            eprintln!("flea: the chooser closed without answering ({:?})", e.kind());
+            return 2;
+        }
+    };
     let _ = fs::remove_file(&reply);
     if let Some(path) = chosen_dir(&answer) {
         println!("{}", path);
@@ -126,17 +150,16 @@ pub fn chosen_dir(answer: &str) -> Option<String> {
     Some(decode(path))
 }
 
-// Sample input, one line of ~/.config/user-dirs.dirs: XDG_DOWNLOAD_DIR="$HOME/Downloads"
+// Every XDG directory rather than one by name, which is the half captures::user_dirs_entry cannot
+// answer; the line itself is read by that module's own parser so the two cannot drift apart.
 pub fn user_dirs(text: &str, home: &str) -> Vec<String> {
     let mut out = Vec::new();
     for line in text.lines() {
-        let line = line.trim();
-        if line.starts_with('#') || !line.starts_with("XDG_") {
+        let Some((name, value)) = crate::captures::user_dirs_line(line, home) else { continue };
+        if !name.starts_with("XDG_") {
             continue;
         }
-        let Some((_, value)) = line.split_once('=') else { continue };
-        let path = value.trim().trim_matches('"').replace("$HOME", home);
-        let path = path.trim_end_matches('/').to_string();
+        let path = value.trim_end_matches('/').to_string();
         // corner: this box points TEMPLATES, PUBLICSHARE and DESKTOP at $HOME, which is not a place.
         if path.is_empty() || path == home {
             continue;
@@ -167,9 +190,11 @@ fn decode(text: &str) -> String {
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;
     while i < bytes.len() {
+        // Read as bytes, never as a string slice: a percent followed by one hex digit and a
+        // multi-byte character would put a slice boundary inside that character and panic.
         if bytes[i] == b'%' && i + 2 < bytes.len() {
-            if let Ok(byte) = u8::from_str_radix(&text[i + 1..i + 3], 16) {
-                out.push(byte);
+            if let (Some(high), Some(low)) = (hex(bytes[i + 1]), hex(bytes[i + 2])) {
+                out.push(high * 16 + low);
                 i += 3;
                 continue;
             }
@@ -178,6 +203,15 @@ fn decode(text: &str) -> String {
         i += 1;
     }
     String::from_utf8_lossy(&out).to_string()
+}
+
+fn hex(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        b'A'..=b'F' => Some(byte - b'A' + 10),
+        _ => None,
+    }
 }
 
 #[cfg(test)]
