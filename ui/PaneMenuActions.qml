@@ -23,6 +23,15 @@ Loader {
         function onLocalSendSent(ok, reason) { root.pane.message(LocalSendJs.verdict(ok, reason), !ok) }
     }
 
+    function perform(action, menuId, paths) {
+        if (action.indexOf("runScript:") === 0) { Flea.Scripts.run(action.substring("runScript:".length), paths || []); return }
+        if (action.indexOf("localsend:") === 0) { LocalSendJs.send(root.pane, localSend, root.pane.backend.providers.localsend, action.substring("localsend:".length), paths || []); return }
+        if (action.indexOf("taildrop:") === 0) { root.pane.sendTaildrop(action.substring("taildrop:".length), paths && paths.length === 1 ? paths[0] : ""); return }
+        if (action === "sharelink") { root.pane.copyShareLink(paths && paths.length === 1 ? paths[0] : ""); return }
+        if (action === "copypath") { root.pane.opener.copyText(paths && paths.length ? paths[0] : root.pane.join(root.pane.path, root.pane.cursorRow.n)); return }
+        if (action.indexOf("col:") === 0) { ViewState.toggleColumn(action.substring("col:".length)); return }
+        root.pane.act(action, menuId, paths)
+    }
     // A script's own non-zero exit is its last stderr line, said once in the status centre.
     Connections {
         target: Flea.Scripts

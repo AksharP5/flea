@@ -17,8 +17,9 @@ var LIST = "list"
 var RAIL = "rail"
 
 // Tab is the only thing that moves focus between views, so the rule lives in one function.
-function next(current) {
-    return current === LIST ? RAIL : LIST
+function next(current, sidebar) {
+    // RailAdditions rule 4: a hidden rail is not a place the keyboard can go, so Tab stays in the list.
+    return current === LIST && sidebar ? RAIL : LIST
 }
 
 function shareBrowserHere(root) {
@@ -97,6 +98,7 @@ function act(action, root, menuId, paths) {
     case "focusPreview": root.focusPreviewColumn(); return
     case "windowNew": root.newWindow(); return
     case "toggleHidden": root.toggleHidden(); return
+    case "sidebar": root.toggleRail(); return
     // Popups handle Escape first; the focused listing then unwinds filter, search, status and marks.
     case "escape":
         if (root.filterTyping || root.filterQuery.length > 0) Filter.close(root)
@@ -143,7 +145,7 @@ function act(action, root, menuId, paths) {
     // The header answers the same two through ui/Pane.qml, so the key and the click share one route.
     case "sortNext": Sort.next(root); return
     case "sortReverse": Sort.reverse(root); return
-    case "addNetwork": root.sidebar.addRequested(); return
+    case "addNetwork": if (root.sidebar) root.sidebar.addRequested(); return
     case "eject": Eject.release(root, root.sidebar, false); return
     // Finder's Cmd+1/2/3; the chrome's three buttons write the same property, so they follow.
     case "viewList": root.chooseView("list"); return
@@ -230,7 +232,7 @@ function handleKey(event, root, sidebar) {
     // "blocked:" lesson; the row editor and the rail's own field both need it. The index alone is not
     // asked, because an editor released by a scroll or hidden by a view change left it set with
     // nothing to give the keys to, and every later key was swallowed for the life of the window.
-    if (sidebar.renameEditor() !== null || root.renameEditor() !== null) {
+    if ((sidebar && sidebar.renameEditor() !== null) || root.renameEditor() !== null) {
         return true
     }
     root.inputAt = Date.now()
@@ -269,7 +271,7 @@ function handleKey(event, root, sidebar) {
     }
     if (action === "focusNext" || action === "focusPrevious") {
         if (root.dualMode && root.focusView === LIST) root.switchPane()
-        else root.focusView = next(root.focusView)
+        else root.focusView = next(root.focusView, sidebar)
         return true
     }
     if (action === "focusPreview") {
@@ -302,7 +304,7 @@ function handleKey(event, root, sidebar) {
         root.act(action)
         return true
     }
-    if (root.focusView === RAIL) {
+    if (root.focusView === RAIL && sidebar) {
         RailKeys.act(action, root, sidebar)
         return true
     }

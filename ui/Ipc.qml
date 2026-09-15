@@ -88,6 +88,7 @@ QtObject {
         }
         function railCursor(): int { return root.pane.railCursor }
         function railCount(): int { return root.pane.railCount }
+        function railState(): string { return JSON.stringify({hidden: root.pane.railHidden, width: root.pane.sidebarWidth, pane: root.pane.width}) }
         function path(): string { return root.pane.path }
         function dualState(): string {
             return JSON.stringify({active: ViewState.state.view === "dual",
@@ -395,8 +396,7 @@ QtObject {
         function previewOpen(): bool { return root.pane.preview.active }
         function previewKind(): string { return root.pane.preview.kind }
         function previewState(): string { return root.pane.preview.status }
-        function previewPosition(): int { return root.pane.preview.position }
-        function previewDuration(): int { return root.pane.preview.duration }
+        function previewPosition(): int { return root.pane.preview.position } function previewDuration(): int { return root.pane.preview.duration }
         // Fix round 1: what the strip actually draws, not a re-derived guess at its visible: expression.
         function previewStrip(): string { return JSON.stringify({ visible: root.pane.preview.stripVisible, muted: root.pane.preview.muted, mute: root.fleaWindow.centreOf(root.pane.preview.muteMark) }) }
         // A 0.25 zoom step and an expand flag are not legible off a screenshot, so the seam is the

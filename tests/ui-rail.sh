@@ -170,3 +170,89 @@ case_unmounted() (
     # own squares are Theme.color.executable and muted, which tests/themes.sh sweeps on all 22.
     kill_flea
 )
+
+# The window this case owns, floated so its width is this case's to set and nobody else's.
+sidebar_resize() {
+    local width="$1" height="${2:-800}"
+    hyprctl dispatch "hl.dsp.window.resize({ x = $width, y = $height })" >/dev/null \
+        || fail "sidebar: the window would not resize to $width"
+    settle
+    settle
+}
+
+sidebar_state() {
+    ipc railState | jq -er "$1"
+}
+
+# The state file is written asynchronously, so the choice is waited for rather than read at once.
+sidebar_stored() {
+    local want="$1" file="$2" attempt
+    for attempt in $(seq 1 60); do
+        [[ "$(jq -r '.places.rail // "shown"' "$file")" == "$want" ]] && return
+        sleep 0.1
+    done
+    fail "sidebar: the state file never held rail=$want, it holds $(jq -c .places "$file")"
+}
+
+sidebar_wait() {
+    local want="$1" attempt
+    for attempt in $(seq 1 60); do
+        [[ "$(sidebar_state .hidden)" == "$want" ]] && return
+        sleep 0.1
+    done
+    fail "sidebar: the rail never read hidden=$want, its state is $(ipc railState)"
+}
+
+# RailAdditions rule 4 (issue 112, muellan): ctrl-b hides the rail and brings it back, the choice
+# outlives the window, and a window narrower than Theme.space(640) hides it on its own without
+# touching what was remembered.
+case_sidebar() (
+    local dir="$fixture_root/sidebar" state="$fixture_root/sidebar-state" stored width
+    sandbox_scratch "$dir"
+    : > "$dir/a.txt"
+    : > "$dir/b.txt"
+    seed_ui_state "$state" '{"view":"list"}'
+    stored="$state/flea/ui.json"
+
+    launch "$dir"
+    wait_listing 2
+    hyprctl dispatch "hl.dsp.window.float()" >/dev/null || fail 'sidebar: the window would not float'
+    settle
+    sidebar_resize 1200
+    [[ "$(sidebar_state .hidden)" == "false" ]] || fail "sidebar: a fresh home opened with the rail hidden, $(ipc railState)"
+    width=$(sidebar_state .width)
+    (( width > 0 )) || fail "sidebar: the rail is shown and has no width, $(ipc railState)"
+    printf 'SIDEBAR shown=%s\n' "$(ipc railState)"
+
+    echo "-- ctrl-b hides it, and the pane takes its width --"
+    key -M ctrl -k b -m ctrl >/dev/null
+    sidebar_wait true
+    [[ "$(sidebar_state .width)" == "0" ]] || fail "sidebar: the hidden rail still takes $(sidebar_state .width) px"
+    [[ "$(ipc railCount)" == "0" ]] || fail "sidebar: the hidden rail still has rows"
+    shot sidebar-hidden
+    sidebar_stored hidden "$stored"
+
+    echo "-- and it is remembered, because a state is not a setting --"
+    kill_flea
+    launch "$dir"
+    wait_listing 2
+    sidebar_wait true
+    key -M ctrl -k b -m ctrl >/dev/null
+    sidebar_wait false
+    sidebar_stored shown "$stored"
+
+    echo "-- a narrow window hides it on its own, and widening brings it back --"
+    hyprctl dispatch "hl.dsp.window.float()" >/dev/null || fail 'sidebar: the window would not float'
+    settle
+    sidebar_resize 1200
+    sidebar_wait false
+    sidebar_resize 520
+    sidebar_wait true
+    [[ "$(jq -r '.places.rail' "$stored")" == "shown" ]] \
+        || fail "sidebar: the width rule wrote the remembered choice, the file holds $(jq -c .places "$stored")"
+    shot sidebar-narrow
+    sidebar_resize 1200
+    sidebar_wait false
+    printf 'SIDEBAR narrow=ok remembered=%s\n' "$(jq -r '.places.rail' "$stored")"
+    kill_flea
+)

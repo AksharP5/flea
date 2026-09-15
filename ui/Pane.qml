@@ -7,7 +7,6 @@ import "js/Crumbs.js" as Crumbs
 import "js/Filter.js" as Filter
 import "js/Format.js" as Format
 import "js/Focus.js" as Focus
-import "js/LocalSend.js" as LocalSend
 import "js/Marks.js" as Marks
 import "js/Menu.js" as Menu
 import "js/Mounts.js" as Mounts
@@ -75,6 +74,9 @@ FocusScope {
     property var railPane: root
     readonly property var sidebar: root.sharedSidebar || railLoader.item
     readonly property real sidebarWidth: railLoader.width
+    // RailAdditions rule 4: what ctrl-b remembered, plus the width rule, which writes nothing.
+    readonly property bool railHidden: ViewState.railHidden || root.width < Theme.space(640)
+    function toggleRail() { ViewState.toggleRail() }
     property bool paneFocused: true
     property bool listOnly: false
     signal focusRequested()
@@ -332,15 +334,10 @@ FocusScope {
         }
         Focus.act(action, root, menuId, paths)
     }
-    function performMenu(action, menuId, paths) {
-        if (action.indexOf("runScript:") === 0) { Flea.Scripts.run(action.substring("runScript:".length), paths || []); return }
-        if (action.indexOf("localsend:") === 0) { root.sendLocalSend(action.substring("localsend:".length), paths || []); return }
-        if (action.indexOf("taildrop:") === 0) { root.sendTaildrop(action.substring("taildrop:".length), paths && paths.length === 1 ? paths[0] : ""); return }
-        if (action === "sharelink") { root.copyShareLink(paths && paths.length === 1 ? paths[0] : ""); return }
-        if (action === "copypath") { wire.opener.copyText(paths && paths.length ? paths[0] : root.join(root.path, root.cursorRow.n)); return }
-        if (action.indexOf("col:") === 0) { ViewState.toggleColumn(action.substring("col:".length)); return }
-        root.act(action, menuId, paths)
-    }
+    // The menu's own dispatch lives with the rest of the menu machinery; this is the one seam the
+    // rail's place menu and the dialogs still call through.
+    function performMenu(action, menuId, paths) { menuActions.perform(action, menuId, paths) }
+
     function permissionSelection() {
         var indices = Ops.targetIndices(root)
         return indices.length === 1 ? root.rowFor(indices[0]) : null
@@ -406,7 +403,7 @@ FocusScope {
         id: railLoader
         anchors { left: parent.left; top: parent.top; bottom: parent.bottom }
         width: item ? item.implicitWidth : 0
-        active: !root.listOnly && root.sharedSidebar === null
+        active: !root.listOnly && root.sharedSidebar === null && !root.railHidden
         sourceComponent: Flea.Sidebar {
             backend: root.backend
             navigationPane: root.railPane
@@ -589,6 +586,7 @@ FocusScope {
     // Directory cursors retain the installed provider with its explicit file-only reason.
     readonly property var cursorRow: root.rowFor(root.cursorIndex)
     readonly property alias taildropService: wire.taildrop
+    readonly property alias opener: wire.opener
     readonly property var dropboxService: root.sidebar ? root.sidebar.providerService : null
 
     Flea.ContextMenu {
@@ -654,8 +652,6 @@ FocusScope {
         wire.shareLink.copy(path)
     }
     function sendTaildrop(peerId, path) { Ops.sendTaildrop(root, wire.taildrop, peerId, path) }
-    // Directive 71: the dispatch is said here and the CLI's own verdict arrives later, from the backend.
-    function sendLocalSend(peer, paths) { LocalSend.send(root, menuActions.localSend, root.backend.providers.localsend, peer, paths) }
 
     // The keyboard's own entrance to the row menu; the placement itself is ui/js/Menu.js's.
     function openCursorMenu() { return Menu.openAtCursor(root, menu, Theme.spacing.rowPaddingX) }

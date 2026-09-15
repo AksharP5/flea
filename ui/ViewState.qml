@@ -115,6 +115,11 @@ QtObject {
         root.save()
     }
 
+    // RailAdditions rule 4: ctrl-b remembers the rail the way the view is remembered, so this is a
+    // state and not a setting; the width rule in ui/Pane.qml hides it without writing anything.
+    readonly property bool railHidden: (root.state.places || ({})).rail === "hidden"
+    function toggleRail() { root.changeLeaf("places", { rail: root.railHidden ? "shown" : "hidden" }) }
+
     readonly property var preview: root.state.preview || ({})
     readonly property bool previewColumn: root.preview.column !== false
     readonly property bool previewAutomatic: root.preview.loadOn !== "manual"

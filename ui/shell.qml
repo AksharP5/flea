@@ -411,7 +411,7 @@ ShellRoot {
             Connections {
                 target: networkDialog.item
                 // FocusScope remembers its own last-focused child, list or rail, and restores it.
-                function onClosed() { view.currentPane.sidebar.editingPlace = ""; view.currentPane.forceActiveFocus() }
+                function onClosed() { if (view.currentPane.sidebar) view.currentPane.sidebar.editingPlace = ""; view.currentPane.forceActiveFocus() }
                 function onMountRequested(requestId, uri, label, password) {
                     if (!networkDialog.origin) {
                         networkDialog.item.mountFinished(requestId, uri, false, "The requesting pane is no longer available.")
@@ -477,7 +477,7 @@ ShellRoot {
                 onTapped: {
                     if (view.currentPane.menuActions.opened || settingsPanel.opened || view.currentPane.trash.confirming || chrome.editing || convertDialog.opened || permissionsDialog.opened || keymapSheet.opened
                             || networkDialog.opened || (shareBrowser.active && shareBrowser.owner === view.currentPane) || preview.active
-                            || view.currentPane.renameEditor() !== null || view.currentPane.sidebar.renameEditor() !== null)
+                            || view.currentPane.renameEditor() !== null || (view.currentPane.sidebar && view.currentPane.sidebar.renameEditor() !== null))
                         return
                     if (view.currentPane.trash.opened) view.currentPane.trash.close()
                     else Nav.mouseBack(view.currentPane)

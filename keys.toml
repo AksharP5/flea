@@ -43,6 +43,12 @@ action = "search"
 key = "E"
 action = "eject"
 
+# RailAdditions rule 4 (issue 112, muellan): the rail hides and comes back on the chord every editor
+# binds for its own sidebar, and the choice is remembered in ui.json the way the view is.
+[[ctrl]]
+key = "B"
+action = "sidebar"
+
 # Not a Finder chord: Cmd+Shift+G is Go to Folder there, and Ctrl+Shift+G is nothing on this box.
 # Ctrl+L is what Nautilus, Thunar, Dolphin and every browser bind, so the path bar answers to it too.
 [[ctrl]]
@@ -524,7 +530,7 @@ move = ["cursorDown", "cursorUp", "cursorFirst", "cursorLast", "pageDown", "page
         "parent", "pageForward", "historyBack", "historyForward", "focusNext", "focusPreview",
         "tabNew", "tabClose", "tabNext", "tabPrevious", "windowNew", "escape"]
 look = ["viewList", "viewColumns", "viewGrid", "togglePreview", "loadPreview", "preview",
-        "toggleHidden", "zoomIn", "zoomOut", "expand", "mute", "textSizeUp", "textSizeDown",
+        "toggleHidden", "sidebar", "zoomIn", "zoomOut", "expand", "mute", "textSizeUp", "textSizeDown",
         "textSizeReset", "keymapSheet"]
 find = ["filter", "search", "reveal", "sortNext", "sortReverse", "pathBar"]
 change = ["copy", "cut", "paste", "movePaste", "duplicate", "rename", "trash",

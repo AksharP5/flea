@@ -264,8 +264,7 @@ function setPreset(name) {
         ranks[action] = rank
     }
 }
-var SHEET = []
-var HINTS = {}
+var SHEET = []; var HINTS = {}
 setPreset("default")
 ''')
     return '\n'.join(lines).rstrip()

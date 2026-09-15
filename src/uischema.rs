@@ -24,7 +24,7 @@ pub const DEFAULTS: &str = r#"{
     "favourites": [],
     "showHome": true, "showNetwork": true,
     "showDevices": true, "showTrash": true,
-    "driveSize": false, "trashCount": false, "showUnmounted": false, "sidebarWidth": 192
+    "driveSize": false, "trashCount": false, "showUnmounted": false, "rail": "shown", "sidebarWidth": 192
   },
   "shelf": {
     "enabled": true, "bar": true, "rail": "off",
@@ -83,6 +83,7 @@ pub const PLACES: &[(&str, Rule)] = &[
     ("driveSize", Rule::Bool),
     ("trashCount", Rule::Bool),
     ("showUnmounted", Rule::Bool),
+    ("rail", Rule::Word(&["shown", "hidden"])),
     ("sidebarWidth", Rule::SidebarWidth),
 ];
 
@@ -235,6 +236,8 @@ mod tests {
         assert_eq!(d.get("shelf").and_then(|s| s.get("screenshots")).and_then(Json::as_bool), Some(true));
         assert_eq!(d.get("shelf").and_then(|s| s.get("recordings")).and_then(Json::as_bool), Some(true));
         assert_eq!(d.get("places").and_then(|p| p.get("sidebarWidth")).and_then(Json::as_f64), Some(192.0));
+        // RailAdditions rule 4: the rail is a remembered state, and a fresh home remembers it shown.
+        assert_eq!(d.get("places").and_then(|p| p.get("rail")).and_then(Json::as_str), Some("shown"));
         assert_eq!(d.get("places").and_then(|p| p.get("driveSize")).and_then(Json::as_bool), Some(false));
         assert_eq!(d.get("places").and_then(|p| p.get("trashCount")).and_then(Json::as_bool), Some(false));
         assert_eq!(d.get("preview").and_then(|p| p.get("loadOn")).and_then(Json::as_str), Some("automatic"));
@@ -277,7 +280,8 @@ mod tests {
                      r#"{"keys":"mac"}"#, r#"{"keys":"windows"}"#,
                      r#"{"places":{"favourites":[]}}"#,
                      r#"{"places":{"driveSize":true,"trashCount":true}}"#,
-                     r#"{"places":{"driveSize":false,"trashCount":false}}"#] {
+                     r#"{"places":{"driveSize":false,"trashCount":false}}"#,
+                     r#"{"places":{"rail":"hidden"}}"#, r#"{"places":{"rail":"shown"}}"#] {
             assert!(takes(good).is_ok(), "{} is a value its key takes", good);
         }
         for (bad, named) in [(r#"{"display":{"textSize":{"mode":13}}}"#, "display.textSize.mode"),
@@ -291,7 +295,9 @@ mod tests {
                              (r#"{"language":"en"}"#, "language"),
                              (r#"{"places":{"favourites":"/a"}}"#, "places.favourites"),
                              (r#"{"places":{"driveSize":1}}"#, "places.driveSize"),
-                             (r#"{"places":{"trashCount":"true"}}"#, "places.trashCount")] {
+                             (r#"{"places":{"trashCount":"true"}}"#, "places.trashCount"),
+                             (r#"{"places":{"rail":"off"}}"#, "places.rail"),
+                             (r#"{"places":{"rail":true}}"#, "places.rail")] {
             let message = takes(bad).expect_err("the patch must be refused");
             assert!(message.contains(named), "{} should name {}, got {}", bad, named, message);
         }
