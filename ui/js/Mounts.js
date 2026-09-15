@@ -1,6 +1,7 @@
 .pragma library
 
 .import "Protocols.js" as Protocols
+.import "Menu.js" as Menu
 
 // Sample input, captured live on the box with one network share mounted (2026-08-31):
 // Drive(0): KBG40ZNS256G NVMe KIOXIA 256GB
@@ -159,14 +160,58 @@ function railMenu(entry) {
 // What the rail's own right click opens: the release row above, then the two rows a saved place owns
 // whether or not anything mounted it, marked as a removal because forgetting a place trashes
 // nothing. ui/js/Eject.js reads railMenu and never this, so Ctrl+E still refuses an unmounted row.
+// A root-only remote mount covers its saved addressable paths; SMB shares remain path-specific.
+function addressMountCovers(liveUri, savedUri) {
+    var live = normalize(liveUri)
+    var saved = normalize(savedUri)
+    return /^(sftp|ftp|ftps|dav|davs):\/\/[^\/]+\/$/i.test(live)
+        && saved.length > live.length && saved.indexOf(live) === 0
+}
+
 function rowMenu(entry) {
     if (entry && entry.kind === "favourite") return [{ label: "Remove", action: "removeFavourite", glyph: "minus" }]
     var rows = railMenu(entry)
     if (entry && entry.group === "network" && entry.kind === "share" && entry.editable !== false) {
+        // Edit is the address, Rename is the label: a place gio cannot mount is fixed by the first.
+        rows.push({ label: "Edit", action: "editPlace", glyph: "sliders" })
         rows.push({ label: "Rename", action: "rename", glyph: "rename" })
         rows.push({ label: "Remove", action: "remove", glyph: "minus" })
     }
     return rows
+}
+
+// Which menu a rail row opens, and with which handle: the trash and a favourite carry their own,
+// every other row is a mount or a share and ui/js/Menu.js never sees it. Split out of ui/Sidebar.qml,
+// which sits at its recorded line count, and this file already decides what a row offers.
+function railMenuFor(sidebar, entry, scenePosition) {
+    if (entry.kind === "trash") {
+        sidebar.menu.openForRail("trash", Menu.trashEntries(sidebar.trashCount, false), scenePosition)
+        return
+    }
+    if (entry.kind === "favourite") {
+        sidebar.menu.openForRail("favourite:" + entry.favouriteIndex + ":" + JSON.stringify(entry.original),
+            [{ label: "Remove", action: "removeFavourite", glyph: "minus" }], scenePosition)
+        return
+    }
+    sidebar.menu.openForRail(railKey(entry), rowMenu(entry), scenePosition)
+}
+
+// Issue 21: Edit opens D11's dialog over the saved place, and the address that finally mounts is
+// written back over that place's own line, so a share gio could not reach is corrected where it sits.
+function editPlace(sidebar, share) {
+    var entry = sidebar.networkEntries[share]
+    if (!entry)
+        return
+    sidebar.editingPlace = normalize(entry.uri)
+    sidebar.networkRetryRequested(entry.uri, entry.label, "", "Edit this address, then connect and save.", false, sidebar.navigationPane)
+}
+
+// The answer to that edit, and only to that one: a place is rewritten when a different address mounts.
+function placeSaved(sidebar, mounts, uri, success) {
+    var was = sidebar.editingPlace
+    sidebar.editingPlace = ""
+    if (success && was.length > 0 && normalize(uri) !== was)
+        mounts.replacePlace(was)
 }
 
 // The handle a chosen menu row carries back: a volume's device node, a share's uri, "" for a row
@@ -253,6 +298,8 @@ function release(action, key, devices, mounts, sidebar) {
         return
     if (action === "unmount")
         mounts.unmount(share)
+    else if (action === "editPlace")
+        editPlace(sidebar, share)
     else if (action === "rename")
         sidebar.startRename(sidebar.placesEntries.length + share)
     else if (action === "remove")

@@ -133,4 +133,20 @@ function run(check) {
     check("every row is tagged as a favourite", favs[3].group + "/" + favs[3].kind, "favorite/favorite")
     check("the mark is resolved by the caller, so the rail keeps its own Icons import", favs[1].glyph, "mark:Downloads")
     check("a box with neither file still gets Home", Places.favorites("/home/gm", "", "", function () { return "m" }).length, 1)
+    // Issue 21, TomFaulkner: the saved line is rewritten where it sits, so the rail's order holds and
+    // the place keeps its identity; an address nothing saved appends instead of rewriting a stranger.
+    var saved = "file:///home/gm/Downloads Downloads\nsmb://nas:445/isos NAS isos\nsmb://other/data Other\n"
+    check("the edited line is rewritten in place, and every other line is untouched",
+          Places.replace(saved, "smb://nas/isos", "sftp://nas2/isos", "NAS isos"),
+          "file:///home/gm/Downloads Downloads\nsftp://nas2/isos NAS isos\nsmb://other/data Other\n")
+    check("the default port the bookmark carried is matched the way a rename matches it",
+          Places.replace(saved, "smb://nas:445/isos/", "smb://nas/plates", "Plates").indexOf("smb://nas/plates Plates") >= 0, true)
+    check("an address nothing saved is appended rather than rewriting another line",
+          Places.replace(saved, "smb://absent/", "smb://nas/new", "New"),
+          saved + "smb://nas/new New\n")
+    check("a label nobody typed falls back to the share's own name",
+          Places.replace("", "", "smb://nas/plates", ""), "smb://nas/plates plates\n")
+    check("and an empty new address rewrites nothing at all",
+          Places.replace(saved, "smb://nas/isos", "", "NAS"), saved)
+
 }

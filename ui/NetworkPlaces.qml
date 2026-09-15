@@ -56,6 +56,20 @@ Item {
         root.write(Places.relabel(bookmarksWrite.text(), uri, name))
     }
 
+    // Rewrites the saved line's address in place, so a place whose host or path was wrong is the
+    // same row afterwards and keeps its position in the file, which is the rail's own order.
+    function replace(oldUri, newUri, name) {
+        bookmarksWrite.readError = FileViewError.Success
+        bookmarksWrite.reload()
+        bookmarksWrite.waitForJob()
+        if (bookmarksWrite.readError !== FileViewError.Success
+                && bookmarksWrite.readError !== FileViewError.FileNotFound) {
+            root.message("Saved places could not be read, so the new address was not saved.", true)
+            return
+        }
+        root.write(Places.replace(bookmarksWrite.text(), oldUri, newUri, name))
+    }
+
     // Forgets a saved place. A share that is mounted right now stays on the rail as the live mount
     // it is until something unmounts it, so the bar names the state the press landed in.
     function forget(uri) {

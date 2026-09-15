@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Drives the real Quickshell window with omarchy-drive and asserts through the read-only IPC seam.
-# Usage: ./tests/ui.sh [cursor|terminal|open|rows|click|ctrlclick|viewrestart|dd|sortrestart|menu|hidden|selection|select|colour|lifted|icons|thumbs|hashcache|stale|nosweep|oem|header|overflow|focus|preview|network|netmark|networktimeout|networklive|gvfs|sharebrowser|unmount|phones|eject|rename|renamelife|taildrop|grid|columns|operations|tabs|openterminal|renderer|settings ...]; networklive is opt-in.
+# Usage: ./tests/ui.sh [cursor|terminal|open|rows|click|ctrlclick|viewrestart|dd|sortrestart|editplace|menu|hidden|selection|select|colour|lifted|icons|thumbs|hashcache|stale|nosweep|oem|header|overflow|focus|preview|network|netmark|networktimeout|networklive|gvfs|sharebrowser|unmount|phones|eject|rename|renamelife|taildrop|grid|columns|operations|tabs|openterminal|renderer|settings ...]; networklive is opt-in.
 set -u
 set -o pipefail
 # Hard rule 9's guard, which owns FIXTURE_ROOT and every create and delete this suite makes.
@@ -3982,6 +3982,105 @@ PYEOF
 # would leak into networkEntries and fail the empty check no matter what fixture HOME says; this
 # gates the empty check on "gio mount -l" itself carrying no Mount() line, and fails loud with
 # that listing rather than guessing, since this case cannot unmount another task's own work.
+# Issue 21, TomFaulkner: a saved network place can be edited from the rail, and the address that
+# finally mounts is written back over that place's own line rather than saved beside it.
+case_editplace() {
+    local dir="$fixture_root/editplace"
+    sandbox_scratch "$dir"
+    : > "$dir/one.txt"
+    local fake_root="$fixture_root/editplace-fake"
+    sandbox_scratch "$fake_root"
+    mkdir -p "$fake_root/bin"
+    local fixture_home="$fixture_root/editplace-home"
+    fixture_home_make "$fixture_home"
+    local real_home="$HOME" mount_log="$fake_root/mount.log"
+    local bookmarks="$fixture_home/.config/gtk-3.0/bookmarks"
+    export XDG_CONFIG_HOME="$fixture_home/.config"
+    seed_ui_state "$fixture_root/editplace-state" '{"view":"list","keys":"default","places":{"favourites":[]}}'
+    mkdir -p "$fixture_home/.config/gtk-3.0"
+    printf 'smb://legacy.test/data Legacy share\nfile:///missing/legacy Local legacy\n' > "$bookmarks"
+    : > "$mount_log"
+
+    # The same shape case_network's own fake has: this box's real mounts are the operator's, so the
+    # rail under test is exactly the two seeded lines and nothing the box happens to have open.
+    cat > "$fake_root/bin/gio" <<EOS
+#!/bin/sh
+case "\$1 \${2:-}" in
+"mount -li") exit 0 ;;
+"mount "*) printf '%s\n' "\$*" > "$mount_log" ;;
+"info "*) printf 'local path: %s\n' "$dir" ;;
+*) exit 0 ;;
+esac
+EOS
+    chmod +x "$fake_root/bin/gio"
+    local saved_path="$PATH"
+    export PATH="$fake_root/bin:$PATH"
+
+    export HOME="$fixture_home"
+    launch "$dir"
+    export HOME="$real_home"
+    wait_listing 1
+    local _attempt
+    for _attempt in $(seq 1 100); do
+        [[ "$(ipc networkEntries)" == 'Legacy share|network|share|false' ]] && break
+        sleep 0.05
+    done
+    [[ "$(ipc networkEntries)" == 'Legacy share|network|share|false' ]] \
+        || fail "editplace: the rail reads $(ipc networkEntries), not the one saved place"
+
+    local legacy_index
+    legacy_index=$(ipc railEntries | jq -r 'map(.label) | index("Legacy share")')
+    [[ -n "$legacy_index" && "$legacy_index" != "null" ]] || fail "editplace: the saved place is not on the rail"
+
+    click_rail_row "$legacy_index" right
+    settle
+    [[ "$(ipc contextMenuEntries)" == "Edit|Rename|Remove" ]] \
+        || fail "editplace: the saved place offers $(ipc contextMenuEntries), not Edit, Rename and Remove"
+    menu_seek "Edit"
+    key -k Return >/dev/null
+    settle
+    [[ "$(ipc dialogOpen)" == "true" ]] || fail "editplace: Edit opened no dialog"
+    [[ "$(ipc networkUri)" == "smb://legacy.test/data" ]] \
+        || fail "editplace: the dialog opened on $(ipc networkUri), not the place Edit named"
+    # The host holds the caret on open, so the old one is taken out and the corrected one typed in.
+    local back
+    for back in $(seq 1 24); do key -k BackSpace >/dev/null; done
+    key "legacy2.test" >/dev/null
+    settle
+    [[ "$(ipc networkUri)" == "smb://legacy2.test/data" ]] \
+        || fail "editplace: the Mounts-as line reads $(ipc networkUri) after the address was corrected"
+    key -k Return >/dev/null
+    for _attempt in $(seq 1 200); do
+        [[ "$(ipc dialogOpen)" == "false" ]] && break
+        sleep 0.05
+    done
+    [[ "$(ipc dialogOpen)" == "false" ]] || fail "editplace: the dialog stayed open, it says $(ipc networkStatus)"
+    # SMB mounts go through --anonymous, the same argv ui/NetworkMounts.qml sends for every share.
+    [[ "$(cat "$mount_log")" == 'mount --anonymous smb://legacy2.test/data' ]] \
+        || fail "editplace: the edit mounted $(cat "$mount_log")"
+    local edited_marks
+    edited_marks=$(cat "$bookmarks")
+    [[ "$edited_marks" == 'smb://legacy2.test/data Legacy share
+file:///missing/legacy Local legacy' ]] \
+        || fail "editplace: the bookmarks file reads $edited_marks after the edit"
+    # The rail reads the file it was rewritten in, so the place is one row carrying the new address.
+    local rail_uri
+    for _attempt in $(seq 1 100); do
+        rail_uri=$(ipc railEntries | jq -r '[.[] | select(.group == "network")] | map(.uri) | join(",")')
+        [[ "$rail_uri" == "smb://legacy2.test/data" ]] && break
+        sleep 0.05
+    done
+    [[ "$rail_uri" == "smb://legacy2.test/data" ]] \
+        || fail "editplace: the rail's network rows are $rail_uri, not the one corrected place"
+    # The edit rewrites the place it came from, so Flea's own favourites gain nothing.
+    [[ "$(ipc railEntries | jq -r '[.[] | select(.group == "favorite")] | length')" == "0" ]] \
+        || fail "editplace: the edit added a favourite as well as rewriting the place"
+    printf 'EDITPLACE edit=%s rail=%s\n' "$(head -1 "$bookmarks")" "$rail_uri"
+
+    export PATH="$saved_path"
+    kill_flea
+}
+
 case_network() {
     assert_network_attempt_reset _infoOutput infoProcess \
         || fail "network: info output is not cleared immediately before infoProcess starts"
@@ -4576,6 +4675,7 @@ EOS
     settle
     [[ "$(cat "$bookmarks")" == "$legacy_before" ]] || fail "network: legacy GTK bytes changed"
     printf 'NETWORK restart=favourites-and-legacy gtk=unchanged\n'
+
 
     rail_focus
     key a >/dev/null

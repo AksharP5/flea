@@ -4,7 +4,6 @@ import Quickshell.Io
 import qs.Commons
 import "js/Icons.js" as Icons
 import "js/Mounts.js" as Mounts
-import "js/Menu.js" as Menu
 import "js/Places.js" as Places
 
 // Places, Favorites, Network and Devices share one flat cursor in visual order.
@@ -63,6 +62,8 @@ Item {
     signal opened(string path)
     signal networkOpened(string path, var origin)
     signal addRequested()
+    // The saved place an Edit is rewriting, "" when none is being edited; see editNetwork below.
+    property string editingPlace: ""
     signal message(string text, bool isError)
     signal forgetMessage(string text)
     // Bubbled straight from NetworkMounts; shell.qml opens ui/ShareBrowser.qml on this.
@@ -137,7 +138,7 @@ Item {
         onRetryRequested: function (uri, label, password, reason, failedConnect, origin) {
             root.networkRetryRequested(uri, label, password, reason, failedConnect, origin)
         }
-        onCompleted: function (requestId, uri, success, reason) { root.networkCompleted(requestId, uri, success, reason) }
+        onCompleted: function (requestId, uri, success, reason) { Mounts.placeSaved(root, mounts, uri, success); root.networkCompleted(requestId, uri, success, reason) }
         // AGENTS.md "A FileView write can race a reload": mounts.rename() blocked on waitForJob() first, so this reload reads the write it caused.
         onRenamed: root.reloadBookmarks()
     }
@@ -165,6 +166,7 @@ Item {
     }
     function cancelNetwork(requestId) { mounts.cancelLocation(requestId) }
 
+
     function networkResult() {
         return mounts.result
     }
@@ -178,20 +180,9 @@ Item {
     function openRailMenu(index, scenePosition) {
         root.cancelRename()
         var entry = root.entries[index]
-        if (!entry || !root.menu) {
-            return
-        }
+        if (!entry || !root.menu) return
         root.cursorIndex = index
-        if (entry.kind === "trash") {
-            root.menu.openForRail("trash", Menu.trashEntries(root.trashCount, false), scenePosition)
-            return
-        }
-        if (entry.kind === "favourite") {
-            root.menu.openForRail("favourite:" + entry.favouriteIndex + ":" + JSON.stringify(entry.original),
-                [{ label: "Remove", action: "removeFavourite", glyph: "minus" }], scenePosition)
-            return
-        }
-        root.menu.openForRail(Mounts.railKey(entry), Mounts.rowMenu(entry), scenePosition)
+        Mounts.railMenuFor(root, entry, scenePosition)
     }
 
     // The keyboard's entrance to the same menu: ui/js/Mounts.js "raiseMenu" has already asked whether the row releases anything, so this only turns the cursor into a point.

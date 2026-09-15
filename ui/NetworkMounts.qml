@@ -189,14 +189,6 @@ Item {
         onWrote: root.renamed()
     }
 
-    // A root-only remote mount covers its saved addressable paths; SMB shares remain path-specific.
-    function addressMountCovers(liveUri, savedUri) {
-        var live = Mounts.normalize(liveUri)
-        var saved = Mounts.normalize(savedUri)
-        return /^(sftp|ftp|ftps|dav|davs):\/\/[^\/]+\/$/i.test(live)
-            && saved.length > live.length && saved.indexOf(live) === 0
-    }
-
     // Three sources, deduped on the normalized uri (see ui/js/Mounts.js "normalize"): a live gio mount wins over a bookmark for the same share even when the trailing slash differs.
     // The bookmark's own label wins on that merged row, or a rename of a mounted share would be written to the file and never drawn again; see ui/js/Mounts.js "railLabel".
     function rebuild() {
@@ -207,7 +199,7 @@ Item {
         for (var i = 0; i < mounts.length; i++) {
             var covered = false
             for (var j = 0; j < marks.length; j++) {
-                if (!root.addressMountCovers(mounts[i].uri, marks[j].uri)) continue
+                if (!Mounts.addressMountCovers(mounts[i].uri, marks[j].uri)) continue
                 covered = true
                 var coveredKey = Mounts.normalize(marks[j].uri)
                 if (seen[coveredKey]) continue
@@ -403,6 +395,7 @@ Item {
     // What the rail and the Processes below still call by name; the work is in the two children above.
     function rename(uri, name) { places.rename(uri, name) }
     function forget(uri) { places.forget(uri) }
+    function replacePlace(oldUri) { places.replace(oldUri, root._pendingUri, root._pendingLabel) }
     function pollMounts() { listing.poll() }
 
     Timer {

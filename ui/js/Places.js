@@ -92,6 +92,39 @@ function relabel(body, path, name) {
     return out + target + " " + trimmed + "\n"
 }
 
+// Sample input: body as relabel's, oldUri the saved line being rewritten, newUri the address the
+// form's Mounts-as line showed. Matched the way relabel matches, so a live mount's trailing slash
+// still finds the saved line, and an empty oldUri matches nothing and appends instead. PR 21.
+function replace(body, oldUri, newUri, label) {
+    var next = Mounts.normalize(newUri)
+    if (next.length === 0)
+        return String(body || "")
+    // The same trust boundary relabel names: an embedded newline would split one bookmark into two.
+    var name = String(label || "").replace(/[\r\n]/g, "").trim()
+    if (name.length === 0)
+        name = leaf(next)
+    var target = Mounts.normalize(oldUri)
+    var lines = String(body || "").split("\n")
+    var found = false
+    for (var i = 0; i < lines.length; i++) {
+        var line = lines[i].trim()
+        if (line.length === 0)
+            continue
+        var space = line.indexOf(" ")
+        var uri = space < 0 ? line : line.substring(0, space)
+        if (target.length > 0 && Mounts.normalize(uri) === target) {
+            lines[i] = next + " " + name
+            found = true
+        }
+    }
+    if (found)
+        return lines.join("\n")
+    var out = String(body || "")
+    if (out.length > 0 && out.charAt(out.length - 1) !== "\n")
+        out += "\n"
+    return out + next + " " + name + "\n"
+}
+
 var WIDTH_STOPS = [160, 192, 224, 256]
 function sidebarWidth(value) {
     if (typeof value !== "number" || !isFinite(value)) return 192

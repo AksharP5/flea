@@ -160,19 +160,22 @@ function run(check) {
     var volume = { path: "/run/media/gm/128GB", label: "128GB", group: "device", kind: "volume", device: "/dev/sda1", mounted: true, removable: true }
     var favourite = { path: "/home/gm", label: "Home", group: "favorite", kind: "favorite", mounted: false }
     function labels(rows) { return rows.map(function (r) { return r.label }).join("|") }
-    check("a mounted share releases first, then offers the two the place itself owns",
-          labels(Mounts.rowMenu(mounted)), "Unmount|Rename|Remove")
+    check("a mounted share releases first, then offers the three the place itself owns",
+          labels(Mounts.rowMenu(mounted)), "Unmount|Edit|Rename|Remove")
     check("and Ctrl+E still reads the release row alone",
           Mounts.railMenu(mounted).length + "|" + Mounts.railMenu(mounted)[0].action, "1|unmount")
-    check("a bookmark nothing has mounted offers the two that need no mount",
-          labels(Mounts.rowMenu(saved)), "Rename|Remove")
-    check("so it opens a menu where it used to open an empty one", Mounts.rowMenu(saved).length, 2)
+    check("a bookmark nothing has mounted offers the three that need no mount",
+          labels(Mounts.rowMenu(saved)), "Edit|Rename|Remove")
+    check("so it opens a menu where it used to open an empty one", Mounts.rowMenu(saved).length, 3)
     check("but it has nothing to release, so Ctrl+E still says so", Mounts.railMenu(saved).length, 0)
     check("a removable volume's menu is untouched", labels(Mounts.rowMenu(volume)), "Eject")
     check("a favourite still opens no menu at all", Mounts.rowMenu(favourite).length, 0)
     check("no entry at all offers nothing rather than throwing", Mounts.rowMenu(null).length, 0)
     check("Remove draws the minus mark, because forgetting a place trashes nothing",
-          Mounts.rowMenu(saved)[1].glyph, "minus")
+          Mounts.rowMenu(saved)[2].glyph, "minus")
+    // Issue 21, TomFaulkner: Edit is the address and Rename is the label, so they are two rows.
+    check("Edit is offered before Rename, and the address is what it changes",
+          Mounts.rowMenu(saved)[0].action + "|" + Mounts.rowMenu(saved)[1].action, "editPlace|rename")
 
     // A chosen row arrives as its key, never its position: the rail rebuilds on a five second poll.
     function chose(action, key, entries) {
@@ -195,6 +198,32 @@ function run(check) {
           chose("unmount", "smb://nas/isos/", [mounted, saved]), "unmount0")
     check("Eject still resolves through the device Service",
           chose("eject", "/dev/sda1", [mounted, saved]), "eject0")
+
+    // Issue 21: Edit asks the dialog to open over the place, and only a different address that
+    // actually mounted rewrites its line; a refused connect leaves the saved place exactly as it was.
+    function edited(uri, success, mountedUri) {
+        var asked = []
+        var sidebar = { placesEntries: [favourite, { kind: "trash" }], networkEntries: [mounted, saved],
+                        deviceEntries: [volume], editingPlace: "", navigationPane: "pane",
+                        startRename: function () {},
+                        networkRetryRequested: function (u, label, password, reason, failed, origin) {
+                            asked.push("open " + u + " as " + label + " over " + origin + ": " + reason)
+                        } }
+        var mounts = { unmount: function () {}, forget: function () {},
+                       replacePlace: function (was) { asked.push("replace " + was) } }
+        Mounts.release("editPlace", uri, { eject: function () {} }, mounts, sidebar)
+        Mounts.placeSaved(sidebar, mounts, mountedUri, success)
+        return asked
+    }
+    check("Edit opens the dialog over the place, with the line that says what to do",
+          edited("smb://nas/", false, "")[0],
+          "open smb://nas/ as NAS over pane: Edit this address, then connect and save.")
+    check("and the corrected address rewrites that place's own line",
+          edited("smb://nas/", true, "smb://nas2/data")[1], "replace smb://nas/")
+    check("an address that did not change rewrites nothing",
+          edited("smb://nas/", true, "smb://nas/").length, 1)
+    check("and a refused connect leaves the saved place alone",
+          edited("smb://nas/", false, "smb://nas2/data").length, 1)
 
     // Sample input: the operator's own bookmarks file, favourites and places in one list.
     var body = "file:///home/gm/Downloads Downloads\nsmb://nas:445/isos NAS isos\nsmb://other/data Other\n"
