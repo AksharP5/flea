@@ -118,6 +118,9 @@ QtObject {
     // RailAdditions rule 4: ctrl-b remembers the rail the way the view is remembered, so this is a
     // state and not a setting; the width rule in ui/Pane.qml hides it without writing anything.
     readonly property bool railHidden: (root.state.places || ({})).rail === "hidden"
+    // Directive 74: hiding on a narrow window is its own switch and it ships off, so the rail stays
+    // where it is at every width until somebody asks for the other behaviour.
+    readonly property bool railAutoHide: (root.state.places || ({})).autoHide === true
     function toggleRail() { root.changeLeaf("places", { rail: root.railHidden ? "shown" : "hidden" }) }
 
     readonly property var preview: root.state.preview || ({})
@@ -163,6 +166,8 @@ QtObject {
 
     // Setting ids name either one top-level key or one leaf of an existing group.
     function changeSetting(id, value) {
+        // The rail is remembered as a word, so its own Places row writes that word and not a boolean.
+        if (id === "places.rail") { root.changeLeaf("places", { rail: value ? "shown" : "hidden" }); return }
         var parts = id.split(".")
         if (parts.length === 1) {
             root.changeKey(id, value)

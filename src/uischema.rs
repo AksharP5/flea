@@ -24,7 +24,7 @@ pub const DEFAULTS: &str = r#"{
     "favourites": [],
     "showHome": true, "showNetwork": true,
     "showDevices": true, "showTrash": true,
-    "driveSize": false, "trashCount": false, "showUnmounted": false, "rail": "shown", "sidebarWidth": 192
+    "driveSize": false, "trashCount": false, "showUnmounted": false, "rail": "shown", "autoHide": false, "sidebarWidth": 192
   },
   "shelf": {
     "enabled": true, "bar": true, "rail": "off",
@@ -84,6 +84,7 @@ pub const PLACES: &[(&str, Rule)] = &[
     ("trashCount", Rule::Bool),
     ("showUnmounted", Rule::Bool),
     ("rail", Rule::Word(&["shown", "hidden"])),
+    ("autoHide", Rule::Bool),
     ("sidebarWidth", Rule::SidebarWidth),
 ];
 
@@ -238,6 +239,7 @@ mod tests {
         assert_eq!(d.get("places").and_then(|p| p.get("sidebarWidth")).and_then(Json::as_f64), Some(192.0));
         // RailAdditions rule 4: the rail is a remembered state, and a fresh home remembers it shown.
         assert_eq!(d.get("places").and_then(|p| p.get("rail")).and_then(Json::as_str), Some("shown"));
+        assert_eq!(d.get("places").and_then(|p| p.get("autoHide")).and_then(Json::as_bool), Some(false));
         assert_eq!(d.get("places").and_then(|p| p.get("driveSize")).and_then(Json::as_bool), Some(false));
         assert_eq!(d.get("places").and_then(|p| p.get("trashCount")).and_then(Json::as_bool), Some(false));
         assert_eq!(d.get("preview").and_then(|p| p.get("loadOn")).and_then(Json::as_str), Some("automatic"));

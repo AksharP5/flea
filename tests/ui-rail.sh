@@ -241,11 +241,33 @@ case_sidebar() (
     sidebar_wait false
     sidebar_stored shown "$stored"
 
-    echo "-- a narrow window hides it on its own, and widening brings it back --"
+    echo "-- directive 74: with auto-hide off a narrow window keeps the rail --"
     hyprctl dispatch "hl.dsp.window.float()" >/dev/null || fail 'sidebar: the window would not float'
     settle
     sidebar_resize 1200
     sidebar_wait false
+    sidebar_resize 520
+    settle
+    [[ "$(sidebar_state .hidden)" == "false" ]] \
+        || fail "sidebar: the rail hid itself with auto-hide off, $(ipc railState)"
+    sidebar_resize 1200
+
+    echo "-- and the two Places rows are the other handle on the same state --"
+    settings_open_key; settle
+    settings_section places
+    settings_focus_row places.rail
+    key -k Space >/dev/null; settle
+    sidebar_wait true
+    sidebar_stored hidden "$stored"
+    key -k Space >/dev/null; settle
+    sidebar_wait false
+    settings_focus_row places.autoHide
+    key -k Space >/dev/null; settle
+    settings_wait_value '.places.autoHide == true'
+    shot sidebar-settings
+    key -k Escape >/dev/null; settle
+
+    echo "-- switched on, the narrow window hides it and widening brings it back --"
     sidebar_resize 520
     sidebar_wait true
     [[ "$(jq -r '.places.rail' "$stored")" == "shown" ]] \
@@ -253,6 +275,6 @@ case_sidebar() (
     shot sidebar-narrow
     sidebar_resize 1200
     sidebar_wait false
-    printf 'SIDEBAR narrow=ok remembered=%s\n' "$(jq -r '.places.rail' "$stored")"
+    printf 'SIDEBAR narrow=ok remembered=%s autoHide=%s\n' "$(jq -r '.places.rail' "$stored")" "$(jq -r '.places.autoHide' "$stored")"
     kill_flea
 )

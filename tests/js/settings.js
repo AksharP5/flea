@@ -199,7 +199,10 @@ function runCompletionRows(check) {
     check("and the two buttons under the list are gone",
           places.filter(function (row) { return row.kind === "favouriteActions" }).length, 0)
     check("optional rail details default off", [find(places, "places.driveSize").on, find(places, "places.trashCount").on, find(places, "places.showUnmounted").on].join(","), "false,false,false")
-    check("the Rail controls follow the ruled order", places.slice(-6, -2).map(function (row) { return row.label }).join("|"), "Show drive size|Show Trash count|Show unmounted drives|Sidebar width")
+    check("the Rail controls follow the ruled order", places.slice(-7, -2).map(function (row) { return row.label }).join("|"), "Show Trash count|Show unmounted drives|Auto-hide sidebar|Show sidebar|Sidebar width")
+    // Directive 74: two handles on one remembered state, so the row reads the word ctrl-b writes.
+    check("Show sidebar is checked while the rail is shown", find(places, "places.rail").on, true)
+    check("and auto-hide ships off, so nothing hides itself", find(places, "places.autoHide").on, false)
     // The 30 day sweep's own row, at the foot of Places under its own eyebrow. Off unless ui.json says otherwise, which is the whole of GM's opt-in ruling as the panel sees it.
     check("Places ends with the Trash group and its one row",
           places.slice(-2).map(function (row) { return row.label }).join("|"),

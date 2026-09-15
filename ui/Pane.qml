@@ -75,7 +75,7 @@ FocusScope {
     readonly property var sidebar: root.sharedSidebar || railLoader.item
     readonly property real sidebarWidth: railLoader.width
     // RailAdditions rule 4: what ctrl-b remembered, plus the width rule, which writes nothing.
-    readonly property bool railHidden: ViewState.railHidden || root.width < Theme.space(640)
+    readonly property bool railHidden: ViewState.railHidden || (ViewState.railAutoHide && root.width < Theme.space(640))
     function toggleRail() { ViewState.toggleRail() }
     property bool paneFocused: true
     property bool listOnly: false
