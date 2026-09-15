@@ -228,7 +228,7 @@ impl Shelf {
     // {"items":[{"path":"/home/gm/Work/a.txt","folder":false,"pinned":true}]}
     // A file that is not there yet is an empty pile; one that cannot be read or parsed is a pile
     // this must not write over, because the write would take every row in it.
-    fn held(&self) -> Result<Vec<Json>, String> {
+    pub(crate) fn held(&self) -> Result<Vec<Json>, String> {
         let text = match fs::read_to_string(&self.pile) {
             Ok(text) => text,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),

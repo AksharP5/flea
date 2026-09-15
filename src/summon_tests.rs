@@ -45,21 +45,26 @@ fn a_restored_pile_leaves_the_history_with_it() {
     let summon = Summon::at(dir.path());
     summon.keep(pile_of(&["/p/old"]), 1_000).unwrap();
     summon.keep(pile_of(&["/p/new"]), 2_000).unwrap();
-    let taken = summon.take(0).unwrap();
+    let taken = summon.restore_pile(0).unwrap();
     assert_eq!(taken.len(), 1);
     assert_eq!(taken[0].get("path").and_then(Json::as_str), Some("/p/new"));
     assert_eq!(summon.piles().len(), 1, "the same entry cannot be restored twice");
-    assert!(summon.take(4).is_err(), "a row the card never drew is refused");
+    assert!(summon.restore_pile(4).is_err(), "a row the card never drew is refused");
 }
 
 #[test]
 fn a_history_file_that_cannot_be_read_is_no_history_rather_than_an_error() {
     let dir = TestDir::new("summon-broken");
     let summon = Summon::at(dir.path());
-    std::fs::create_dir_all(summon.piles_file().parent().unwrap()).unwrap();
+    let dir_of = summon.piles_file().parent().unwrap().to_path_buf();
+    std::fs::create_dir_all(&dir_of).unwrap();
     std::fs::write(summon.piles_file(), "{\"piles\":[{\"at").unwrap();
     assert!(summon.piles().is_empty());
+    // A summon file that is there and unreadable, so the count answers zero from the parse rather
+    // than from a file that was never written.
+    std::fs::write(dir_of.join("summon.json"), "{\"summon\":").unwrap();
     assert_eq!(summon.rings(), 0);
+    assert_eq!(summon.ring().unwrap(), 1, "and the next press starts the count again rather than failing");
 }
 
 #[test]
@@ -72,4 +77,15 @@ fn the_chord_is_read_off_the_line_in_the_users_own_config() {
                "a commented line is a suggestion, not a bind");
     assert_eq!(summon_chord("o.bind(\"SUPER + SHIFT + F\", \"File manager\", \"flea --gui\")\n"), None,
                "a bind that opens Flea itself is not the shelf's own");
+}
+
+// The card numbers its menu rows from one and sends that number, so this is the conversion it
+// depends on: row one is the newest pile, and anything that is not a row number is refused.
+#[test]
+fn the_pile_number_the_card_sends_is_one_based() {
+    assert_eq!(chosen_index(&[]), Ok(0), "no argument at all is the newest pile");
+    assert_eq!(chosen_index(&["1".to_string()]), Ok(0));
+    assert_eq!(chosen_index(&["5".to_string()]), Ok(4));
+    assert!(chosen_index(&["0".to_string()]).is_err(), "there is no row zero on the card");
+    assert!(chosen_index(&["two".to_string()]).is_err(), "and a word is not a row number");
 }

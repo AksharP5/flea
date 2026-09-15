@@ -61,8 +61,16 @@ fn the_kinds_the_settings_checked_are_the_kinds_that_are_listed() {
     let clips = TestDir::new("captures-kinds-clips");
     touch(&shots, "screenshot-2026-09-14_19-02-11.png");
     touch(&clips, "screenrecording-2026-09-14_18-41-02.mp4");
-    let mut only_shots = Vec::new();
-    collect(shots.path(), SCREENSHOT_PREFIX, SCREENSHOT_SUFFIX, &mut only_shots);
-    collect(clips.path(), RECORDING_PREFIX, RECORDING_SUFFIX, &mut Vec::new());
-    assert_eq!(only_shots.len(), 1, "a kind nobody asked for is never collected");
+    // The gate itself, driven the way Settings drives it, rather than two collect calls that would
+    // pass whatever the gate did.
+    let both = newest_in(shots.path(), clips.path(), 6, true, true);
+    assert_eq!(both.len(), 2, "with both kinds checked the tray holds both");
+    let only_shots = newest_in(shots.path(), clips.path(), 6, true, false);
+    assert_eq!(only_shots.len(), 1, "a recording is not listed for a tray that asked for shots");
+    assert!(only_shots[0].path.ends_with(".png"));
+    let only_clips = newest_in(shots.path(), clips.path(), 6, false, true);
+    assert_eq!(only_clips.len(), 1, "and a screenshot is not listed for a tray that asked for clips");
+    assert!(only_clips[0].path.ends_with(".mp4"));
+    assert!(newest_in(shots.path(), clips.path(), 6, false, false).is_empty(),
+            "with neither checked the tray is empty rather than full");
 }

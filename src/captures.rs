@@ -20,12 +20,18 @@ pub struct Capture {
 
 // Directive 59: which kinds the tray lists is Settings' own answer, so the caller names them.
 pub fn newest(count: usize, screenshots: bool, recordings: bool) -> Vec<Capture> {
+    newest_in(&screenshot_dir(), &recording_dir(), count, screenshots, recordings)
+}
+
+// The gate itself, with both directories handed in, so a test drives the kinds rule rather than
+// this box's own Pictures and Videos.
+pub fn newest_in(shots: &Path, clips: &Path, count: usize, screenshots: bool, recordings: bool) -> Vec<Capture> {
     let mut found = Vec::new();
     if screenshots {
-        collect(&screenshot_dir(), SCREENSHOT_PREFIX, SCREENSHOT_SUFFIX, &mut found);
+        collect(shots, SCREENSHOT_PREFIX, SCREENSHOT_SUFFIX, &mut found);
     }
     if recordings {
-        collect(&recording_dir(), RECORDING_PREFIX, RECORDING_SUFFIX, &mut found);
+        collect(clips, RECORDING_PREFIX, RECORDING_SUFFIX, &mut found);
     }
     newest_of(found, count)
 }
@@ -88,7 +94,8 @@ fn resolve(own: &str, xdg: &str, fallback: &str) -> PathBuf {
 }
 
 fn read_user_dirs(home: &str) -> String {
-    fs::read_to_string(Path::new(home).join(".config/user-dirs.dirs")).unwrap_or_default()
+    let dir = crate::userfile::config_home().unwrap_or_else(|_| PathBuf::from(home).join(".config"));
+    fs::read_to_string(dir.join("user-dirs.dirs")).unwrap_or_default()
 }
 
 // Sample input, one line of ~/.config/user-dirs.dirs, which the capture scripts source as shell:
@@ -127,6 +134,10 @@ pub fn user_dirs_entry(text: &str, key: &str, home: &str) -> Option<String> {
 pub fn command(rest: &[String]) -> i32 {
     let count = rest.first().and_then(|n| n.parse::<usize>().ok()).unwrap_or(3);
     let kinds = rest.get(1).map(String::as_str).unwrap_or("both");
+    if !matches!(kinds, "both" | "screenshots" | "recordings") {
+        eprintln!("flea: shelf captures takes both, screenshots or recordings, and {} is none of them", kinds);
+        return 2;
+    }
     let screenshots = kinds == "both" || kinds == "screenshots";
     let recordings = kinds == "both" || kinds == "recordings";
     for capture in newest(count, screenshots, recordings) {

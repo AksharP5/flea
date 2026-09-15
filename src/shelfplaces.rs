@@ -68,12 +68,13 @@ pub fn places() -> Vec<String> {
     if !home.is_empty() && seen.insert(home.clone()) {
         out.push(home.clone());
     }
-    for dir in user_dirs(&fs::read_to_string(Path::new(&home).join(".config/user-dirs.dirs")).unwrap_or_default(), &home) {
+    let config = crate::userfile::config_home().unwrap_or_else(|_| PathBuf::from(&home).join(".config"));
+    for dir in user_dirs(&fs::read_to_string(config.join("user-dirs.dirs")).unwrap_or_default(), &home) {
         if dir != home && Path::new(&dir).is_dir() && seen.insert(dir.clone()) {
             out.push(dir);
         }
     }
-    for mark in bookmarks(&fs::read_to_string(Path::new(&home).join(".config/gtk-3.0/bookmarks")).unwrap_or_default()) {
+    for mark in bookmarks(&fs::read_to_string(config.join("gtk-3.0/bookmarks")).unwrap_or_default()) {
         if Path::new(&mark).is_dir() && seen.insert(mark.clone()) {
             out.push(mark);
         }
