@@ -108,8 +108,7 @@ Item {
             return
         }
         if (entry.group === "device") {
-            // A mount takes seconds and can time out, so the row the chooser is waiting on is
-            // remembered: an open that lands after the dialog moved on is not this dialog's answer.
+            // The row this dialog is waiting on, by device: any other mount's open is not its answer.
             root.awaitingDevice = entry.device
             devices.activate(index - root.placeEntries.length - network.entries.length)
             return
@@ -130,6 +129,19 @@ Item {
             network.openShare(entry.path, false, entry.label, false)
         } else root.chosen(entry.path)
     }
+    // Only the row the dialog asked for answers it, which the device says and a path alone cannot.
+    function deviceOpened(path) {
+        var awaited = root.awaitingDevice
+        if (awaited.length === 0) return
+        for (var i = 0; i < devices.entries.length; i++) {
+            if (devices.entries[i].device === awaited && devices.entries[i].path === path) {
+                root.awaitingDevice = ""
+                root.chosen(path)
+                return
+            }
+        }
+    }
+
     function openChild(uri, label) { network.openChildShare(uri, label) }
     function retry(requestId, uri, label, password) { root.awaitingNetwork = true; network.saveLocation(uri, label, password, requestId) }
     function cancelNetwork(requestId) {
@@ -168,8 +180,9 @@ Item {
 
     Flea.DeviceMounts {
         id: devices
-        onOpened: function (path) { if (root.awaitingDevice.length > 0) { root.awaitingDevice = ""; root.chosen(path) } }
-        onMessage: function (text, error) { root.picker.say(text, error) }
+        onOpened: function (path) { root.deviceOpened(path) }
+        // A mount that failed or timed out says so, and the wait ends with it rather than standing.
+        onMessage: function (text, error) { if (error) root.awaitingDevice = ""; root.picker.say(text, error) }
     }
 
     // The phone rows the window draws, read off the same gio listing; their mount is the share leg.

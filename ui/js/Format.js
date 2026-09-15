@@ -133,11 +133,10 @@ function sampleRate(hz) {
     return (khz === Math.round(khz) ? khz : khz.toFixed(1)) + " kHz"
 }
 
-// Issue 67, jesedv: a yanked path is quoted unless a shell reads every character of it as itself,
-// in the one quoting that holds for all the others, because a shell is where this gets pasted.
+// Issue 67, jesedv: a yanked path is quoted unless a shell reads every character of it as itself.
 function shellQuoted(path) {
     var text = String(path)
-    if (/^[A-Za-z0-9_@%+=:,.\/~-]+$/.test(text)) {
+    if (/^[A-Za-z0-9_@%+=:,.\/-]+$/.test(text)) {
         return text
     }
     return "'" + text.split("'").join("'\\''") + "'"

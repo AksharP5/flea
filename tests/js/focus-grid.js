@@ -31,8 +31,7 @@ function run(check) {
         check("grid visual neighbour from " + move[2] + " with " + move[1], gridPane.cursorIndex, move[3])
     }
     // The letters clamp at the row's edge exactly as the arrows do, which is the whole of issue 114.
-    // A real press carries both the code and the text, so these do too, and each one asserts that
-    // the grid took the key as well as where it left the cursor: a refusal moves nothing either.
+    // A real press carries the code and the text, and a refusal moves nothing, so both are asserted.
     var hPress = key(Qt.Key_H, "h", none)
     var lPress = key(Qt.Key_L, "l", none)
     for (var walk of [

@@ -86,17 +86,20 @@ function run(check) {
     check("mode 644 is not executable", Format.isExecutable(33188), false)
     check("a vanished row is not executable", Format.isExecutable(0), false)
 
-    // Issue 67, jesedv: the yanked folder path is quoted unless a shell would leave every character
-    // of it alone, and the quoting is the one that holds for every other character.
+    // Issue 67, jesedv: the yanked path is quoted unless a shell reads every character as itself.
     check("a path a shell reads as one word is handed over as it is",
-          Format.shellQuoted("/home/gm/Work-2.0_final~"), "/home/gm/Work-2.0_final~")
+          Format.shellQuoted("/home/gm/Work-2.0_final"), "/home/gm/Work-2.0_final")
+    check("a tilde is not one of those characters, because a shell expands it",
+          Format.shellQuoted("~/Work"), "'~/Work'")
     check("a path holding a space is quoted whole",
           Format.shellQuoted("/home/gm/directory two"), "'/home/gm/directory two'")
     check("a tab is quoted the same way", Format.shellQuoted("/home/gm/one\ttwo"), "'/home/gm/one\ttwo'")
-    for (var dangerous of ["$HOME", "`id`", "a;b", "a&b", "a|b", "a*b", "a?b", "a(b)", "a\nb", "a!b", 'a"b']) {
-        var quoted = Format.shellQuoted("/home/gm/" + dangerous)
-        check("a path holding " + JSON.stringify(dangerous) + " is quoted",
-              quoted.charAt(0) + quoted.charAt(quoted.length - 1), "''")
+    // Every one of these, byte for byte inside the quotes: a reader that dropped the character it
+    // is afraid of would pass a check that only looked at the ends.
+    for (var dangerous of ["$HOME", "`id`", "a;b", "a&b", "a|b", "a*b", "a?b", "a(b)", "a\nb", "a!b", 'a"b',
+                           "a b", "a\\b", "a<b", "a>b", "a#b", "a{b}", "a[b]", "a^b"]) {
+        check("a path holding " + JSON.stringify(dangerous) + " is quoted whole",
+              Format.shellQuoted("/home/gm/" + dangerous), "'/home/gm/" + dangerous + "'")
     }
     check("and a quote inside the path closes and reopens around itself",
           Format.shellQuoted("/home/gm/a'b"), "'/home/gm/a'\\''b'")
