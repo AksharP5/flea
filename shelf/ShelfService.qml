@@ -180,18 +180,56 @@ Item {
 
   // Main rule 9: the captures are listed before the card's first frame, so the ask rides the open.
   onDrawingChanged: {
+    if (root.drawing) {
+      root.thumbs = Model.thumbsFound(root.thumbs)
+    }
     root.askCaptures()
     root.askSize()
+    root.askThumbs()
     fast.running = root.drawing
   }
   onPileChanged: {
     root.sizes = Model.keep(root.sizes, root.drawnRows)
+    root.thumbs = Model.keep(root.thumbs, root.drawnRows)
     root.askSize()
   }
 
-  // What the card is drawing, which is what a size is asked for and what a capture joins.
+  // What the card is drawing, which is what a size and a thumbnail are asked for and what a capture
+  // joins.
   readonly property var drawnRows: Model.rows(root.pile, root.captures)
-  onDrawnRowsChanged: root.askSize()
+  onDrawnRowsChanged: {
+    root.askSize()
+    root.askThumbs()
+  }
+
+  // Main rule 4: one path-addressed request for the rows the card is drawing, on open and on each
+  // re-read while it is up, and nothing at all while it is closed.
+  property var thumbs: ({})
+
+  function askThumbs() {
+    if (thumber.running || !root.drawing) {
+      return
+    }
+    var wanted = Model.thumbWanted(root.drawnRows, root.thumbs)
+    if (wanted.length === 0) {
+      return
+    }
+    thumber.command = [root.fleaCommand, "shelf", "thumb"].concat(wanted)
+    thumber.running = true
+  }
+
+  Process {
+    id: thumber
+    running: false
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        root.thumbs = Model.thumbsFrom(text, root.thumbs)
+        root.askThumbs()
+      }
+    }
+    stderr: StdioCollector { waitForEnd: true }
+  }
 
   function askSize() {
     if (measure.running || !root.drawing) {

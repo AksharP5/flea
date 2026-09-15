@@ -3,6 +3,7 @@
 use crate::captures;
 use crate::shelf::{now_ms, size_of, Shelf};
 use crate::shelfops;
+use crate::shelfthumb;
 use crate::summon;
 use std::os::unix::process::CommandExt;
 use std::process::{Command, Stdio};
@@ -16,6 +17,7 @@ pub fn command(args: &[String]) -> i32 {
         Some("pin") => pin(&args[3..], true),
         Some("unpin") => pin(&args[3..], false),
         Some("captures") => captures::command(&args[3..]),
+        Some("thumb") => shelfthumb::command(&args[3..]),
         Some("open") => open(&args[3..]),
         Some("move") => shelfops::transfer(true, &args[3..]),
         Some("copy") => shelfops::transfer(false, &args[3..]),
@@ -32,7 +34,7 @@ pub fn command(args: &[String]) -> i32 {
         Some("toggle") => summon::toggle(),
         Some("bind") => summon::bind(),
         _ => {
-            eprintln!("flea: shelf takes drag-begin, size, add, open, move, copy, pin, unpin, zip, send, peers, paths, places, choose, cancel, forget, captures, clear, restore, piles, toggle or bind");
+            eprintln!("flea: shelf takes drag-begin, size, add, open, move, copy, pin, unpin, zip, send, peers, paths, places, choose, cancel, forget, captures, thumb, clear, restore, piles, toggle or bind");
             2
         }
     }

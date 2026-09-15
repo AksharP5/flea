@@ -92,7 +92,7 @@ function run(check) {
   check("a caption sits above the first row of a section and nowhere else",
         [Shelf.captionFor(list, 0), Shelf.captionFor(list, 1), Shelf.captionFor(list, 2),
          Shelf.captionFor(list, 3), Shelf.captionFor(list, 4)].join("|"),
-        "||Pinned|Screenshots & Recordings|")
+        "||Pinned|Screenshots & recordings|")
   check("the captures caption names the kinds that are checked",
         Shelf.capturesCaption({ screenshots: true, recordings: false }) + "|"
         + Shelf.capturesCaption({ screenshots: false, recordings: true }),
@@ -109,6 +109,25 @@ function run(check) {
   check("with nothing chosen the five actions take the pile and its pins, never a capture",
         Shelf.actionPaths({}, list).join("|") + " / " + Shelf.wholeCount(list),
         "/p/one|/p/two|/p/pinned / 3")
+  // Main rule 4: the thumbnail answers, path-addressed because the card has no listing to index.
+  check("only the drawn rows with no answer yet are asked for",
+        Shelf.thumbWanted(list, { "/p/one": "/c/one.png" }).join("|"),
+        "/p/two|/p/pinned|/s/screenshot-a.png|/v/screenrecording-b.mp4")
+  var answered = Shelf.thumbsFrom("/c/a.png\t/s/screenshot-a.png\nnone\t/p/one\n", {})
+  check("an answer is kept by the path it names, and none means no thumbnail",
+        Shelf.thumbFor(answered, list[3]) + "|[" + Shelf.thumbFor(answered, list[0]) + "]|["
+        + Shelf.thumbFor(answered, list[1]) + "]",
+        "/c/a.png|[]|[]")
+  check("a path that answered with nothing is asked again on the next open",
+        JSON.stringify(Shelf.thumbsFound({ "/a": "/c/a.png", "/b": "" })),
+        '{"/a":"/c/a.png"}')
+  check("and a path already answered is not asked for again",
+        Shelf.thumbWanted(list, answered).join("|"),
+        "/p/two|/p/pinned|/v/screenrecording-b.mp4")
+  check("a grab carries the chosen rows, or the row it started from",
+        Shelf.carryPaths({}, list, 3).join("|") + " / "
+        + Shelf.carryPaths(Shelf.toggleChosen({}, "/p/one"), list, 3).join("|"),
+        "/s/screenshot-a.png / /p/one")
   check("a drag carrying a capture or a pinned row is a copy, whole-pile or chosen",
         [Shelf.dragMoves(["/p/one", "/p/two"], list, true),
          Shelf.dragMoves(["/p/one", "/v/screenrecording-b.mp4"], list, true),

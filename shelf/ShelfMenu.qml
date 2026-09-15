@@ -13,8 +13,8 @@ Item {
   property color muted: Qt.darker(foreground, 1.55)
   property string fontFamily: Style.font.family
   property real pad: Style.spacing.rowPaddingX
-  property real stripHeight: 27
-  property real rowHeight: 37
+  property real stripHeight: Style.space(23)
+  property real rowHeight: Style.space(32)
   property int hoveredIndex: -1
 
   signal chosen(int index)

@@ -68,6 +68,17 @@ function tooltip(state) {
 // The two marks a row can take, on the Omarchy cut, the same paths ui/js/Icons.js draws them from.
 // Flea's own mark, which is what an empty shelf draws rather than a stand-in for one.
 var SHELF_GLYPH = "M21 21H3V3h18v14H7V7h10v6h-6"
+// Rule 14: the actions are icon buttons, and the ink is Flea's own recut set, copied here because a
+// plugin cannot import the app's Icons.js: folder-plus, copy, archive, network, clipboard, star, x.
+var ACTION_GLYPHS = {
+  move: "M2 20V3h6l2 3h12v14H2z M12 10v6 M9 13h6",
+  copy: "M9 8h12v13H9z M4 16V3h13",
+  zip: "M2 3h20v5H2z M4 8v13h16V8 M10 12h4",
+  send: "M9 2h6v6H9z M2 16h6v6H2z M16 16h6v6h-6z M12 8v4 M5 16v-4h14v4",
+  paths: "M9 2h6v4H9z M6 4H3v18h18V4h-3 M8 12h8 M8 16h5",
+  pin: "M12 2l2.9 6.6 7.1.6-5.4 4.7 1.6 7L12 17.3l-6.2 3.6 1.6-7L2 9.2l7.1-.6z",
+  remove: "M6 6l12 12 M18 6 6 18"
+}
 var FOLDER_GLYPH = "M2 20V3h6l2 3h12v14H2z"
 var FILE_GLYPH = "M4 22V2h10l6 6v14H4z M14 2v6h6"
 
@@ -357,7 +368,7 @@ function kindsArg(settings) {
 var PILE = "pile"
 var PINNED = "pinned"
 var CAPTURE = "capture"
-var CAPTURES_CAPTION = "Screenshots & Recordings"
+var CAPTURES_CAPTION = "Screenshots & recordings"
 
 // Every row the card draws, in drawn order, each carrying the section it belongs to: the pile, the
 // pins that are always there, and the newest captures. A caption is drawn where the section changes.
@@ -377,7 +388,8 @@ function rows(pile, captures, sizes) {
   for (var k = 0; k < (captures || []).length; k++) {
     var capture = captures[k]
     out.push(sectioned({ path: capture.path, name: leaf(capture.path), bytes: -1, folder: false,
-                         partial: false, pinned: false, recording: capture.recording === true }, CAPTURE))
+                         partial: false, pinned: false, recording: capture.recording === true,
+                         at: capture.at }, CAPTURE))
   }
   return sizes === undefined ? out : sizedRows(out, sizes)
 }
@@ -385,7 +397,7 @@ function rows(pile, captures, sizes) {
 function sectioned(item, section) {
   return { path: item.path, name: item.name, bytes: item.bytes, folder: item.folder,
            partial: item.partial, pinned: item.pinned, recording: item.recording === true,
-           section: section }
+           at: item.at, section: section }
 }
 
 // The same answers the pile's rows take, applied to every drawn row: a capture has no size of its
@@ -417,6 +429,57 @@ function captionFor(list, index, kinds) {
     return ""
   }
   return row.section === PINNED ? "Pinned" : capturesCaption(kinds)
+}
+
+// Rule 4: the rows the card is drawing that have no answer yet, so a path is asked for once and a
+// closed card asks for nothing.
+function thumbWanted(list, thumbs) {
+  var out = []
+  for (var i = 0; i < list.length; i++) {
+    var path = list[i].path
+    if (thumbs[path] === undefined && out.indexOf(path) < 0) {
+      out.push(path)
+    }
+  }
+  return out
+}
+
+// Sample input, one line per path asked for, the cache file or `none`, a tab, then the path:
+// /home/gm/.cache/thumbnails/large/714c8a7d754b5cbc79c30b7ad0646785.png\t/home/gm/Pictures/shot.png
+function thumbsFrom(text, current) {
+  var next = {}
+  for (var path in current) {
+    next[path] = current[path]
+  }
+  var lines = String(text || "").split("\n")
+  for (var i = 0; i < lines.length; i++) {
+    var at = lines[i].indexOf("\t")
+    if (at <= 0) {
+      continue
+    }
+    var file = lines[i].substring(0, at)
+    next[lines[i].substring(at + 1)] = file === "none" ? "" : file
+  }
+  return next
+}
+
+// A path that answered with nothing is asked once more on the next open: the cache records its own
+// failures, so a second ask is a lookup, and a thumbnail produced meanwhile is then drawn.
+function thumbsFound(thumbs) {
+  var kept = {}
+  for (var path in thumbs) {
+    if (thumbs[path]) {
+      kept[path] = thumbs[path]
+    }
+  }
+  return kept
+}
+
+// A thumbnail path is not a thumbnail: the cache file can be evicted between the answer and the
+// decode, and Row.qml marks such a row by its kind instead. This says which file to try.
+function thumbFor(thumbs, item) {
+  var file = item && thumbs ? thumbs[item.path] : ""
+  return file === undefined || file === null ? "" : file
 }
 
 // Rule 9: the caption names the kinds that are checked, which is Settings' own answer.
@@ -514,6 +577,21 @@ function actionPaths(chosen, items) {
     }
   }
   return all
+}
+
+// Rule 11: a drag carries the chosen rows, or the one row it was started from when none are chosen.
+// A keyboard action still takes the whole pile, because an action names no row and a grab does.
+function carryPaths(chosen, items, index) {
+  var picked = []
+  for (var i = 0; i < items.length; i++) {
+    if (chosen[items[i].path]) {
+      picked.push(items[i].path)
+    }
+  }
+  if (picked.length > 0) {
+    return picked
+  }
+  return items[index] ? [items[index].path] : []
 }
 
 // How many rows "none chosen" would take, which is the pile and its pinned rows and no capture.

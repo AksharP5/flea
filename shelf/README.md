@@ -18,16 +18,17 @@ screen-edge rail you throw a drag at, the subset gesture, and the five actions.
 | Piece | What it is |
 |---|---|
 | `manifest.json` | the plugin the shell loads, one bar widget and its settings |
-| `Panel.qml` | the bar presence and the card's own layer surface |
+| `Panel.qml` | the bar presence, and the card hosted in the shell's own popup host |
 | `ShelfService.qml` | the only thing that touches the outside world: the pile's file and `flea shelf` |
 | `Model.js` | pure functions, no QML imports: what the file's bytes mean |
-| `ShelfCard.qml` | the card: the pile, the pins and the captures as one list of Flea's own rows |
+| `ShelfCard.qml` | the card: the pile, the pins and the captures as one list of OEM panel rows |
 | `ShelfMenu.qml` | the card's own menu: the last five piles, and the way back to one |
 | `ShelfRail.qml` | the screen edge you throw a drag at, and the notch that says what is held |
 | `ShelfActions.qml` | the doing half: the five actions, what they say, and the rows a flyout offers |
 | `ShelfFlyout.qml` | one flyout, two verbs and the send: places and peers, numbered |
 | `ShelfRun.qml` | the transfer surface while an action runs, and its cancel |
 | `Run.js` | pure functions again: the running line, and the sentence each action lands with |
+| `ShelfActionButton.qml` | Ui/PanelActionButton's shape with a mark on the Omarchy cut as its ink |
 | `ShelfGlyph.qml` | one mark on the Omarchy cut, the way Flea draws its own |
 | `FleaShelfMark.qml` | Flea's own mark, reproduced rather than recut |
 
@@ -53,17 +54,25 @@ notch stepped by the pile) and while a drag is over it (the whole region in the 
 no space: no window ever shrinks for it. A drop on it is taken the moment it lands; the dwell only
 decides whether the card has opened on the way.
 
-The card is one list of three sections: the pile, `Pinned`, and `Screenshots & Recordings`. The
-captures are the newest few Omarchy has taken, from the directories its own capture commands write
-to (`OMARCHY_SCREENSHOT_DIR`, else `XDG_PICTURES_DIR`, else `~/Pictures`; `OMARCHY_SCREENRECORD_DIR`,
-else `XDG_VIDEOS_DIR`, else `~/Videos`), listed before the card's first frame and re-read every
-second while it is up, never while it is closed. A capture row takes the five actions and the subset
+The card is an Omarchy panel, hosted the way every other panel is: a click outside it, a focus loss,
+`esc` or another panel opening closes it. It is one list of three sections, the pile, `Pinned` and
+`Screenshots & recordings`, each a one-line row with its mark, its name and its size, and the six
+actions as icon buttons under the last separator. A row whose file has a thumbnail in the
+freedesktop cache draws it in the mark slot instead of the kind mark; the cache is Flea's own, asked
+for by path through `flea shelf thumb`, only for the rows the card is drawing and never while it is
+closed. A row is also the handle it is carried out by: press it and drag, and the drag carries the
+chosen rows, or that one row when none are chosen.
+
+The captures are the newest few Omarchy has taken, from the directories its own capture commands
+write to (`OMARCHY_SCREENSHOT_DIR`, else `XDG_PICTURES_DIR`, else `~/Pictures`;
+`OMARCHY_SCREENRECORD_DIR`, else `XDG_VIDEOS_DIR`, else `~/Videos`), listed before the card's first
+frame and re-read every second while it is up. A capture row takes the actions and the subset
 gesture like any other, and `p` pins one. A pinned row is always there: its drag out is a copy, a
 move takes the file and the pin follows it, and `x` is what takes it off the shelf.
 
 Which kinds the captures section lists, how many, and whether the shelf is in the bar at all are
 Flea's own settings, in its Settings panel under Shelf; this plugin reads them from Flea's
-`ui.json` and never writes them. The action strip draws its key letters only while Flea's own
+`ui.json` and never writes them. An action's tooltip carries its key only while Flea's own
 keyboard-hints setting is on.
 
 ## State
@@ -85,7 +94,7 @@ carries, and `summon.json` the count the keybind writes. The plugin never writes
 | `ctrl + a` | takes every row, and a second `ctrl + a` clears |
 | `x` | takes the cursor row off the shelf. The file is untouched |
 | `enter` | opens the file, or reveals the folder in Flea |
-| `tab` | jumps to the action strip, and back; the arrows walk it and `enter` runs it |
+| `tab` | jumps to the action buttons, and back; the arrows walk them and `enter` runs one |
 | `m` `c` | move or copy the chosen rows, or the whole pile, to a folder |
 | `a` | zip them into one archive, which lands on the shelf |
 | `t` | send them with Taildrop |

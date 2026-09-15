@@ -26,6 +26,11 @@ Panel {
   readonly property int accentDecayMs: 600
   property real landAccent: 0
 
+  // Rule 15: the bar's injected palette, bound once here and passed down, so a bar with its own
+  // colours stays coherent inside the card.
+  readonly property color foreground: root.bar ? root.bar.foreground : Color.popups.text
+  readonly property color urgentColor: root.bar ? root.bar.urgent : Color.urgent
+
   // The card's own slot, rule 5: one voice at a time, and the pile's own state owns neither.
   property string result: ""
   property string error: ""
@@ -52,6 +57,7 @@ Panel {
     root.error = ""
     card.chosen = ({})
     card.cursorIndex = -1
+    card.hoveredIndex = -1
     card.stripIndex = -1
   }
 
@@ -211,48 +217,35 @@ Panel {
     }
   }
 
-  // The card is its own layer surface, sized to itself. The shell's KeyboardPanel is a full-screen
-  // overlay so a click anywhere dismisses it, and a full-screen overlay is a surface a drag can
-  // never leave: the pointer stays on the shelf and the drop never reaches the window underneath.
-  // Measured on this box before the change, with the overlay: Flea's DropArea saw no enter at all.
-  PanelWindow {
+  // Rule 2 and directive 64: the card is hosted by the shell's own popup host, so a click anywhere
+  // outside it, a focus loss or esc closes it, and opening another panel closes it, exactly as the
+  // Dropbox and Tailscale panels behave.
+  KeyboardPanel {
     id: panel
-    visible: root.opened
-    color: "transparent"
-    implicitWidth: card.implicitWidth + surface.contentLeftInset + surface.contentRightInset
-    implicitHeight: (root.menu ? pileMenu.implicitHeight
-                              : root.pending.length > 0 ? flyout.implicitHeight
-                              : card.implicitHeight)
-                    + surface.contentTopInset + surface.contentBottomInset
-    anchors { top: true; right: true }
-    margins { right: Style.gapsOut; top: Style.gapsOut }
-    WlrLayershell.namespace: "flea-shelf-card"
-    WlrLayershell.layer: WlrLayer.Overlay
-    // Measured on this box: an exclusive grab is never told a drag left the surface, so the card
-    // holds the keyboard while it is open and gives it up for the length of a drag; see the README.
-    WlrLayershell.keyboardFocus: root.opened && !root.carrying
-                                 ? WlrKeyboardFocus.Exclusive
-                                 : WlrKeyboardFocus.None
-
-    onVisibleChanged: if (panel.visible) focusHold.restart()
-
-    Timer {
-      id: focusHold
-      // Enough Qt and Wayland commit cycles for the surface to exist before Qt's own focus is set,
-      // which is the OEM keyboard panel's own number for the same wait.
-      interval: root.focusHoldMs
-      onTriggered: surface.forceActiveFocus()
+    anchorItem: button
+    owner: root
+    bar: root.bar
+    open: root.opened
+    focusTarget: keys
+    contentWidth: panel.fittedContentWidth(Style.space(380))
+    contentHeight: panel.fittedContentHeight(body.implicitHeight, Style.space(560))
+    // S9, measured on this box: a full-screen dismissal surface is a surface a drag can never
+    // leave, so for the length of a carry this window takes no pointer input at all and the drop
+    // reaches the window underneath it.
+    mask: Region {
+      width: root.carrying ? 0 : panel.screenW
+      height: root.carrying ? 0 : panel.screenH
     }
 
-    // The ground, border and corner the shell's own popups draw: Ui/KeyboardPanel.qml and
-    // Ui/PopupCard.qml both fill a BorderSurface this way, so the shelf card is an Omarchy card.
-    BorderSurface {
-      id: surface
+    // The shelf's own key catcher rather than Ui/PanelKeyCatcher: that one turns keys into semantic
+    // signals and drops the modifier with them, and this map needs shift-x to clear, shift-j to
+    // extend the range and ctrl-a to take everything.
+    Item {
+      id: keys
       anchors.fill: parent
-      color: Color.popups.background
-      borderSpec: Border.surfaceSpec("popups", "border", Color.popups.border, Math.max(1, Style.space(2)))
-      radius: Style.cornerRadius
-      focus: root.opened
+      focus: true
+      Keys.priority: Keys.BeforeItem
+
       // Actions: while an action runs the first esc cancels it and the card stays; with nothing
       // running esc leaves the flyout, then the menu, and only then closes the card.
       Keys.onEscapePressed: {
@@ -292,100 +285,105 @@ Panel {
           event.accepted = true
           return
         }
-        // Everything else the card owns: the cursor, the subset gesture and the action strip.
+        // Everything else the card owns: the cursor, the subset gesture and the action buttons.
         card.key(event)
       }
 
-      ShelfMenu {
-        id: pileMenu
-        visible: root.menu
-        x: surface.contentLeftInset
-        y: surface.contentTopInset
-        width: surface.width - surface.contentLeftInset - surface.contentRightInset
-        piles: shelf.piles
-        foreground: Color.popups.text
-        pad: card.pad
-        stripHeight: card.stripHeight
-        rowHeight: card.rowHeight
-        onChosen: function (index) {
-          shelf.restore(index)
-          root.menu = false
-        }
-        onDismissed: root.menu = false
-      }
+      Item {
+        id: body
+        anchors.fill: parent
+        implicitHeight: root.menu ? pileMenu.implicitHeight
+                      : root.pending.length > 0 ? flyout.implicitHeight
+                      : card.implicitHeight
 
-      ShelfFlyout {
-        id: flyout
-        visible: root.pending.length > 0
-        x: surface.contentLeftInset
-        y: surface.contentTopInset
-        width: surface.width - surface.contentLeftInset - surface.contentRightInset
-        title: Run.flyoutTitle(root.pending, Model.actionPaths(card.chosen, card.rows).length)
-        rows: root.flyoutRows
-        browsable: root.pending === "move" || root.pending === "copy"
-        foreground: Color.popups.text
-        pad: card.pad
-        stripHeight: card.stripHeight
-        rowHeight: card.rowHeight
-        onChosen: function (index) { root.runChosen(root.flyoutRows[index]) }
-        // The chooser answers in its own time, so what it is choosing for is still owed until it
-        // does: clearing pending here would drop the destination the operator picked.
-        onBrowse: doing.choose(flyout.title, root.flyoutRows.length > 0 ? root.flyoutRows[0] : "")
-        onDismissed: root.pending = ""
-      }
+        ShelfMenu {
+          id: pileMenu
+          visible: root.menu
+          width: parent.width
+          piles: shelf.piles
+          foreground: root.foreground
+          onChosen: function (index) {
+            shelf.restore(index)
+            root.menu = false
+          }
+          onDismissed: root.menu = false
+        }
 
-      ShelfCard {
-        id: card
-        visible: !root.menu && root.pending.length === 0
-        x: surface.contentLeftInset
-        y: surface.contentTopInset
-        width: surface.width - surface.contentLeftInset - surface.contentRightInset
-        height: surface.height - surface.contentTopInset - surface.contentBottomInset
-        pile: shelf.pile
-        rows: Model.rows(shelf.pile, shelf.captures, shelf.sizes)
-        kinds: shelf.shelfSettings
-        keyHints: shelf.keyHints
-        incoming: rail.incoming
-        // The empty card names only the routes that are on: the mark is drawn today, the rail edge
-        // and the summon bind arrive with the units that build them.
-        hint: Model.emptyHint(shelf.pile, shelf.captures,
-                              { edge: "", mark: true, bind: shelf.summonBind })
-        // Actions: the strip acts on what the card is drawing, chosen or whole.
-        foreground: Color.popups.text
-        result: root.result
-        error: root.error
-        onRemoveRequested: function (index) {
-          var row = card.rows[index]
-          if (!row || row.section === "capture") {
-            return
+        ShelfFlyout {
+          id: flyout
+          visible: root.pending.length > 0
+          width: parent.width
+          title: Run.flyoutTitle(root.pending, Model.actionPaths(card.chosen, card.rows).length)
+          rows: root.flyoutRows
+          browsable: root.pending === "move" || root.pending === "copy"
+          foreground: root.foreground
+          onChosen: function (index) { root.runChosen(root.flyoutRows[index]) }
+          // The chooser answers in its own time, so what it is choosing for is still owed until it
+          // does: clearing pending here would drop the destination the operator picked.
+          onBrowse: doing.choose(flyout.title, root.flyoutRows.length > 0 ? root.flyoutRows[0] : "")
+          onDismissed: root.pending = ""
+        }
+
+        ShelfCard {
+          id: card
+          visible: !root.menu && root.pending.length === 0
+          anchors.fill: parent
+          pile: shelf.pile
+          rows: Model.rows(shelf.pile, shelf.captures, shelf.sizes)
+          thumbs: shelf.thumbs
+          kinds: shelf.shelfSettings
+          keyHints: shelf.keyHints
+          incoming: rail.incoming
+          // The empty card names only the routes that are on: the mark is drawn today, the rail edge
+          // and the summon bind arrive with the units that build them.
+          hint: Model.emptyHint(shelf.pile, shelf.captures,
+                                { edge: "", mark: true, bind: shelf.summonBind })
+          // Actions: the buttons act on what the card is drawing, chosen or whole.
+          foreground: root.foreground
+          urgent: root.urgentColor
+          result: root.result
+          error: root.error
+          onRemoveRequested: function (index) {
+            var row = card.rows[index]
+            if (!row || row.section === "capture") {
+              return
+            }
+            root.error = ""
+            shelf.forget(row.path)
           }
-          root.error = ""
-          shelf.forget(row.path)
-        }
-        onPinRequested: function (index) {
-          var row = card.rows[index]
-          if (!row) {
-            return
+          onPinRequested: function (index) {
+            var row = card.rows[index]
+            if (!row) {
+              return
+            }
+            root.error = ""
+            shelf.pin(row.path, !row.pinned)
           }
-          root.error = ""
-          shelf.pin(row.path, !row.pinned)
+          onCaptureAddRequested: function (index) {
+            var row = card.rows[index]
+            if (!row) {
+              return
+            }
+            root.error = ""
+            shelf.add(row.path)
+          }
+          onOpenRequested: function (path) {
+            root.error = ""
+            shelf.open(path)
+          }
+          onMenuRequested: {
+            shelf.askPiles()
+            root.menu = true
+          }
+          onActionRequested: function (id) { root.actOn(id) }
+          onCancelRequested: doing.cancelRun()
+          run: doing.run
+          onLiftRequested: function (copying) {
+            var carried = card.carriedPaths
+            shelf.mintDrag(Model.dragMoves(carried, card.rows, !copying), carried)
+          }
+          onCarried: function (carrying) { root.carrying = carrying }
         }
-        onOpenRequested: function (path) {
-          root.error = ""
-          shelf.open(path)
-        }
-        onMenuRequested: {
-          shelf.askPiles()
-          root.menu = true
-        }
-        onActionRequested: function (id) { root.actOn(id) }
-        onCancelRequested: doing.cancelRun()
-        run: doing.run
-        onLiftRequested: function (copying) {
-          var carried = Model.actionPaths(card.chosen, card.rows)
-          root.carrying = shelf.mintDrag(Model.dragMoves(carried, card.rows, !copying), carried)
-        }
-        onCarried: function (carrying) { root.carrying = carrying }
       }
     }
   }

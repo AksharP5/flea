@@ -59,11 +59,7 @@ pub struct Done {
 }
 
 // Parsed once by the caller and shared from here, so no worker ever opens these files and four workers never read one of them four times.
-struct Tables {
-    aliases: Arc<Aliases>,
-    specs: Arc<Thumbnailers>,
-    cache: Cache,
-}
+pub(crate) struct Tables { pub aliases: Arc<Aliases>, pub specs: Arc<Thumbnailers>, pub cache: Cache }
 
 type Shared = Arc<(Mutex<VecDeque<Job>>, Condvar)>;
 
@@ -158,7 +154,8 @@ fn worker(inner: Shared, results: Sender<Done>, tables: Arc<Tables>) {
     }
 }
 
-fn run_one(tables: &Tables, job: &mut Job) -> Outcome {
+// pub(crate) so the shelf can run one job in its own thread: a bar widget has no listing and no pool.
+pub(crate) fn run_one(tables: &Tables, job: &mut Job) -> Outcome {
     let spec = match tables.specs.for_mime(&job.mime, &tables.aliases) {
         Some(s) => s,
         None => return Outcome::Failed,

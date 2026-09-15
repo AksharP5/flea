@@ -1,36 +1,42 @@
 import QtQuick
+import QtQuick.Controls
+import QtQuick.Layouts
 import qs.Commons
+import qs.Ui
 import "Model.js" as Model
 import "Run.js" as Run
 
-// The pile itself, Main board rules 2 to 8. The card is the shelf's own surface: it reads like a
-// Flea listing on purpose, the same strip height, the same row pitch and the same mark slot, so the
-// shelf is Flea's shelf and not a second application that happens to hold files.
+// The card, Main board rules 9 to 15. It is an Omarchy panel and not a Flea window in miniature:
+// a PanelHero on top, a PanelSeparator and a PanelSectionHeader between groups, rows in the shape
+// panels/dropbox gives its FileRow, and the actions as icon buttons under the last separator.
 Item {
   id: root
 
-  // Main rule 9: one list, three sections. The pile is still here for the header's own count.
+  // Main rule 9: one list, three sections. The pile is still here for the hero's own count.
   property var pile: Model.empty()
   property var rows: []
   // Rule 9: the caption names the kinds Settings has checked.
   property var kinds: ({ screenshots: true, recordings: true })
-  // Rule 11: the strip draws its key letters only when Flea's own key hints setting is on.
+  // Rule 8: a tooltip carries the key only when Flea's own key hints setting is on.
   property bool keyHints: false
-  property color foreground: Color.foreground
-  property color muted: Qt.darker(foreground, 1.55)
+  property color foreground: Color.popups.text
+  property color muted: Qt.darker(foreground, 1.4)
   property color accent: Color.accent
+  property color urgent: Color.urgent
   property string fontFamily: Style.font.family
-  // Rule 5: one slot, one voice, and the card's own two are the last result and the one error.
+  // Rule 9: one transient line, one voice: the last result or the one error, never both.
   property string result: ""
   property string error: ""
-  property int hoveredIndex: -1
   property int cursorIndex: -1
-  // ShelfEmpty rules 2 and 5: the tray is on the card whether the pile is empty or not.
-  property var captures: []
+  // Rule 5: the voice says the path of the row the pointer is on, which is not the same question as
+  // which row the cursor is on: the keyboard walks the list without narrating it.
+  property int hoveredIndex: -1
+  // Rule 4: the cache file each drawn path answered with, empty for a path that has none.
+  property var thumbs: ({})
   property string hint: ""
-  // EdgeRail: how many a drag over the rail is offering, which the header says and the line shows.
+  // EdgeRail: how many a drag over the rail is offering, which the hero says and the line shows.
   property int incoming: 0
-  // Actions: what is running, which the body draws and the footer's own half names.
+  // Actions: what is running, which the body draws and the voice's own half names.
   property var run: Run.idle()
   signal cancelRequested()
   // Keys: the subset gesture. Chosen by path, and the cursor is its own rung on top of it.
@@ -49,9 +55,11 @@ Item {
   // Summon: the pointer's way to the last five piles is the card's own menu.
   signal menuRequested()
   signal actionRequested(string id)
-  // Rule 2: the header is the handle the whole pile is carried by. The modifier is read at the
-  // lift and never after it, because a platform drag runs a loop this window gets no keys in.
+  // Rule 11: a row is the handle. The modifier is read at the lift and never after it, because a
+  // platform drag runs a loop this window gets no keys in.
   signal liftRequested(bool copying)
+  // What that grab is carrying: the chosen rows, or the row it started from.
+  property var carriedPaths: []
 
   // The payload the drag carries once the token is back: the token and the intent, then the paths
   // for every other application, which is offered a copy and never a move (DragOut rule 4).
@@ -62,17 +70,51 @@ Item {
   Drag.mimeData: root.dragMime
 
   // The token arrives from the service a few milliseconds after the press, with the button still
-  // down, which is where the platform drag can be started from.
+  // down. It arms the drag rather than starting it: a press that never moves is a click, and a row
+  // is both the handle a pile is carried by and the control a capture is added with.
+  property bool armed: false
+  property bool wanted: false
+
   function lift(token, copying) {
     var uris = []
-    var carried = Model.actionPaths(root.chosen, root.rows)
+    var carried = root.carriedPaths
     for (var i = 0; i < carried.length; i++) {
       uris.push("file://" + encodeURI(carried[i]))
     }
     var mime = { "application/x-flea-shelf": token + "\n" + (copying ? "copy" : "move") }
     mime["text/uri-list"] = uris.join("\r\n") + "\r\n"
     root.dragMime = mime
+    root.armed = true
+    if (root.wanted) {
+      root.beginCarry()
+    }
+  }
+
+  // The pointer left the press by more than the platform's own drag distance, so this is a carry.
+  function wantCarry() {
+    root.wanted = true
+    if (root.armed) {
+      root.beginCarry()
+    }
+  }
+
+  function beginCarry() {
+    root.armed = false
+    root.wanted = false
+    // The window gives up the pointer and the keyboard for the length of the carry, and only now:
+    // a press that turns out to be a click must still reach the row it landed on.
+    root.carried(true)
     root.Drag.active = true
+  }
+
+  // A press that ended without ever moving: the token stays unspent and expires on its own.
+  function dropCarry() {
+    root.wanted = false
+    if (!root.Drag.active) {
+      root.armed = false
+      root.dragMime = ({})
+      root.carried(false)
+    }
   }
 
   Drag.onDragFinished: {
@@ -119,7 +161,7 @@ Item {
     event.accepted = true
   }
 
-  // Every action carries its key inline on the strip, and this is the same table read backwards.
+  // Every action carries a key, and this is the same table read backwards.
   function actionFor(key) {
     for (var i = 0; i < root.actions.length; i++) {
       if (key === root.actions[i].key.toUpperCase().charCodeAt(0)) {
@@ -129,7 +171,7 @@ Item {
     return ""
   }
 
-  // Tab jumps to the action strip; from there the arrows walk it, enter runs it and tab comes back.
+  // Tab jumps to the action buttons; the arrows walk them, enter runs one and tab comes back.
   function stripKey(event) {
     if (event.key === Qt.Key_Tab) {
       root.stripIndex = -1
@@ -159,19 +201,11 @@ Item {
     }
   }
 
-  // Rules 2 and 3: the same strip height and the same row as Flea's own, which means the same
-  // derivation rather than the same literals, so both land on one number at every text size.
-  // ui/Theme.qml: rowHeight is the line box plus its padding, the mark is the type scale's own
-  // step, and the chrome strip is 0.72 of a row. Measured at text size 14: 37, 19 and 27.
-  readonly property int body: Style.font.bodySmall
-  readonly property real lineBoxRatio: 1.8
-  readonly property real chromeRowRatio: 0.72
-  readonly property real rowHeight: Math.round(root.body * root.lineBoxRatio) + 2 * Style.spacing.controlPaddingY
-  readonly property real stripHeight: Math.round(root.rowHeight * root.chromeRowRatio)
-  readonly property real markSize: root.body * 1.45
-  // The card's own width, scaled from the board's 380 the way Flea scales a column, off base 12.
-  readonly property real cardWidth: Math.round(380 * root.body / 12)
-  readonly property real pad: Style.spacing.rowPaddingX
+  // Rule 2: every measure is a token. The width is the one 8 of the 13 OEM widgets use, and the
+  // height stops where the shell's own keyboard panels stop.
+  readonly property real cardWidth: Style.space(380)
+  readonly property real cardCap: Style.space(560)
+  readonly property real markSize: Style.font.icon
   readonly property var actions: [
     { id: "move", label: "Move", key: "m" },
     { id: "copy", label: "Copy", key: "c" },
@@ -181,328 +215,144 @@ Item {
     { id: "pin", label: "Pin", key: "p" }
   ]
 
-  // Rule 10: the same key both ways, so the strip says which way it goes for the row under the cursor.
+  // Rule 6: the same key both ways, so the button says which way it goes for the row under the cursor.
   function labelFor(action) {
     var row = root.rows[root.cursorIndex]
     return action.id === "pin" && row && row.pinned ? "Unpin" : action.label
   }
 
-  implicitWidth: cardWidth
-  implicitHeight: column.implicitHeight
+  // Rule 8: the tooltip is the name, and the key rides it only when Flea's hints are on.
+  function tipFor(action) {
+    return root.keyHints ? root.labelFor(action) + "  " + action.key : root.labelFor(action)
+  }
 
-  // The pointer route to Recent piles. Only the right button, so every left press still reaches the
-  // header's lift, a row's x and the tray's own thumbs.
+  implicitWidth: root.cardWidth
+  implicitHeight: Math.min(column.implicitHeight, root.cardCap)
+
+  // The pointer route to Recent piles. Only the right button, so every left press still reaches a
+  // row's own trailing button, a capture row's click and the lift.
   MouseArea {
     anchors.fill: parent
     acceptedButtons: Qt.RightButton
     onClicked: root.menuRequested()
   }
 
-  Column {
-    id: column
-    width: parent.width
+  Flickable {
+    id: flick
+    anchors.fill: parent
+    contentWidth: width
+    contentHeight: column.implicitHeight
+    clip: true
+    boundsBehavior: Flickable.StopAtBounds
+    flickableDirection: Flickable.VerticalFlick
+    interactive: contentHeight > height
+    ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
-    // Rule 2: the header is the strip height, and it is the handle the whole pile is carried by.
-    Item {
-      id: header
-      width: parent.width
-      height: root.stripHeight
+    Column {
+      id: column
+      width: flick.width
+      spacing: Style.spacing.md
 
-      // The press is the lift: the token is minted on it and the platform drag starts when the
-      // token is back, with the button still down. A handler that waits for a drag threshold
-      // cannot be used here, because the mint has to happen before the loop the drag enters.
-      MouseArea {
-        anchors.fill: parent
-        acceptedButtons: Qt.LeftButton
-        onPressed: function (mouse) {
-          root.liftRequested((mouse.modifiers & Qt.ControlModifier) !== 0)
-        }
+      ShelfRun {
+        width: parent.width
+        run: root.run
+        foreground: root.foreground
+        muted: root.muted
+        accent: root.accent
+        fontFamily: root.fontFamily
+        pad: 0
+        onCancelRequested: root.cancelRequested()
       }
 
+      // Rule 10: on an empty pile the first thing on the card is the one composed hint line, and
+      // the groups that have anything follow it. Empty is a state, not a failure.
       Text {
-        anchors.verticalCenter: parent.verticalCenter
-        x: root.pad
-        text: Model.headerText(root.pile)
-        color: root.foreground
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.caption
-        textFormat: Text.PlainText
-      }
-
-      Text {
-        anchors.verticalCenter: parent.verticalCenter
-        anchors.right: parent.right
-        anchors.rightMargin: root.pad
-        text: root.run.running ? String(Model.loose(root.pile.items).length)
-                               : Model.headerRight(root.incoming, root.chosenCount, root.rows.length)
+        width: parent.width
+        visible: root.hint !== "" && root.rows.length === 0 && !root.run.running
+        text: root.hint
         color: root.muted
         font.family: root.fontFamily
-        font.pixelSize: Style.font.caption
+        font.pixelSize: Style.font.bodySmall
+        wrapMode: Text.WordWrap
         textFormat: Text.PlainText
       }
-    }
 
-    ShelfRun {
-      width: parent.width
-      run: root.run
-      foreground: root.foreground
-      muted: root.muted
-      accent: root.accent
-      fontFamily: root.fontFamily
-      pad: root.pad
-      onCancelRequested: root.cancelRequested()
-    }
+      Repeater {
+        // While an action runs the body is the transfer surface, not the list: the card has one body.
+        model: root.run.running ? [] : root.rows
 
-    Repeater {
-      // While an action runs the body is the transfer surface, not the list: the card has one body.
-      model: root.run.running ? [] : root.rows
-
-      // Rule 9: every row is the pile row, kind mark, name and size, whichever section it is in.
-      Column {
-        id: row
-        required property int index
-        required property var modelData
-        width: column.width
-        readonly property bool lifted: root.hoveredIndex === row.index || root.cursorIndex === row.index
-        readonly property bool picked: root.chosen[row.modelData.path] === true
-        readonly property string caption: Model.captionFor(root.rows, row.index, root.kinds)
-
-        Item {
-          width: parent.width
-          height: visible ? root.stripHeight : 0
-          visible: row.caption.length > 0
-
-          Text {
-            anchors.verticalCenter: parent.verticalCenter
-            x: root.pad
-            text: row.caption
-            color: root.muted
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.caption
-            font.capitalization: Font.AllUppercase
-            font.letterSpacing: Style.font.caption * 0.14
-            textFormat: Text.PlainText
-          }
-
-          Text {
-            anchors.verticalCenter: parent.verticalCenter
-            anchors.right: parent.right
-            anchors.rightMargin: root.pad
-            text: Model.sectionCount(root.rows, row.modelData.section)
-            color: root.muted
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.caption
-            textFormat: Text.PlainText
-          }
-        }
-
-        Item {
-          width: parent.width
-          height: root.rowHeight
-
-          // Three rungs and three grounds, the tokens Row.qml itself reads: the cursor takes the
-          // accent fill, a chosen row the selection fill, and a hovered row the hover rung.
-          Rectangle {
-            anchors.fill: parent
-            color: root.cursorIndex === row.index ? Style.selectedAccentFill
-                 : row.picked ? Style.selectionFill
-                 : root.hoveredIndex === row.index ? Style.hoverFill
-                 : "transparent"
-          }
-
-          // The cursor keeps its own edge whether or not the row is chosen, which is what tells the
-          // two apart when they land on the same row.
-          Rectangle {
-            visible: root.cursorIndex === row.index
-            width: 2
-            height: parent.height
-            color: root.accent
-          }
-
-          // The mark's own slot, which holds the check instead while a subset is being chosen: a row
-          // cannot say both what kind it is and whether it is taken, and the choosing is the question.
-          ShelfGlyph {
-            id: mark
-            x: root.pad
-            anchors.verticalCenter: parent.verticalCenter
-            width: root.markSize
-            height: root.markSize
-            visible: root.chosenCount === 0
-            path: Model.glyphFor(row.modelData)
-            color: root.foreground
-          }
-
-          ShelfCheck {
-            anchors.verticalCenter: parent.verticalCenter
-            x: root.pad
-            visible: root.chosenCount > 0
-            on: row.picked
-            foreground: root.foreground
-          }
-
-          Text {
-            id: name
-            anchors.verticalCenter: parent.verticalCenter
-            x: mark.x + mark.width + Style.space(10)
-            width: size.x - x - Style.space(10)
-            text: row.modelData.name
-            color: root.foreground
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.body
-            elide: Text.ElideMiddle
-            textFormat: Text.PlainText
-          }
-
-          Text {
-            id: size
-            anchors.verticalCenter: parent.verticalCenter
-            anchors.right: trailing.left
-            anchors.rightMargin: Style.space(10)
-            text: Model.sizeText(row.modelData)
-            // Rule 4: a hovered, marked or cursor row lifts its size to full foreground.
-            color: row.lifted ? root.foreground : root.muted
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.caption
-            textFormat: Text.PlainText
-          }
-
-          // Rule 6 and rule 10: the pile row's own x takes the reference off the shelf, a pinned
-          // row wears the pin instead, and a capture row carries no trailing control at all.
-          Text {
-            id: trailing
-            anchors.verticalCenter: parent.verticalCenter
-            anchors.right: parent.right
-            anchors.rightMargin: root.pad
-            visible: row.modelData.section !== Model.CAPTURE
-            text: row.modelData.pinned ? "\u2022" : "\u00d7"
-            color: trailingHover.hovered ? root.foreground : root.muted
-            opacity: row.modelData.pinned || row.lifted ? 1 : 0
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.body
-            textFormat: Text.PlainText
-
-            HoverHandler { id: trailingHover }
-            TapHandler {
-              onSingleTapped: row.modelData.pinned ? root.pinRequested(row.index)
-                                                   : root.removeRequested(row.index)
-            }
-          }
-
-          HoverHandler {
-            onHoveredChanged: root.hoveredIndex = hovered ? row.index : (root.hoveredIndex === row.index ? -1 : root.hoveredIndex)
-          }
+        // Rule 2 and rule 3: a separator and a section header open a group, then one-line rows.
+        ShelfRow {
+          card: root
+          width: column.width
         }
       }
-    }
 
-    // EdgeRail: the line that says where the ones being dragged in will land, which is after the
-    // pile, because the shelf holds what it was given in the order it was given it.
-    Rectangle {
-      width: parent.width - 2 * root.pad
-      x: root.pad
-      height: visible ? Math.max(1, Style.space(2)) : 0
-      visible: root.incoming > 0
-      color: root.accent
-    }
-
-    // ShelfEmpty rule 6: empty is a state, not a failure. One mark, one caption, and the footer's
-    // own hint line beneath it; no apology copy and no onboarding card.
-    Item {
-      width: parent.width
-      height: visible ? Math.round(root.rowHeight * 4) : 0
-      visible: root.rows.length === 0
-
-      Column {
-        anchors.centerIn: parent
-        spacing: Style.space(12)
-
-        ShelfGlyph {
-          anchors.horizontalCenter: parent.horizontalCenter
-          width: Style.space(44)
-          height: width
-          path: Model.SHELF_GLYPH
-          color: root.muted
-        }
-
-        Text {
-          anchors.horizontalCenter: parent.horizontalCenter
-          text: "NOTHING ON THE SHELF"
-          color: root.muted
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.caption
-          font.bold: true
-          font.letterSpacing: 1.2
-          textFormat: Text.PlainText
-        }
+      // EdgeRail: the line that says where the ones being dragged in will land, which is after the
+      // pile, because the shelf holds what it was given in the order it was given it.
+      Rectangle {
+        width: parent.width
+        height: visible ? Math.max(1, Style.space(2)) : 0
+        visible: root.incoming > 0
+        color: root.accent
       }
-    }
 
-    // Rule 5: the footer is one slot with one voice, and it says nothing rather than two things.
-    Item {
-      width: parent.width
-      height: root.stripHeight
-
+      // Rule 9: one transient line, in the place the OEM panels put their own transient copy.
       Text {
-        anchors.verticalCenter: parent.verticalCenter
-        x: root.pad
-        width: parent.width - 2 * root.pad
-        // Rule 5: one slot, one voice. While an action runs the voice is the action's own.
+        width: parent.width
+        visible: text !== ""
         text: root.run.running ? Run.runFooter(root.run)
-                               : Model.footerText(root.hoveredIndex >= 0 && root.rows[root.hoveredIndex]
-                                                  ? root.rows[root.hoveredIndex].path : "",
-                                                  root.result, root.error, root.hint,
-                                                  Model.chosenSentence(root.chosenCount, Model.wholeCount(root.rows)))
-        color: root.error ? Color.urgent : root.muted
+                               : root.error !== "" ? root.error : root.result
+        color: root.error !== "" ? root.urgent : root.foreground
         font.family: root.fontFamily
-        font.pixelSize: Style.font.caption
+        font.pixelSize: Style.font.bodySmall
         elide: Text.ElideMiddle
         textFormat: Text.PlainText
       }
-    }
 
-    // Rule 7: every action carries its key inline, always. The card is its own surface, so Flea's
-    // keyHints toggle does not govern this strip. Zip takes a, because z is undo everywhere.
-    Row {
-      width: parent.width
-      // ShelfEmpty rule 1 and Main rule 12: absent, not greyed, and on an empty pile it waits for a
-      // row to be under the cursor or the pointer.
-      visible: !root.run.running && root.rows.length > 0
-               && (Model.loose(root.pile.items).length > 0 || root.cursorIndex >= 0 || root.hoveredIndex >= 0)
-      height: visible ? root.stripHeight : 0
-      spacing: Style.space(14)
-      leftPadding: root.pad
+      PanelSeparator {
+        visible: strip.visible
+        width: parent.width
+        foreground: root.foreground
+      }
 
-      Repeater {
-        model: root.actions
+      // Rule 8: the six actions as icon buttons in one row under the last separator, with tooltips.
+      // No key legend: the README's keyboard map holds the keys.
+      RowLayout {
+        id: strip
+        width: parent.width
+        // Rule 10: on an empty pile there is no action row at all, and a card holding something
+        // shows it once a row is under the cursor or the pointer.
+        visible: !root.run.running && root.rows.length > 0
+                 && (Model.loose(root.pile.items).length > 0 || root.cursorIndex >= 0)
+        spacing: Style.spacing.controlGap
 
-        Row {
-          id: action
-          required property int index
-          required property var modelData
-          anchors.verticalCenter: parent.verticalCenter
-          spacing: Style.space(5)
+        Repeater {
+          model: root.actions
 
-          Text {
-            text: root.labelFor(action.modelData)
-            color: actionHover.hovered || root.stripIndex === action.index ? root.foreground : root.muted
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.caption
-            textFormat: Text.PlainText
+          // The delegate carries the model's own two properties, so the button type itself stays a
+          // plain button every other caller can instantiate.
+          Item {
+            id: slot
+            required property int index
+            required property var modelData
+            Layout.alignment: Qt.AlignVCenter
+            implicitWidth: button.implicitWidth
+            implicitHeight: button.implicitHeight
+
+            ShelfActionButton {
+              id: button
+              anchors.fill: parent
+              path: Model.ACTION_GLYPHS[slot.modelData.id]
+              tooltipText: root.tipFor(slot.modelData)
+              hasCursor: root.stripIndex === slot.index
+              foreground: root.foreground
+              onClicked: root.actionRequested(slot.modelData.id)
+            }
           }
-
-          Text {
-            visible: root.keyHints
-            text: action.modelData.key
-            color: root.muted
-            opacity: 0.75
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.caption
-            textFormat: Text.PlainText
-          }
-
-          HoverHandler { id: actionHover }
-          TapHandler { onSingleTapped: root.actionRequested(action.modelData.id) }
         }
+
+        Item { Layout.fillWidth: true }
       }
     }
   }

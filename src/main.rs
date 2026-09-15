@@ -23,6 +23,7 @@ mod shelf;
 mod shelfcli;
 mod shelfops;
 mod shelfplaces;
+mod shelfthumb;
 mod summon;
 mod uistore;
 mod userfile;
