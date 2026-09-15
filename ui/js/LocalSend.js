@@ -2,17 +2,28 @@
 
 .import "Ops.js" as Ops
 
-// MenuAdditions rule 1's two sentences, kept out of ui/PaneMenuActions.qml so the wording is tested
-// rather than read off a screenshot. Flea knows the dispatch and nothing else: LocalSend's own
-// window is where a transfer is accepted, refused or watched, the same as Taildrop's send.
-function sentLine(paths) {
-    if (paths.length === 1)
-        return "Sending " + Ops.leaf(paths[0]) + " with LocalSend."
-    return "Sending " + paths.length + " items with LocalSend."
+// Directive 71's three sentences, kept out of the QML so the wording is tested rather than read off
+// a screenshot. The dispatch, the verdict the CLI came back with, and the one refusal Flea itself
+// can hit: a row whose binary left between the menu opening and the peer being chosen.
+// The one call ui/Pane.qml makes: the service either took the send or the CLI is gone.
+function send(pane, service, provider, peer, paths) {
+    if (!service.send(peer, paths)) { pane.message(missing(provider), true); return }
+    pane.message(sending(peer, paths), false)
 }
 
-// The row is absent without a binary, so this is the race between opening the menu and losing it.
+function sending(peer, paths) {
+    if (paths.length === 1)
+        return "Sending " + Ops.leaf(paths[0]) + " to " + peer + " with LocalSend."
+    return "Sending " + paths.length + " items to " + peer + " with LocalSend."
+}
+
+// The CLI ends its own run when the transfer does, so this is the only result Flea ever knows.
+function verdict(ok, reason) {
+    if (ok) return "LocalSend finished the transfer."
+    return reason && reason.length > 0 ? "LocalSend · " + reason : "LocalSend could not finish the transfer."
+}
+
 function missing(provider) {
     return provider && provider.reason ? "LocalSend · " + provider.reason
-                                       : "LocalSend is no longer installed."
+                                       : "localsend-cli is no longer installed."
 }

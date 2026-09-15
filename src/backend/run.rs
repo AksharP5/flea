@@ -168,6 +168,8 @@ fn handle_line(
                 resolve_rows(Vec::new(), &[index], &st.base, &st.listing).into_iter().next().unwrap_or_default());
             super::opsdispatch::request_menu_action(out, ops, line, paths, cursor);
         }
+        // Directive 71: a CLI run of a second or more, so it answers on its own thread.
+        Request::LocalSend { op, peer, paths, id } => super::localsend::request(op, peer, paths, id, ops.tx.clone()),
         Request::TrashBrowse { line } => {
             let replies = ops.tx.clone();
             ops.trashbrowser.get_or_insert_with(|| super::trashbrowse::TrashBrowser::new(replies)).request(line);

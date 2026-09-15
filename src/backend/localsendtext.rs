@@ -1,0 +1,162 @@
+// What localsend-cli draws, read back. It is a full-screen program, so its panel, its event log and
+// its refusals all arrive as one stream of escape sequences and text; this turns that stream into the
+// rows a menu can offer and the sentence a refusal is. Split out of src/backend/localsend.rs, which
+// owns the terminal those bytes come through and the keys that go back.
+
+// One device the CLI has discovered, as its panel numbers it: the number is what navigation counts.
+pub struct Peer {
+    pub index: usize,
+    pub name: String,
+    pub address: String,
+}
+
+// Sample panel text, with the escape sequences already gone. The rows are numbered by the CLI itself
+// and the paired devices are numbered before the discovered ones:
+// Paired
+//   (none)
+// Discovered
+//   [1] Clean Lemon (192.168.21.23)
+pub fn parse_peers(text: &str) -> Vec<Peer> {
+    let mut out: Vec<Peer> = Vec::new();
+    let bytes: Vec<char> = text.chars().collect();
+    let mut i = 0;
+    while i + 3 < bytes.len() {
+        if bytes[i] != '[' || !bytes[i + 1].is_ascii_digit() || bytes[i + 2] != ']' || bytes[i + 3] != ' ' {
+            i += 1;
+            continue;
+        }
+        let index = bytes[i + 1].to_digit(10).unwrap_or(0) as usize;
+        let rest: String = bytes[i + 4..].iter().collect();
+        // A device name can hold anything but a newline, so the address is taken from the last " ("
+        // of the row and the name is everything before it.
+        let row = match rest.find(|c| c == '\n' || c == '│') {
+            Some(end) => rest[..end].to_string(),
+            None => rest,
+        };
+        if let (Some(open), Some(close)) = (row.rfind(" ("), row.rfind(')')) {
+            if open < close {
+                let name = row[..open].trim().to_string();
+                let address = row[open + 2..close].trim().to_string();
+                if index > 0 && !name.is_empty() && !out.iter().any(|p| p.index == index) {
+                    out.push(Peer { index, name, address });
+                }
+            }
+        }
+        i += 4;
+    }
+    out.sort_by_key(|p| p.index);
+    out
+}
+
+// The panel repaints in place, so its bytes arrive as one long stream of escape sequences and text.
+// Only the text is wanted here, and a sequence is ESC [ , any parameter bytes, one final letter.
+pub fn strip_ansi(raw: &str) -> String {
+    let mut out = String::with_capacity(raw.len());
+    let mut chars = raw.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c != '\u{1b}' {
+            out.push(c);
+            continue;
+        }
+        match chars.peek() {
+            Some('[') | Some(']') | Some('(') | Some(')') => {
+                let opener = chars.next().unwrap_or(' ');
+                for c in chars.by_ref() {
+                    // A CSI ends on its final byte, and the two-character sets end on their one letter.
+                    if opener == '[' && c.is_ascii_alphabetic() { break }
+                    if opener == ']' && (c == '\u{7}' || c == '\u{1b}') { break }
+                    if opener != '[' && opener != ']' { break }
+                }
+            }
+            _ => { chars.next(); }
+        }
+    }
+    out
+}
+
+// The CLI prints one line and gives up when it cannot start. The port is the case that happens here:
+// a LocalSend already running on this box owns 53317, and only one program can receive on it.
+// Sample: "Error: Address already in use (os error 98)"
+pub fn refusal(text: &str) -> Option<String> {
+    let line = text.lines().find(|l| l.trim_start().starts_with("Error:"))?;
+    let said = line.trim().trim_start_matches("Error:").trim();
+    if said.contains("Address already in use") {
+        return Some("LocalSend is already running on this box, and only one of them can hold its port.".into())
+    }
+    Some(format!("LocalSend's own CLI refused to start: {}.", said.trim_end_matches('.')))
+}
+
+// The CLI repaints the whole panel every frame and logs its events under it, so a device shows up in
+// the log a few seconds before the panel itself lists it, and only a panel row can be chosen. This is
+// the last panel drawn: from its own top border to the bottom border that closes it.
+pub fn panel(text: &str) -> &str {
+    let start = match text.rfind("┌Devices") { Some(i) => i, None => return "" };
+    let rest = &text[start..];
+    match rest.find('└') { Some(end) => &rest[..end], None => rest }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_panel_gives_up_its_devices_however_it_was_drawn() {
+        let panel = "\u{1b}[?1049h\u{1b}[39m\u{1b}[2J┌Devices─────┐│Paired││  (none)││Discovered││  [1] Clean Lemon (192.168.21.23)│└────┘";
+        let peers = parse_peers(&strip_ansi(panel));
+        assert_eq!(peers.len(), 1);
+        assert_eq!(peers[0].index, 1);
+        assert_eq!(peers[0].name, "Clean Lemon");
+        assert_eq!(peers[0].address, "192.168.21.23");
+    }
+
+    #[test]
+    fn a_repainted_panel_names_each_device_once_and_in_its_own_order() {
+        let panel = "[2] Second (10.0.0.2)\n[1] First (10.0.0.1)\n[2] Second (10.0.0.2)\n[1] First (10.0.0.1)";
+        let peers = parse_peers(panel);
+        assert_eq!(peers.iter().map(|p| p.name.as_str()).collect::<Vec<_>>(), vec!["First", "Second"]);
+    }
+
+    #[test]
+    fn a_name_with_its_own_brackets_keeps_them_and_the_address_is_the_last_pair() {
+        let peers = parse_peers("[3] GM (work) laptop (192.168.21.7)");
+        assert_eq!(peers[0].name, "GM (work) laptop");
+        assert_eq!(peers[0].address, "192.168.21.7");
+        assert_eq!(peers[0].index, 3);
+    }
+
+    #[test]
+    fn a_row_that_is_not_a_device_is_not_one() {
+        assert!(parse_peers("Paired\n  (none)\nDiscovered\n  (none)").is_empty());
+        assert!(parse_peers("[0] Nobody (10.0.0.1)").is_empty());
+        assert!(parse_peers("[1] no address here").is_empty());
+    }
+
+    #[test]
+    fn escape_sequences_leave_and_the_text_between_them_stays() {
+        assert_eq!(strip_ansi("\u{1b}[31mred\u{1b}[0m text"), "red text");
+        assert_eq!(strip_ansi("plain"), "plain");
+        assert_eq!(strip_ansi("\u{1b}(Bkept"), "kept");
+    }
+
+    #[test]
+    fn the_rows_that_can_be_chosen_are_the_panel_s_own() {
+        let frame = "┌Devices┐│Paired││  (none)││Discovered││  (none)│└────┘  [1] Clean Lemon (192.168.21.23)";
+        assert!(parse_peers(panel(frame)).is_empty());
+        assert_eq!(parse_peers(frame).len(), 1);
+        let listed = "┌Devices┐│Paired││  (none)││Discovered││  [1] Clean Lemon (192.168.21.23)│└────┘";
+        assert_eq!(parse_peers(panel(listed)).len(), 1);
+        // Frames repaint over each other, so it is the last one that says what is on screen now.
+        let both = format!("{}{}", listed, frame);
+        assert!(parse_peers(panel(&both)).is_empty());
+    }
+
+    #[test]
+    fn a_cli_that_could_not_start_says_which_refusal_it_was() {
+        assert_eq!(refusal("Error: Address already in use (os error 98)\r\nD").as_deref(),
+                   Some("LocalSend is already running on this box, and only one of them can hold its port."));
+        assert_eq!(refusal("Error: no route to host.").as_deref(),
+                   Some("LocalSend's own CLI refused to start: no route to host."));
+        assert!(refusal("┌Devices┐│Discovered││  [1] Clean Lemon (192.168.21.23)│").is_none());
+    }
+}

@@ -21,7 +21,7 @@ Item {
     // [{id, label}], the reachable Taildrop targets; installed providers keep their disabled reason.
     property var taildropPeers: []
     property bool taildropInstalled: false
-    property bool localSendInstalled: false
+    property var localSend: ({ installed: false, peers: [], checking: false })
     property string taildropReason: ""
     property bool providersRefreshing: false
     // The archive formats this box actually probed, and whether a converter is installed at all.
@@ -136,7 +136,7 @@ Item {
             openWithApps: root.openWithApps,
             openWithLoaded: root.openWithLoaded,
             rowMode: root.rowMode, selectionCount: root.selectionCount,
-            scripts: Flea.Scripts.entries, localSendInstalled: root.localSendInstalled,
+            scripts: Flea.Scripts.entries, localSendInstalled: root.localSend.installed, localSendPeers: root.localSend.peers, localSendChecking: root.localSend.checking,
             // The Menus settings section's stored set; ui/js/Menu.js applyHidden is what reads it.
             hiddenActions: ViewState.menuHidden
         })

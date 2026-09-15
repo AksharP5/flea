@@ -48,6 +48,8 @@ pub enum Request {
     Permissions { line: String },
     Picker { line: String },
     MenuAction { line: String, rows: Vec<usize> },
+    // Directive 71: op is "peers" for the flyout's own list and "send" for the transfer it chooses.
+    LocalSend { op: String, peer: String, paths: Vec<String>, id: usize },
     TrashBrowse { line: String },
     Quit,
     Unknown,
@@ -60,6 +62,12 @@ pub fn parse_request(line: &str) -> Request {
         Some("permissions") => Request::Permissions { line: line.to_string() },
         Some("picker") => Request::Picker { line: line.to_string() },
         Some("menuaction") => Request::MenuAction { line: line.to_string(), rows: field_usize_array(line, "rows") },
+        Some("localsend") => Request::LocalSend {
+            op: field_str(line, "op").unwrap_or_default(),
+            peer: field_str(line, "peer").unwrap_or_default(),
+            paths: field_str_array(line, "paths"),
+            id: field_usize(line, "id").unwrap_or(0),
+        },
         Some("list") => Request::List {
             path: field_str(line, "path").unwrap_or_default(),
             first: field_usize(line, "first").unwrap_or(0),

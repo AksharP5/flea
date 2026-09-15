@@ -161,10 +161,14 @@ function availableEntry(e, p, kind) {
     if (e.action === "addToShelf") { e.mark = "flea"; delete e.glyph }
     // Absent rather than greyed when nothing is installed, the Menu board's rule for a row whose
     // whole destination is missing; the row is a plain send, so it has no submenu and no reason.
+    // Directive 71: the row is Taildrop's twin, so it opens the same flyout and reads the same way.
     if (e.action === "localsend") {
         if (!p.localSendInstalled) return false
         e.mark = "localsend"
         delete e.glyph
+        e.submenu = p.localSendPeers || []
+        e.disabled = p.localSendChecking === true || !e.submenu.length
+        if (e.disabled && p.localSendChecking !== true) e.errored = true
     }
     if (e.action === "dropbox" || e.action === "sharelink") {
         if (!p.dropboxInstalled || (e.action === "dropbox" ? p.rowInDropbox : !p.rowInDropbox)) return false

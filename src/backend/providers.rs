@@ -32,8 +32,8 @@ fn command_json(name: &str, paths: &[PathBuf]) -> String {
     format!(r#"{{"installed":{},"command":"{}","reason":"{}"}}"#, installed, escape(&command), escape(&reason))
 }
 
-// LocalSend is localsend from the CLI package and localsend_app from the app's own wrapper, so the
-// first of the two that answers is the command, and an absence names both rather than the last tried.
+// Directive 71: what Flea can drive is localsend-cli, not the app's own window, so the row is offered
+// when that is on PATH. The helper still takes a list, because a rename upstream is one name away.
 fn command_json_any(names: &[&str], paths: &[PathBuf]) -> String {
     let mut answer = (false, String::new(), String::new());
     for name in names {
@@ -66,7 +66,7 @@ pub(crate) fn facts() -> String {
     let (text, error) = match info { Ok(text) => (text, String::new()), Err(error) => (String::new(), error) };
     format!(r#"{{"taildrop":{},"taildropSend":{},"localsend":{},"dropbox":{},"dropboxInfo":"{}","dropboxError":"{}"}}"#,
         command_json("tailscale", &paths), command_json("omarchy-tailscale-send", &paths),
-        command_json_any(&["localsend", "localsend_app"], &paths),
+        command_json_any(&["localsend-cli"], &paths),
         command_json("dropbox-cli", &paths), escape(&text), escape(&error))
 }
 
@@ -93,24 +93,23 @@ mod tests {
         assert!(dropbox_info(&info).unwrap_err().contains("too large"));
     }
 
-    // MenuAdditions rule 1: the row is offered when a localsend binary is on PATH, under either of
-    // the two names the packages use, and the refusal says so naming both.
+    // Directive 71: the row is offered when localsend-cli is on PATH, which is what the backend
+    // drives; the app's own window is never opened, so its wrapper is not what this looks for.
     #[test]
-    fn localsend_answers_to_either_name_the_packages_install() {
+    fn the_row_waits_for_the_cli_the_backend_can_actually_drive() {
         let root = TestDir::new("localsend");
         let paths = vec![root.path().to_path_buf()];
-        let absent = command_json_any(&["localsend", "localsend_app"], &paths);
+        let absent = command_json_any(&["localsend-cli"], &paths);
         assert!(absent.contains(r#""installed":false"#), "{}", absent);
-        assert!(absent.contains("localsend or localsend_app is not installed."), "{}", absent);
-        let wrapper = root.file("localsend_app", "exit 0\n");
-        std::fs::set_permissions(&wrapper, std::fs::Permissions::from_mode(0o700)).unwrap();
-        let found = command_json_any(&["localsend", "localsend_app"], &paths);
-        assert!(found.contains(r#""installed":true"#), "{}", found);
-        assert!(found.contains(&escape(&wrapper.to_string_lossy())), "{}", found);
-        // The CLI name wins when both are there, because it is the one that takes paths directly.
-        let cli = root.file("localsend", "exit 0\n");
+        assert!(absent.contains("localsend-cli is not installed."), "{}", absent);
+        // The app's own wrapper is not the CLI, and a box with only that one offers no row.
+        let app = root.file("localsend", "exit 0\n");
+        std::fs::set_permissions(&app, std::fs::Permissions::from_mode(0o700)).unwrap();
+        assert!(command_json_any(&["localsend-cli"], &paths).contains(r#""installed":false"#));
+        let cli = root.file("localsend-cli", "exit 0\n");
         std::fs::set_permissions(&cli, std::fs::Permissions::from_mode(0o700)).unwrap();
-        assert!(command_json_any(&["localsend", "localsend_app"], &paths)
-            .contains(&escape(&cli.to_string_lossy())));
+        let found = command_json_any(&["localsend-cli"], &paths);
+        assert!(found.contains(r#""installed":true"#), "{}", found);
+        assert!(found.contains(&escape(&cli.to_string_lossy())), "{}", found);
     }
 }

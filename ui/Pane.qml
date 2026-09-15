@@ -7,6 +7,7 @@ import "js/Crumbs.js" as Crumbs
 import "js/Filter.js" as Filter
 import "js/Format.js" as Format
 import "js/Focus.js" as Focus
+import "js/LocalSend.js" as LocalSend
 import "js/Marks.js" as Marks
 import "js/Menu.js" as Menu
 import "js/Mounts.js" as Mounts
@@ -333,7 +334,7 @@ FocusScope {
     }
     function performMenu(action, menuId, paths) {
         if (action.indexOf("runScript:") === 0) { Flea.Scripts.run(action.substring("runScript:".length), paths || []); return }
-        if (action === "localsend") { menuActions.sendLocalSend(paths || []); return }
+        if (action.indexOf("localsend:") === 0) { root.sendLocalSend(action.substring("localsend:".length), paths || []); return }
         if (action.indexOf("taildrop:") === 0) { root.sendTaildrop(action.substring("taildrop:".length), paths && paths.length === 1 ? paths[0] : ""); return }
         if (action === "sharelink") { root.copyShareLink(paths && paths.length === 1 ? paths[0] : ""); return }
         if (action === "copypath") { wire.opener.copyText(paths && paths.length ? paths[0] : root.join(root.path, root.cursorRow.n)); return }
@@ -610,12 +611,14 @@ FocusScope {
         selectionIdentity: root.menuSelectionIdentity
         clipboardAvailable: root.clipboard.paths.length > 0
         // MenuAdditions rule 2: the scripts directory is read when a menu opens and never watched.
-        onSnapshotRequested: { menuActions.snapshot(); Flea.Scripts.refresh() }
+        // Directive 71: and the devices are asked for then too, the way Taildrop asks for its peers.
+        onSnapshotRequested: { menuActions.snapshot(); Flea.Scripts.refresh(); menuActions.localSend.refresh(menu.localSend.installed) }
         onRefused: function(reason) { root.message(reason, true) }
         rowIsArchive: root.cursorRow !== null && !root.cursorRow.d && Archive.isArchive(root.cursorRow.n)
         rowIsImage: root.cursorRow !== null && root.cursorRow.i === "image-x-generic"
         dropboxInstalled: !root.backend.providers.dropbox || root.backend.providers.dropbox.installed !== false
-        localSendInstalled: (root.backend.providers.localsend || {}).installed === true
+        localSend: ({ installed: (root.backend.providers.localsend || {}).installed === true, checking: menuActions.localSend.checking,
+                      peers: (root.cursorRow && !root.cursorRow.d) ? menuActions.localSend.peers : [] })
         dropboxPath: root.dropboxService && root.dropboxService.dropboxReady ? root.dropboxService.dropboxPath : ""
         dropboxReason: root.dropboxService ? root.dropboxService.dropboxReason : "Dropbox service unavailable"
         rowInDropbox: root.dropboxService && root.cursorRow
@@ -651,6 +654,8 @@ FocusScope {
         wire.shareLink.copy(path)
     }
     function sendTaildrop(peerId, path) { Ops.sendTaildrop(root, wire.taildrop, peerId, path) }
+    // Directive 71: the dispatch is said here and the CLI's own verdict arrives later, from the backend.
+    function sendLocalSend(peer, paths) { LocalSend.send(root, menuActions.localSend, root.backend.providers.localsend, peer, paths) }
 
     // The keyboard's own entrance to the row menu; the placement itself is ui/js/Menu.js's.
     function openCursorMenu() { return Menu.openAtCursor(root, menu, Theme.spacing.rowPaddingX) }

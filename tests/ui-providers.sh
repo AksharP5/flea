@@ -158,7 +158,7 @@ providers_fixture() {
         for file in "$part"/*; do
             [[ -f "$file" && -x "$file" ]] || continue
             name=${file##*/}
-            case "$name" in tailscale|omarchy-tailscale-send|dropbox-cli|wl-copy|localsend) continue ;; esac
+            case "$name" in tailscale|omarchy-tailscale-send|dropbox-cli|wl-copy|localsend-cli) continue ;; esac
             [[ ! -e "$menu_box/bin/$name" ]] || continue
             menus_guard "$menu_box/bin/$name"
             ln -s -- "$file" "$menu_box/bin/$name" || fail "providers: cannot retain required command $name"
@@ -193,14 +193,24 @@ case "$name:$#:${1:-}:${2:-}" in
         response=sharelink
         ;;
     wl-copy:1:https://fixture.invalid/share:) response=wl-copy ;;
-    localsend:*)
-        # MenuAdditions rule 1: the app is handed the paths themselves, which is what a real
-        # localsend 1.18.2 on this box did when it opened with the file staged in its Selection.
-        [[ $# -ge 1 ]] || exit 95
-        for argument in "$@"; do
-            guard "$argument"
-            [[ -f "$argument" && ! -L "$argument" ]] || exit 94
+    localsend-cli:*)
+        # Directive 71: the real CLI is a full-screen program that draws what it discovered and takes
+        # Enter, so the double draws one device and answers the same key. Its arguments are the port
+        # Flea gives every run and one -f per path, each of which has to be a file inside this box.
+        [[ "${1:-}" == --port && -n "${2:-}" ]] || exit 95
+        shift 2
+        while [[ $# -gt 0 ]]; do
+            [[ "$1" == -f && -n "${2:-}" ]] || exit 95
+            guard "$2"
+            [[ -f "$2" && ! -L "$2" ]] || exit 94
+            shift 2
         done
+        printf '┌Devices──────────┐\r\n│Paired│\r\n│  (none)│\r\n│Discovered│\r\n│  [1] Fixture Phone (10.0.0.9)│\r\n└─────────────────┘\r\n'
+        # Enter is the send, and the real CLI ends its own run when the transfer does.
+        IFS= read -r -n 1 -s key || exit 97
+        [[ "$key" == "" || "$key" == $'\r' ]] || exit 98
+        printf 'sent\r\n'
+        exit 0
         ;;
     *) printf 'REFUSED: provider fixture received unexpected arguments: %s\n' "$name" >&2; exit 95 ;;
 esac
@@ -246,7 +256,7 @@ PY_SOCKET
 fi
 SH
     chmod 700 "$menu_box/doubles/provider" || fail 'providers: cannot make dispatcher executable'
-    for name in tailscale omarchy-tailscale-send dropbox-cli wl-copy localsend; do
+    for name in tailscale omarchy-tailscale-send dropbox-cli wl-copy localsend-cli; do
         menus_guard "$menu_box/doubles/$name"
         cp "$menu_box/doubles/provider" "$menu_box/doubles/$name" || fail "providers: double copy failed: $name"
         menus_guard "$menu_box/absent/$name"
@@ -404,12 +414,12 @@ providers_dropbox_move_checks() {
     menus_shot providers-dropbox-undone
 }
 
-# MenuAdditions rule 1 (PR 82, zicochaos): the row is present only while a localsend binary answers
-# on PATH, it hands the app the selected paths themselves, and Flea's own sentence is the dispatch,
-# because LocalSend's window is where a transfer is accepted or refused.
+# Directive 71 (PR 82, zicochaos): the row is the Taildrop row's twin. It is present only while
+# localsend-cli is on PATH, it opens a flyout of the devices that CLI discovered, and choosing one
+# hands the CLI the paths and the Enter that sends them. Nothing here ever opens the LocalSend app.
 providers_localsend_checks() {
     local before marked cursor first_before second_before
-    providers_install localsend yes
+    providers_install localsend-cli yes
     menus_visit "$menu_dir" 2
     menus_expect listInFlight '. == false' 'LocalSend listing settles before selection'
     marked=$(row_index_of a-marked.txt)
@@ -420,30 +430,30 @@ providers_localsend_checks() {
     providers_expect ".selected == [$marked, $cursor]" 'ctrl click adds the second row to the selection'
     key -M shift -k F10 -m shift >/dev/null || fail 'providers: LocalSend menu key failed'
     menus_expect menuState '.opened and .snapshotReady' 'the two-row selection opens its own menu'
-    menus_expect menuState 'any(.entries[]; .action == "localsend" and .mark == "localsend" and (.disabled | not) and (.glyph == null))' 'an installed LocalSend is a brand row and never greyed'
+    menus_expect menuState 'any(.entries[]; .action == "localsend" and .mark == "localsend" and (.disabled | not) and (.glyph == null) and (.submenu | map(.label)) == ["Fixture Phone"])' 'the row is a brand row carrying the device the CLI discovered'
     # The three brand rows in one frame, which is the board's own "beside the Tailscale and Dropbox
     # marks" proof, taken while the menu is still open rather than after the send closes it.
     menus_shot providers-localsend-menu
-    before=$(providers_calls localsend)
+    before=$(providers_calls localsend-cli)
     # Read back rather than written down: an earlier block in this case replaced the cursor file's
     # own bytes, and a send that moved either source would take the file with it.
     first_before=$(cat "$menu_dir/a-marked.txt")
     second_before=$(cat "$menu_dir/b-cursor.txt")
     providers_choose localsend
-    providers_call localsend "$(jq -cn --arg first "$menu_dir/a-marked.txt" --arg second "$menu_dir/b-cursor.txt" '[$first,$second]')" "$before"
-    menus_message 'Sending 2 items with LocalSend.' 'the dispatch is the only result Flea itself knows'
+    menus_message 'Sending 2 items to Fixture Phone with LocalSend.' 'the dispatch names the device the flyout chose'
+    menus_message 'LocalSend finished the transfer.' 'and the verdict the CLI came back with follows it'
     menus_equal 'LocalSend reads rather than moves its first source' "$first_before" "$(cat "$menu_dir/a-marked.txt")"
     menus_equal 'LocalSend reads rather than moves its second source' "$second_before" "$(cat "$menu_dir/b-cursor.txt")"
     menus_acknowledge
 
-    providers_install localsend no
-    before=$(providers_calls localsend)
+    providers_install localsend-cli no
+    before=$(providers_calls localsend-cli)
     providers_open
-    menus_expect menuState 'all(.entries[]; .action != "localsend")' 'a box with no localsend offers no row at all'
-    menus_equal 'an absent LocalSend spawns no helper' "$before" "$(providers_calls localsend)"
+    menus_expect menuState 'all(.entries[]; .action != "localsend")' 'a box with no localsend-cli offers no row at all'
+    menus_equal 'an absent LocalSend spawns no helper' "$before" "$(providers_calls localsend-cli)"
     menus_shot providers-localsend-absent
     providers_close
-    providers_install localsend yes
+    providers_install localsend-cli yes
 }
 
 case_providers() (

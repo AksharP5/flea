@@ -32,6 +32,10 @@ pub mod owner;
 pub mod peek;
 pub mod proto;
 mod providers;
+// Directive 71: the LocalSend row's peers and its send, driven against localsend-cli on a pty.
+pub mod localsend;
+// The same CLI's own drawing, read back into rows and sentences.
+pub mod localsendtext;
 pub mod permissions;
 pub mod picker;
 pub mod menu_actions;
