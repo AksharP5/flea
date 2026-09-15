@@ -130,14 +130,14 @@ Column {
       anchors.verticalCenter: parent.verticalCenter
       anchors.leftMargin: Style.spacing.rowPaddingX
       anchors.rightMargin: Style.spacing.rowPaddingX
-      spacing: Style.spacing.labelGap
+      spacing: Style.spacing.rowGap
 
       // Rules 3 and 4: one slot, because a row cannot say both what it is and whether it is taken.
       Item {
         id: slot
         Layout.alignment: Qt.AlignVCenter
-        implicitWidth: row.card.markSize
-        implicitHeight: row.card.markSize
+        implicitWidth: row.card.slotSize
+        implicitHeight: row.card.slotSize
         // Rule 3: the box is the pointer's way to mark, so it is there whenever the row is under the
         // pointer and whenever anything is marked; otherwise the slot says what kind the row is.
         readonly property bool choosing: row.card.chosenCount > 0 || row.card.hoveredIndex === row.index
@@ -149,8 +149,8 @@ Column {
           source: row.thumb.length > 0 ? "file://" + row.thumb : ""
           // Sized on purpose, the way ui/Row.qml sizes it: the decode is capped to the slot
           // it is drawn in rather than the cache file's own 256.
-          sourceSize.width: row.card.markSize * Screen.devicePixelRatio
-          sourceSize.height: row.card.markSize * Screen.devicePixelRatio
+          sourceSize.width: row.card.slotSize * Screen.devicePixelRatio
+          sourceSize.height: row.card.slotSize * Screen.devicePixelRatio
           fillMode: Image.PreserveAspectFit
           // A synchronous decode would land on the bar's own frame.
           asynchronous: true

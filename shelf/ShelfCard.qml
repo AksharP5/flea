@@ -287,7 +287,10 @@ Item {
   // height stops where the shell's own keyboard panels stop.
   readonly property real cardWidth: Style.space(380)
   readonly property real cardCap: Style.space(560)
-  readonly property real markSize: Style.font.icon
+  // Directive 68 as amended: the row's leading slot is ui/Row.qml's, in the shell's own tokens, so a
+  // thumbnail, a kind mark and a checkbox all sit one distance from the name. Flea's slot is its row's
+  // line box, its bodySmall by its own 1.8 ratio, and its inset and gap are rowPaddingX and rowGap.
+  readonly property real slotSize: Math.round(Style.font.bodySmall * 1.8)
   // Actions rule 3: Send is absent entirely on a box with no Tailscale, not greyed and not empty.
   property bool sendable: true
   readonly property var actions: [
