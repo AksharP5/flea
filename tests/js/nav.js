@@ -10,6 +10,8 @@ function pane() {
         listInFlight: false,
         listedSeen: true,
         path: "/home/gm",
+        // What ui/js/Nav.js records for the listing it asks for; ui/Pane.qml dropPath reads it.
+        listingPath: "",
         total: 40,
         held: 10,
         rows: [{ n: "a" }],
@@ -124,6 +126,11 @@ function run(check) {
           fresh.trashArmedAt + "|" + fresh.cursorIndex + "|" + fresh.cleared, "0|0|1")
     check("and asks the backend for the directory it was given",
           fresh.sent.join(","), "list /home/gm/Work,fsinfo")
+    // A drop taken while the reply is still out lands in the directory asked for and not the one
+    // being left, so the request is recorded; the stub above answers at once, which the real
+    // backend does not, and ui/Pane.qml dropPath reads this only while the listing is in flight.
+    check("and records the directory it asked for, which is where a drop now lands",
+          fresh.listingPath, "/home/gm/Work")
     // The Locked state carries a mode string, so the reset that forgets the state must forget the
     // mode with it: a new directory drawn under the last one's permissions would be a false claim.
     check("and forgets the mode the last denial drew", fresh.lockedMode, 0)
@@ -136,8 +143,11 @@ function run(check) {
     // for, and nothing may be forgotten on a navigation that was refused.
     var busy = pane()
     busy.listInFlight = true
+    busy.listingPath = "/home/gm/Music"
     Nav.openWithoutHistory(busy, "/home/gm/Work")
     check("a refused navigation sends nothing", busy.sent.length, 0)
+    check("and leaves the listing in flight owning the path a drop would land in",
+          busy.listingPath, "/home/gm/Music")
     check("and says so", busy.said.join(""), "A directory is already loading.")
     check("and leaves the filter standing, because the listing did not change", busy.filterQuery, "scr")
     check("and leaves the cursor where it was", busy.cursorIndex, 7)

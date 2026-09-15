@@ -80,7 +80,10 @@ function openWithoutHistory(pane, newPath) {
     pane.listedSeen = false
     // The path is not written here. A refused listing never answers a listed line, so leaving the
     // pane's own path alone is what keeps a refused hop from moving the breadcrumb onto a directory
-    // nobody could read; ui/PaneWire.qml onListed takes it from the answer instead.
+    // nobody could read; ui/PaneWire.qml onListed takes it from the answer instead. The directory
+    // asked for is recorded, because a drop landing while the reply is out means that one and not
+    // the directory being left; ui/Pane.qml dropPath reads it and only while this listing is out.
+    pane.listingPath = newPath
     pane.total = 0
     pane.held = 0
     pane.rows = []

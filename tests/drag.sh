@@ -366,9 +366,9 @@ check "a drag through the open panel moves nothing" \
       "$([ -e "$HOMEDIR/aaa/s1.txt" ] && echo moved || echo clean)" "clean"
 check "and the file the pointer began on is where it was" \
       "$([ -e "$HOMEDIR/s1.txt" ] && echo still-there || echo gone)" "still-there"
-check "the panel is still the surface that has the pointer" "$(ipc settingsOpen)" "true"
-native_key -k Escape
-expect_ipc settingsOpen false
+# The release lands on the panel's own ground, which is a click outside the card, so the panel takes
+# the gesture and closes on it. Measured: the listing behind it never saw a press at all.
+check "the gesture belonged to the panel, which closed on the release" "$(ipc settingsOpen)" "false"
 owned_path "$HOMEDIR/s1.txt"; rm -f "$HOMEDIR/s1.txt"
 expect_ipc total "$r0_before"
 

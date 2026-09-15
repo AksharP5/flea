@@ -30,7 +30,7 @@ Item {
         enabled: root.pane !== null && !root.pane.trash.opened && root.pane.searchMode === ""
                  && (root.pane.viewMode === "list" || root.pane.viewMode === "grid")
         pane: root.pane
-        dest: root.pane ? root.pane.path : ""
+        dest: root.pane ? root.pane.dropPath : ""
         // Unknown until the listed reply lands, because dirDev is still the directory being left.
         destDev: root.pane && root.pane.backend && !root.pane.listInFlight ? root.pane.backend.dirDev : 0
     }

@@ -85,7 +85,10 @@ Item {
                     anchors.fill: parent
                     pane: root.pane
                     switchesOnHover: true
-                    dest: Tabs.pathAt(root.tabs, root.currentIndex, tab.index, root.path)
+                    // The pane's drop path, not its drawn one: a tab selected by the hover switch is
+                    // current before its listing lands, and until then pane.path is the tab left behind.
+                    dest: Tabs.pathAt(root.tabs, root.currentIndex, tab.index,
+                                      root.pane ? root.pane.dropPath : root.path)
                     // Unknown while the listed reply is still out, because dirDev is then the directory a hover switch just left; unknown makes verbFor copy, never a move that turns into a cross-device delete.
                     destDev: Tabs.devAt(root.tabs, root.currentIndex, tab.index,
                                         root.pane && root.pane.backend && !root.pane.listInFlight ? root.pane.backend.dirDev : 0)

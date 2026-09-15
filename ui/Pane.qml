@@ -25,6 +25,8 @@ FocusScope {
     property string pendingSelect: ""
     // Set with pendingSelect by a right click on a peeked column row: the menu opens on the row once it is the cursor.
     property bool pendingMenu: false
+    // The directory the listing in flight asked for, which is not pane.path until the reply lands.
+    property string listingPath: ""
     property int total: 0
     property int cursorIndex: 0
     property string listingState: "loading"
@@ -280,6 +282,12 @@ FocusScope {
         ViewState.changeKey("hidden", root.showHidden)
         root.open(root.path)
     }
+
+    // Where a drop on this pane lands. While a listing is out the pane's own path is still the
+    // directory it is leaving, so a drop taken in that window landed in the wrong one: measured by
+    // tests/drag.sh R7, where a drop on a tab whose listing was still out copied into the source.
+    readonly property string dropPath: root.listInFlight && root.listingPath.length > 0
+                                       ? root.listingPath : root.path
 
     function rowFor(index) {
         var offset = index - root.held
