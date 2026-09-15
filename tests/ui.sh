@@ -1862,9 +1862,12 @@ EDIT
     wait_listing 3
     drew=$(ipc viewMode)
     [[ "$drew" == "list" ]] || fail "viewrestart: a stored word this build cannot draw opened on '$drew', not the list"
+    # The reader's own failure is its own sentence, and the case runs under errexit, so the pipeline
+    # answers rather than aborting: a missing file and a file naming no view are different faults.
+    [[ -s "$stored" ]] || fail "viewrestart: $stored is not there to read, so what the settle wrote cannot be judged"
     # Sample input, the one key this reads out of the state file: {"keys":"default","view":"list"}
-    stored_view=$(grep -o '"view": *"[^"]*"' "$stored" | cut -d'"' -f4)
-    [[ -n "$stored_view" ]] || fail "viewrestart: $stored answered no view key, so what the settle wrote cannot be read"
+    stored_view=$(grep -o '"view": *"[^"]*"' "$stored" | cut -d'"' -f4) || stored_view=""
+    [[ -n "$stored_view" ]] || fail "viewrestart: $stored names no view key at all"
     [[ "$stored_view" == "list" ]] || fail "viewrestart: the settle left '$stored_view' in the state file, not the list the pane drew"
     kill_flea
 }
