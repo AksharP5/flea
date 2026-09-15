@@ -132,12 +132,11 @@ function run(check) {
     check("left still steps a grid tile", Focus.lookup(left, pane(closed(), "grid")), "cursorLeft")
     check("right still steps a grid tile", Focus.lookup(right, pane(closed(), "grid")), "cursorRight")
     // Issue 114, muellan: the letters the presets spell the arrows with mean the arrows in the grid.
-    var hKey = key(0, "h", none)
-    var lKey = key(0, "l", none)
+    var hKey = key(Qt.Key_H, "h", none)
+    var lKey = key(Qt.Key_L, "l", none)
     check("h steps a grid tile rather than climbing", Focus.lookup(hKey, pane(closed(), "grid")), "cursorLeft")
     check("l steps a grid tile rather than browsing in", Focus.lookup(lKey, pane(closed(), "grid")), "cursorRight")
-    // Only h is read back in the list here: l's own answer there depends on the row under the cursor,
-    // which the stub has none of, and the pair's list behaviour is covered by the cases above.
+    // Only h is read back in the list: l's answer there depends on the row under the cursor.
     check("and in the list h is still the tree's own", Focus.lookup(hKey, pane(closed())), "parent")
 
     // Nothing in keys.toml is bound ahead of its feature now: lookup hands both actions through

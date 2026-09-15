@@ -41,6 +41,7 @@ Item {
     implicitWidth: Math.min(parent.width / 3, Theme.space(172))
     readonly property alias focusItem: rail
     property bool awaitingNetwork: false
+    property string awaitingDevice: ""
 
     Rectangle {
         anchors.fill: parent
@@ -100,14 +101,16 @@ Item {
         if (!entry) return
         if (entry.error) { root.picker.say(entry.error, true); return }
         root.awaitingNetwork = false
-        // The three groups the rail draws below the places, routed the way ui/Sidebar.qml routes
-        // them: a phone mounts through the share leg, a volume mounts through its own.
+        // The three groups below the places, routed the way ui/Sidebar.qml routes them.
         if (entry.group === "device" && entry.kind === "phone") {
             root.awaitingNetwork = true
             network.openShare(entry.uri, entry.mounted, entry.label)
             return
         }
         if (entry.group === "device") {
+            // A mount takes seconds and can time out, so the row the chooser is waiting on is
+            // remembered: an open that lands after the dialog moved on is not this dialog's answer.
+            root.awaitingDevice = entry.device
             devices.activate(index - root.placeEntries.length - network.entries.length)
             return
         }
@@ -135,8 +138,10 @@ Item {
     }
     Connections {
         target: root.picker
-        function onPathChanged() { root.awaitingNetwork = false }
-        function onBackendUnavailableChanged() { if (root.picker.backendUnavailable) root.awaitingNetwork = false }
+        function onPathChanged() { root.awaitingNetwork = false; root.awaitingDevice = "" }
+        function onBackendUnavailableChanged() {
+            if (root.picker.backendUnavailable) { root.awaitingNetwork = false; root.awaitingDevice = "" }
+        }
     }
     function controls() {
         var out = []
@@ -163,7 +168,7 @@ Item {
 
     Flea.DeviceMounts {
         id: devices
-        onOpened: function (path) { root.chosen(path) }
+        onOpened: function (path) { if (root.awaitingDevice.length > 0) { root.awaitingDevice = ""; root.chosen(path) } }
         onMessage: function (text, error) { root.picker.say(text, error) }
     }
 

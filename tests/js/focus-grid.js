@@ -31,18 +31,20 @@ function run(check) {
         check("grid visual neighbour from " + move[2] + " with " + move[1], gridPane.cursorIndex, move[3])
     }
     // The letters clamp at the row's edge exactly as the arrows do, which is the whole of issue 114.
-    gridPane.cursorIndex = 3
-    Grid.arrow(key(0, "h", none), "cursorLeft", gridPane)
-    check("h at the start of a tile row stays on it", gridPane.cursorIndex, 3)
-    gridPane.cursorIndex = 4
-    Grid.arrow(key(0, "h", none), "cursorLeft", gridPane)
-    check("h inside a tile row steps one tile left", gridPane.cursorIndex, 3)
-    gridPane.cursorIndex = 5
-    Grid.arrow(key(0, "l", none), "cursorRight", gridPane)
-    check("l at the end of a tile row stays on it", gridPane.cursorIndex, 5)
-    gridPane.cursorIndex = 4
-    Grid.arrow(key(0, "l", none), "cursorRight", gridPane)
-    check("l inside a tile row steps one tile right", gridPane.cursorIndex, 5)
+    // A real press carries both the code and the text, so these do too, and each one asserts that
+    // the grid took the key as well as where it left the cursor: a refusal moves nothing either.
+    var hPress = key(Qt.Key_H, "h", none)
+    var lPress = key(Qt.Key_L, "l", none)
+    for (var walk of [
+        [hPress, "cursorLeft", 3, 3], [hPress, "cursorLeft", 4, 3],
+        [lPress, "cursorRight", 5, 5], [lPress, "cursorRight", 4, 5]
+    ]) {
+        gridPane.cursorIndex = walk[2]
+        check("the grid takes " + walk[0].text + " from " + walk[2],
+              Grid.arrow(walk[0], walk[1], gridPane), true)
+        check("and " + walk[0].text + " from " + walk[2] + " leaves the cursor on " + walk[3],
+              gridPane.cursorIndex, walk[3])
+    }
 
     gridPane.cursorStride = 2
     gridPane.cursorIndex = 3

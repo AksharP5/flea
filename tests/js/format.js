@@ -86,13 +86,18 @@ function run(check) {
     check("mode 644 is not executable", Format.isExecutable(33188), false)
     check("a vanished row is not executable", Format.isExecutable(0), false)
 
-    // Issue 67, jesedv: the yanked folder path is quoted when a shell would otherwise split it.
-    check("a path with no whitespace is handed over as it is",
-          Format.shellQuoted("/home/gm/Work"), "/home/gm/Work")
+    // Issue 67, jesedv: the yanked folder path is quoted unless a shell would leave every character
+    // of it alone, and the quoting is the one that holds for every other character.
+    check("a path a shell reads as one word is handed over as it is",
+          Format.shellQuoted("/home/gm/Work-2.0_final~"), "/home/gm/Work-2.0_final~")
     check("a path holding a space is quoted whole",
-          Format.shellQuoted("/home/gm/directory two"), '"/home/gm/directory two"')
-    check("a tab counts as whitespace too",
-          Format.shellQuoted("/home/gm/one\ttwo"), '"/home/gm/one\ttwo"')
-    check("and the characters a shell still reads inside the quotes are escaped",
-          Format.shellQuoted('/home/gm/a "$x" `b` \\c d'), '"/home/gm/a \\"\\$x\\" \\`b\\` \\\\c d"')
+          Format.shellQuoted("/home/gm/directory two"), "'/home/gm/directory two'")
+    check("a tab is quoted the same way", Format.shellQuoted("/home/gm/one\ttwo"), "'/home/gm/one\ttwo'")
+    for (var dangerous of ["$HOME", "`id`", "a;b", "a&b", "a|b", "a*b", "a?b", "a(b)", "a\nb", "a!b", 'a"b']) {
+        var quoted = Format.shellQuoted("/home/gm/" + dangerous)
+        check("a path holding " + JSON.stringify(dangerous) + " is quoted",
+              quoted.charAt(0) + quoted.charAt(quoted.length - 1), "''")
+    }
+    check("and a quote inside the path closes and reopens around itself",
+          Format.shellQuoted("/home/gm/a'b"), "'/home/gm/a'\\''b'")
 }

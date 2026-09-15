@@ -133,12 +133,12 @@ function sampleRate(hz) {
     return (khz === Math.round(khz) ? khz : khz.toFixed(1)) + " kHz"
 }
 
-// Issue 67, jesedv: a yanked path holding whitespace is quoted, because a shell is where it is
-// pasted, and the four characters a shell still expands inside double quotes are escaped with it.
+// Issue 67, jesedv: a yanked path is quoted unless a shell reads every character of it as itself,
+// in the one quoting that holds for all the others, because a shell is where this gets pasted.
 function shellQuoted(path) {
     var text = String(path)
-    if (!/[ \t]/.test(text)) {
+    if (/^[A-Za-z0-9_@%+=:,.\/~-]+$/.test(text)) {
         return text
     }
-    return '"' + text.replace(/(["\\$`])/g, "\\$1") + '"'
+    return "'" + text.split("'").join("'\\''") + "'"
 }
