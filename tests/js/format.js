@@ -85,4 +85,14 @@ function run(check) {
     check("mode 755 is executable", Format.isExecutable(33261), true)
     check("mode 644 is not executable", Format.isExecutable(33188), false)
     check("a vanished row is not executable", Format.isExecutable(0), false)
+
+    // Issue 67, jesedv: the yanked folder path is quoted when a shell would otherwise split it.
+    check("a path with no whitespace is handed over as it is",
+          Format.shellQuoted("/home/gm/Work"), "/home/gm/Work")
+    check("a path holding a space is quoted whole",
+          Format.shellQuoted("/home/gm/directory two"), '"/home/gm/directory two"')
+    check("a tab counts as whitespace too",
+          Format.shellQuoted("/home/gm/one\ttwo"), '"/home/gm/one\ttwo"')
+    check("and the characters a shell still reads inside the quotes are escaped",
+          Format.shellQuoted('/home/gm/a "$x" `b` \\c d'), '"/home/gm/a \\"\\$x\\" \\`b\\` \\\\c d"')
 }

@@ -29,8 +29,9 @@ Item {
         return box.height > 0 ? box.width / box.height : 1
     }
 
-    // A new document starts at its first page, whatever page the last one was left on.
-    onPathChanged: root.page = 0
+    // A new document starts at its first page, whatever page the last one was left on, and its own
+    // opening waits for the cursor to settle, which is issue 117 below.
+    onPathChanged: { root.page = 0; pdfSettle.restart() }
     onPageCountChanged: if (root.pageCount > 0) root.page = Math.min(root.page, root.pageCount - 1)
 
     function turn(delta) {
@@ -39,11 +40,23 @@ Item {
         root.page = Math.max(0, Math.min(root.pageCount - 1, root.page + delta))
     }
 
+    // Issue 117, vianney-g: a source change while an async page render is in flight can destroy the
+    // carrier device under Qt's own reader thread, which aborts the process, so a walk through a
+    // folder of PDFs settles before a document is opened rather than opening one per cursor step.
+    property string opened: ""
+    readonly property int settleMs: 120
+    onActiveChanged: pdfSettle.restart()
+    Timer {
+        id: pdfSettle
+        interval: root.settleMs
+        onTriggered: root.opened = root.active ? root.path : ""
+    }
+
     PdfDocument {
         id: doc
         // Format.fileUri, not a concatenation: a path can carry a # or a ? and either one truncates
         // a hand-built URI at that character. A document is only opened while the column shows one.
-        source: root.active && root.path.length > 0 ? Format.fileUri(root.path) : ""
+        source: root.opened.length > 0 ? Format.fileUri(root.opened) : ""
     }
 
     // The page's own paper under the raster: on this box a rendered page can arrive with text drawn

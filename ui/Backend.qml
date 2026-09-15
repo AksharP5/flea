@@ -112,17 +112,17 @@ Item {
         child.write(line)
     }
 
-    function list(path, first, hidden) {
+    // One composition, two senders: the chooser adds the caller's filter to it and counts its own
+    // replies, and issue 134 was the chooser building this by hand without the saved order in it.
+    // A fresh scan is always name ascending, so a refresh after a write puts the header's mark back.
+    function listRequest(path, first, hidden) {
         root.listRequests += 1
-        // A fresh scan is always name ascending, so every refresh after a write operation puts the
-        // header's mark back rather than leaving it describing the order before the refresh.
         if (!root.preserveSort || !root.hasListed) root.resetSort()
         root.hasListed = true
-        root.send({ c: "list", path: path, first: first, hidden: hidden,
-                    by: root.sortBy, desc: root.sortDesc,
-                    foldersFirst: ViewState.state.foldersFirst !== false,
-                    groupByKind: ViewState.state.groupByKind === true })
+        return { c: "list", path: path, first: first, hidden: hidden, by: root.sortBy, desc: root.sortDesc,
+                 foldersFirst: ViewState.state.foldersFirst !== false, groupByKind: ViewState.state.groupByKind === true }
     }
+    function list(path, first, hidden) { root.send(root.listRequest(path, first, hidden)) }
 
     // A listing built from the paths named here, in that order and never sorted; see
     // docs/protocol.md "listpaths". The header's sort mark is left where the caller set it, because

@@ -1,6 +1,7 @@
 .pragma library
 .import "Eject.js" as Eject
 .import "Filter.js" as Filter
+.import "Grid.js" as Grid
 .import "Format.js" as Format
 .import "Keymap.js" as Keymap
 .import "Mounts.js" as Mounts
@@ -32,9 +33,11 @@ function lookup(event, root) {
     var context = root.preview.active ? (root.preview.isPdf ? "pdf" : root.preview.isMedia ? "media" : "preview")
                   : shareBrowserHere(root) ? "menu" : root.focusView === RAIL ? "rail" : "listing"
     // Grid arrows address visual neighbours even when the preset uses them to open folders in List.
+    // Issue 114, muellan: h and l are the arrows spelled as letters, so in the grid they mean what
+    // the arrows mean and not the tree's own pair, which is what the eye reads off a row of tiles.
     if (context === "listing" && root.viewMode === "grid" && event.modifiers === Qt.NoModifier) {
-        if (event.key === Qt.Key_Left) return "cursorLeft"
-        if (event.key === Qt.Key_Right) return "cursorRight"
+        if (Grid.sideways(event) < 0) return "cursorLeft"
+        if (Grid.sideways(event) > 0) return "cursorRight"
     }
     var action = Keymap.lookup(event.key, event.text, event.modifiers, context)
     // The share listing borrows the menu context for j/k/enter, but it has no submenu to step into.
@@ -76,7 +79,7 @@ function lookup(event, root) {
 // Takes the Pane root because every case is a method call or a property read on it.
 function act(action, root, menuId, paths) {
     switch (action) {
-    // Letter bindings follow item order; physical grid arrows use gridArrow's visual neighbours.
+    // Letter bindings follow item order; the grid's own arrows take ui/js/Grid.js's visual cells.
     case "cursorDown": step(root, 1); return
     case "cursorUp": step(root, -1); return
     case "cursorLeft": step(root, -1); return
@@ -166,25 +169,6 @@ function act(action, root, menuId, paths) {
     // a sentence any more: tabs run here, and handleKey opens the path bar before the views see it.
     if (action.indexOf("tab") === 0) { Tabs.act(action, root); return }
     root.message(action + " is not built yet.", false)
-}
-
-// Arrows require an existing visual cell, even when item-order navigation wraps at the ends.
-function gridArrow(event, action, root) {
-    if (root.viewMode !== "grid") return false
-    var columns = root.cursorStride
-    var delta = event.key === Qt.Key_Down && (action === "cursorDown" || action === "extendDown") ? columns
-              : event.key === Qt.Key_Up && (action === "cursorUp" || action === "extendUp") ? -columns
-              : event.key === Qt.Key_Left && action === "cursorLeft" ? -1
-              : event.key === Qt.Key_Right && action === "cursorRight" ? 1 : 0
-    if (!delta) return false
-    var index = Filter.viewOf(root.shown, root.cursorIndex)
-    var nextIndex = index + delta
-    if (nextIndex < 0 || nextIndex >= root.shownTotal
-            || (event.key === Qt.Key_Left && index % columns === 0)
-            || (event.key === Qt.Key_Right && nextIndex % columns === 0)) return true
-    if (action === "extendDown" || action === "extendUp") root.extendSelection(delta)
-    else Filter.moveCursor(root, delta)
-    return true
 }
 
 // Only a step from an end wraps; page overshoots and selection extensions retain their clamps.
@@ -322,7 +306,7 @@ function handleKey(event, root, sidebar) {
         RailKeys.act(action, root, sidebar)
         return true
     }
-    if (gridArrow(event, action, root)) return true
+    if (Grid.arrow(event, action, root)) return true
     if (action.length > 0 || Keymap.lookup(event.key, event.text, event.modifiers).length > 0) {
         if (action.length > 0) root.act(action)
         return true

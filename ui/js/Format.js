@@ -132,3 +132,13 @@ function sampleRate(hz) {
     // A whole number of kilohertz reads without a decimal, so 48000 is "48 kHz" and not "48.0 kHz".
     return (khz === Math.round(khz) ? khz : khz.toFixed(1)) + " kHz"
 }
+
+// Issue 67, jesedv: a yanked path holding whitespace is quoted, because a shell is where it is
+// pasted, and the four characters a shell still expands inside double quotes are escaped with it.
+function shellQuoted(path) {
+    var text = String(path)
+    if (!/[ \t]/.test(text)) {
+        return text
+    }
+    return '"' + text.replace(/(["\\$`])/g, "\\$1") + '"'
+}

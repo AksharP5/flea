@@ -111,7 +111,11 @@ pub fn changed(state: &Json, operation: &Json) -> Result<Json, String> {
                     "favorite path must be absolute, ~/ relative, or a supported URI".into(),
                 );
             }
-            next.push(record.clone());
+            // Issue 138, AksharP5, whose PR 139 diagnosed it: a second Add on a folder already saved
+            // left two rows in the rail, so a path the list holds is kept once and the write stands.
+            if !next.iter().any(|held| same_place(held, path)) {
+                next.push(record.clone());
+            }
         }
         Some(action @ ("remove" | "move" | "rename")) => {
             if operation.get("expected").and_then(Json::as_array) != Some(current) {
@@ -181,6 +185,23 @@ fn index(operation: &Json, key: &str, len: usize) -> Result<usize, String> {
     Ok(index)
 }
 
+// The same place twice, whatever the trailing slash: "~/Work" and "~/Work/" name one directory, and
+// the rail draws one row for it either way.
+fn same_place(held: &Json, path: &str) -> bool {
+    match held.get("path").and_then(Json::as_str) {
+        Some(saved) => trimmed(saved) == trimmed(path),
+        None => false,
+    }
+}
+
+// The root is the one path whose slash is the path, so it is never trimmed away.
+fn trimmed(path: &str) -> &str {
+    match path.strip_suffix('/') {
+        Some("") | None => path,
+        Some(rest) => rest,
+    }
+}
+
 fn valid_path(path: &str) -> bool {
     if path.chars().any(char::is_control) {
         return false;
@@ -213,12 +234,18 @@ mod tests {
         let store = uistore::Store::at(&sandbox.dir("state"), &sandbox.dir("config"));
         std::thread::scope(|scope| {
             let mut jobs = Vec::new();
-            for _ in 0..4 {
-                jobs.push(scope.spawn(|| {
+            // Four different places, because issue 138's rule is that one place is one row: what
+            // this proves is that four writes racing the lock all land, not that a place can repeat.
+            for name in ["a", "b", "c", "d"] {
+                let store = &store;
+                jobs.push(scope.spawn(move || {
                     store.transform(|state| {
                         changed(
                             state,
-                            &parse(r#"{"op":"add","record":{"label":"A","path":"/a"}}"#),
+                            &parse(&format!(
+                                r#"{{"op":"add","record":{{"label":"{0}","path":"/{0}"}}}}"#,
+                                name
+                            )),
                         )
                     })
                 }));
@@ -241,27 +268,39 @@ mod tests {
         );
     }
 
+    // Issue 138, AksharP5: adding a place the list already holds leaves one row, and the rest of a
+    // hand-edited file, invalid rows included, is carried through untouched.
     #[test]
-    fn append_preserves_duplicates_invalid_records_and_unrelated_state() {
+    fn a_place_already_saved_is_kept_once_and_the_rest_of_the_file_stands() {
         let state = uistate::from_file(
             r#"{"hidden":true,"places":{"favourites":[{"label":"A","path":"/a"},17,{"label":"","path":"bad"}]}}"#,
         );
-        let next = changed(
+        for operation in [
+            r#"{"op":"add","record":{"label":"A","path":"/a"}}"#,
+            r#"{"op":"add","record":{"label":"Again","path":"/a/"}}"#,
+        ] {
+            let next = changed(&state, &parse(operation)).unwrap();
+            let rows = next
+                .get("places")
+                .unwrap()
+                .get("favourites")
+                .unwrap()
+                .as_array()
+                .unwrap();
+            assert_eq!(rows.len(), 3, "{} added a second row for one place", operation);
+            assert_eq!(rows[1], Json::Num("17".into()));
+            assert_eq!(next.get("hidden"), Some(&Json::Bool(true)));
+        }
+        let added = changed(
             &state,
-            &parse(r#"{"op":"add","record":{"label":"A","path":"/a"}}"#),
+            &parse(r#"{"op":"add","record":{"label":"B","path":"/b"}}"#),
         )
         .unwrap();
-        let rows = next
-            .get("places")
-            .unwrap()
-            .get("favourites")
-            .unwrap()
-            .as_array()
-            .unwrap();
-        assert_eq!(rows.len(), 4);
-        assert_eq!(rows[0], rows[3]);
-        assert_eq!(rows[1], Json::Num("17".into()));
-        assert_eq!(next.get("hidden"), Some(&Json::Bool(true)));
+        assert_eq!(
+            added.get("places").unwrap().get("favourites").unwrap().as_array().unwrap().len(),
+            4,
+            "a place the list does not hold is still added"
+        );
     }
 
     #[test]

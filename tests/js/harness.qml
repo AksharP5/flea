@@ -12,6 +12,7 @@ import "filter.js" as FilterSuite
 import "filter-cursor.js" as FilterCursorSuite
 import "focus.js" as FocusSuite
 import "focus-forward.js" as FocusForwardSuite
+import "focus-grid.js" as FocusGridSuite
 import "focus-lines.js" as FocusLinesSuite
 import "focus-wrap.js" as FocusWrapSuite
 import "format.js" as FormatSuite
@@ -79,7 +80,7 @@ Item {
             ["dirsizes", DirSizesSuite], ["drag", DragSuite], ["dst", DstSuite],
             ["edmonton", DstSuite],
             ["errors", ErrorsSuite], ["facts", FactsSuite], ["filter", FilterSuite], ["filter-cursor", FilterCursorSuite],
-            ["focus", FocusSuite], ["focus-forward", FocusForwardSuite],
+            ["focus", FocusSuite], ["focus-grid", FocusGridSuite], ["focus-forward", FocusForwardSuite],
             ["focus-lines", FocusLinesSuite], ["focus-wrap", FocusWrapSuite],
             ["format", FormatSuite], ["icons", IconsSuite],
             ["keymap", KeymapSuite], ["match", MatchSuite], ["menu", MenuSuite],

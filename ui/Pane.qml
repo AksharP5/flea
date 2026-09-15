@@ -5,6 +5,7 @@ import "js/DirSizes.js" as DirSizes
 import "js/Dropbox.js" as Dropbox
 import "js/Crumbs.js" as Crumbs
 import "js/Filter.js" as Filter
+import "js/Format.js" as Format
 import "js/Focus.js" as Focus
 import "js/Marks.js" as Marks
 import "js/Menu.js" as Menu
@@ -382,7 +383,8 @@ FocusScope {
 
     function newWindow() { Quickshell.execDetached([Quickshell.env("FLEA_BIN") || "flea", root.path]) }
 
-    function copyDirPath() { wire.opener.copyText(root.path) }
+    // Quoted when it holds whitespace, because this one is pasted into a shell: see ui/js/Format.js.
+    function copyDirPath() { wire.opener.copyText(Format.shellQuoted(root.path)) }
 
     function openParent() { if (trashHost.opened) trashHost.close(); else Nav.parent(root) }
 
