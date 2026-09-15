@@ -84,19 +84,18 @@ fn run_and_settle(
             eprintln!("flea: the shelf kept its references ({})", e);
         }
     });
-    let _terminal = Terminal { tx: done_tx, held: Arc::clone(&held), id, total, moving };
+    // The guard owns the join, so the pile is settled before the message goes on every path: a
+    // JoinHandle dropped any other way only detaches its thread.
+    let _terminal = Terminal { tx: done_tx, held: Arc::clone(&held), forward: Some(forward), id, total, moving };
     run_transfer_checked(id, moving, paths, dest, cancel, mine, None, None);
-    if forward.join().is_err() {
-        eprintln!("flea: the shelf's own bookkeeping stopped before it finished");
-    }
 }
 
-// One terminal message, always. It is a guard rather than a line at the end because the engine runs
-// on this thread: a panic there would unwind straight past any send written after it, and a pane
-// that is never told a transfer ended waits on it forever.
+// A guard rather than a line at the end, because the engine runs on this thread and a panic there
+// would unwind past any send written after it, leaving the pane waiting on the transfer forever.
 struct Terminal {
     tx: Sender<OpMsg>,
     held: Arc<Mutex<Option<OpMsg>>>,
+    forward: Option<thread::JoinHandle<()>>,
     id: usize,
     total: usize,
     moving: bool,
@@ -104,12 +103,17 @@ struct Terminal {
 
 impl Drop for Terminal {
     fn drop(&mut self) {
+        // The engine's end of the channel has gone either way, so this waits only for the settle.
+        if let Some(forward) = self.forward.take() {
+            if forward.join().is_err() {
+                eprintln!("flea: the shelf's own bookkeeping stopped before it finished");
+            }
+        }
         let sent = match self.held.lock() {
             Ok(mut slot) => slot.take(),
             Err(poisoned) => poisoned.into_inner().take(),
         };
-        // The engine's own message when it sent one, and otherwise a failure for everything the
-        // drop was given, because nothing else knows what happened to it.
+        // The engine's own message, or a failure for everything the drop was given when it sent none.
         let _ = self.tx.send(sent.unwrap_or_else(|| OpMsg::TransferDone {
             id: self.id,
             ok: 0,

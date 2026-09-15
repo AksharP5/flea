@@ -34,13 +34,11 @@ QtObject {
             root.lastError = code === 0 ? "" : "The shelf could not " + root.running + " that row."
             root.running = ""
             root.pile.reload()
+            // Drained from the event loop rather than inside this handler, because the process is
+            // still running until it returns. The row stays in the queue until it starts, so a call
+            // arriving in that turn lines up behind it rather than jumping it.
             if (root.waiting.length > 0) {
-                var next = root.waiting[0]
-                root.waiting = root.waiting.slice(1)
-                // Started from the event loop rather than inside this handler, because the process
-                // is still running until it returns; the queued call keeps whatever the last one
-                // said, since a refusal nobody has read is not cleared by the request behind it.
-                Qt.callLater(function () { root.resume(next) })
+                Qt.callLater(root.drain)
             }
         }
     }
@@ -75,8 +73,8 @@ QtObject {
     }
 
     function run(args) {
-        // Anything already waiting goes first, or a call arriving in the turn between one finishing
-        // and the next starting would jump the queue and land a pin and its unpin the wrong way round.
+        // Anything already waiting goes first, or a call arriving while the queue drains would jump
+        // it and land a pin and its unpin the wrong way round.
         if (root.writer.running || root.waiting.length > 0) {
             root.waiting = root.waiting.concat([args])
             return
@@ -85,14 +83,13 @@ QtObject {
         root.start(args)
     }
 
-    // A call that arrived in the turn between the exit and this one is already running, so the
-    // queued one goes back to the front rather than writing over a live process.
-    function resume(args) {
-        if (root.writer.running) {
-            root.waiting = [args].concat(root.waiting)
+    function drain() {
+        if (root.writer.running || root.waiting.length === 0) {
             return
         }
-        root.start(args)
+        var next = root.waiting[0]
+        root.waiting = root.waiting.slice(1)
+        root.start(next)
     }
 
     function start(args) {
