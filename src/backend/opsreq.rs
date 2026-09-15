@@ -121,6 +121,9 @@ pub const INTO_ITSELF: &str = "cannot move or copy a folder into itself";
 pub const ALREADY_THERE: &str = "already in that folder";
 
 // Copy or move, one top-level item at a time, reporting each item's own terminal line as it lands.
+// The unchecked transfer, which only the tests that drive it directly call: every product path goes
+// through run_transfer_checked, which takes the selection and destination it has to re-check.
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn run_transfer(
     id: usize,
     moving: bool,
@@ -345,6 +348,8 @@ pub(crate) fn run_trash(paths: Vec<String>, tx: Sender<OpMsg>, selection: Option
     let _ = tx.send(OpMsg::Trashed { ok, failed, entry });
 }
 
+// The same for a duplicate: ui/Pane.qml's own path is run_duplicate_checked.
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn run_duplicate(path: String, tx: Sender<OpMsg>) {
     run_duplicate_checked(path, tx, None)
 }

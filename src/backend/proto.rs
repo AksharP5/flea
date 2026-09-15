@@ -9,7 +9,8 @@ pub enum Request {
     // A listing built from paths the client names, in the order it named them; the picker's Recent.
     ListPaths { paths: Vec<String>, first: usize },
     Window { start: usize, count: usize },
-    Sort { by: String, desc: bool },
+    // desc rides the list request itself, so the sort request's own copy is read by its tests alone.
+    Sort { by: String, #[cfg_attr(not(test), allow(dead_code))] desc: bool },
     Search { path: String, query: String, hidden: bool },
     // Unlike thumbcancel there is no rows form: one walk runs at a time, so a cancel can only mean that one.
     SearchCancel,

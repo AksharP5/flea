@@ -36,6 +36,9 @@ pub enum Step {
     // A rename or a move: the entry now lives at `to` and came from `from`.
     Moved { from: PathBuf, to: PathBuf, before: ItemIdentity, after: ItemIdentity },
     // This operation created `path`, so reversing it removes that path; never a path the operation only read.
+    // Undo removes what an op created; nothing in the product writes this step yet, and the tests
+    // that drive undo's own ladder are what construct it.
+    #[cfg_attr(not(test), allow(dead_code))]
     Created { path: PathBuf },
     Copied { from: PathBuf, to: PathBuf, source: ItemIdentity, created: ItemIdentity },
     // This operation made the empty directory `path`; reversing it removes it only while it is still
