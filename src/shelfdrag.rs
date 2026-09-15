@@ -105,8 +105,6 @@ fn live_drags(drags: &Json, now_ms: u64) -> Vec<Json> {
 }
 
 // The source identity the lift recorded, which is what makes a token name a file rather than a name.
-// The same file, or the drag is refused: a path that now names another inode is not what was lifted.
-// The source identity the lift recorded, which is what makes a token name a file rather than a name.
 fn entry_of(path: &str) -> Result<Json, String> {
     let full = std::path::absolute(path).map_err(|e| format!("{} could not be read ({:?})", path, e.kind()))?;
     let meta = fs::symlink_metadata(&full).map_err(|e| format!("{} could not be read ({:?})", path, e.kind()))?;

@@ -42,6 +42,8 @@ impl Summon {
         read_doc(&self.summon).get("summon").and_then(Json::as_f64).map(|n| n as u64).unwrap_or(0)
     }
 
+    // Read by this file's own tests, which write a pile file the verbs then have to survive.
+    #[cfg(test)]
     pub fn piles_file(&self) -> &Path {
         &self.piles
     }

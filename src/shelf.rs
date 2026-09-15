@@ -36,11 +36,14 @@ impl Shelf {
         }
     }
 
+    // Read by this file's own tests, which reach for the pile without going through a verb.
+    #[cfg(test)]
     pub fn pile_file(&self) -> &Path {
         &self.pile
     }
 
     // Never fails: the bar draws an empty shelf for a file that is missing or unreadable, and so does this.
+    #[cfg(test)]
     pub fn pile(&self) -> Vec<String> {
         let text = match fs::read_to_string(&self.pile) {
             Ok(text) => text,

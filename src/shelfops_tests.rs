@@ -1,5 +1,4 @@
 use super::*;
-use crate::backend::testdir::TestDir;
 
 #[test]
 fn a_peer_is_named_the_way_the_send_command_resolves_it() {

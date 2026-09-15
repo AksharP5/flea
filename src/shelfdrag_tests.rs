@@ -27,7 +27,8 @@ fn a_token_names_the_entries_and_the_intent_the_lift_fixed() {
 fn a_token_is_spent_the_first_time_it_is_redeemed() {
     let (dir, shelf) = shelf("shelfonce");
     let token = shelf.drag_begin(false, &[file(&dir, "one.txt")], 1_000).unwrap();
-    assert!(shelf.redeem(&token, 1_100).is_ok());
+    let first = shelf.redeem(&token, 1_100).expect("the first redemption");
+    assert!(!first.moving, "copy is the other half of the intent the lift fixed");
     let again = shelf.redeem(&token, 1_200);
     assert!(again.is_err(), "a replayed token finds nothing: {:?}", again.map(|r| r.paths));
 }
@@ -50,9 +51,11 @@ fn an_entry_that_is_not_the_file_it_was_is_refused() {
     let (dir, shelf) = shelf("shelfswapped");
     let one = file(&dir, "one.txt");
     let token = shelf.drag_begin(true, &[one.clone()], 1_000).unwrap();
-    // The same name, another inode: what the shelf was holding is gone and the drag is not it.
-    std::fs::remove_file(&one).unwrap();
-    std::fs::write(&one, "another file entirely").unwrap();
+    // The same name, another inode: renamed over rather than deleted and rewritten, because a
+    // freed inode is commonly handed straight back to the next file created in the same group.
+    let other = file(&dir, "other.txt");
+    std::fs::write(&other, "another file entirely").unwrap();
+    std::fs::rename(&other, &one).unwrap();
     let refused = shelf.redeem(&token, 1_100);
     assert!(refused.is_err(), "a path that now names another inode is not what was lifted");
 }
@@ -67,6 +70,9 @@ fn a_drag_of_nothing_is_refused_before_a_token_exists() {
 fn a_drag_records_the_absolute_path_the_pile_holds() {
     let (dir, shelf) = shelf("shelfrelative");
     let one = file(&dir, "one.txt");
-    let token = shelf.drag_begin(true, &[one.clone()], 1_000).unwrap();
+    // Spelled with a redundant component, which is what std::path::absolute takes back out: a token
+    // that kept the spelling it was handed would answer with a path the pile never held.
+    let spelled = format!("{}/./{}", dir.path().display(), "one.txt");
+    let token = shelf.drag_begin(true, &[spelled], 1_000).unwrap();
     assert_eq!(shelf.redeem(&token, 1_100).unwrap().paths, vec![one]);
 }

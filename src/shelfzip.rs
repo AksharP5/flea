@@ -6,9 +6,12 @@ use crate::backend::archiveops::compress;
 use crate::backend::proto::error_line;
 use crate::shelf::Shelf;
 use crate::uistore;
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 
 const DIR: &str = "omarchy/flea-shelf";
+// The mode uistore writes its own files at, because a probe is a file this process alone ever sees.
+const OWNER_ONLY_FILE: u32 = 0o600;
 
 // flea shelf zip <date> <path>...: the four become one, and the archive is on the shelf rather than
 // written to a folder the operator then has to find. A pile spans folders, which is exactly the case
@@ -23,6 +26,10 @@ pub fn zip(rest: &[String]) -> i32 {
     };
     if !date.chars().all(|c| c.is_ascii_digit() || c == '-') || date.is_empty() {
         eprintln!("flea: shelf zip takes a date, which is digits and dashes");
+        return 2;
+    }
+    if let Some(relative) = paths.iter().find(|path| !Path::new(path).is_absolute()) {
+        eprintln!("flea: shelf zip takes absolute paths, and {} is not one", relative);
         return 2;
     }
     let shelf = match Shelf::user() {
@@ -67,11 +74,13 @@ pub fn zip(rest: &[String]) -> i32 {
     if let Err(e) = compress(&Formats::probe(), &parent, &names, "zip", &staged) {
         eprintln!("flea: {}", error_line(&e));
         let _ = std::fs::remove_file(&staged);
+        let _ = std::fs::remove_file(&dest);
         return 2;
     }
     if let Err(e) = relocate(&staged, &dest) {
         eprintln!("flea: {}", e);
         let _ = std::fs::remove_file(&staged);
+        let _ = std::fs::remove_file(&dest);
         return 2;
     }
     // Rule 4: a zip replaces the ones it zipped with the one archive, so the pile says what happened.
@@ -91,42 +100,66 @@ pub fn zip(rest: &[String]) -> i32 {
     kept
 }
 
-// A rename where the two are on one filesystem, and a copy where they are not, which is the case a
-// pile gathered from /tmp or a mount produces.
 // The archive tool works inside the sources' own directory, so a pile whose only common ancestor is
 // one nobody can write in cannot be archived there, and saying which is the whole of the answer.
 fn writable(parent: &Path) -> Result<(), String> {
-    let probe = parent.join(".flea-shelf-probe");
+    let probe = parent.join(format!(".flea-shelf-probe-{}", std::process::id()));
     let _ = std::fs::remove_file(&probe);
-    std::fs::write(&probe, b"")
+    // Exclusively, the way uistore::write_new creates: a name left at this path by somebody else is
+    // refused rather than followed and truncated.
+    std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(OWNER_ONLY_FILE)
+        .open(&probe)
         .map_err(|e| format!("{} is the only directory those paths have in common, and it cannot be written in ({:?})",
                              parent.display(), e.kind()))?;
     let _ = std::fs::remove_file(&probe);
     Ok(())
 }
 
+// A rename where the two are on one filesystem, and a copy where they are not, which is the case a
+// pile gathered from /tmp or a mount produces.
 fn relocate(from: &Path, to: &Path) -> Result<(), String> {
     if std::fs::rename(from, to).is_ok() {
         return Ok(());
     }
-    std::fs::copy(from, to).map_err(|e| format!("the archive could not be put on the shelf ({:?})", e.kind()))?;
-    std::fs::remove_file(from).map_err(|e| format!("the staged archive stayed behind ({:?})", e.kind()))
+    if let Err(e) = std::fs::copy(from, to) {
+        // A failed copy leaves a partial at the destination, and that name would stay spent.
+        let _ = std::fs::remove_file(to);
+        return Err(format!("the archive could not be put on the shelf ({:?})", e.kind()));
+    }
+    if let Err(e) = std::fs::remove_file(from) {
+        eprintln!("flea: the staged archive stayed behind at {} ({:?})", from.display(), e.kind());
+    }
+    Ok(())
 }
 
 // shelf-2026-09-12.zip, and the second one that day is -2, because a name that silently replaced an
 // archive would lose a pile nobody can get back.
 fn free_name(dir: &std::path::Path, date: &str) -> Option<PathBuf> {
     let first = dir.join(format!("shelf-{}.zip", date));
-    if first.symlink_metadata().is_err() {
+    if reserve(&first) {
         return Some(first);
     }
-    for n in 2..ARCHIVES_A_DAY {
+    for n in 2..=ARCHIVES_A_DAY {
         let next = dir.join(format!("shelf-{}-{}.zip", date, n));
-        if next.symlink_metadata().is_err() {
+        if reserve(&next) {
             return Some(next);
         }
     }
     None
+}
+
+// The name is taken by creating it exclusively, so two zips of one date cannot pick the same one and
+// the second archive cannot land on the first. The caller removes it again if nothing is written.
+fn reserve(path: &Path) -> bool {
+    std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(OWNER_ONLY_FILE)
+        .open(path)
+        .is_ok()
 }
 
 // A hundred archives of one date is not a case this product has, and the alternative to a ceiling
@@ -154,9 +187,6 @@ pub fn relative_to_ancestor(paths: &[String]) -> Option<(PathBuf, Vec<String>)> 
     }
     Some((ancestor, names))
 }
-
-// flea shelf paths <path>...: newline joined absolute paths, the one thing a terminal-first operator
-// actually wants from a pile. The card puts them on the clipboard, because a clipboard is a display.
 
 #[cfg(test)]
 #[path = "shelfzip_tests.rs"]

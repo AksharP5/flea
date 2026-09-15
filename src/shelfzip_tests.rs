@@ -2,6 +2,20 @@ use super::*;
 use crate::backend::testdir::TestDir;
 
 #[test]
+fn the_writability_probe_leaves_nothing_behind_and_refuses_a_directory_that_is_not_there() {
+    let dir = TestDir::new("shelfzipwritable");
+    // A directory that exists takes the probe and gives it back; nothing is left behind.
+    writable(dir.path()).expect("a directory of this test's own is writable");
+    let left: Vec<String> = std::fs::read_dir(dir.path())
+        .unwrap()
+        .filter_map(|e| e.ok().map(|e| e.file_name().to_string_lossy().to_string()))
+        .filter(|name| !name.starts_with(".flea-test-sandbox"))
+        .collect();
+    assert!(left.is_empty(), "the probe cleans up after itself, found {:?}", left);
+    assert!(writable(&dir.path().join("no-such-directory")).is_err(), "and a directory that is not there is not writable");
+}
+
+#[test]
 fn a_pile_that_spans_folders_is_archived_from_the_deepest_directory_they_share() {
     let paths = vec![
         "/home/gm/Pictures/raw/one.jpg".to_string(),
@@ -21,17 +35,21 @@ fn the_days_second_archive_does_not_replace_the_first() {
     let dir = TestDir::new("shelfzipname");
     let first = free_name(dir.path(), "2026-09-14").expect("a first name");
     assert!(first.ends_with("shelf-2026-09-14.zip"));
+    assert!(first.symlink_metadata().is_ok(), "the name is taken by creating it, not by looking");
     std::fs::write(&first, "an archive").unwrap();
     let second = free_name(dir.path(), "2026-09-14").expect("a second name");
     assert!(second.ends_with("shelf-2026-09-14-2.zip"), "got {}", second.display());
 }
 
 #[test]
-fn the_days_hundredth_archive_is_refused() {
+fn the_cap_is_the_hundred_the_constant_names_and_the_hundred_and_first_is_refused() {
     let dir = TestDir::new("shelfzipfull");
-    for n in 0..100 {
-        let name = if n == 0 { "shelf-2026-09-14.zip".to_string() } else { format!("shelf-2026-09-14-{}.zip", n + 1) };
-        std::fs::write(dir.path().join(name), "an archive").unwrap();
+    // Ninety-nine on disk: the unsuffixed one and -2 through -99, so one name is still free.
+    std::fs::write(dir.path().join("shelf-2026-09-14.zip"), "an archive").unwrap();
+    for n in 2..ARCHIVES_A_DAY {
+        std::fs::write(dir.path().join(format!("shelf-2026-09-14-{}.zip", n)), "an archive").unwrap();
     }
-    assert!(free_name(dir.path(), "2026-09-14").is_none());
+    let last = free_name(dir.path(), "2026-09-14").expect("the hundredth name");
+    assert!(last.ends_with("shelf-2026-09-14-100.zip"), "got {}", last.display());
+    assert!(free_name(dir.path(), "2026-09-14").is_none(), "the hundred and first is refused");
 }
