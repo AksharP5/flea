@@ -39,14 +39,30 @@ Column {
     fontFamily: row.card.fontFamily
   }
 
-  CursorSurface {
+  // Directive 68: the lift is Flea's own list row rather than the OEM's rounded surface, square and
+  // at the row's full width, so the card reads as the app; ui/Row.qml is where both fills come from.
+  Item {
+    id: lift
     width: parent.width
-    // The paint comes from the cursor, so one row is lit whichever hand moved it.
-    hasCursor: row.card.cursorIndex === row.index
-    current: row.picked
-    foreground: row.card.foreground
-    accent: row.card.accent
+    // The paint comes from the cursor, so one row is lit whichever hand moved it: the pointer's
+    // own hover sets cursorIndex on the way in, which is the OEM's single-highlight contract.
+    readonly property bool hasCursor: row.card.cursorIndex === row.index
     implicitHeight: Math.max(name.implicitHeight, trailing.implicitHeight) + Style.spacing.rowPaddingX
+
+    Rectangle {
+      anchors.fill: parent
+      color: lift.hasCursor ? Util.alpha(row.card.accent, Style.selectedFillAlpha)
+           : row.picked ? Style.selectionFillFor(row.card.foreground, row.card.accent)
+           : "transparent"
+    }
+
+    // Twice the hairline, the cursor mark a list row carries against its own left edge.
+    Rectangle {
+      visible: lift.hasCursor
+      width: Style.spacing.hairline * 2
+      height: parent.height
+      color: row.card.accent
+    }
 
     MouseArea {
       id: rowMouse
