@@ -2,6 +2,7 @@
 // only way in, and every mutation of the pile is on this side of it.
 use crate::captures;
 use crate::shelf::{now_ms, size_of, Shelf};
+use crate::shelfops;
 use crate::summon;
 use std::os::unix::process::CommandExt;
 use std::process::{Command, Stdio};
@@ -14,13 +15,21 @@ pub fn command(args: &[String]) -> i32 {
         Some("add") => add(&args[3..]),
         Some("captures") => captures::command(&args[3..]),
         Some("open") => open(&args[3..]),
+        Some("move") => shelfops::transfer(true, &args[3..]),
+        Some("copy") => shelfops::transfer(false, &args[3..]),
+        Some("cancel") => shelfops::cancel(),
+        Some("zip") => shelfops::zip(&args[3..]),
+        Some("paths") => shelfops::paths(&args[3..]),
+        Some("places") => crate::shelfplaces::command(),
+        Some("send") => shelfops::send(&args[3..]),
+        Some("peers") => shelfops::peers(),
         Some("clear") => summon::clear(),
         Some("restore") => summon::restore(&args[3..]),
         Some("piles") => summon::piles(),
         Some("toggle") => summon::toggle(),
         Some("bind") => summon::bind(),
         _ => {
-            eprintln!("flea: shelf takes drag-begin, size, add, open, forget, captures, clear, restore, piles, toggle or bind");
+            eprintln!("flea: shelf takes drag-begin, size, add, open, move, copy, zip, send, peers, paths, places, cancel, forget, captures, clear, restore, piles, toggle or bind");
             2
         }
     }

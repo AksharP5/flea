@@ -21,6 +21,8 @@ mod favourites;
 mod captures;
 mod shelf;
 mod shelfcli;
+mod shelfops;
+mod shelfplaces;
 mod summon;
 mod uistore;
 mod userfile;
