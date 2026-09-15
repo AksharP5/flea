@@ -1805,8 +1805,9 @@ case_ctrlclick() {
         # Nothing marked, so the next view's own first click is a transition and can fail.
         key -k Escape >/dev/null
         settle
-        [[ "$(ipc selectionCount)" == "0" ]] \
-            || fail "ctrlclick: the $view left $(ipc selectionCount) rows marked for the next view"
+        local left
+        left=$(ipc selectionCount)
+        [[ "$left" == "0" ]] || fail "ctrlclick: the $view left $left rows marked for the next view"
     done
 }
 
@@ -1829,9 +1830,7 @@ case_viewrestart() {
     launch "$dir"
     wait_listing 3
     [[ "$(ipc viewMode)" == "grid" ]] || fail "viewrestart: the next launch opened on $(ipc viewMode), not the grid it was left on"
-    # The view the window is left on is the one the launch takes, and a tab carries its own: the
-    # second tab is put in the list, the first is switched back to and is still the grid, and that
-    # is what the next launch opens on.
+    # A tab carries its own view, so the window is left on the first tab's grid and not the second's list.
     key t >/dev/null
     settle
     switch_view list
