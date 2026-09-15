@@ -1587,6 +1587,10 @@ case_click() {
     key -k BackSpace >/dev/null
     wait_path "$dir"
     wait_listing 5
+    # PR 48 (shawnyeager): the climb reselects the directory it left, so the cursor is back on the
+    # row that was opened rather than on the first row, and Enter is a round trip.
+    [[ "$(ipc rowAt "$(ipc cursor)")" == "subdir|"* ]] \
+        || fail "click: the climb left the cursor on $(ipc rowAt "$(ipc cursor)" | cut -d'|' -f1), not the directory it came out of"
 
     # The grid, a different delegate in a different file carrying the same contract.
     click_chrome grid
