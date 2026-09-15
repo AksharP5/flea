@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Drives the real Quickshell window with omarchy-drive and asserts through the read-only IPC seam.
-# Usage: ./tests/ui.sh [cursor|terminal|open|rows|click|ctrlclick|viewrestart|menu|hidden|selection|select|colour|lifted|icons|thumbs|hashcache|stale|nosweep|oem|header|overflow|focus|preview|network|netmark|networktimeout|networklive|gvfs|sharebrowser|unmount|phones|eject|rename|renamelife|taildrop|grid|columns|operations|tabs|openterminal|renderer|settings ...]; networklive is opt-in.
+# Usage: ./tests/ui.sh [cursor|terminal|open|rows|click|ctrlclick|viewrestart|dd|menu|hidden|selection|select|colour|lifted|icons|thumbs|hashcache|stale|nosweep|oem|header|overflow|focus|preview|network|netmark|networktimeout|networklive|gvfs|sharebrowser|unmount|phones|eject|rename|renamelife|taildrop|grid|columns|operations|tabs|openterminal|renderer|settings ...]; networklive is opt-in.
 set -u
 set -o pipefail
 # Hard rule 9's guard, which owns FIXTURE_ROOT and every create and delete this suite makes.
@@ -2863,6 +2863,81 @@ case_operations() {
     [[ "$(magick identify -format '%m' "$dir/shot.png")" == "PNG" ]] \
         || fail "operations: the source was written over"
     printf 'OPERATIONS converted=%s\n' "$(ipc lastMessage)"
+    kill_flea
+}
+
+# Issue: after dd the cursor lands on the row that took the removed one's place, which for a block
+# is the row after the block and not the row below where the cursor happened to sit. PR 53, W4HO-ham.
+case_dd() {
+    local dir="$fixture_root/dd"
+    sandbox_scratch "$dir"
+    local i
+    for i in 1 2 3 4 5 6; do printf 'body\n' > "$dir/f$i.txt"; done
+    # The trash this case fills is its own, inside the sandbox this case owns, never the operator's.
+    export XDG_DATA_HOME="$fixture_root/dd-data"
+    mkdir -p "$XDG_DATA_HOME"
+
+    launch "$dir"
+    wait_listing 6
+
+    echo "-- a block leaves together, and the cursor takes the block's place --"
+    goto_row 1
+    key v >/dev/null
+    key J >/dev/null
+    settle
+    [[ "$(ipc selectedIndices)" == "1,2" ]] || fail "dd: the block is $(ipc selectedIndices), not rows 1,2"
+    key d >/dev/null
+    wait_message "Press d again to trash, or Delete on its own."
+    key d >/dev/null
+    for _attempt in $(seq 1 40); do [[ -e "$dir/f3.txt" ]] || break; sleep 0.25; done
+    [[ -e "$dir/f3.txt" ]] && fail "dd: the block was not trashed, the bar reads $(ipc lastMessage)"
+    wait_listing 4
+    settle
+    [[ "$(ipc cursor)" == "1" ]] \
+        || fail "dd: after a block the cursor is $(ipc cursor), not 1, the row the block left"
+    [[ "$(ipc rowAt "$(ipc cursor)")" == "f4.txt|"* ]] \
+        || fail "dd: after a block the cursor sits on $(ipc rowAt "$(ipc cursor)"), not the row that slid up"
+    printf 'DD block row=%s cursor=%s\n' "$(ipc rowAt "$(ipc cursor)")" "$(ipc cursor)"
+
+    echo "-- one row, and the cursor keeps its own index --"
+    key -k Escape >/dev/null
+    settle
+    seek_row_named "f5.txt"
+    local at
+    at=$(ipc cursor)
+    key d >/dev/null
+    wait_message "Press d again to trash, or Delete on its own."
+    key d >/dev/null
+    for _attempt in $(seq 1 40); do [[ -e "$dir/f5.txt" ]] || break; sleep 0.25; done
+    [[ -e "$dir/f5.txt" ]] && fail "dd: the row was not trashed, the bar reads $(ipc lastMessage)"
+    wait_listing 3
+    settle
+    [[ "$(ipc cursor)" == "$at" ]] || fail "dd: the cursor left row $at for $(ipc cursor)"
+    [[ "$(ipc rowAt "$(ipc cursor)")" == "f6.txt|"* ]] \
+        || fail "dd: the cursor sits on $(ipc rowAt "$(ipc cursor)"), not the row that slid up"
+
+    # The delete's anchor selects the row it landed on, so the next dd would take that row and not the
+    # cursor's: Escape is what hands the keyboard back to the cursor rule.
+    [[ "$(ipc selectionCount)" == "1" ]] \
+        || fail "dd: the row the cursor landed on is not selected, count is $(ipc selectionCount)"
+    key -k Escape >/dev/null
+    settle
+    [[ "$(ipc selectionCount)" == "0" ]] || fail "dd: Escape left $(ipc selectionCount) rows selected"
+
+    echo "-- the last row clamps rather than running past the end --"
+    seek_row_named "f6.txt"
+    at=$(ipc cursor)
+    key d >/dev/null
+    wait_message "Press d again to trash, or Delete on its own."
+    key d >/dev/null
+    for _attempt in $(seq 1 40); do [[ -e "$dir/f6.txt" ]] || break; sleep 0.25; done
+    [[ -e "$dir/f6.txt" ]] && fail "dd: the last row was not trashed, the bar reads $(ipc lastMessage)"
+    wait_listing 2
+    settle
+    [[ "$(ipc cursor)" == "$((at - 1))" ]] \
+        || fail "dd: after the last row the cursor is $(ipc cursor), not $((at - 1))"
+    [[ "$(ipc rowAt "$(ipc cursor)")" == "f4.txt|"* ]] \
+        || fail "dd: the clamped cursor sits on $(ipc rowAt "$(ipc cursor)")"
     kill_flea
 }
 

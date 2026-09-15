@@ -172,6 +172,8 @@ function commitRename(pane, newName) {
 function trash(pane, menuId) {
     var idx = targetIndices(pane)
     if (idx.length === 0) return sayNoTarget(pane)
+    // Sorted ascending, so this is the block's own first row and not wherever the cursor sat in it.
+    pane.trashedFirst = idx[0]
     pane.backend.trash(idx, menuId)
 }
 

@@ -321,9 +321,14 @@ Item {
         // The listing is read again with the cursor left where the deleted rows were, and the row
         // that took their place selected, so the next delete needs no mouse. The whole selection is
         // gone from disk, so there is nothing to carry over but the position.
+        // A block leaves as a block, so the cursor belongs on the row that took its place rather than
+        // on the row below wherever the cursor sat inside it; a delete that failed keeps its own row.
         function onTrashed(ok, failed) {
             pane.sticky("")
             pane.message(Ops.trashed(ok, failed), ok === 0)
+            if (ok > 0 && pane.trashedFirst >= 0)
+                pane.cursorIndex = pane.trashedFirst
+            pane.trashedFirst = -1
             pane.clearSelection()
             root.anchor = Anchor.afterDelete(pane)
         }

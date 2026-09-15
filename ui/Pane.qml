@@ -43,6 +43,8 @@ FocusScope {
     // ui/js/Startup.js about rides in through the pane, the way every other setting it reads does.
     readonly property var uiState: ViewState.state
     // When the first d of the dd pair landed; ui/js/Focus.js reads it and Nav's reset clears it.
+    // The first row a trash request went out with, or -1: what the block left, which is where the cursor lands.
+    property int trashedFirst: -1
     property double trashArmedAt: 0
     property string keySequence: ""
     property string keySequenceIdentity: ""
