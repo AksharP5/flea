@@ -332,6 +332,7 @@ FocusScope {
         Focus.act(action, root, menuId, paths)
     }
     function performMenu(action, menuId, paths) {
+        if (action.indexOf("runScript:") === 0) { Flea.Scripts.run(action.substring("runScript:".length), paths || []); return }
         if (action.indexOf("taildrop:") === 0) { root.sendTaildrop(action.substring("taildrop:".length), paths && paths.length === 1 ? paths[0] : ""); return }
         if (action === "sharelink") { root.copyShareLink(paths && paths.length === 1 ? paths[0] : ""); return }
         if (action === "copypath") { wire.opener.copyText(paths && paths.length ? paths[0] : root.join(root.path, root.cursorRow.n)); return }
@@ -588,6 +589,12 @@ FocusScope {
     readonly property alias taildropService: wire.taildrop
     readonly property var dropboxService: root.sidebar ? root.sidebar.providerService : null
 
+    // A script's own non-zero exit is its last stderr line, said once in the status centre.
+    Connections {
+        target: Flea.Scripts
+        function onSaid(text, isError) { root.message(text, isError) }
+    }
+
     Flea.ContextMenu {
         id: menu
         parent: root.overlayParent || root
@@ -607,7 +614,8 @@ FocusScope {
         openWithLoaded: menuActions.openWithLoaded
         selectionIdentity: root.menuSelectionIdentity
         clipboardAvailable: root.clipboard.paths.length > 0
-        onSnapshotRequested: menuActions.snapshot()
+        // MenuAdditions rule 2: the scripts directory is read when a menu opens and never watched.
+        onSnapshotRequested: { menuActions.snapshot(); Flea.Scripts.refresh() }
         onRefused: function(reason) { root.message(reason, true) }
         rowIsArchive: root.cursorRow !== null && !root.cursorRow.d && Archive.isArchive(root.cursorRow.n)
         rowIsImage: root.cursorRow !== null && root.cursorRow.i === "image-x-generic"

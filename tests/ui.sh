@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Drives the real Quickshell window with omarchy-drive and asserts through the read-only IPC seam.
-# Usage: ./tests/ui.sh [cursor|terminal|open|rows|click|ctrlclick|viewrestart|dd|sortrestart|editplace|mute|placemenu|menu|hidden|selection|select|colour|lifted|icons|thumbs|hashcache|stale|nosweep|oem|header|overflow|focus|preview|network|netmark|networktimeout|networklive|gvfs|sharebrowser|unmount|phones|eject|rename|renamelife|taildrop|grid|columns|operations|tabs|openterminal|renderer|settings ...]; networklive is opt-in.
+# Usage: ./tests/ui.sh [cursor|terminal|open|rows|click|ctrlclick|viewrestart|dd|sortrestart|editplace|mute|placemenu|runscript|menu|hidden|selection|select|colour|lifted|icons|thumbs|hashcache|stale|nosweep|oem|header|overflow|focus|preview|network|netmark|networktimeout|networklive|gvfs|sharebrowser|unmount|phones|eject|rename|renamelife|taildrop|grid|columns|operations|tabs|openterminal|renderer|settings ...]; networklive is opt-in.
 set -u
 set -o pipefail
 # Hard rule 9's guard, which owns FIXTURE_ROOT and every create and delete this suite makes.
@@ -619,6 +619,30 @@ menu_seek() {
         settle
     done
     fail "menu_seek: could not reach $want, cursor stalled at $(ipc contextMenuCursor)"
+}
+
+# The same for an open flyout, whose rows are whatever the backend or the scripts directory offered,
+# so no case counts Downs: Sort by is four orders and Run script is however many scripts are there.
+menu_seek_submenu() {
+    local want="$1" entries target i cursor step
+    entries=$(ipc contextMenuSubmenuEntries)
+    target=-1
+    i=0
+    local IFS='|'
+    for label in $entries; do
+        [[ "$label" == "$want" ]] && { target=$i; break; }
+        i=$((i + 1))
+    done
+    unset IFS
+    [[ "$target" -ge 0 ]] || fail "menu_seek_submenu: no row labelled $want in $entries"
+    for ((step = 0; step <= i; step++)); do
+        cursor=$(ipc menuState | jq -er '.submenuCursor') \
+            || fail "menu_seek_submenu: could not read the flyout cursor"
+        [[ "$cursor" == "$target" ]] && return 0
+        key -k Down >/dev/null
+        settle
+    done
+    fail "menu_seek_submenu: could not reach $want in $entries"
 }
 
 # The index of a menu row by its label, for a case that has to click that row: the Menus settings
@@ -2056,6 +2080,76 @@ case_placemenu() {
     [[ "$(ipc contextMenuVisible)" == "false" ]] \
         || fail "placemenu: with the switch off the Home row opened $(ipc contextMenuEntries)"
     printf 'PLACEMENU off=%s\n' "$(ipc contextMenuVisible)"
+    kill_flea
+}
+
+# MenuAdditions rule 2: one row per executable in ~/.config/flea/scripts, read when the menu opens,
+# run with the selected paths in the first one's folder, and absent when that directory holds none.
+case_runscript() {
+    local dir="$fixture_root/runscript"
+    sandbox_scratch "$dir"
+    printf 'one\n' > "$dir/a.txt"
+    printf 'two\n' > "$dir/b.txt"
+    local config="$fixture_root/runscript-config"
+    sandbox_scratch "$config"
+    mkdir -p "$config/flea/scripts"
+    export XDG_CONFIG_HOME="$config"
+    # Three, one of them not executable and one failing, which is the whole of the rule's own edges.
+    printf '#!/bin/sh\nprintf "%%s\\n" "$@" > %s/ran.log\nprintf "%%s\\n" "$PWD" >> %s/ran.log\n' "$dir" "$dir" > "$config/flea/scripts/stamp.sh"
+    printf '#!/bin/sh\nprintf "no such page\\n" >&2\nexit 2\n' > "$config/flea/scripts/ocr.sh"
+    printf '#!/bin/sh\nexit 0\n' > "$config/flea/scripts/not-executable.sh"
+    chmod +x "$config/flea/scripts/stamp.sh" "$config/flea/scripts/ocr.sh"
+    # The switch on: everything else in the shipped set stays as it is.
+    seed_ui_state "$fixture_root/runscript-state" '{"menu":{"hidden":["delete","openTerminal","placeMenu","moveto","copyto","properties","permissions","copypath"]}}'
+
+    launch "$dir"
+    wait_listing 2
+    seek_row_named "a.txt"
+    click_row "$(ipc cursor)" right
+    settle
+    [[ "$(ipc contextMenuVisible)" == "true" ]] || fail "runscript: the row's right click opened no menu"
+    [[ "$(ipc contextMenuEntries)" == *"Run script"* ]] \
+        || fail "runscript: the menu offers $(ipc contextMenuEntries)"
+    menu_seek "Run script"
+    key -k Return >/dev/null
+    settle
+    # Sorted by name, the label without the extension, and the file that is not executable absent.
+    [[ "$(ipc contextMenuSubmenuEntries)" == "ocr|stamp" ]] \
+        || fail "runscript: the submenu offers $(ipc contextMenuSubmenuEntries)"
+
+    echo "-- a row runs its script with the selected paths, in the first one's folder --"
+    menu_seek_submenu "stamp"
+    key -k Return >/dev/null
+    for _attempt in $(seq 1 40); do [[ -s "$dir/ran.log" ]] && break; sleep 0.25; done
+    [[ -s "$dir/ran.log" ]] || fail "runscript: the script never ran, the bar says $(ipc lastMessage)"
+    [[ "$(head -1 "$dir/ran.log")" == "$dir/a.txt" ]] \
+        || fail "runscript: the script was handed $(head -1 "$dir/ran.log")"
+    [[ "$(tail -1 "$dir/ran.log")" == "$dir" ]] \
+        || fail "runscript: the script ran in $(tail -1 "$dir/ran.log"), not the file's own folder"
+    printf 'RUNSCRIPT args=%s cwd=%s\n' "$(head -1 "$dir/ran.log")" "$(tail -1 "$dir/ran.log")"
+
+    echo "-- and a non-zero exit is its own last stderr line --"
+    click_row "$(ipc cursor)" right
+    settle
+    menu_seek "Run script"
+    key -k Return >/dev/null
+    settle
+    menu_seek_submenu "ocr"
+    key -k Return >/dev/null
+    wait_message "ocr.sh · no such page"
+    printf 'RUNSCRIPT said=%s\n' "$(ipc lastMessage)"
+
+    echo "-- an empty directory offers no row at all --"
+    rm -f "$config/flea/scripts/stamp.sh" "$config/flea/scripts/ocr.sh"
+    click_row "$(ipc cursor)" right
+    settle
+    key -k Escape >/dev/null
+    settle
+    click_row "$(ipc cursor)" right
+    settle
+    [[ "$(ipc contextMenuEntries)" != *"Run script"* ]] \
+        || fail "runscript: an empty directory still offers $(ipc contextMenuEntries)"
+    printf 'RUNSCRIPT empty=%s\n' "$(ipc contextMenuEntries)"
     kill_flea
 }
 
@@ -8991,7 +9085,7 @@ case_previewviews() {
 . "$repo/tests/ui-convert-design.sh"
 
 declare -a wanted=("$@")
-[[ ${#wanted[@]} -eq 0 ]] && wanted=(cursor scroll terminal open rows click ctrlclick viewrestart dd sortrestart editplace mute placemenu menu background hidden selection watch select colour lifted icons thumbs hashcache stale nosweep oem header overflow focus preview pdffocus network netmark networkauth networktimeout gvfs sharebrowser unmount phones eject rename renamelife taildrop providers grid columns operations tabs openterminal renderer settings clickthrough wheelunder overlays views formats previewviews hangshare openwithdesign)
+[[ ${#wanted[@]} -eq 0 ]] && wanted=(cursor scroll terminal open rows click ctrlclick viewrestart dd sortrestart editplace mute placemenu runscript menu background hidden selection watch select colour lifted icons thumbs hashcache stale nosweep oem header overflow focus preview pdffocus network netmark networkauth networktimeout gvfs sharebrowser unmount phones eject rename renamelife taildrop providers grid columns operations tabs openterminal renderer settings clickthrough wheelunder overlays views formats previewviews hangshare openwithdesign)
 
 : > "$run_log"
 : > "$flea_log"

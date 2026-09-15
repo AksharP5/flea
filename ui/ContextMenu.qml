@@ -135,8 +135,8 @@ Item {
             canTrash: root.canTrash,
             openWithApps: root.openWithApps,
             openWithLoaded: root.openWithLoaded,
-            rowMode: root.rowMode,
-            selectionCount: root.selectionCount,
+            rowMode: root.rowMode, selectionCount: root.selectionCount,
+            scripts: Flea.Scripts.entries,
             // The Menus settings section's stored set; ui/js/Menu.js applyHidden is what reads it.
             hiddenActions: ViewState.menuHidden
         })

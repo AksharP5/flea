@@ -49,6 +49,9 @@ var INVENTORY = [
     ["properties", "Properties", "info", "F", "inspect"],
     ["permissions", "Permissions", "lock", "F", "inspect"],
     ["copypath", "Copy path", "file-text", "FP", "inspect"],
+    // MenuAdditions rule 2: after Copy path, one row per executable in ~/.config/flea/scripts, and
+    // absent rather than greyed when that directory is missing or holds none.
+    ["runScript", "Run script", "terminal", "F", "inspect"],
     ["addFavourite", "Add to Favorites", "star", "FBP", "inspect"],
     ["removeFavourite", "Remove from Favorites", "minus", "P", "inspect"],
     ["sort", "Sort by", "sort", "B", "view"],
@@ -113,6 +116,10 @@ function availableEntry(e, p, kind) {
         var permission = permissionsEntry(p.rowMode, count)
         e.disabled = permission.disabled
         e.hint = permission.hint
+    }
+    if (e.action === "runScript") {
+        if (!(p.scripts || []).length) return false
+        e.submenu = p.scripts.map(function (script) { return { id: script.id, label: script.label } })
     }
     if (e.action === "compress") {
         if (!(p.archiveFormats || []).length) return false
@@ -193,6 +200,8 @@ function sortEntries() {
 function submenuGlyph(action) {
     if (action === "taildrop")
         return "server"
+    if (action === "runScript")
+        return "terminal"
     if (action === "sort")
         return "sort"
     return "archive"

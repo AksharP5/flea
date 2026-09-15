@@ -22,7 +22,9 @@ function runInventory(check) {
             taildropPeers: [{ id: "x", label: "Box" }], taildropInstalled: true, dropboxInstalled: true,
             archiveFormats: ["zip"], canConvert: true, canExtract: true, selectionCount: 1, rowMode: 0o100644,
             rowInDropbox: shapes[s].rowInDropbox, rowIsArchive: shapes[s].rowIsArchive,
-            rowIsImage: shapes[s].rowIsImage, hiddenActions: []
+            rowIsImage: shapes[s].rowIsImage, hiddenActions: [],
+            // One script, so the Run script row is built here the way a box with a scripts directory builds it.
+            scripts: [{ id: "one.sh", label: "one" }]
         })
         for (var i = 0; i < rows.length; i++) {
             if (rows[i].separator === true)
@@ -106,7 +108,7 @@ function runMaster(check) {
     check("every heading reports the group it governs, and a group of one row has no master at all",
           groups.map(function (row) { return row.label + "|" + (row.master ? row.value + "|" + row.state : "no master") }).join(", "),
           "Basic file actions|6 of 6|all, Destructive|no master, Open and inspect|3 of 7|some, "
-          + "Extras|8 of 8|all, Shortcuts|no master, Always shown|no master")
+          + "Extras|9 of 9|all, Shortcuts|no master, Always shown|no master")
     var inspect = groups[2]
     check("a heading with a master is a focus stop and one without is not",
           Settings.focusable(inspect) + "|" + Settings.focusable(groups[1]), "true|false")
