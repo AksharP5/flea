@@ -241,6 +241,27 @@ function clearedText(count) {
   return "Cleared " + n + (n === 1 ? " item" : " items") + " \u00b7 z restores"
 }
 
+// Sample input, the one line `flea shelf undo` answers with: what it reversed, then how many items
+// that was. `none 0` when there was nothing to reverse at all.
+function undone(text) {
+  var parts = String(text || "").trim().split(" ")
+  var count = parseInt(parts[1], 10)
+  return { kind: parts[0] || "none", count: isFinite(count) ? count : 0 }
+}
+
+// The pane says "Undid the move." for the same key, so the card says the same thing about the same
+// reversal, and names the pile when that is what came back instead.
+function undoneText(kind, count) {
+  var n = Number(count)
+  if (kind === "move" && n > 0) {
+    return "Undid the move"
+  }
+  if (kind === "pile" && n > 0) {
+    return "Put " + n + (n === 1 ? " item" : " items") + " back"
+  }
+  return "Nothing to undo"
+}
+
 // Sample input, one line per kept pile, newest first: the time it was cleared, then how many it held.
 // 1789426925000 4
 function parsePiles(text) {

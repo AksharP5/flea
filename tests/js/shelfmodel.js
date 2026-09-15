@@ -172,6 +172,19 @@ function run(check) {
         "Cleared 4 items \u00b7 z restores|Cleared 1 item \u00b7 z restores")
   check("clearing an empty shelf says nothing at all", Shelf.clearedText(0), "")
 
+  // Keys board: z undoes, and the card reads back which of the two reversible things it undid.
+  var said = Shelf.undone("move 4\n")
+  check("the undo answer is what it reversed and how many", said.kind + "|" + said.count, "move|4")
+  check("a verb that answered nothing is nothing undone",
+        Shelf.undone("").kind + "|" + Shelf.undone("").count, "none|0")
+  check("the card says the same thing about a reversed move the pane says",
+        Shelf.undoneText("move", 4), "Undid the move")
+  check("and names the pile when that is what came back",
+        Shelf.undoneText("pile", 4) + "|" + Shelf.undoneText("pile", 1),
+        "Put 4 items back|Put 1 item back")
+  check("nothing to undo says so rather than claiming work",
+        Shelf.undoneText("none", 0) + "|" + Shelf.undoneText("move", 0), "Nothing to undo|Nothing to undo")
+
   var kept = Shelf.parsePiles("1789426925000 4\n1789420000000 2\nnot a pile\n")
   check("a kept pile is its time and its count, and a line that is neither is dropped", kept.length, 2)
   var row = Shelf.pileText({ count: 4, at: 1789426925000 })

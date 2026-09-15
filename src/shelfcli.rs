@@ -32,11 +32,12 @@ pub fn command(args: &[String]) -> i32 {
         Some("peers") => shelfops::peers(),
         Some("clear") => summon::clear(),
         Some("restore") => summon::restore(&args[3..]),
+        Some("undo") => crate::shelfundo::undo(),
         Some("piles") => summon::piles(),
         Some("toggle") => summon::toggle(),
         Some("bind") => summon::bind(),
         _ => {
-            eprintln!("flea: shelf takes drag-begin, size, add, open, move, copy, pin, unpin, order, zip, send, peers, paths, places, choose, cancel, forget, captures, thumb, clear, restore, piles, toggle or bind");
+            eprintln!("flea: shelf takes drag-begin, size, add, open, move, copy, pin, unpin, order, zip, send, peers, paths, places, choose, cancel, forget, captures, thumb, clear, restore, undo, piles, toggle or bind");
             2
         }
     }

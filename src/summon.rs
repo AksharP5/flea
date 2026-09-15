@@ -150,10 +150,6 @@ pub fn clear() -> i32 {
 
 // flea shelf restore [n]: the newest kept pile by default, or the nth the card's menu offered.
 pub fn restore(rest: &[String]) -> i32 {
-    let (shelf, summon) = match pair() {
-        Ok(pair) => pair,
-        Err(code) => return code,
-    };
     let index = match chosen_index(rest) {
         Ok(index) => index,
         Err(e) => {
@@ -161,10 +157,25 @@ pub fn restore(rest: &[String]) -> i32 {
             return 2;
         }
     };
-    let pile = match summon.restore_pile(index) {
-        Ok(pile) => pile,
-        Err(e) => return failed(&e),
+    match restore_at(index) {
+        Ok(count) => {
+            println!("{}", count);
+            0
+        }
+        Err(e) => failed(&e),
+    }
+}
+
+// The restore itself, which `flea shelf undo` also reaches when a clear is the newer of the two
+// things it could reverse. It answers with the count rather than printing it, because the two verbs
+// do not say the same sentence about it.
+pub fn restore_at(index: usize) -> Result<usize, String> {
+    // Not through pair(): that one reports by printing, and this one answers its caller instead.
+    let (shelf, summon) = match (Shelf::user(), Summon::user()) {
+        (Ok(shelf), Ok(summon)) => (shelf, summon),
+        (Err(e), _) | (_, Err(e)) => return Err(e),
     };
+    let pile = summon.restore_pile(index)?;
     let count = pile.len();
     // The history has already given the pile up, so a shelf that will not take it has to give it back.
     let was = match shelf.put(pile.clone()) {
@@ -173,15 +184,13 @@ pub fn restore(rest: &[String]) -> i32 {
             if let Err(back) = summon.keep(pile, now_ms()) {
                 eprintln!("flea: the shelf would not take the pile and the history would not have it back ({})", back);
             }
-            return failed(&e);
+            return Err(e);
         }
     };
     if let Err(e) = summon.keep(was, now_ms()) {
-        eprintln!("flea: the pile is on the shelf, and what it replaced could not be kept ({})", e);
-        return 2;
+        return Err(format!("the pile is on the shelf, and what it replaced could not be kept ({})", e));
     }
-    println!("{}", count);
-    0
+    Ok(count)
 }
 
 // The card's menu numbers its rows from one, so the argument is 1-based and the history is not.

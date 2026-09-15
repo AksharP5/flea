@@ -25,6 +25,7 @@ mod shelfdrag;
 mod shelfops;
 mod shelfplaces;
 mod shelfthumb;
+mod shelfundo;
 mod shelfzip;
 mod summon;
 mod uistore;

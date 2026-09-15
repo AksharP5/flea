@@ -91,6 +91,11 @@ Panel {
       root.result = Model.clearedText(count)
       transient.restart()
     }
+    onUndone: function (kind, count) {
+      root.error = ""
+      root.result = Model.undoneText(kind, count)
+      transient.restart()
+    }
     onMinted: function (token, moving) { card.lift(token, !moving) }
     onFailed: function (why) {
       // Rule 5: one voice. An error takes the slot from a result and expires the same way.
@@ -294,8 +299,9 @@ Panel {
           root.close()
         }
       }
-      // Keys board: shift-x clears and the pile becomes the last pile, z undoes it, and in the menu
-      // a number takes that pile straight back.
+      // Keys board: shift-x clears and the pile becomes the last pile, z undoes whichever of the
+      // clear and the last move out of the pile is newer, and in the menu a number takes that pile
+      // straight back.
       Keys.onPressed: function (event) {
         if (root.pending.length > 0) {
           flyout.key(event)
@@ -311,7 +317,7 @@ Panel {
           return
         }
         if (event.key === Qt.Key_Z) {
-          shelf.restore(0)
+          shelf.undo()
           event.accepted = true
           return
         }

@@ -4,8 +4,10 @@
 use crate::backend::opsreq::{run_transfer_checked, transferdone_line, transferitem_line,
                              transferprogress_line, transferstarted_line, usable_dest, OpMsg};
 use crate::backend::proto::error_line;
-use crate::shelf::Shelf;
+use crate::backend::undo::Step;
+use crate::shelf::{now_ms, Shelf};
 use crate::shelfplaces;
+use crate::shelfundo;
 use crate::uistore;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -63,7 +65,7 @@ pub fn transfer(moving: bool, rest: &[String]) -> i32 {
         let cancel = Arc::clone(&cancel);
         thread::spawn(move || run_transfer_checked(0, moving, paths, dest, cancel, tx, None, None))
     };
-    let (moved, mut failed) = report(rx, &watched, moving);
+    let (moved, mut failed, steps) = report(rx, &watched, moving);
     // A panicking engine reports no item at all, so joining it is the only thing that can tell a
     // clean run from one that died before it started.
     if engine.join().is_err() {
@@ -92,6 +94,13 @@ pub fn transfer(moving: bool, rest: &[String]) -> i32 {
     if let Err(e) = shelfplaces::remember(&dest_name) {
         eprintln!("flea: the destination was not remembered ({})", e);
     }
+    // Keys board: z undoes, which the landed sentence promises, so a move leaves the one step back
+    // on disk. This process is gone by the time the card presses it.
+    if moving {
+        if let Err(e) = record_undo(&steps) {
+            eprintln!("flea: this move cannot be undone ({})", e);
+        }
+    }
     i32::from(failed > 0 || !kept)
 }
 
@@ -106,9 +115,20 @@ fn landed(dest: &Path, from: &str) -> Option<String> {
     Some(to.to_string_lossy().to_string())
 }
 
+// A move that changed nothing records nothing, the same rule the pane's journal keeps.
+fn record_undo(steps: &[Step]) -> Result<(), String> {
+    let moves = shelfundo::moves_from(steps);
+    if moves.is_empty() {
+        return Ok(());
+    }
+    shelfundo::Moves::user()?.record(&moves, now_ms())
+}
+
 // Every line the pane's own transfer prints, in the same vocabulary, so the card reads one protocol.
-fn report(rx: std::sync::mpsc::Receiver<OpMsg>, paths: &[String], moving: bool) -> (Vec<String>, usize) {
+// The engine's own steps come back with them, because they carry where each item actually landed.
+fn report(rx: std::sync::mpsc::Receiver<OpMsg>, paths: &[String], moving: bool) -> (Vec<String>, usize, Vec<Step>) {
     let mut moved = Vec::new();
+    let mut steps = Vec::new();
     let mut failed = 0;
     for msg in rx {
         match msg {
@@ -125,13 +145,14 @@ fn report(rx: std::sync::mpsc::Receiver<OpMsg>, paths: &[String], moving: bool) 
                     }
                 }
             }
-            OpMsg::TransferDone { id, ok, failed: bad, skipped, cancelled, retry, .. } => {
+            OpMsg::TransferDone { id, ok, failed: bad, skipped, cancelled, retry, entry } => {
                 println!("{}", transferdone_line(id, ok, bad, skipped, cancelled, &retry));
+                steps = entry.steps;
             }
             _ => {}
         }
     }
-    (moved, failed)
+    (moved, failed, steps)
 }
 
 pub fn paths(rest: &[String]) -> i32 {

@@ -401,6 +401,14 @@ Item {
     root.runVerb("restore", ["shelf", "restore", String(index + 1)])
   }
 
+  // Keys board: z is undo here as it is in the pane. Which of the two reversible things is the
+  // newer one is the backend's question, so the card presses one key and reads back which it was.
+  signal undone(string kind, int count)
+
+  function undo() {
+    root.runVerb("undo", ["shelf", "undo"])
+  }
+
   function runVerb(name, argv) {
     if (verb.running) {
       return
@@ -419,6 +427,12 @@ Item {
         var count = parseInt(String(text).trim(), 10)
         if (root.pending === "clear" && isFinite(count)) {
           root.cleared(count)
+        }
+        // Empty stdout is the reversal that stopped partway, which exits non-zero and says why in
+        // the error slot: a result sentence here as well would put two voices on the card at once.
+        if (root.pending === "undo" && String(text).trim().length > 0) {
+          var said = Model.undone(String(text))
+          root.undone(said.kind, said.count)
         }
         root.pending = ""
         file.reload()

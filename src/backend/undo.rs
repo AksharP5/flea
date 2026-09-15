@@ -21,6 +21,10 @@ impl ItemIdentity {
         path.symlink_metadata().map(|meta| Self::record(&meta))
             .map_err(|e| from_io("journal", &path.to_string_lossy(), &e))
     }
+    // The shelf keeps its one-step journal in a file of its own, so it needs these three out of here.
+    pub fn parts(&self) -> (u64, u64, u32) {
+        (self.dev, self.ino, self.kind)
+    }
     pub fn same_item(&self, other: &Self) -> bool {
         self.dev == other.dev && self.ino == other.ino && self.kind == other.kind
     }
@@ -145,6 +149,13 @@ impl Journal {
         for entry in &mut self.entries { entry.rebase(old, new); }
         for replay in self.redo.iter_mut().flatten() { replay.rebase(old, new); }
     }
+}
+
+// The shelf keeps its one step back in a file rather than in a Journal, because the process that
+// made the move has exited by the time the card presses z; the walk home is still this one, so the
+// no-clobber rename and its cross-filesystem fallback are shared rather than written twice.
+pub fn move_back(to: &std::path::Path, from: &std::path::Path) -> Result<(), FleaError> {
+    rename_path(to, from)
 }
 
 pub fn copied(from: &std::path::Path, to: &std::path::Path, source: ItemIdentity) -> Result<Step, FleaError> {

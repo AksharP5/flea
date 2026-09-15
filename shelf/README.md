@@ -85,8 +85,8 @@ keyboard-hints setting is on.
 
 `$XDG_STATE_HOME/omarchy/flea-shelf/`, or `~/.local/state/omarchy/flea-shelf/` when that is unset:
 `shelf.json` is the pile, `piles.json` the last five it has held, `drags.json` the tokens a drag out
-carries, and `summon.json` the count the keybind writes. The plugin never writes any of them:
-`flea shelf` does, and the plugin watches.
+carries, `undo.json` the one move `z` can walk back, and `summon.json` the count the keybind writes.
+The plugin never writes any of them: `flea shelf` does, and the plugin watches.
 
 ## Keyboard
 
@@ -108,7 +108,7 @@ carries, and `summon.json` the count the keybind writes. The plugin never writes
 | `y` | yank the paths to the clipboard |
 | `1` to `9` | in a flyout, take that destination or that peer |
 | `shift + x` | clears the shelf, and it becomes the last pile |
-| `z` | undo: brings the last pile back |
+| `z` | undo: puts the last move back where it came from, or brings the last cleared pile back, whichever happened later |
 | `1` to `5` | in the menu, takes that pile back |
 | right click | on the bar mark: brings back the last pile you cleared; on the card: its menu |
 
