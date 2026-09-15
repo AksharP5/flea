@@ -198,8 +198,8 @@ function runCompletionRows(check) {
           "addFavourite|Add this folder|true")
     check("and the two buttons under the list are gone",
           places.filter(function (row) { return row.kind === "favouriteActions" }).length, 0)
-    check("optional rail details default off", [find(places, "places.driveSize").on, find(places, "places.trashCount").on].join(","), "false,false")
-    check("the Rail controls follow the ruled order", places.slice(-5, -2).map(function (row) { return row.label }).join("|"), "Show drive size|Show Trash count|Sidebar width")
+    check("optional rail details default off", [find(places, "places.driveSize").on, find(places, "places.trashCount").on, find(places, "places.showUnmounted").on].join(","), "false,false,false")
+    check("the Rail controls follow the ruled order", places.slice(-6, -2).map(function (row) { return row.label }).join("|"), "Show drive size|Show Trash count|Show unmounted drives|Sidebar width")
     // The 30 day sweep's own row, at the foot of Places under its own eyebrow. Off unless ui.json says otherwise, which is the whole of GM's opt-in ruling as the panel sees it.
     check("Places ends with the Trash group and its one row",
           places.slice(-2).map(function (row) { return row.label }).join("|"),

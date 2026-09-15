@@ -75,6 +75,16 @@ function release(action, key, devices, mounts, sidebar) {
             devices.eject(volume)
         return
     }
+    // RailAdditions rule 2: Mount and Open are the row's own activation, which mounts when it has to
+    // and opens either way, so the menu row and Enter cannot drift apart.
+    if (action === "mountVolume" || action === "openVolume" || action === "unmountVolume") {
+        var row = Mounts.rowByKey(sidebar.deviceEntries, key)
+        if (row < 0)
+            return
+        if (action === "unmountVolume") devices.unmount(row)
+        else devices.activate(row)
+        return
+    }
     // The phone Service is the sidebar's own child, so the sidebar resolves the key against it; a
     // phone unmounts rather than ejects, because gvfs answers can_eject=0 for the MTP monitor.
     if (action === "unmountPhone") {

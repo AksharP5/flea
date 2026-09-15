@@ -127,6 +127,7 @@ function sameEntry(x, y) {
     return x.path === y.path && x.label === y.label && x.group === y.group && x.kind === y.kind
         && x.uri === y.uri && x.device === y.device && x.mounted === y.mounted && x.glyph === y.glyph
         && x.size === y.size && x.editable === y.editable && x.removable === y.removable
+        && x.volumeMenu === y.volumeMenu
 }
 
 // Sample input: one rail entry as ui/DeviceMounts.qml and ui/NetworkMounts.qml build them,
@@ -147,6 +148,18 @@ function railMenu(entry) {
             ? [{ label: "Open", action: "openPhone", glyph: "folder" },
                { label: "Unmount", action: "unmountPhone", glyph: "eject" }]
             : [{ label: "Mount", action: "mountPhone", glyph: "drive" }]
+    // RailAdditions rule 2: Mount is what an unmounted volume offers, a mounted one offers the open
+    // its own activation does beside the release, and Eject stays where it stands today, on a volume
+    // somebody can pull out. Only a row built under rule 1's switch carries any of it.
+    if (entry.group === "device" && entry.kind === "volume" && entry.volumeMenu === true) {
+        if (!entry.mounted)
+            return [{ label: "Mount", action: "mountVolume", glyph: "drive" }]
+        var rows = [{ label: "Open", action: "openVolume", glyph: "folder" },
+                    { label: "Unmount", action: "unmountVolume", glyph: "eject" }]
+        if (entry.removable === true)
+            rows.push({ label: "Eject", action: "eject", glyph: "eject" })
+        return rows
+    }
     if (!entry.mounted)
         return []
     if (entry.group === "device" && entry.kind === "volume" && entry.removable === true)

@@ -9,7 +9,7 @@
 //  "tran":null,"size":124656812032,"type":"part","model":null}.
 // Two row kinds come out: one "disk" row for the disk that carries /, then one "volume" row for each
 // volume on every other disk. ui/DeviceMounts.qml turns these into rail entries.
-function parseDevices(body) {
+function parseDevices(body, unmounted) {
     var tree
     try {
         tree = JSON.parse(String(body || ""))
@@ -30,7 +30,7 @@ function parseDevices(body) {
         if (!nodes[i].name || nodes[i] === system || isPseudo(nodes[i].name))
             continue
         // No transport to inherit at the top: the disk answers for itself inside the walk.
-        collectVolumes([nodes[i]], "", false, out)
+        collectVolumes([nodes[i]], "", false, out, unmounted === true)
     }
     return out
 }
@@ -67,9 +67,11 @@ function holdsRoot(node) {
 }
 
 // A volume earns a rail row when it can be unplugged, which is a stick whether or not anything
-// mounted it, or when it is mounted, which is every internal drive the operator actually uses. An
-// unmounted internal partition stays out: a spare EFI or recovery partition is not a place to browse.
-function collectVolumes(nodes, model, unplugs, out) {
+// mounted it, or when it is mounted, which is every internal drive the operator actually uses.
+// RailAdditions rule 1 adds the third case behind its own switch: a volume nothing has mounted, with
+// a filesystem to browse. With the switch off this is the 0.2.1 rule exactly, which kept a spare EFI
+// or recovery partition out of the rail.
+function collectVolumes(nodes, model, unplugs, out, unmounted) {
     for (var i = 0; i < nodes.length; i++) {
         var n = nodes[i]
         var kids = n.children || []
@@ -81,10 +83,21 @@ function collectVolumes(nodes, model, unplugs, out) {
         var pulls = unpluggable(n) || (unplugs && String(n.type || "") === "part")
         // Only a leaf is a volume. A partition holding a LUKS container is not what mounts, its crypt
         // child is, and emitting both would put one drive in the rail twice.
-        if (n.name && kids.length === 0 && (pulls || mountOf(n).length > 0))
-            out.push(volumeRow(n, own, pulls))
-        collectVolumes(kids, own, pulls, out)
+        if (n.name && kids.length === 0 && (pulls || mountOf(n).length > 0 || (unmounted && browsable(n))))
+            out.push(volumeRow(n, own, pulls, unmounted))
+        collectVolumes(kids, own, pulls, out, unmounted)
     }
+}
+
+// RailAdditions rule 1's three exceptions, read off lsblk's own columns rather than guessed from a
+// name: swap is not a place to browse, the EFI system partition is the box's own plumbing, and a
+// volume with no filesystem has nothing to mount. A locked LUKS container is that last case: what
+// mounts is its crypt child, which lsblk reports as a child of its own once it is unlocked.
+function browsable(n) {
+    var fs = String(n.fstype || "").toLowerCase()
+    if (fs.length === 0 || fs === "swap" || fs.indexOf("crypto_") === 0)
+        return false
+    return String(n.parttypename || "").toLowerCase().indexOf("efi") < 0
 }
 
 // A drive somebody can pull out, which is what Eject is for. RM alone is not the answer: a USB
@@ -114,11 +127,13 @@ function devicePath(node) {
 }
 
 // The label ladder is the filesystem label, then the drive's product name, then the kernel name.
-function volumeRow(n, model, unplugs) {
+// volumeMenu says the row was built under RailAdditions rule 1, which is what gives it the Mount,
+// Open and Unmount rows; without the switch the row carries the menu it carried in 0.2.1.
+function volumeRow(n, model, unplugs, unmounted) {
     var path = mountOf(n)
     var label = n.label ? String(n.label) : (model.length > 0 ? model : String(n.name))
     return { kind: "volume", label: label, device: devicePath(n), path: path, mounted: path.length > 0,
-             removable: unplugs === true, size: deviceBytes(n.size) }
+             removable: unplugs === true, size: deviceBytes(n.size), volumeMenu: unmounted === true }
 }
 
 // An unavailable or malformed capacity stays absent; only the delegate formats valid byte counts.

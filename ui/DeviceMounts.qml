@@ -11,6 +11,9 @@ Item {
     id: root
 
     property var entries: []
+    // RailAdditions rule 1's switch, off by default (directive 38): with it off this Service answers
+    // with the rows 0.2.1 answered with, and nothing here reads the state document itself.
+    property bool showUnmounted: false
 
     signal opened(string path)
     signal message(string text, bool isError)
@@ -37,6 +40,8 @@ Item {
     // The device a mount was asked for; rebuild() opens it the moment lsblk reports its mountpoint.
     property string _pendingOpenDevice: ""
     property string _pendingOpenLabel: ""
+    // The volume an unmount was asked for, so its refusal can name it.
+    property string _unmountLabel: ""
     // The device whose eject awaits its verdict, "" when none. The listing taken after gio exits is
     // the only witness: gio's own exit code has been 0 over a volume that was still mounted.
     property string _ejectDevice: ""
@@ -102,14 +107,14 @@ Item {
     }
 
     function rebuild() {
-        var rows = Devices.parseDevices(root._listing)
+        var rows = Devices.parseDevices(root._listing, root.showUnmounted)
         var out = []
         for (var i = 0; i < rows.length; i++) {
             var r = rows[i]
             var label = r.kind === "disk" ? root.hostLabel(r.label) : r.label
             out.push({ path: r.path, label: label, group: "device", kind: r.kind,
                        device: r.device, mounted: r.mounted, removable: r.removable, size: r.size,
-                       glyph: "drive" })
+                       volumeMenu: r.volumeMenu === true, glyph: "drive" })
         }
         // Same rule as ui/NetworkMounts.qml's: an unchanged poll assigns nothing, see Mounts.sameEntries.
         if (!Mounts.sameEntries(root.entries, out))
@@ -154,6 +159,18 @@ Item {
         mountProcess.command = ["gio", "mount", "-d", e.device]
         mountProcess.running = true
         mountTimeout.restart()
+    }
+
+    // RailAdditions rule 2's Unmount, which is not Eject: a fixed disk stays where it is and only
+    // its filesystem goes away. gio is handed the mount point, the way eject below is, and the poll
+    // that follows is what redraws the row as unmounted.
+    function unmount(index) {
+        var e = root.entries[index]
+        if (!e || e.kind !== "volume" || !e.mounted || unmountProcess.running)
+            return
+        root._unmountLabel = e.label
+        unmountProcess.command = ["gio", "mount", "-u", e.path]
+        unmountProcess.running = true
     }
 
     // Eject goes through the mount point. gio mount dispatches on --device before it ever reads
@@ -229,7 +246,9 @@ Item {
         // which hid / behind /home here and left the system disk unidentifiable.
         // TRAN is the transport, asked for because RM alone misses a USB bridge: a WD My Passport
         // reports rm=false with tran=usb, and a drive you can unplug has to offer Eject (PR 74).
-        command: ["lsblk", "--bytes", "--json", "-o", "NAME,PATH,LABEL,MOUNTPOINTS,RM,TRAN,SIZE,TYPE,MODEL"]
+        // FSTYPE and PARTTYPENAME are RailAdditions rule 1's three exceptions: swap, the EFI system
+        // partition and a volume with no filesystem are the rows an unmounted sweep must not draw.
+        command: ["lsblk", "--bytes", "--json", "-o", "NAME,PATH,LABEL,MOUNTPOINTS,RM,TRAN,SIZE,TYPE,MODEL,FSTYPE,PARTTYPENAME"]
         stdout: StdioCollector {
             id: listOut
             waitForEnd: true
@@ -267,6 +286,15 @@ Item {
             mountTimeout.stop()
             root._pendingOpenDevice = ""
             root.message(root._pendingOpenLabel + " could not be mounted; unplug it and plug it back in.", true)
+        }
+    }
+
+    Process {
+        id: unmountProcess
+        onExited: function (exitCode) {
+            if (exitCode !== 0)
+                root.message(root._unmountLabel + " could not be unmounted; something is still using it.", true)
+            root.poll()
         }
     }
 

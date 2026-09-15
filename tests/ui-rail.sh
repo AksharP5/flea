@@ -1,0 +1,172 @@
+#!/usr/bin/env bash
+# Sourced by ui.sh; RailAdditions rule 1 and rule 2 driven against doubles on a private PATH.
+# shellcheck disable=SC2154 # ui.sh supplies the fixture root, the candidate paths and the helpers.
+
+# The box has no unmounted internal volume of its own and nothing here may create one: a loop device
+# is a udisks operation behind polkit, and a polkit prompt on this display swallows the very keys the
+# case is driving. So lsblk answers from a file the case owns, and gio records what it was asked to
+# do and rewrites that file the way udisks would, which is the same shape tests/ui-providers.sh uses
+# for Tailscale and Dropbox.
+rail_listing() {
+    local mountpoint="$1" point
+    point=$([[ -n "$mountpoint" ]] && printf '"%s"' "$mountpoint" || printf 'null')
+    cat > "$rail_box/lsblk.json" <<JSON
+{"blockdevices":[
+ {"name":"nvme0n1","path":"/dev/nvme0n1","label":null,"mountpoints":[null],"rm":false,"tran":"nvme","size":256060514304,"type":"disk","model":"KBG40ZNS256G","fstype":null,"parttypename":null,
+  "children":[{"name":"nvme0n1p1","path":"/dev/nvme0n1p1","label":null,"mountpoints":["/"],"rm":false,"tran":null,"size":256060514304,"type":"part","model":null,"fstype":"btrfs","parttypename":"Linux filesystem"}]},
+ {"name":"sdb","path":"/dev/sdb","label":null,"mountpoints":[null],"rm":false,"tran":"sata","size":2000398934016,"type":"disk","model":"Samsung SSD 870","fstype":null,"parttypename":null,
+  "children":[{"name":"sdb1","path":"/dev/sdb1","label":"Archive","mountpoints":[$point],"rm":false,"tran":null,"size":1000398934016,"type":"part","model":null,"fstype":"ext4","parttypename":"Linux filesystem"},
+   {"name":"sdb2","path":"/dev/sdb2","label":null,"mountpoints":[null],"rm":false,"tran":null,"size":536870912,"type":"part","model":null,"fstype":"vfat","parttypename":"EFI System"},
+   {"name":"sdb3","path":"/dev/sdb3","label":null,"mountpoints":["[SWAP]"],"rm":false,"tran":null,"size":8589934592,"type":"part","model":null,"fstype":"swap","parttypename":"Linux swap"}]}
+]}
+JSON
+}
+
+# Every command the app reaches for stays reachable; lsblk and gio are the two this case answers for.
+rail_path_box() {
+    local part file name
+    local -a parts
+    mkdir -p "$rail_box/bin" || fail 'rail: private bin failed'
+    IFS=: read -r -a parts <<< "$PATH"
+    for part in "${parts[@]}"; do
+        [[ -d "$part" ]] || continue
+        for file in "$part"/*; do
+            [[ -f "$file" && -x "$file" ]] || continue
+            name=${file##*/}
+            case "$name" in lsblk|gio) continue ;; esac
+            [[ ! -e "$rail_box/bin/$name" ]] || continue
+            ln -s -- "$file" "$rail_box/bin/$name" || fail "rail: cannot retain required command $name"
+        done
+    done
+    cat > "$rail_box/bin/lsblk" <<'SH'
+#!/usr/bin/env bash
+set -eu
+box=${FLEA_RAIL_BOX:?}
+[[ "$box" == /* && -f "$box/.flea-test-sandbox" ]] || exit 90
+cat "$box/lsblk.json"
+SH
+    # Only the two calls this case owns are answered here; the trash count, the mount listing and the
+    # trash monitor are the real gio's, because a double that refused them would be testing itself.
+    local real_gio
+    real_gio=$(command -v gio) || fail 'rail: the box has no gio to stand behind the double'
+    cat > "$rail_box/bin/gio" <<SH
+#!/usr/bin/env bash
+set -eu
+box=\${FLEA_RAIL_BOX:?}
+[[ "\$box" == /* && -f "\$box/.flea-test-sandbox" ]] || exit 90
+jq -cn --args '{args:\$ARGS.positional}' -- "\$@" >> "\$box/calls.jsonl"
+case "\$*" in
+    "mount -d /dev/sdb1")
+        mkdir -p "\$box/mnt/Archive"
+        sed -i "s|\[null\],\\"rm\\":false,\\"tran\\":null,\\"size\\":1000398934016|[\\"\$box/mnt/Archive\\"],\\"rm\\":false,\\"tran\\":null,\\"size\\":1000398934016|" "\$box/lsblk.json"
+        ;;
+    "mount -u \$box/mnt/Archive")
+        sed -i "s|\[\\"\$box/mnt/Archive\\"\],\\"rm\\":false,\\"tran\\":null,\\"size\\":1000398934016|[null],\\"rm\\":false,\\"tran\\":null,\\"size\\":1000398934016|" "\$box/lsblk.json"
+        ;;
+    *) exec REAL_GIO "\$@" ;;
+esac
+SH
+    sed -i "s|REAL_GIO|$real_gio|" "$rail_box/bin/gio" || fail 'rail: the double could not be pointed at the real gio'
+    chmod 700 "$rail_box/bin/lsblk" "$rail_box/bin/gio" || fail 'rail: cannot make the doubles executable'
+}
+
+# The mounts this case asked for, in order; every other gio call belongs to the trash and the rail.
+rail_calls() {
+    jq -sc '[.[] | .args | join(" ")] | map(select(startswith("mount -d") or startswith("mount -u")))' "$rail_box/calls.jsonl"
+}
+
+rail_entry() {
+    ipc deviceEntries | grep -c "^Archive|device|volume|$1$" || true
+}
+
+rail_wait_entry() {
+    local want="$1" attempt
+    for attempt in $(seq 1 200); do
+        [[ "$(rail_entry "$want")" == "1" ]] && return
+        sleep 0.05
+    done
+    fail "rail: the Archive row never read mounted=$want, the rail carries $(ipc deviceEntries)"
+}
+
+# RailAdditions rules 1 and 2: a volume nothing mounted is a rail row behind its own switch, its menu
+# is Mount, and choosing it mounts through gio and opens what came up. The switch off is 0.2.1's rail.
+case_unmounted() (
+    local rail_box="$fixture_root/unmounted" rail_dir="$fixture_root/unmounted/home"
+    local index before
+    sandbox_scratch "$rail_box"
+    : > "$rail_box/.flea-test-sandbox" || fail 'rail: sandbox marker write failed'
+    mkdir -p "$rail_box/state" "$rail_box/config" "$rail_box/cache" "$rail_box/data" || fail 'rail: private directories failed'
+    fixture_home_make "$rail_dir"
+    : > "$rail_box/calls.jsonl"
+    rail_listing ""
+    rail_path_box
+    export HOME="$rail_dir" XDG_STATE_HOME="$rail_box/state" XDG_CONFIG_HOME="$rail_box/config"
+    export XDG_CACHE_HOME="$rail_box/cache" XDG_DATA_HOME="$rail_box/data"
+    export PATH="$rail_box/bin" FLEA_RAIL_BOX="$rail_box"
+
+    echo "-- with the switch off the rail is the one 0.2.1 drew --"
+    "$flea_bin" --ui-state '{"view":"list","keys":"default"}' >/dev/null || fail 'rail: private settings seed failed'
+    launch "$rail_dir"
+    wait_rail 2
+    settle
+    [[ "$(ipc deviceEntries)" != *"Archive"* ]] \
+        || fail "rail: the switch is off and the rail still carries $(ipc deviceEntries)"
+    printf 'RAIL off=%s\n' "$(ipc deviceEntries | tr '\n' ' ')"
+    kill_flea
+
+    echo "-- switched on, the volume nothing mounted is a row of its own --"
+    "$flea_bin" --ui-state '{"places":{"showUnmounted":true}}' >/dev/null || fail 'rail: switch seed failed'
+    launch "$rail_dir"
+    rail_wait_entry false
+    printf 'RAIL on=%s\n' "$(ipc deviceEntries | tr '\n' ' ')"
+    [[ "$(ipc deviceEntries)" != *"|volume|true"* ]] || fail 'rail: the fixture volume started out mounted'
+    index=$(rail_row_of Archive)
+    click_rail_row "$index" right
+    settle
+    [[ "$(ipc contextMenuVisible)" == "true" ]] || fail 'rail: the unmounted volume opened no menu'
+    [[ "$(ipc contextMenuEntries)" == "Mount" ]] \
+        || fail "rail: the unmounted volume offers $(ipc contextMenuEntries), not Mount alone"
+    shot rail-unmounted-menu
+
+    echo "-- Mount is the activation, and what comes up is opened --"
+    before=$(rail_calls)
+    key -k Return >/dev/null
+    rail_wait_entry true
+    wait_path "$rail_box/mnt/Archive"
+    printf 'RAIL mounted calls=%s path=%s\n' "$(rail_calls)" "$(ipc path)"
+    [[ "$(rail_calls)" == '["mount -d /dev/sdb1"]' ]] \
+        || fail "rail: the Mount row ran $(rail_calls), not one gio mount by device (before: $before)"
+    shot rail-mounted
+
+    echo "-- and a mounted one offers the open beside its release --"
+    index=$(rail_row_of Archive)
+    click_rail_row "$index" right
+    settle
+    [[ "$(ipc contextMenuEntries)" == "Open|Unmount" ]] \
+        || fail "rail: the mounted volume offers $(ipc contextMenuEntries), not Open then Unmount"
+    [[ "$(ipc contextMenuGlyphs)" == "folder|eject" ]] \
+        || fail "rail: the mounted volume draws $(ipc contextMenuGlyphs)"
+    menu_seek Unmount
+    key -k Return >/dev/null
+    rail_wait_entry false
+    printf 'RAIL unmounted calls=%s\n' "$(rail_calls)"
+    [[ "$(rail_calls)" == '["mount -d /dev/sdb1","mount -u '"$rail_box"'/mnt/Archive"]' ]] \
+        || fail "rail: Unmount ran $(rail_calls)"
+
+    echo "-- Enter on the row mounts it the same way the menu row does --"
+    # The chosen menu row handed the keyboard back to the listing, so the rail is asked for again.
+    [[ "$(ipc focusView)" == "rail" ]] || { key -k Tab >/dev/null; settle; }
+    [[ "$(ipc focusView)" == "rail" ]] || fail "rail: Tab did not reach the rail, focus is $(ipc focusView)"
+    rail_seek Archive
+    key -k Return >/dev/null
+    rail_wait_entry true
+    wait_path "$rail_box/mnt/Archive"
+    [[ "$(rail_calls)" == *'"mount -d /dev/sdb1","mount -u '"$rail_box"'/mnt/Archive","mount -d /dev/sdb1"]' ]] \
+        || fail "rail: Enter ran $(rail_calls)"
+    printf 'RAIL enter calls=%s\n' "$(rail_calls)"
+
+    # The board's second theme is not this harness's to shoot: launch() refuses a window painting
+    # anything but the live theme, which is the guard that keeps a colour claim honest. The rail's
+    # own squares are Theme.color.executable and muted, which tests/themes.sh sweeps on all 22.
+    kill_flea
+)
