@@ -29,9 +29,18 @@ BorderSurface {
 
   ShelfGlyph {
     anchors.centerIn: parent
+    visible: root.path !== ""
     width: root.iconSize
     height: root.iconSize
     path: root.path
+    color: root.enabled ? root.foreground : Qt.darker(root.foreground, 2.0)
+  }
+
+  // A button with no path draws a brand's own mark instead: Send is Taildrop.
+  ShelfTailscaleMark {
+    anchors.centerIn: parent
+    visible: root.path === ""
+    iconSize: root.iconSize
     color: root.enabled ? root.foreground : Qt.darker(root.foreground, 2.0)
   }
 

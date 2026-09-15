@@ -68,15 +68,18 @@ function tooltip(state) {
 // The two marks a row can take, on the Omarchy cut, the same paths ui/js/Icons.js draws them from.
 // Flea's own mark, which is what an empty shelf draws rather than a stand-in for one.
 var SHELF_GLYPH = "M21 21H3V3h18v14H7V7h10v6h-6"
-// Rule 14: the actions are icon buttons, and the ink is Flea's own recut set, copied here because a
-// plugin cannot import the app's Icons.js: folder-plus, copy, archive, network, clipboard, star, x.
+// Rule 14: the actions are icon buttons, and the ink is Flea's own recut set at the names its menu
+// rows use, copied here because a plugin cannot import the app's Icons.js: folder-plus for Move to,
+// copy for Copy to, archive for Compress, file-text for Copy path, pin, and x for the row's own.
+// Send carries Tailscale's own mark instead, drawn by ShelfTailscaleMark, because a brand row keeps
+// the brand's mark.
 var ACTION_GLYPHS = {
   move: "M2 20V3h6l2 3h12v14H2z M12 10v6 M9 13h6",
   copy: "M9 8h12v13H9z M4 16V3h13",
   zip: "M2 3h20v5H2z M4 8v13h16V8 M10 12h4",
-  send: "M9 2h6v6H9z M2 16h6v6H2z M16 16h6v6h-6z M12 8v4 M5 16v-4h14v4",
-  paths: "M9 2h6v4H9z M6 4H3v18h18V4h-3 M8 12h8 M8 16h5",
-  pin: "M12 2l2.9 6.6 7.1.6-5.4 4.7 1.6 7L12 17.3l-6.2 3.6 1.6-7L2 9.2l7.1-.6z",
+  send: "",
+  paths: "M4 22V2h10l6 6v14H4z M14 2v6h6 M8 9h2 M8 13h8 M8 17h8",
+  pin: "M9 3h6v6l3 3v2H6v-2l3-3z M12 14v7",
   remove: "M6 6l12 12 M18 6 6 18"
 }
 var FOLDER_GLYPH = "M2 20V3h6l2 3h12v14H2z"

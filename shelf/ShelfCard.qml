@@ -42,6 +42,8 @@ Item {
   // Keys: the subset gesture. Chosen by path, and the cursor is its own rung on top of it.
   property var chosen: ({})
   readonly property int chosenCount: Model.chosenCount(root.chosen, root.rows)
+  // Rule 10: the word an empty pile says, which is also what puts a separator above the first group.
+  readonly property bool emptyShown: Model.loose(root.pile.items).length === 0 && !root.run.running
 
   // Keys: which action the strip's own focus is on, and -1 while the rows have it.
   property int stripIndex: -1
@@ -308,8 +310,8 @@ Item {
       // that have anything follow it. Empty is a state, not a failure: no sentence, no onboarding.
       PanelSectionHeader {
         width: parent.width
-        visible: Model.loose(root.pile.items).length === 0 && !root.run.running
-        text: "Empty"
+        visible: root.emptyShown
+        text: "EMPTY"
         foreground: root.foreground
         fontFamily: root.fontFamily
       }

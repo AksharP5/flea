@@ -69,6 +69,7 @@ function sidebarGlyphFor(label) {
 var PATHS = {
     "info": "M12 11v6 M12 7h.01 M22 12a10 10 0 1 1-20 0a10 10 0 1 1 20 0",
     "shelf": "M21 21H3V3h18v14H7V7h10v6h-6",
+    "pin": "M9 3h6v6l3 3v2H6v-2l3-3z M12 14v7",
     "star": "M12 2l2.9 6.6 7.1.6-5.4 4.7 1.6 7L12 17.3l-6.2 3.6 1.6-7L2 9.2l7.1-.6z",
     "globe": "M2 12h20 M12 2a15 15 0 0 1 0 20 M12 2a15 15 0 0 0 0 20 M22 12a10 10 0 1 1-20 0a10 10 0 1 1 20 0",
 

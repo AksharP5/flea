@@ -23,17 +23,19 @@ Column {
   readonly property string thumb: Model.thumbFor(row.card.thumbs, row.modelData)
   readonly property bool thumbDrawn: row.thumb.length > 0 && shot.status === Image.Ready
 
-  // Rule 2: a separator between groups, so the first group on the card has nothing above it.
+  // Rule 2: a separator opens a group whenever something is above it on the card.
   PanelSeparator {
-    visible: row.caption.length > 0 && row.index > 0
+    visible: row.caption.length > 0 && (row.index > 0 || row.card.emptyShown)
     width: parent.width
     foreground: row.card.foreground
   }
 
+  // The OEM panels pass their headers uppercase, so the shelf's read the way EXIT NODES and
+  // MACHINES do beside them; the board's own wording is what is uppercased.
   PanelSectionHeader {
     visible: row.caption.length > 0
     width: parent.width
-    text: row.caption
+    text: row.caption.toUpperCase()
     foreground: row.card.foreground
     fontFamily: row.card.fontFamily
   }
