@@ -212,7 +212,8 @@ function run(check) {
         var mounts = { unmount: function () {}, forget: function () {},
                        replacePlace: function (was) { asked.push("replace " + was) } }
         Mounts.release("editPlace", uri, { eject: function () {} }, mounts, sidebar)
-        Mounts.placeSaved(sidebar, mounts, mountedUri, success)
+        Mounts.placeSubmitted(sidebar, "r1")
+        Mounts.placeSaved(sidebar, mounts, "r1", mountedUri, success)
         return asked
     }
     check("Edit opens the dialog over the place, with the line that says what to do",
@@ -234,17 +235,25 @@ function run(check) {
     var writer = { unmount: function () {}, forget: function () {},
                    replacePlace: function (was) { wrote.push(was) } }
     Mounts.release("editPlace", "smb://nas/", { eject: function () {} }, writer, armed)
-    Mounts.placeSaved(armed, writer, "smb://nas2/data", false)
+    // A mount that was already in flight when the rail armed carries another request, and the rail
+    // hears it on the same signal: it must not answer for the edit, whatever address it mounted.
+    Mounts.placeSaved(armed, writer, "older-request", "smb://stranger/share", true)
+    check("a mount already in flight when Edit armed rewrites nothing", wrote.join(","), "")
+    check("and leaves the place armed", armed.editingPlace, "smb://nas/")
+    Mounts.placeSubmitted(armed, "r1")
+    Mounts.placeSaved(armed, writer, "r1", "smb://nas2/data", false)
     check("a refused attempt keeps the place armed", armed.editingPlace, "smb://nas/")
-    Mounts.placeSaved(armed, writer, "smb://nas2/data", true)
+    Mounts.placeSubmitted(armed, "r2")
+    Mounts.placeSaved(armed, writer, "r2", "smb://nas2/data", true)
     check("and the attempt that mounts is the one that rewrites it", wrote.join(","), "smb://nas/")
     check("which disarms it, so a later unrelated mount rewrites nothing", armed.editingPlace, "")
-    Mounts.placeSaved(armed, writer, "smb://stranger/share", true)
+    Mounts.placeSaved(armed, writer, "r3", "smb://stranger/share", true)
     check("proved by that later mount", wrote.join(","), "smb://nas/")
     // ui/shell.qml clears editingPlace when the dialog closes, so an abandoned Edit disarms too.
     Mounts.release("editPlace", "smb://nas/", { eject: function () {} }, writer, armed)
     armed.editingPlace = ""
-    Mounts.placeSaved(armed, writer, "smb://stranger/share", true)
+    Mounts.placeSubmitted(armed, "r4")
+    Mounts.placeSaved(armed, writer, "r4", "smb://stranger/share", true)
     check("an Edit nobody finished rewrites nothing either", wrote.join(","), "smb://nas/")
 
     // Sample input: the operator's own bookmarks file, favourites and places in one list.

@@ -43,6 +43,8 @@ Item {
 
     // The saved place an Edit is rewriting, "" when none is; ui/js/Mounts.js editPlace sets it.
     property string editingPlace: ""
+    // And the request that Edit's own attempt went out with, so no other mount answers for it.
+    property string editingRequest: ""
     readonly property var networkEntries: root.placesState.showNetwork === false ? [] : mounts.entries
     // The poll rebinds its delegates in place, so a rename left standing would edit a different share.
     onNetworkEntriesChanged: root.cancelRename()
@@ -138,7 +140,7 @@ Item {
         onRetryRequested: function (uri, label, password, reason, failedConnect, origin) {
             root.networkRetryRequested(uri, label, password, reason, failedConnect, origin)
         }
-        onCompleted: function (requestId, uri, success, reason) { Mounts.placeSaved(root, mounts, uri, success); root.networkCompleted(requestId, uri, success, reason) }
+        onCompleted: function (requestId, uri, success, reason) { Mounts.placeSaved(root, mounts, requestId, uri, success); root.networkCompleted(requestId, uri, success, reason) }
         // AGENTS.md "A FileView write can race a reload": mounts.rename() blocked on waitForJob() first, so this reload reads the write it caused.
         onRenamed: root.reloadBookmarks()
     }
@@ -162,6 +164,7 @@ Item {
     }
 
     function saveNetwork(requestId, uri, label, password, origin) {
+        Mounts.placeSubmitted(root, requestId)
         mounts.saveLocation(uri, label, password, requestId, origin)
     }
     function cancelNetwork(requestId) { mounts.cancelLocation(requestId) }

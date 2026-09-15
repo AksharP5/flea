@@ -203,16 +203,25 @@ function editPlace(sidebar, share) {
     if (!entry)
         return
     sidebar.editingPlace = normalize(entry.uri)
+    sidebar.editingRequest = ""
     sidebar.networkRetryRequested(entry.uri, entry.label, "", "Edit this address, then connect and save.", false, sidebar.navigationPane)
+}
+
+// Each attempt this dialog makes, so a mount that was already in flight when the rail armed cannot
+// answer for the edit: a refusal only re-binds, because the next attempt is the one that counts.
+function placeSubmitted(sidebar, requestId) {
+    if (sidebar.editingPlace.length > 0)
+        sidebar.editingRequest = requestId
 }
 
 // The answer to that edit: a refused connect keeps the arm, because correcting an address gio could
 // not reach is what the dialog stays open for; ui/shell.qml disarms it when that dialog closes.
-function placeSaved(sidebar, mounts, uri, success) {
-    if (!success || sidebar.editingPlace.length === 0)
+function placeSaved(sidebar, mounts, requestId, uri, success) {
+    if (!success || sidebar.editingPlace.length === 0 || requestId !== sidebar.editingRequest)
         return
     var was = sidebar.editingPlace
     sidebar.editingPlace = ""
+    sidebar.editingRequest = ""
     if (normalize(uri) !== was)
         mounts.replacePlace(was)
 }

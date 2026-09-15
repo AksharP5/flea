@@ -4080,8 +4080,10 @@ file:///missing/legacy Local legacy' ]] \
         || fail "editplace: the edit added a favourite as well as rewriting the place"
     printf 'EDITPLACE edit=%s rail=%s\n' "$(head -1 "$bookmarks")" "$rail_uri"
 
-    echo "-- an Edit nobody finished leaves the place alone, however the next mount ends --"
+    echo "-- an Edit nobody finished leaves the place alone when the next place is saved --"
     legacy_index=$(ipc railEntries | jq -r 'map(.label) | index("Legacy share")')
+    [[ -n "$legacy_index" && "$legacy_index" != "null" ]] \
+        || fail "editplace: the edited place left the rail, which carries $(ipc railEntries)"
     click_rail_row "$legacy_index" right
     settle
     menu_seek "Edit"
@@ -4091,8 +4093,7 @@ file:///missing/legacy Local legacy' ]] \
     key -k Escape >/dev/null
     settle
     [[ "$(ipc dialogOpen)" == "false" ]] || fail "editplace: Escape left the dialog open"
-    # A different place saved right afterwards: without the dialog's own disarm this mount rewrites
-    # the line the abandoned Edit was armed on, which is what makes this case able to go red.
+    # Without the dialog's own disarm this next mount rewrites the line the abandoned Edit armed.
     rail_focus
     key a >/dev/null
     settle
