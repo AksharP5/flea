@@ -1761,11 +1761,11 @@ case_ctrlclick() {
             settle
             [[ "$(ipc viewMode)" == "$view" ]] || fail "ctrlclick: the chrome did not switch to the $view"
         fi
-        # A plain click on alpha, then ctrl+click on gamma: both stay selected and the cursor moves.
+        # ui/js/Tap.js's rule: a plain tap replaces the selection with its own row, Finder's.
         click_row 1 left
         settle
-        [[ "$(ipc selectionCount)" == "0" ]] \
-            || fail "ctrlclick: a plain click in the $view left $(ipc selectionCount) rows selected"
+        [[ "$(ipc selectedIndices)" == "1" ]] \
+            || fail "ctrlclick: a plain click in the $view selected '$(ipc selectedIndices)', not its own row"
         click_row 3 left --mods ctrl
         settle
         printf 'CTRLCLICK %s indices=%s cursor=%s\n' "$view" "$(ipc selectedIndices)" "$(ipc cursor)"
@@ -1778,15 +1778,30 @@ case_ctrlclick() {
         settle
         [[ "$(ipc selectedIndices)" == "2,3" ]] \
             || fail "ctrlclick: in the $view shift+click selected '$(ipc selectedIndices)', not 2,3"
-        # Ctrl+click on the cursor row itself with nothing marked marks it, once.
+        # PR 106's own case, the one the pointer cannot reach on its own: the keyboard leaves the
+        # cursor on a row with nothing marked, which every write operation reads as that row being
+        # the selection, so the ctrl+click has to add to it rather than replace it.
+        key -k Escape >/dev/null
+        settle
+        [[ "$(ipc selectionCount)" == "0" ]] \
+            || fail "ctrlclick: escape left $(ipc selectionCount) rows marked in the $view"
+        # Escape leaves the cursor where the shift+click put it with nothing marked, which is the
+        # state the keyboard is in after j and k: no key is pressed to reach it here, because Up is a
+        # row of tiles in the grid and a row of text in the list.
+        [[ "$(ipc cursor)" == "2" ]] || fail "ctrlclick: the cursor is $(ipc cursor) in the $view, not 2"
+        click_row 3 left --mods ctrl
+        settle
+        [[ "$(ipc selectedIndices)" == "2,3" ]] \
+            || fail "ctrlclick: in the $view ctrl+click on an unmarked cursor row selected '$(ipc selectedIndices)', not 2,3"
+        # And on a row that is the whole selection it takes that row off, which is what a toggle is.
         click_row 2 left
         settle
         click_row 2 left --mods ctrl
         settle
-        [[ "$(ipc selectedIndices)" == "2" ]] \
-            || fail "ctrlclick: in the $view ctrl+click on the cursor row selected '$(ipc selectedIndices)', not 2"
-        # Leaves the set empty, so the next view starts from the same state as this one did.
-        click_row 2 left
+        [[ "$(ipc selectedIndices)" == "" ]] \
+            || fail "ctrlclick: in the $view ctrl+click on the marked row left '$(ipc selectedIndices)' marked"
+        # Leaves one row marked, so the next view starts from the same state as this one did.
+        click_row 1 left
         settle
     done
 }
