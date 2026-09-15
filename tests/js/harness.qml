@@ -27,6 +27,7 @@ import "mounts.js" as MountsSuite
 import "nav.js" as NavSuite
 import "network.js" as NetworkSuite
 import "ops.js" as OpsSuite
+import "opstrash.js" as OpsTrashSuite
 import "palette.js" as PaletteSuite
 import "pathbar.js" as PathBarSuite
 import "phones.js" as PhonesSuite
@@ -85,7 +86,7 @@ Item {
             ["format", FormatSuite], ["icons", IconsSuite],
             ["keymap", KeymapSuite], ["match", MatchSuite], ["menu", MenuSuite],
             ["marks", MarksSuite], ["mounts", MountsSuite], ["nav", NavSuite], ["crumbs", CrumbsSuite], ["devices", DevicesSuite], ["network", NetworkSuite],
-            ["openwith", OpenWithSuite], ["ops", OpsSuite],
+            ["openwith", OpenWithSuite], ["ops", OpsSuite], ["opstrash", OpsTrashSuite],
             ["palette", PaletteSuite], ["pathbar", PathBarSuite], ["places", PlacesSuite],
             ["phones", PhonesSuite],
             ["picker", PickerSuite],

@@ -73,23 +73,9 @@ function run(check) {
           Ops.retrySelectionLine([{path: "/source/c.txt", index: 2}, {path: "/source/d.txt", index: 3}]),
           "2 items selected for retry")
 
-    // The canvas draws this one verbatim on the Operations artboard's status strip.
-    check("trash reads exactly as the canvas draws it",
-          Ops.trashed(4, 0),
-          "Moved 4 items to Trash · z undoes")
-    check("a trash that failed outright does not offer an undo",
-          Ops.trashed(0, 1),
-          "That item could not be moved to Trash.")
-    check("a partly failed trash reports both halves",
-          Ops.trashed(3, 1),
-          "Moved 3 items to Trash, 1 failed · z undoes")
-
     check("undo names the operation it reversed",
           Ops.undone("rename") + " / " + Ops.undone("move"),
           "Undid the rename. / Undid the move.")
-    check("undoing a trash says where it came back from",
-          Ops.undone("trash"),
-          "Put it back from Trash.")
     // src/backend/undo.rs reverses a mkdir with remove_dir, so the line says what left the disk
     // rather than repeating the wire's own verb at an operator who never typed it.
     check("undoing a new folder says what came off the disk",
@@ -302,21 +288,6 @@ function run(check) {
     Ops.convert(menuPane, conversion, "png", false, 73)
     check("menu mutations forward the selected identity to their operation workers",
           operationIds.join(","), "duplicate:34,trash:35,extract:36,convert:37")
-
-    // PR 53, W4HO-ham: the cursor lands where the block left, so the row the request went out with is
-    // the block's own first and not the row the cursor happened to sit on inside it.
-    var block = windowedPane([])
-    block.cursorIndex = 3
-    block.selectedIndices = function () { return [2, 3] }
-    block.backend.trash = function () {}
-    Ops.trash(block, 0)
-    check("a block trash records the row the block leaves behind", block.trashedFirst, 2)
-    var single = windowedPane([])
-    single.cursorIndex = 4
-    single.selectedIndices = function () { return [] }
-    single.backend.trash = function () {}
-    Ops.trash(single, 0)
-    check("one row records itself", single.trashedFirst, 4)
     check("conversion sends its original source after navigation", convertedArguments.path, convertedSource)
     check("conversion sends its captured output directory", convertedArguments.dest.indexOf("/different-directory/"), -1)
     check("conversion keeps its menu identity for the complete dialog lifetime", menuPane.convertSource.menuId, 37)

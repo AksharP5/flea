@@ -19,7 +19,12 @@ function watched(pane) {
 // follows without reaching for the mouse; reported 2026-09-11, "deleting one refreshes the entire
 // file list and loses my selection, so I have to start over". A delete that failed leaves the row
 // standing, and then the name matches and the cursor goes back exactly where it was.
-function afterDelete(pane) {
+function afterDelete(pane, landed) {
+    // A block leaves as a block, so the cursor belongs on the row the block left rather than on the
+    // row below wherever it sat inside it; a delete that failed keeps the row it was already on.
+    if (landed && pane.trashedFirst >= 0)
+        pane.cursorIndex = pane.trashedFirst
+    pane.trashedFirst = -1
     return anchoredRefresh(pane, true)
 }
 
