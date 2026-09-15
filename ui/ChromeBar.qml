@@ -1,6 +1,7 @@
 import QtQuick
 import qs.Commons
 import "." as Flea
+import "js/Crumbs.js" as Crumbs
 import "js/Nav.js" as Nav
 import "js/PathBar.js" as PathBar
 
@@ -252,7 +253,7 @@ Item {
 
                 Repeater {
                     id: crumbs
-                    model: Nav.fitCrumbs(Nav.crumbs(root.path, root.home),
+                    model: Crumbs.fitCrumbs(Crumbs.crumbs(root.path, root.home),
                                          Math.floor(crumbSlot.width / crumbMetrics.advanceWidth))
 
                     // corner: a path is arbitrary text, so PlainText, the same rule every filename on this surface follows.

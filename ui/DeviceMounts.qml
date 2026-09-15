@@ -227,7 +227,9 @@ Item {
         // PATH because a device-mapper leaf is not "/dev/" plus its kernel name, and MOUNTPOINTS
         // because one btrfs device carries several and the plain column shows whichever it likes,
         // which hid / behind /home here and left the system disk unidentifiable.
-        command: ["lsblk", "--bytes", "--json", "-o", "NAME,PATH,LABEL,MOUNTPOINTS,RM,SIZE,TYPE,MODEL"]
+        // TRAN is the transport, asked for because RM alone misses a USB bridge: a WD My Passport
+        // reports rm=false with tran=usb, and a drive you can unplug has to offer Eject (PR 74).
+        command: ["lsblk", "--bytes", "--json", "-o", "NAME,PATH,LABEL,MOUNTPOINTS,RM,TRAN,SIZE,TYPE,MODEL"]
         stdout: StdioCollector {
             id: listOut
             waitForEnd: true

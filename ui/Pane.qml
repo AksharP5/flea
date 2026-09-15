@@ -3,8 +3,10 @@ import Quickshell
 import "." as Flea
 import "js/DirSizes.js" as DirSizes
 import "js/Dropbox.js" as Dropbox
+import "js/Crumbs.js" as Crumbs
 import "js/Filter.js" as Filter
 import "js/Focus.js" as Focus
+import "js/Marks.js" as Marks
 import "js/Menu.js" as Menu
 import "js/Mounts.js" as Mounts
 import "js/Search.js" as Search
@@ -238,7 +240,7 @@ FocusScope {
     function selectionCount() { return root.selectionVersion >= 0 ? root.selection.count() : 0 }
     function selectedIndices() { return root.selectionVersion >= 0 ? root.selection.indices() : [] }
     function toggleSelect() { root.selection.toggle(root.cursorIndex); root.selectionAnchor = root.cursorIndex; root.selectionVersion++ }
-    function selectAll() { Filter.selectAll(root); root.selectionVersion++ }
+    function selectAll() { Marks.selectAll(root); root.selectionVersion++ }
     function clearSelection() { root.selection.clear(); root.selectionVersion++ }
     function selectOnly(index) {
         root.setCursor(index)
@@ -246,10 +248,10 @@ FocusScope {
         root.selectionAnchor = root.cursorIndex
         root.selectionVersion++
     }
-    function extendSelection(delta) { Filter.extend(root, delta) }
+    function extendSelection(delta) { Marks.extend(root, delta) }
     // Ctrl+click and shift+click, the mouse's twins of v and shift+j/k; see keys.toml's [[pointer]].
-    function toggleSelectAt(index) { Filter.toggleRow(root, index) }
-    function extendSelectionTo(index) { Filter.extendToRow(root, index) }
+    function toggleSelectAt(index) { Marks.toggleRow(root, index) }
+    function extendSelectionTo(index) { Marks.extendToRow(root, index) }
     // Named escapePressed, not escape, which collides with the JS global URI function; clears an active selection first, see keys.toml.
     function escapePressed() { if (root.selection.count() > 0) { root.clearSelection(); return }; root.message("", false) }
 
@@ -424,7 +426,7 @@ FocusScope {
             anchors.leftMargin: Theme.spacing.rowPaddingX
             anchors.rightMargin: Theme.spacing.rowPaddingX
             verticalAlignment: Text.AlignVCenter
-            text: Nav.crumbs(root.path, root.home).map(function(c) { return c.text }).join("")
+            text: Crumbs.crumbs(root.path, root.home).map(function(c) { return c.text }).join("")
             textFormat: Text.PlainText
             color: Theme.color.foreground
             font { family: Theme.font.family; pixelSize: Theme.font.caption }

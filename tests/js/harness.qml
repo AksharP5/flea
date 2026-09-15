@@ -2,6 +2,7 @@ import QtQuick
 import "archive.js" as ArchiveSuite
 import "columns.js" as ColumnsSuite
 import "contrast.js" as ContrastSuite
+import "crumbs.js" as CrumbsSuite
 import "dirsizes.js" as DirSizesSuite
 import "drag.js" as DragSuite
 import "dst.js" as DstSuite
@@ -16,9 +17,11 @@ import "focus-wrap.js" as FocusWrapSuite
 import "format.js" as FormatSuite
 import "icons.js" as IconsSuite
 import "keymap.js" as KeymapSuite
+import "marks.js" as MarksSuite
 import "match.js" as MatchSuite
 import "menu.js" as MenuSuite
 import "openwith.js" as OpenWithSuite
+import "devices.js" as DevicesSuite
 import "mounts.js" as MountsSuite
 import "nav.js" as NavSuite
 import "network.js" as NetworkSuite
@@ -80,7 +83,7 @@ Item {
             ["focus-lines", FocusLinesSuite], ["focus-wrap", FocusWrapSuite],
             ["format", FormatSuite], ["icons", IconsSuite],
             ["keymap", KeymapSuite], ["match", MatchSuite], ["menu", MenuSuite],
-            ["mounts", MountsSuite], ["nav", NavSuite], ["network", NetworkSuite],
+            ["marks", MarksSuite], ["mounts", MountsSuite], ["nav", NavSuite], ["crumbs", CrumbsSuite], ["devices", DevicesSuite], ["network", NetworkSuite],
             ["openwith", OpenWithSuite], ["ops", OpsSuite],
             ["palette", PaletteSuite], ["pathbar", PathBarSuite], ["places", PlacesSuite],
             ["phones", PhonesSuite],

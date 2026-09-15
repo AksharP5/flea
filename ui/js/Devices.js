@@ -6,7 +6,7 @@
 
 // Sample lsblk --bytes --json row, with the columns ui/DeviceMounts.qml asks for:
 // {"name":"sda1","path":"/dev/sda1","label":"128GB","mountpoints":["/run/media/gm/128GB"],"rm":true,
-//  "size":124656812032,"type":"part","model":null}.
+//  "tran":null,"size":124656812032,"type":"part","model":null}.
 // Two row kinds come out: one "disk" row for the disk that carries /, then one "volume" row for each
 // volume on every other disk. ui/DeviceMounts.qml turns these into rail entries.
 function parseDevices(body) {
@@ -29,7 +29,7 @@ function parseDevices(body) {
         // what puts a second internal drive in the rail (operator, 2026-09-11: only sticks appeared).
         if (!nodes[i].name || nodes[i] === system || isPseudo(nodes[i].name))
             continue
-        collectVolumes([nodes[i]], "", out)
+        collectVolumes([nodes[i]], "", unpluggable(nodes[i]), out)
     }
     return out
 }
@@ -65,21 +65,31 @@ function holdsRoot(node) {
     return false
 }
 
-// A volume earns a rail row when it is removable, which is a stick whether or not anything mounted
-// it, or when it is mounted, which is every internal drive the operator actually uses. An unmounted
-// internal partition stays out: a box's spare EFI and recovery partitions are not places to browse.
-function collectVolumes(nodes, model, out) {
+// A volume earns a rail row when it can be unplugged, which is a stick whether or not anything
+// mounted it, or when it is mounted, which is every internal drive the operator actually uses. An
+// unmounted internal partition stays out: a spare EFI or recovery partition is not a place to browse.
+function collectVolumes(nodes, model, unplugs, out) {
     for (var i = 0; i < nodes.length; i++) {
         var n = nodes[i]
         var kids = n.children || []
         // Only the disk carries a product name, so it is passed down to its own partitions.
         var own = n.model ? String(n.model) : model
+        // And only the disk carries the transport, so the same descent answers for its partitions:
+        // measured by mariobgsp (PR 74), whose USB drive reports tran=usb on sdb and null on sdb1.
+        var pulls = unplugs || unpluggable(n)
         // Only a leaf is a volume. A partition holding a LUKS container is not what mounts, its crypt
         // child is, and emitting both would put one drive in the rail twice.
-        if (n.name && kids.length === 0 && (n.rm === true || mountOf(n).length > 0))
-            out.push(volumeRow(n, own))
-        collectVolumes(kids, own, out)
+        if (n.name && kids.length === 0 && (pulls || mountOf(n).length > 0))
+            out.push(volumeRow(n, own, pulls))
+        collectVolumes(kids, own, pulls, out)
     }
+}
+
+// A drive somebody can pull out, which is what Eject is for. RM alone is not the answer: a USB
+// bridge (a WD My Passport, PR 74) reports rm=false and is still a drive you unplug, while a hot-swap
+// SATA bay reports its own hotplug and is not, which is why the transport decides and not that.
+function unpluggable(n) {
+    return !!n && (n.rm === true || String(n.tran || "").toLowerCase() === "usb")
 }
 
 // Sample: ["/home", "/var/log", "/"] for one btrfs device with several subvolumes mounted, ["[SWAP]"]
@@ -102,11 +112,11 @@ function devicePath(node) {
 }
 
 // The label ladder is the filesystem label, then the drive's product name, then the kernel name.
-function volumeRow(n, model) {
+function volumeRow(n, model, unplugs) {
     var path = mountOf(n)
     var label = n.label ? String(n.label) : (model.length > 0 ? model : String(n.name))
     return { kind: "volume", label: label, device: devicePath(n), path: path, mounted: path.length > 0,
-             removable: n.rm === true, size: deviceBytes(n.size) }
+             removable: unplugs === true, size: deviceBytes(n.size) }
 }
 
 // An unavailable or malformed capacity stays absent; only the delegate formats valid byte counts.
