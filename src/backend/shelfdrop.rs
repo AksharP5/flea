@@ -84,14 +84,12 @@ fn run_and_settle(
             eprintln!("flea: the shelf kept its references ({})", e);
         }
     });
-    // The guard owns the join, so the pile is settled before the message goes on every path: a
-    // JoinHandle dropped any other way only detaches its thread.
+    // The guard owns the join, because a JoinHandle dropped any other way only detaches its thread.
     let _terminal = Terminal { tx: done_tx, held: Arc::clone(&held), forward: Some(forward), id, total, moving };
     run_transfer_checked(id, moving, paths, dest, cancel, mine, None, None);
 }
 
-// A guard rather than a line at the end, because the engine runs on this thread and a panic there
-// would unwind past any send written after it, leaving the pane waiting on the transfer forever.
+// A guard, because the engine runs on this thread and a panic there unwinds past any send after it.
 struct Terminal {
     tx: Sender<OpMsg>,
     held: Arc<Mutex<Option<OpMsg>>>,

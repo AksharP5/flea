@@ -34,9 +34,8 @@ QtObject {
             root.lastError = code === 0 ? "" : "The shelf could not " + root.running + " that row."
             root.running = ""
             root.pile.reload()
-            // Drained from the event loop rather than inside this handler, because the process is
-            // still running until it returns. The row stays in the queue until it starts, so a call
-            // arriving in that turn lines up behind it rather than jumping it.
+            // Drained from the event loop because the process is still running inside this handler,
+            // and the row stays in the queue until it starts so a call arriving then cannot jump it.
             if (root.waiting.length > 0) {
                 Qt.callLater(root.drain)
             }
