@@ -33,6 +33,8 @@ Panel {
   // Summon: the card's menu holds the last five piles, and a cleared pile says how to get it back
   // for the four seconds a transient lives.
   property bool menu: false
+  // True from the lift until the platform drag ends, however it ended.
+  property bool carrying: false
   readonly property int transientMs: 4000
 
   // A card that closed while its menu was up must come back as the pile, not as the menu: the menu is
@@ -65,7 +67,7 @@ Panel {
       transient.restart()
     }
     onMinted: function (token, moving) { card.lift(token, !moving) }
-    onFailed: function (why) { root.error = why }
+    onFailed: function (why) { root.error = why; root.carrying = false }
   }
 
   Timer {
@@ -211,7 +213,14 @@ Panel {
     // open, the way the shell's own clipboard and emoji panels do. Measured on this box: with the
     // OEM's prime-then-OnDemand the keyboard went back to whatever the pointer was over, so a card
     // opened by clicking the bar mark took no keys at all.
-    WlrLayershell.keyboardFocus: root.opened ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+    //
+    // It gives the keyboard up for the length of a drag, and that is not a detail: measured on this
+    // box, a layer surface holding an exclusive keyboard grab is never told the drag left it, so the
+    // drop never reaches the window underneath. The platform loop sees no keys anyway, which is why
+    // the copy modifier is read at the lift, so nothing is lost by letting go of them here.
+    WlrLayershell.keyboardFocus: root.opened && !root.carrying
+                                 ? WlrKeyboardFocus.Exclusive
+                                 : WlrKeyboardFocus.None
 
     onVisibleChanged: if (panel.visible) focusHold.restart()
 
@@ -349,7 +358,11 @@ Panel {
         onActionRequested: function (id) { root.actOn(id) }
         onCancelRequested: doing.cancelRun()
         run: doing.run
-        onLiftRequested: function (copying) { shelf.mintDrag(!copying) }
+        onLiftRequested: function (copying) {
+          root.carrying = true
+          shelf.mintDrag(!copying)
+        }
+        onCarried: function (carrying) { root.carrying = carrying }
       }
     }
   }

@@ -36,6 +36,8 @@ Item {
 
   signal removeRequested(int index)
   signal openRequested(string path)
+  // The card is carrying the pile out, which is the one time it must not hold the keyboard.
+  signal carried(bool carrying)
   signal captureAddRequested(int index)
   // Summon: the pointer's way to the last five piles is the card's own menu.
   signal menuRequested()
@@ -68,6 +70,7 @@ Item {
   Drag.onDragFinished: {
     root.Drag.active = false
     root.dragMime = ({})
+    root.carried(false)
   }
 
   // Keys, grouped the way the board groups them: move around, change the pile, do something with it.
