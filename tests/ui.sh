@@ -1765,7 +1765,7 @@ case_ctrlclick() {
             settle
             local drawn
             drawn=$(ipc viewMode)
-            [[ "$drawn" == "$view" ]] || fail "ctrlclick: the chrome drew the $drawn, not the $view"
+            [[ "$drawn" == "$view" ]] || fail "ctrlclick: the chrome drew '$drawn', not the $view"
         fi
         # ui/js/Tap.js's rule: a plain tap replaces the selection with its own row, Finder's.
         click_row 1 left
@@ -1817,7 +1817,7 @@ case_ctrlclick() {
 # launch opens on. The write is ui/Pane.qml onViewModeChanged and the read is its Component.onCompleted,
 # so nothing but a relaunch proves the pair; a tab carries its own view and must not be the one stored.
 case_viewrestart() {
-    local dir="$fixture_root/viewrestart" drew
+    local dir="$fixture_root/viewrestart" drew stored_view
     sandbox_scratch "$dir"
     mkdir -p "$dir/sub"
     : > "$dir/a.txt"
@@ -1828,12 +1828,12 @@ case_viewrestart() {
     launch "$dir"
     wait_listing 3
     drew=$(ipc viewMode)
-    [[ "$drew" == "columns" ]] || fail "viewrestart: the seeded state opened on $drew, not the columns"
+    [[ "$drew" == "columns" ]] || fail "viewrestart: the seeded state opened on '$drew', not the columns"
     switch_view grid
     launch "$dir"
     wait_listing 3
     drew=$(ipc viewMode)
-    [[ "$drew" == "grid" ]] || fail "viewrestart: the next launch opened on $drew, not the grid it was left on"
+    [[ "$drew" == "grid" ]] || fail "viewrestart: the next launch opened on '$drew', not the grid it was left on"
     # A tab carries its own view, so the window is left on the first tab's grid and not the second's list.
     key t >/dev/null
     settle
@@ -1841,11 +1841,11 @@ case_viewrestart() {
     key -M ctrl -k Page_Down -m ctrl >/dev/null
     settle
     drew=$(ipc viewMode)
-    [[ "$drew" == "grid" ]] || fail "viewrestart: the first tab came back as $drew, not the grid it held"
+    [[ "$drew" == "grid" ]] || fail "viewrestart: the first tab came back as '$drew', not the grid it held"
     launch "$dir"
     wait_listing 3
     drew=$(ipc viewMode)
-    [[ "$drew" == "grid" ]] || fail "viewrestart: after the second tab's own switch the launch opened on $drew, not the grid the window was left on"
+    [[ "$drew" == "grid" ]] || fail "viewrestart: after the second tab's own switch the launch opened on '$drew', not the grid the window was left on"
     # PR 97's own edge: a word this build cannot draw is read as the list and put back drawable.
     kill_flea
     local stored="$fixture_root/viewrestart-state/flea/ui.json"
@@ -1861,8 +1861,9 @@ EDIT
     launch "$dir"
     wait_listing 3
     drew=$(ipc viewMode)
-    [[ "$drew" == "list" ]] || fail "viewrestart: a stored word this build cannot draw opened on $drew, not the list"
-    grep -q '"view": *"banana"' "$stored" && fail "viewrestart: the unreadable word is still in the state file"
+    [[ "$drew" == "list" ]] || fail "viewrestart: a stored word this build cannot draw opened on '$drew', not the list"
+    stored_view=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("view", ""))' "$stored")
+    [[ "$stored_view" == "list" ]] || fail "viewrestart: the settle left '$stored_view' in the state file, not the list the pane drew"
     kill_flea
 }
 
@@ -7963,11 +7964,12 @@ hover_row() {
 
 # ctrl-1 list, ctrl-2 columns, ctrl-3 grid, per keys.toml; the reader proves the switch landed.
 switch_view() {
-    local want="$1" chord
+    local want="$1" chord drew
     case "$want" in list) chord=1 ;; columns) chord=2 ;; grid) chord=3 ;; esac
     key -M ctrl -k "$chord" -m ctrl >/dev/null
     settle
-    [[ "$(ipc viewMode)" == "$want" ]] || fail "switch_view: ctrl-$chord left the view on $(ipc viewMode), not $want"
+    drew=$(ipc viewMode)
+    [[ "$drew" == "$want" ]] || fail "switch_view: ctrl-$chord left the view on '$drew', not $want"
 }
 
 # rect_is "x y w h" ex ey ew eh tol: every edge of the box within tol pixels of the expected one.
