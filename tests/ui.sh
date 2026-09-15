@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Drives the real Quickshell window with omarchy-drive and asserts through the read-only IPC seam.
-# Usage: ./tests/ui.sh [cursor|terminal|open|rows|click|ctrlclick|viewrestart|dd|menu|hidden|selection|select|colour|lifted|icons|thumbs|hashcache|stale|nosweep|oem|header|overflow|focus|preview|network|netmark|networktimeout|networklive|gvfs|sharebrowser|unmount|phones|eject|rename|renamelife|taildrop|grid|columns|operations|tabs|openterminal|renderer|settings ...]; networklive is opt-in.
+# Usage: ./tests/ui.sh [cursor|terminal|open|rows|click|ctrlclick|viewrestart|dd|sortrestart|menu|hidden|selection|select|colour|lifted|icons|thumbs|hashcache|stale|nosweep|oem|header|overflow|focus|preview|network|netmark|networktimeout|networklive|gvfs|sharebrowser|unmount|phones|eject|rename|renamelife|taildrop|grid|columns|operations|tabs|openterminal|renderer|settings ...]; networklive is opt-in.
 set -u
 set -o pipefail
 # Hard rule 9's guard, which owns FIXTURE_ROOT and every create and delete this suite makes.
@@ -1872,6 +1872,39 @@ EDIT
 }
 
 # Catches narrowing the delegate TapHandler back to Qt.LeftButton in ui/Pane.qml.
+# Issue 70, TyRichards: the sort choice outlives the window, and the next launch lists in it rather
+# than in name ascending. The order is checked on the rows, not only on the header's own mark.
+case_sortrestart() {
+    local dir="$fixture_root/sortrestart" mark
+    sandbox_scratch "$dir"
+    # Size order and name order disagree on purpose: a listing in name order cannot pass this.
+    head -c 300 /dev/zero > "$dir/a.txt"
+    head -c 10 /dev/zero > "$dir/b.txt"
+    head -c 100 /dev/zero > "$dir/c.txt"
+    seed_ui_state "$fixture_root/sortrestart-state" '{"sort":{"key":"size","reverse":true}}'
+
+    launch "$dir"
+    wait_listing 3
+    mark=$(ipc sortMark)
+    [[ "$mark" == "size:desc" ]] || fail "sortrestart: the seeded order opened as '$mark', not size:desc"
+    [[ "$(ipc rowAt 0)" == "a.txt|"* && "$(ipc rowAt 1)" == "c.txt|"* && "$(ipc rowAt 2)" == "b.txt|"* ]] \
+        || fail "sortrestart: the seeded listing reads $(ipc rowAt 0) $(ipc rowAt 1) $(ipc rowAt 2)"
+
+    echo "-- S reverses it, and the next launch opens in what was left --"
+    key S >/dev/null
+    settle
+    mark=$(ipc sortMark)
+    [[ "$mark" == "size:asc" ]] || fail "sortrestart: S left the mark on '$mark', not size:asc"
+    launch "$dir"
+    wait_listing 3
+    mark=$(ipc sortMark)
+    [[ "$mark" == "size:asc" ]] || fail "sortrestart: the next launch opened on '$mark', not the size:asc it was left on"
+    [[ "$(ipc rowAt 0)" == "b.txt|"* && "$(ipc rowAt 1)" == "c.txt|"* && "$(ipc rowAt 2)" == "a.txt|"* ]] \
+        || fail "sortrestart: the restored listing reads $(ipc rowAt 0) $(ipc rowAt 1) $(ipc rowAt 2)"
+    printf 'SORTRESTART mark=%s rows=%s %s %s\n' "$mark" "$(ipc rowAt 0)" "$(ipc rowAt 1)" "$(ipc rowAt 2)"
+    kill_flea
+}
+
 case_menu() {
     local dir="$fixture_root/menu"
     sandbox_scratch "$dir"
