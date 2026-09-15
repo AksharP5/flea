@@ -1,5 +1,6 @@
 .import "../../ui/js/Phones.js" as Phones
 .import "../../ui/js/Mounts.js" as Mounts
+.import "../../ui/js/RailMenu.js" as RailMenu
 
 function run(check) {
     // Real gio mount -li output, captured on the box with a Samsung phone on USB (2026-09-11),
@@ -118,9 +119,9 @@ function run(check) {
     var openedKey = ""
     var sidebar = { deviceEntries: [mounted[0]], releasePhone: function (key) { releasedKey = key },
                     openPhone: function (key) { openedKey = key } }
-    Mounts.release("unmountPhone", "mtp://SAMSUNG_SAMSUNG_Android_RQGL705T0NR/", null, null, sidebar)
+    RailMenu.release("unmountPhone", "mtp://SAMSUNG_SAMSUNG_Android_RQGL705T0NR/", null, null, sidebar)
     check("unmountPhone hands the key to the sidebar", releasedKey, "mtp://SAMSUNG_SAMSUNG_Android_RQGL705T0NR/")
-    Mounts.release("mountPhone", "mtp://Google_Pixel_7_1A2B/", null, null, sidebar)
+    RailMenu.release("mountPhone", "mtp://Google_Pixel_7_1A2B/", null, null, sidebar)
     check("mountPhone hands its own key to the same row's activation", openedKey, "mtp://Google_Pixel_7_1A2B/")
 
     // An unchanged poll must not assign, and a mount-state flip must: the two sides of sameEntries.

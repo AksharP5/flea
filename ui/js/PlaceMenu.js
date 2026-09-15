@@ -11,11 +11,12 @@ function key(entry, favouriteIndex) {
     return "place:" + favouriteIndex + ":" + entry.path
 }
 
-function entries(sidebar, entry, favouriteIndex) {
-    // What Settings, Menus has switched off rides on the pane's own state document, the way every
-    // other reader of it does; the rail has no second copy of that list.
-    var state = sidebar.navigationPane ? sidebar.navigationPane.uiState : null
-    var hidden = state && state.menu ? state.menu.hidden : []
+// The hidden list is ui/ViewState.qml "menuHidden", handed in by the caller: it is the one reader
+// that falls back to the shipped defaults, and a list derived any other way is empty before the
+// state file lands, which switched this menu on in a fresh home. Anything else fails closed.
+function entries(entry, favouriteIndex, hidden) {
+    if (!Array.isArray(hidden))
+        return []
     return Menu.placeEntries({ hiddenActions: hidden, hasRow: true, placeFavourite: favouriteIndex >= 0 })
 }
 

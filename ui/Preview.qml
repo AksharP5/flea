@@ -87,19 +87,13 @@ Item {
         stripHideTimer.restart()
     }
 
-    function togglePlay() {
-        if (root.isMedia && mediaLoader.item)
-            mediaLoader.item.togglePlay()
-    }
+    function togglePlay() { if (root.isMedia && mediaLoader.item) mediaLoader.item.togglePlay() }
 
     // MediaMute rule 3: one session flag, so the column's strip and this one always agree.
     function toggleMute() { if (root.isMedia) Flea.MediaSound.toggle() }
 
     // Absolute seek in ms, clamped by PreviewMedia's own seekTo; the slider's onReleased calls this directly.
-    function seekTo(ms) {
-        if (root.isMedia && mediaLoader.item)
-            mediaLoader.item.seekTo(ms)
-    }
+    function seekTo(ms) { if (root.isMedia && mediaLoader.item) mediaLoader.item.seekTo(ms) }
 
     // Relative seek in ms, Left/Right's own shape; seekTo does the clamping.
     function seek(deltaMs) {
@@ -107,20 +101,11 @@ Item {
     }
 
     // The PDF viewer's three actions come through this file, so ui/js/Focus.js never learns a Loader item answers them.
-    function turnPage(delta) {
-        if (root.isPdf && pdfLoader.item)
-            pdfLoader.item.turn(delta)
-    }
+    function turnPage(delta) { if (root.isPdf && pdfLoader.item) pdfLoader.item.turn(delta) }
 
-    function zoomBy(steps) {
-        if (root.isPdf && pdfLoader.item)
-            pdfLoader.item.zoomBy(steps)
-    }
+    function zoomBy(steps) { if (root.isPdf && pdfLoader.item) pdfLoader.item.zoomBy(steps) }
 
-    function toggleExpand() {
-        if (root.isPdf && pdfLoader.item)
-            pdfLoader.item.toggleExpand()
-    }
+    function toggleExpand() { if (root.isPdf && pdfLoader.item) pdfLoader.item.toggleExpand() }
 
     // Space opens on the cursor row; this is immediate, follow() below is the held-key j/k path.
     function open(newPath, newIcon, newSize, newKind) {

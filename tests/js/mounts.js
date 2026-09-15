@@ -1,5 +1,6 @@
 .import "../../ui/js/Devices.js" as Devices
 .import "../../ui/js/Mounts.js" as Mounts
+.import "../../ui/js/RailMenu.js" as RailMenu
 .import "../../ui/js/Eject.js" as Eject
 .import "../../ui/js/Icons.js" as Icons
 
@@ -166,7 +167,7 @@ function run(check) {
     function rec() { var a = []; return { a: a, eject: function (i) { a.push("e" + i) }, unmount: function (i) { a.push("u" + i) } } }
     function released(action, key) {
         var d = rec(), n = rec()
-        Mounts.release(action, key, d, n, { placesEntries: [], deviceEntries: [disk, stick], networkEntries: [{ label: "isos", group: "network", kind: "share", uri: "smb://x/isos/", path: "", mounted: true }] })
+        RailMenu.release(action, key, d, n, { placesEntries: [], deviceEntries: [disk, stick], networkEntries: [{ label: "isos", group: "network", kind: "share", uri: "smb://x/isos/", path: "", mounted: true }] })
         return d.a.concat(n.a).join(",")
     }
     check("eject resolves the volume's position and never the network Service", released("eject", "/dev/sda1"), "e1")

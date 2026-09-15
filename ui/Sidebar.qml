@@ -6,6 +6,7 @@ import "js/Icons.js" as Icons
 import "js/Mounts.js" as Mounts
 import "js/Places.js" as Places
 import "js/PlaceMenu.js" as PlaceMenu
+import "js/RailMenu.js" as RailMenu
 
 // Places, Favorites, Network and Devices share one flat cursor in visual order.
 Item {
@@ -42,7 +43,7 @@ Item {
         : [{ label: "Trash", path: "trash:///", group: "trash", kind: "trash", glyph: "trash", count: root.trashCount }]
     signal trashRequested()
 
-    // The saved place an Edit is rewriting, "" when none is; ui/js/Mounts.js editPlace sets it.
+    // The saved place an Edit is rewriting, "" when none is; ui/js/RailMenu.js editPlace sets it.
     property string editingPlace: ""
     // And the request that Edit's own attempt went out with, so no other mount answers for it.
     property string editingRequest: ""
@@ -141,7 +142,7 @@ Item {
         onRetryRequested: function (uri, label, password, reason, failedConnect, origin) {
             root.networkRetryRequested(uri, label, password, reason, failedConnect, origin)
         }
-        onCompleted: function (requestId, uri, success, reason) { Mounts.placeSaved(root, mounts, requestId, uri, success); root.networkCompleted(requestId, uri, success, reason) }
+        onCompleted: function (requestId, uri, success, reason) { RailMenu.placeSaved(root, mounts, requestId, uri, success); root.networkCompleted(requestId, uri, success, reason) }
         // AGENTS.md "A FileView write can race a reload": mounts.rename() blocked on waitForJob() first, so this reload reads the write it caused.
         onRenamed: root.reloadBookmarks()
     }
@@ -165,7 +166,7 @@ Item {
     }
 
     function saveNetwork(requestId, uri, label, password, origin) {
-        Mounts.placeSubmitted(root, requestId)
+        RailMenu.placeSubmitted(root, requestId)
         mounts.saveLocation(uri, label, password, requestId, origin)
     }
     function cancelNetwork(requestId) { mounts.cancelLocation(requestId) }
@@ -187,7 +188,7 @@ Item {
             return
         }
         root.cursorIndex = index
-        Mounts.railMenuFor(root, entry, scenePosition)
+        RailMenu.railMenuFor(root, entry, scenePosition, ViewState.menuHidden)
     }
 
     // The keyboard's entrance to the same menu: ui/js/Mounts.js "raiseMenu" has already asked whether the row releases anything, so this only turns the cursor into a point.
@@ -198,7 +199,7 @@ Item {
         root.openRailMenu(root.cursorIndex, row.mapToItem(null, Style.spacing.rowPaddingX, row.height))
     }
 
-    // A chosen row arrives with its key rather than its position, and Mounts.release names the row.
+    // A chosen row arrives with its key rather than its position, and RailMenu.release names the row.
     function releaseChosen(action, key) {
         if (key === "trash") return
         // A place and a favourite are both a path, and ui/js/PlaceMenu.js owns what their rows do.
@@ -206,7 +207,7 @@ Item {
             PlaceMenu.perform(action, key, root, Favourites)
             return
         }
-        Mounts.release(action, key, devices, mounts, root)
+        RailMenu.release(action, key, devices, mounts, root)
     }
 
     Connections {
@@ -242,7 +243,7 @@ Item {
         else devices.activate(rest - root.networkEntries.length)
     }
 
-    // Mounts.release hands the phone action back here, because the phone Service is this rail's own child.
+    // RailMenu.release hands the phone action back here, because the phone Service is this rail's own child.
     function releasePhone(key) { phones.release(key) }
     // Its Mount and Open rows are the row's own activation, resolved by key because the poll renumbers.
     function openPhone(key) {

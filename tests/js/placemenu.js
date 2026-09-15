@@ -26,16 +26,17 @@ function run(check) {
     var placeRow = { path: "/home/gm/Downloads", kind: "home", label: "Downloads" }
     var favouriteRow = { path: "/home/gm/Work", kind: "favourite", label: "Work", favouriteIndex: 2 }
 
-    var off = sidebarStub(["placeMenu"])
     check("with the switch off the rail's own menu is the one it has today",
-          PlaceMenu.entries(off, placeRow, -1).length, 0)
+          PlaceMenu.entries(placeRow, -1, ["placeMenu"]).length, 0)
+    // A fresh home has no state file yet, and the rail asked before ui/ViewState.qml had a list.
+    check("and a list it could not read switches nothing on",
+          PlaceMenu.entries(placeRow, -1, undefined).length, 0)
 
-    var on = sidebarStub([])
     check("a Places row offers the path rows and nothing that cuts, sends or destroys",
-          labels(PlaceMenu.entries(on, placeRow, -1)),
+          labels(PlaceMenu.entries(placeRow, -1, [])),
           "Open|Open in new tab|Open in terminal|Copy path|Add to Favorites")
     check("and a Favorites row ends on Remove rather than Add, so issue 138's duplicate is impossible",
-          labels(PlaceMenu.entries(on, favouriteRow, 2)),
+          labels(PlaceMenu.entries(favouriteRow, 2, [])),
           "Open|Open in new tab|Open in terminal|Copy path|Remove from Favorites")
     check("the key carries the path, because the rail rebuilds under an open menu",
           PlaceMenu.key(favouriteRow, 2), "place:2:/home/gm/Work")

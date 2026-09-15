@@ -4106,10 +4106,11 @@ PYEOF
     (( pos_after < pos_before )) \
         || fail "preview: Left did not move tone.wav back, before=$pos_before after=$pos_after"
 
-    # Task 22: Space toggles play/pause on a MEDIA preview instead of closing it.
-    key -k space >/dev/null
+    # GM, 2026-09-11: space closes every kind, media included, and playback moved to its own p, which
+    # ui/js/PreviewKeys.js reaches only in the media context. This block is that ruling, not Task 22's.
+    key p >/dev/null
     wait_preview_state paused
-    [[ "$(ipc previewOpen)" == "true" ]] || fail "preview: space paused tone.wav but also closed the preview"
+    [[ "$(ipc previewOpen)" == "true" ]] || fail "preview: p paused tone.wav but also closed the preview"
     pos_before=$(ipc previewPosition)
     key l >/dev/null
     settle
@@ -4118,12 +4119,13 @@ PYEOF
     [[ "$(ipc previewState)" == "paused" ]] || fail "preview: l changed paused audio to $(ipc previewState)"
     [[ "$pos_after" == "$pos_before" ]] \
         || fail "preview: l moved paused audio, before=$pos_before after=$pos_after"
-    key -k space >/dev/null
+    key p >/dev/null
     wait_preview_state playing
 
-    key -k Escape >/dev/null
+    # And the second space closes a playing media preview, the way it closes every other kind.
+    key -k space >/dev/null
     settle
-    [[ "$(ipc previewOpen)" == "false" ]] || fail "preview: escape did not close the audio preview after the media-control checks"
+    [[ "$(ipc previewOpen)" == "false" ]] || fail "preview: space did not close the playing audio preview"
 
     open_row_fast clip.mp4
     [[ "$(ipc previewKind)" == "video" ]] || fail "preview: clip.mp4 classified as $(ipc previewKind), not video"
@@ -5409,7 +5411,7 @@ EOS
     [[ ! -s "$helper_log" ]] || fail "networkauth: already-mounted descendant launched helper"
     click_rail_row "$network_index" right
     settle
-    [[ "$(ipc contextMenuEntries)" == "Unmount|Rename|Remove" ]] \
+    [[ "$(ipc contextMenuEntries)" == "Unmount|Edit|Rename|Remove" ]] \
         || fail "networkauth: the projected mounted row offers $(ipc contextMenuEntries), not Unmount first"
     key -k Return >/dev/null
     wait_network_result unmounted 5
@@ -5879,7 +5881,7 @@ case_networklive() {
     wait_listing_wall 0 25
     click_rail_row "$network_index" right
     settle
-    [[ "$(ipc contextMenuEntries)" == "Unmount|Rename|Remove" ]] \
+    [[ "$(ipc contextMenuEntries)" == "Unmount|Edit|Rename|Remove" ]] \
         || fail "networklive: mounted share menu is $(ipc contextMenuEntries), not Unmount first"
     key -k Return >/dev/null
     wait_message "Unmounted $label."
@@ -5927,8 +5929,15 @@ case_gvfs() {
     export HOME="$real_home"
     wait_listing 2
     wait_rail 2
-    [[ "$(ipc networkEntries)" == "share.zip|network|share|true" ]] \
-        || fail "gvfs: live mount never appeared, got $(ipc networkEntries)"
+    # The rail count is satisfied by Home and Trash, and ui/NetworkMounts.qml polls mounts every five
+    # seconds, so the fixture's own row is waited for. The operator's own shares sit on this rail too
+    # and are none of this case's business, which is why the row is looked for rather than counted.
+    for _attempt in $(seq 1 300); do
+        [[ "$(ipc networkEntries)" == *"share.zip|network|share|true"* ]] && break
+        sleep 0.05
+    done
+    [[ "$(ipc networkEntries)" == *"share.zip|network|share|true"* ]] \
+        || fail "gvfs: live mount never appeared, the rail carries $(ipc networkEntries)"
 
     key -k Tab >/dev/null
     key g >/dev/null
@@ -5952,15 +5961,16 @@ case_gvfs() {
 
     click_rail_row "$(rail_row_of share.zip)" right
     settle
-    [[ "$(ipc contextMenuEntries)" == "Unmount|Rename|Remove" ]] \
+    [[ "$(ipc contextMenuEntries)" == "Unmount|Edit|Rename|Remove" ]] \
         || fail "gvfs: mounted share menu is $(ipc contextMenuEntries)"
     key -k Return >/dev/null
     wait_message "Unmounted share.zip."
     for _attempt in $(seq 1 100); do
-        [[ -z "$(ipc networkEntries)" ]] && break
+        [[ "$(ipc networkEntries)" != *"share.zip"* ]] && break
         sleep 0.05
     done
-    [[ -z "$(ipc networkEntries)" ]] || fail "gvfs: row survived unmount"
+    [[ "$(ipc networkEntries)" != *"share.zip"* ]] \
+        || fail "gvfs: the row survived unmount, the rail carries $(ipc networkEntries)"
     ! gio mount -l | grep -Fq -- "-> $uri" || fail "gvfs: GIO mount survived Flea unmount"
 
     printf 'GVFS rail=ok browse=ok preview=ok unmount=ok\n'
@@ -6399,7 +6409,7 @@ EOS
     settle
     [[ "$(ipc focusView)" == "rail" ]] || fail "unmount: Tab did not reach the rail"
 
-    # Right click raises the menu over the row and nothing else: the release row first, then the two
+    # Right click raises the menu over the row and nothing else: the release row first, then the three
     # rows the saved place itself owns, and no unmount has run. The old two-right-click arm is gone,
     # see ui/Sidebar.qml "openRailMenu" and ui/js/Mounts.js "rowMenu".
     click_rail_row "$(rail_row_of stubshare)" right
@@ -6408,10 +6418,10 @@ EOS
         "$(ipc contextMenuVisible)" "$(ipc contextMenuEntries)" "$(ipc contextMenuGlyphs)"
     shot unmount-menu
     [[ "$(ipc contextMenuVisible)" == "true" ]] || fail "unmount: right click opened no menu on the share"
-    [[ "$(ipc contextMenuEntries)" == "Unmount|Rename|Remove" ]] \
-        || fail "unmount: the share's menu is $(ipc contextMenuEntries), not Unmount then Rename then Remove"
-    [[ "$(ipc contextMenuGlyphs)" == "eject|rename|minus" ]] \
-        || fail "unmount: the share's rows draw $(ipc contextMenuGlyphs), not eject, rename and minus"
+    [[ "$(ipc contextMenuEntries)" == "Unmount|Edit|Rename|Remove" ]] \
+        || fail "unmount: the share's menu is $(ipc contextMenuEntries), not Unmount, Edit, Rename then Remove"
+    [[ "$(ipc contextMenuGlyphs)" == "eject|sliders|rename|minus" ]] \
+        || fail "unmount: the share's rows draw $(ipc contextMenuGlyphs), not eject, sliders, rename and minus"
     [[ -z "$(cat "$unmount_log")" ]] || fail "unmount: opening the menu already unmounted: $(cat "$unmount_log")"
 
     # Escape closes it and still nothing has run, which is what makes the menu the confirmation.
@@ -6433,7 +6443,8 @@ EOS
     # the one favourite this fixture home has, and it is not a mount.
     click_rail_row 0 right
     settle
-    [[ "$(ipc contextMenuVisible)" == "false" ]] || fail "unmount: a favourite opened a menu with nothing in it"
+    [[ "$(ipc contextMenuVisible)" == "false" ]] \
+        || fail "unmount: a favourite opened $(ipc contextMenuEntries)"
 
     # The one instance is shared with the listing, so the keyboard must come back to it afterwards:
     # a second ContextMenu in this tree once killed every key in the window, see AGENTS.md.
@@ -6451,7 +6462,7 @@ EOS
     # for, each with its own sentence. This home has no bookmarks file, so the live share is unsaved.
     click_rail_row "$(rail_row_of stubshare)" right
     settle
-    [[ "$(ipc contextMenuEntries)" == "Unmount|Rename|Remove" ]] \
+    [[ "$(ipc contextMenuEntries)" == "Unmount|Edit|Rename|Remove" ]] \
         || fail "unmount: the share's menu is $(ipc contextMenuEntries) before Remove"
     menu_seek Remove
     key -k Return >/dev/null
@@ -6508,8 +6519,8 @@ EOS
     # Saved and nothing mounted: the line and the row both go, and no unmount clause is offered.
     click_rail_row "$(rail_row_of 'Ghost Place')" right
     settle
-    [[ "$(ipc contextMenuEntries)" == "Rename|Remove" ]] \
-        || fail "unmount: an unmounted place offers $(ipc contextMenuEntries), not Rename then Remove"
+    [[ "$(ipc contextMenuEntries)" == "Edit|Rename|Remove" ]] \
+        || fail "unmount: an unmounted place offers $(ipc contextMenuEntries), not Edit, Rename then Remove"
     menu_seek Remove
     key -k Return >/dev/null
     wait_message "Ghost Place is forgotten."
@@ -6729,10 +6740,13 @@ EOS
     settle
     key d >/dev/null
     wait_message "Press d again to trash, or Delete on its own."
+    # The arm itself, not the hint: ui/Pane.qml escapePressed clears a selection before it clears the
+    # bar, and coming up from the mount leaves the row we left selected (ui/js/Nav.js
+    # applyPendingSelect), so the sentence stands for its four seconds while the arm is already gone.
     key -k Escape >/dev/null
     settle
-    [[ "$(ipc statusPrimary)" != *"Press d again"* ]] \
-        || fail "phones: Escape left the trash armed one directory up, the bar reads $(ipc statusPrimary)"
+    [[ "$(ipc keyDeliveryState | jq -er '.trashArmedAt')" == "0" ]] \
+        || fail "phones: Escape left the trash armed one directory up, the arm reads $(ipc keyDeliveryState | jq -c '.trashArmedAt')"
     key -k Return >/dev/null
     wait_path "$fuse"
     wait_listing 1
@@ -7295,11 +7309,12 @@ case_places() {
     sandbox_scratch "$config"
     sandbox_scratch "$state"
     : > "$dir/a.txt"
+    mkdir -p "$dir/sub" || fail "places: the second favourite's folder could not be made"
     export XDG_CONFIG_HOME="$config" XDG_STATE_HOME="$state"
     settings_seed "$state" "$config" "$state/flea/ui.json"
     launch "$dir"
-    wait_listing 1
-    settings_places "$dir"
+    wait_listing 2
+    settings_places "$dir" places-favourites
     kill_flea
 }
 
@@ -7535,6 +7550,7 @@ case_settings() {
     sandbox_scratch "$state"
     : > "$dir/a.txt"
     : > "$dir/b.txt"
+    mkdir -p "$dir/sub" || fail "settings: the second favourite's folder could not be made"
     local real_config="${XDG_CONFIG_HOME-}"
     local real_state="${XDG_STATE_HOME-}"
     export XDG_CONFIG_HOME="$config"
@@ -7547,7 +7563,7 @@ case_settings() {
     settings_seed "$state" "$config" "$stored"
 
     launch "$dir"
-    wait_listing 2
+    wait_listing 3
 
     settings_doors
     settings_view
@@ -7588,7 +7604,7 @@ case_settings() {
 
     kill_flea
     launch "$dir"
-    wait_listing 2
+    wait_listing 3
     [[ "$(token_of baseSize)" == "$pinned_base" ]] \
         || fail "settings: a restart lost the ${pinned_base}px override, it draws at $(token_of baseSize)"
     settings_open_key
@@ -7684,7 +7700,7 @@ settings_view() {
     settings_section view
     local inventory
     inventory=$(ipc settingsSections | jq -r 'map(.id) | join(",")')
-    [[ "$inventory" == "view,places,preview,keys,display,menus,about" ]] || fail "settings: wrong rail order $inventory"
+    [[ "$inventory" == "view,places,shelf,preview,keys,display,menus,about" ]] || fail "settings: wrong rail order $inventory"
     settings_focus_row view
     key l >/dev/null; settle
     [[ "$(ipc viewMode)" == "columns" ]] || fail "settings: View choice did not change the listing"
@@ -7757,17 +7773,32 @@ settings_preview() {
 }
 
 settings_places() {
-    local dir="$1" flag group
+    local dir="$1" frame="${2:-settings-places}" flag group
     settings_open_key; settle
     settings_section places
     settings_wait_value '.places.favourites == []'
     settings_focus_row addFavourite
     key -k Return >/dev/null; settle
     settings_wait_value '.places.favourites | length == 1'
+    # Issue 138, src/favourites.rs: a place already held is kept once however it is spelled, so the
+    # same folder added twice is still one row. The new favourite is also a row of its own now, so
+    # the button is asked for by id rather than assumed to be still under the cursor.
+    settings_focus_row addFavourite
+    key -k Return >/dev/null; settle
+    ipc uiSettings | jq -e '.places.favourites | length == 1' >/dev/null \
+        || fail "settings: the same folder was saved twice, Favorites holds $(ipc uiSettings | jq -c '.places.favourites')"
+    # The second favourite is a second directory, which is what the move and remove rows below need.
+    key -k Escape >/dev/null; settle
+    seek_row_named sub
+    key -k Return >/dev/null
+    wait_path "$dir/sub"
+    settings_open_key; settle
+    settings_section places
+    settings_focus_row addFavourite
     key -k Return >/dev/null; settle
     settings_wait_value '.places.favourites | length == 2'
-    ipc uiSettings | jq -e --arg path "$dir" '.places.favourites | length == 2 and all(.[]; .path == $path)' >/dev/null \
-        || fail "settings: Add this folder did not preserve duplicate paths"
+    ipc uiSettings | jq -e --arg dir "$dir" '[.places.favourites[].path] == [$dir, $dir + "/sub"]' >/dev/null \
+        || fail "settings: Favorites holds $(ipc uiSettings | jq -c '[.places.favourites[].path]'), not the two folders in the order they were added"
     settings_focus_row favourite:0
     key -M shift -k j -m shift >/dev/null; settle
     [[ "$(ipc settingsCursor)" == "2" ]] || fail "settings: Shift+J did not keep focus on the moved favourite"
@@ -7806,8 +7837,12 @@ settings_places() {
     settings_wait_value '.places.sidebarWidth == 256'
     key h >/dev/null; settle
     settings_wait_value '.places.sidebarWidth == 224'
-    shot settings-places
+    shot "$frame"
     key -k Escape >/dev/null; settle
+    # Back where this block started: the second favourite was added from inside sub, and every caller
+    # after this one drives the fixture's own listing.
+    key h >/dev/null
+    wait_path "$dir"
 }
 
 settings_about() {
@@ -7877,7 +7912,7 @@ settings_read_refused() {
     before_ino=$(stat -c '%i' "$stored")
     chmod 000 "$stored" || fail "settings: the state file could not be made unreadable"
     launch "$dir"
-    wait_listing 2
+    wait_listing 3
     [[ "$(ipc lastMessage)" == "Your saved settings could not be read, so these are the defaults." ]] \
         || fail "settings: an unreadable state file was not reported, the status bar says $(ipc lastMessage)"
     # And the write half of that same file, one keystroke away: the window is holding the shipped
@@ -7886,8 +7921,15 @@ settings_read_refused() {
     settle
     [[ "$(ipc lastMessage)" == "Your saved settings could not be read, so these are the defaults." ]] \
         || fail "settings: a second failure acknowledged the unreadable-settings error"
-    key -k Escape >/dev/null
-    settle
+    # Three refusals can be waiting here: the read, the Favorites reader's own (ui/ViewState.qml
+    # favouritesReadError, raised by the same unreadable file) and the save. Escape dismisses the head
+    # of that queue one at a time, the way the operator would, until the save's sentence is showing.
+    local dismissed
+    for dismissed in 1 2 3; do
+        key -k Escape >/dev/null
+        settle
+        [[ "$(ipc lastMessage)" == "That setting could not be saved." ]] && break
+    done
     [[ "$(ipc lastMessage)" == "That setting could not be saved." ]] \
         || fail "settings: a save onto an unreadable state file was not reported, the status bar says $(ipc lastMessage)"
     kill_flea
@@ -8232,13 +8274,15 @@ settings_menus() {
     settle
 }
 
-# Section selection survives a close; walk the current seven-row rail through real keys.
+# Section selection survives a close; walk the rail through real keys. The rail's own length is read
+# here rather than written down: case_settings above is where the inventory itself is asserted, and a
+# count in two places is a count that goes stale in one of them, which is how it did.
 settings_section() {
     local want="$1" sections down count step
     sections=$(ipc settingsSections)
     down=$(printf '%s' "$sections" | jq -r --arg id "$want" 'map(.id) | index($id) // empty')
     count=$(printf '%s' "$sections" | jq 'length')
-    [[ "$down" =~ ^[0-9]+$ && "$count" == 7 ]] || fail "settings: section inventory is not the seven boards: $sections"
+    [[ "$down" =~ ^[0-9]+$ ]] || fail "settings: the rail has no $want section, it carries $sections"
     if [[ "$(ipc settingsSide)" != "rail" ]]; then key -k Tab >/dev/null; settle; fi
     [[ "$(ipc settingsSide)" == "rail" ]] || fail "settings: Tab did not give the cursor to the rail"
     for (( step = 1; step < count; step++ )); do key k >/dev/null; done

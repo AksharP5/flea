@@ -18,6 +18,8 @@ QtObject {
     readonly property var pile: FileView {
         path: root.pileFile
         watchChanges: true
+        // A home that has pinned nothing has no pile file, which onLoadFailed answers with no rows.
+        printErrors: false
         onFileChanged: reload()
         onLoaded: root.records = ShelfPile.pinned(text())
         onLoadFailed: root.records = []

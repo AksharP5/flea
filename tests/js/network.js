@@ -1,4 +1,5 @@
 .import "../../ui/js/Mounts.js" as Mounts
+.import "../../ui/js/RailMenu.js" as RailMenu
 .import "../../ui/js/Protocols.js" as Protocols
 
 // Issue #36 (@janoguerra): every network decision resolves from the mount's own URI, or from gio
@@ -185,7 +186,7 @@ function run(check) {
         var mounts = { unmount: function (i) { log.push("unmount" + i) },
                        forget: function (uri) { log.push("forget " + uri) } }
         var devices = { eject: function (i) { log.push("eject" + i) } }
-        Mounts.release(action, key, devices, mounts, sidebar)
+        RailMenu.release(action, key, devices, mounts, sidebar)
         return log.join(",")
     }
     check("Rename resolves the network row past Places, including Trash",
@@ -211,9 +212,9 @@ function run(check) {
                         } }
         var mounts = { unmount: function () {}, forget: function () {},
                        replacePlace: function (was) { asked.push("replace " + was) } }
-        Mounts.release("editPlace", uri, { eject: function () {} }, mounts, sidebar)
-        Mounts.placeSubmitted(sidebar, "r1")
-        Mounts.placeSaved(sidebar, mounts, "r1", mountedUri, success)
+        RailMenu.release("editPlace", uri, { eject: function () {} }, mounts, sidebar)
+        RailMenu.placeSubmitted(sidebar, "r1")
+        RailMenu.placeSaved(sidebar, mounts, "r1", mountedUri, success)
         return asked
     }
     check("Edit opens the dialog over the place, with the line that says what to do",
@@ -234,29 +235,29 @@ function run(check) {
     var wrote = []
     var writer = { unmount: function () {}, forget: function () {},
                    replacePlace: function (was) { wrote.push(was) } }
-    Mounts.release("editPlace", "smb://nas/", { eject: function () {} }, writer, armed)
+    RailMenu.release("editPlace", "smb://nas/", { eject: function () {} }, writer, armed)
     // Only this edit's own attempt answers for it: a mount in flight when the rail armed carries
     // another request, and so does one started from the dialog after this attempt was refused.
-    Mounts.placeSaved(armed, writer, "older-request", "smb://stranger/share", true)
+    RailMenu.placeSaved(armed, writer, "older-request", "smb://stranger/share", true)
     check("a mount already in flight when Edit armed rewrites nothing", wrote.join(","), "")
-    Mounts.placeSubmitted(armed, "r0")
-    Mounts.placeSaved(armed, writer, "another-request", "smb://stranger/share", true)
+    RailMenu.placeSubmitted(armed, "r0")
+    RailMenu.placeSaved(armed, writer, "another-request", "smb://stranger/share", true)
     check("and neither does one that is not the attempt this dialog made", wrote.join(","), "")
     check("both of which leave the place armed", armed.editingPlace, "smb://nas/")
-    Mounts.placeSubmitted(armed, "r1")
-    Mounts.placeSaved(armed, writer, "r1", "smb://nas2/data", false)
+    RailMenu.placeSubmitted(armed, "r1")
+    RailMenu.placeSaved(armed, writer, "r1", "smb://nas2/data", false)
     check("a refused attempt keeps the place armed", armed.editingPlace, "smb://nas/")
-    Mounts.placeSubmitted(armed, "r2")
-    Mounts.placeSaved(armed, writer, "r2", "smb://nas2/data", true)
+    RailMenu.placeSubmitted(armed, "r2")
+    RailMenu.placeSaved(armed, writer, "r2", "smb://nas2/data", true)
     check("and the attempt that mounts is the one that rewrites it", wrote.join(","), "smb://nas/")
     check("which disarms it, so a later unrelated mount rewrites nothing", armed.editingPlace, "")
-    Mounts.placeSaved(armed, writer, "r3", "smb://stranger/share", true)
+    RailMenu.placeSaved(armed, writer, "r3", "smb://stranger/share", true)
     check("proved by that later mount", wrote.join(","), "smb://nas/")
     // ui/shell.qml clears editingPlace when the dialog closes, so an abandoned Edit disarms too.
-    Mounts.release("editPlace", "smb://nas/", { eject: function () {} }, writer, armed)
+    RailMenu.release("editPlace", "smb://nas/", { eject: function () {} }, writer, armed)
     armed.editingPlace = ""
-    Mounts.placeSubmitted(armed, "r4")
-    Mounts.placeSaved(armed, writer, "r4", "smb://stranger/share", true)
+    RailMenu.placeSubmitted(armed, "r4")
+    RailMenu.placeSaved(armed, writer, "r4", "smb://stranger/share", true)
     check("an Edit nobody finished rewrites nothing either", wrote.join(","), "smb://nas/")
 
     // Sample input: the operator's own bookmarks file, favourites and places in one list.
