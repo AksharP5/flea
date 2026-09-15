@@ -4080,6 +4080,39 @@ file:///missing/legacy Local legacy' ]] \
         || fail "editplace: the edit added a favourite as well as rewriting the place"
     printf 'EDITPLACE edit=%s rail=%s\n' "$(head -1 "$bookmarks")" "$rail_uri"
 
+    echo "-- an Edit nobody finished leaves the place alone, however the next mount ends --"
+    legacy_index=$(ipc railEntries | jq -r 'map(.label) | index("Legacy share")')
+    click_rail_row "$legacy_index" right
+    settle
+    menu_seek "Edit"
+    key -k Return >/dev/null
+    settle
+    [[ "$(ipc dialogOpen)" == "true" ]] || fail "editplace: the second Edit opened no dialog"
+    key -k Escape >/dev/null
+    settle
+    [[ "$(ipc dialogOpen)" == "false" ]] || fail "editplace: Escape left the dialog open"
+    # A different place saved right afterwards: without the dialog's own disarm this mount rewrites
+    # the line the abandoned Edit was armed on, which is what makes this case able to go red.
+    rail_focus
+    key a >/dev/null
+    settle
+    key "other.test" >/dev/null
+    key -k Tab >/dev/null
+    key -k Tab >/dev/null
+    key "/share" >/dev/null
+    key -k Return >/dev/null
+    for _attempt in $(seq 1 200); do
+        [[ "$(ipc dialogOpen)" == "false" ]] && break
+        sleep 0.05
+    done
+    [[ "$(ipc dialogOpen)" == "false" ]] || fail "editplace: the second place never saved, it says $(ipc networkStatus)"
+    [[ "$(cat "$mount_log")" == 'mount --anonymous smb://other.test/share' ]] \
+        || fail "editplace: the second place mounted $(cat "$mount_log")"
+    settle
+    [[ "$(cat "$bookmarks")" == "$edited_marks" ]] \
+        || fail "editplace: the abandoned Edit rewrote the saved place, the file now reads $(cat "$bookmarks")"
+    printf 'EDITPLACE abandoned=unchanged marks=%s\n' "$(head -1 "$bookmarks")"
+
     export PATH="$saved_path"
     kill_flea
 }

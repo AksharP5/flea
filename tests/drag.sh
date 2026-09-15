@@ -963,30 +963,29 @@ for direction in left right; do
   expect_feedback "" ""
 done
 
-# ---------------------------------------------------------------- R9
+# ---------------------------------------------------------------- R11
 echo
-echo "== R9: a press that travels on the chrome strip moves the window =="
+echo "== R11: a press that travels on the chrome strip moves the window =="
 # ui/shell.qml asks for no decorations, so the compositor never gave this window a title bar and the
 # strip is it. The window is floated and placed first: a tiled window has nowhere of its own to move
 # to, and a full-screen float puts the strip under the Omarchy bar, which owns those pixels.
-r9_geometry() {
+r11_geometry() {
   hyprctl clients -j | jq -er --argjson pid "$MYPID" \
     '[.[] | select(.pid == $pid)] | if length == 1 then .[0] else error("owned window missing or ambiguous") end
      | "\(.at[0]) \(.at[1]) \(.size[0]) \(.size[1]) \(.floating)"'
 }
-hyprctl dispatch "hl.dsp.window.float()" >/dev/null || die "R9 could not float the window"
+hyprctl dispatch "hl.dsp.window.float()" >/dev/null || die "R11 could not float the window"
 sleep 0.5
 hyprctl dispatch "hl.dsp.window.resize({ x = 1200, y = 800 })" >/dev/null
 sleep 0.4
 hyprctl dispatch "hl.dsp.window.move({ x = 400, y = 300 })" >/dev/null
 sleep 0.8
-# A here-string always hands read one line, so the geometry is captured and checked before it is
-# split: a jq that failed would otherwise read as four empty fields and compare equal to itself.
-geometry=$(r9_geometry) || die "R9 window geometry unavailable"
-[ -n "$geometry" ] || die "R9 window geometry is empty"
+# Captured and checked before it is split, because a here-string always hands read one line.
+geometry=$(r11_geometry) || die "R11 window geometry unavailable"
+[ -n "$geometry" ] || die "R11 window geometry is empty"
 read -r wx wy ww wh floating <<< "$geometry"
 check "the window is floating where this case put it" "$floating $wx $wy" "true 400 300"
-point=$(ipc pathCentre) || die "R9 path area has no geometry"
+point=$(ipc pathCentre) || die "R11 path area has no geometry"
 read -r cx cy <<< "$point"
 glide_to "$((wx + cx))" "$((wy + cy))"
 sleep 0.3
@@ -996,24 +995,24 @@ for _ in $(seq 1 12); do move_rel 8 4; sleep 0.05; done
 sleep 0.4
 release
 sleep 1
-geometry=$(r9_geometry) || die "R9 window geometry unavailable after the drag"
-[ -n "$geometry" ] || die "R9 window geometry is empty after the drag"
+geometry=$(r11_geometry) || die "R11 window geometry unavailable after the drag"
+[ -n "$geometry" ] || die "R11 window geometry is empty after the drag"
 read -r ax ay _ _ _ <<< "$geometry"
 check "the window followed the pointer" "$([ "$ax" -gt "$wx" ] && [ "$ay" -gt "$wy" ] && echo moved || echo "stayed at $ax,$ay")" "moved"
 note "moved dx=$((ax - wx)) dy=$((ay - wy))"
 # The strip is still a strip: a click that does not travel reaches the control under it.
-geometry=$(r9_geometry) || die "R9 window geometry unavailable before the click"
-[ -n "$geometry" ] || die "R9 window geometry is empty before the click"
+geometry=$(r11_geometry) || die "R11 window geometry unavailable before the click"
+[ -n "$geometry" ] || die "R11 window geometry is empty before the click"
 read -r bx by _ _ _ <<< "$geometry"
-point=$(ipc chromeButtonCentre arrow-up) || die "R9 the up control has no geometry"
+point=$(ipc chromeButtonCentre arrow-up) || die "R11 the up control has no geometry"
 read -r ux uy <<< "$point"
 here=$(ipc path)
-omarchy-drive click "$((bx + ux))" "$((by + uy))" left >/dev/null || die "R9 could not click the up control"
+omarchy-drive click "$((bx + ux))" "$((by + uy))" left >/dev/null || die "R11 could not click the up control"
 sleep 0.8
 check "a click with no travel still reached the control under the strip" \
       "$([ "$(ipc path)" != "$here" ] && echo climbed || echo "stayed at $(ipc path)")" "climbed"
-geometry=$(r9_geometry) || die "R9 window geometry unavailable after the click"
-[ -n "$geometry" ] || die "R9 window geometry is empty after the click"
+geometry=$(r11_geometry) || die "R11 window geometry unavailable after the click"
+[ -n "$geometry" ] || die "R11 window geometry is empty after the click"
 read -r cx2 cy2 _ _ _ <<< "$geometry"
 check "and that click moved nothing" "$cx2 $cy2" "$bx $by"
 
@@ -1028,10 +1027,12 @@ for _ in $(seq 1 12); do move_rel 8 4; sleep 0.05; done
 sleep 0.4
 release
 sleep 1
-geometry=$(r9_geometry) || die "R9 window geometry unavailable after the editor drag"
-[ -n "$geometry" ] || die "R9 window geometry is empty after the editor drag"
+geometry=$(r11_geometry) || die "R11 window geometry unavailable after the editor drag"
+[ -n "$geometry" ] || die "R11 window geometry is empty after the editor drag"
 read -r ex ey _ _ _ <<< "$geometry"
 check "a drag while the path editor is up moves no window" "$ex $ey" "$cx2 $cy2"
+# And the editor is still up, so the press was ignored by the strip rather than dismissing it.
+expect_ipc pathBarOpen true
 native_key -k Escape
 expect_ipc pathBarOpen false
 
