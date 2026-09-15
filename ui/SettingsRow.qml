@@ -238,6 +238,13 @@ Item {
             color: Theme.color.muted
         }
 
+        Flea.LocalSendMark {
+            anchors.centerIn: parent
+            visible: root.row.mark === "localsend"
+            iconSize: Theme.markSize
+            color: Theme.color.muted
+        }
+
         Flea.HyprlandMark {
             anchors.centerIn: parent
             visible: root.row.mark === "hyprland"

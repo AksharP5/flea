@@ -31,7 +31,7 @@ QtObject {
     // switched off. Every id here is an action ui/js/Menu.js gives a row, or will give one.
     // Mirrors src/uischema.rs DEFAULTS menu.hidden exactly; the two drifted once and a fresh
     // ui.json then hid a row the shipped schema shows.
-    readonly property var defaultMenuHidden: ["delete", "openTerminal", "placeMenu", "runScript",
+    readonly property var defaultMenuHidden: ["delete", "openTerminal", "localsend", "placeMenu", "runScript",
                                               "moveto", "copyto", "properties", "permissions", "copypath"]
 
     // ui.json names what is SHOWN. ui/Header.qml, ui/Row.qml and ui/ContextMenu.qml all ask the

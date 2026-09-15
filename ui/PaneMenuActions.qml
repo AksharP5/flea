@@ -1,10 +1,28 @@
 import QtQuick
+import Quickshell
+import "." as Flea
+import "js/LocalSend.js" as LocalSend
 import "js/Menu.js" as Menu
 import "js/Ops.js" as Ops
 
 Loader {
     id: root
     required property var pane
+
+    // MenuAdditions rule 1: the dispatch is the only result Flea itself ever knows, the same as
+    // ui/js/Ops.js sendTaildrop, because LocalSend's own window is where the transfer is watched.
+    function sendLocalSend(paths) {
+        var provider = root.pane.backend.providers.localsend || ({})
+        if (!provider.command || paths.length === 0) { root.pane.message(LocalSend.missing(provider), true); return }
+        Quickshell.execDetached([provider.command].concat(paths))
+        root.pane.message(LocalSend.sentLine(paths), false)
+    }
+
+    // A script's own non-zero exit is its last stderr line, said once in the status centre.
+    Connections {
+        target: Flea.Scripts
+        function onSaid(text, isError) { root.pane.message(text, isError) }
+    }
     anchors.fill: parent
     z: 2
     active: false

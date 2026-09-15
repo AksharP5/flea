@@ -32,6 +32,18 @@ fn command_json(name: &str, paths: &[PathBuf]) -> String {
     format!(r#"{{"installed":{},"command":"{}","reason":"{}"}}"#, installed, escape(&command), escape(&reason))
 }
 
+// LocalSend is localsend from the CLI package and localsend_app from the app's own wrapper, so the
+// first of the two that answers is the command, and an absence names both rather than the last tried.
+fn command_json_any(names: &[&str], paths: &[PathBuf]) -> String {
+    let mut answer = (false, String::new(), String::new());
+    for name in names {
+        answer = command(name, paths);
+        if answer.0 && !answer.1.is_empty() { break; }
+    }
+    if !answer.0 { answer.2 = format!("{} is not installed.", names.join(" or ")); }
+    format!(r#"{{"installed":{},"command":"{}","reason":"{}"}}"#, answer.0, escape(&answer.1), escape(&answer.2))
+}
+
 fn dropbox_info(path: &Path) -> Result<String, String> {
     // Account metadata is small; refuse oversized or non-regular input without reading a tree or blocking on a FIFO.
     const MAX_ACCOUNT_BYTES: u64 = 64 * 1024;
@@ -52,8 +64,9 @@ pub(crate) fn facts() -> String {
     let info = std::env::var_os("HOME").ok_or_else(|| "Dropbox account home is unavailable.".into())
         .and_then(|home| dropbox_info(&PathBuf::from(home).join(".dropbox/info.json")));
     let (text, error) = match info { Ok(text) => (text, String::new()), Err(error) => (String::new(), error) };
-    format!(r#"{{"taildrop":{},"taildropSend":{},"dropbox":{},"dropboxInfo":"{}","dropboxError":"{}"}}"#,
+    format!(r#"{{"taildrop":{},"taildropSend":{},"localsend":{},"dropbox":{},"dropboxInfo":"{}","dropboxError":"{}"}}"#,
         command_json("tailscale", &paths), command_json("omarchy-tailscale-send", &paths),
+        command_json_any(&["localsend", "localsend_app"], &paths),
         command_json("dropbox-cli", &paths), escape(&text), escape(&error))
 }
 
@@ -78,5 +91,26 @@ mod tests {
         assert!(dropbox_info(&info).unwrap().contains("personal"));
         std::fs::write(&info, vec![b' '; 64 * 1024 + 1]).unwrap();
         assert!(dropbox_info(&info).unwrap_err().contains("too large"));
+    }
+
+    // MenuAdditions rule 1: the row is offered when a localsend binary is on PATH, under either of
+    // the two names the packages use, and the refusal says so naming both.
+    #[test]
+    fn localsend_answers_to_either_name_the_packages_install() {
+        let root = TestDir::new("localsend");
+        let paths = vec![root.path().to_path_buf()];
+        let absent = command_json_any(&["localsend", "localsend_app"], &paths);
+        assert!(absent.contains(r#""installed":false"#), "{}", absent);
+        assert!(absent.contains("localsend or localsend_app is not installed."), "{}", absent);
+        let wrapper = root.file("localsend_app", "exit 0\n");
+        std::fs::set_permissions(&wrapper, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let found = command_json_any(&["localsend", "localsend_app"], &paths);
+        assert!(found.contains(r#""installed":true"#), "{}", found);
+        assert!(found.contains(&escape(&wrapper.to_string_lossy())), "{}", found);
+        // The CLI name wins when both are there, because it is the one that takes paths directly.
+        let cli = root.file("localsend", "exit 0\n");
+        std::fs::set_permissions(&cli, std::fs::Permissions::from_mode(0o700)).unwrap();
+        assert!(command_json_any(&["localsend", "localsend_app"], &paths)
+            .contains(&escape(&cli.to_string_lossy())));
     }
 }

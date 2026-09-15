@@ -158,7 +158,7 @@ providers_fixture() {
         for file in "$part"/*; do
             [[ -f "$file" && -x "$file" ]] || continue
             name=${file##*/}
-            case "$name" in tailscale|omarchy-tailscale-send|dropbox-cli|wl-copy) continue ;; esac
+            case "$name" in tailscale|omarchy-tailscale-send|dropbox-cli|wl-copy|localsend) continue ;; esac
             [[ ! -e "$menu_box/bin/$name" ]] || continue
             menus_guard "$menu_box/bin/$name"
             ln -s -- "$file" "$menu_box/bin/$name" || fail "providers: cannot retain required command $name"
@@ -193,6 +193,15 @@ case "$name:$#:${1:-}:${2:-}" in
         response=sharelink
         ;;
     wl-copy:1:https://fixture.invalid/share:) response=wl-copy ;;
+    localsend:*)
+        # MenuAdditions rule 1: the app is handed the paths themselves, which is what a real
+        # localsend 1.18.2 on this box did when it opened with the file staged in its Selection.
+        [[ $# -ge 1 ]] || exit 95
+        for argument in "$@"; do
+            guard "$argument"
+            [[ -f "$argument" && ! -L "$argument" ]] || exit 94
+        done
+        ;;
     *) printf 'REFUSED: provider fixture received unexpected arguments: %s\n' "$name" >&2; exit 95 ;;
 esac
 jq -cn --arg helper "$name" --args '{helper:$helper,args:$ARGS.positional}' -- "$@" >> "$box/calls.jsonl"
@@ -237,7 +246,7 @@ PY_SOCKET
 fi
 SH
     chmod 700 "$menu_box/doubles/provider" || fail 'providers: cannot make dispatcher executable'
-    for name in tailscale omarchy-tailscale-send dropbox-cli wl-copy; do
+    for name in tailscale omarchy-tailscale-send dropbox-cli wl-copy localsend; do
         menus_guard "$menu_box/doubles/$name"
         cp "$menu_box/doubles/provider" "$menu_box/doubles/$name" || fail "providers: double copy failed: $name"
         menus_guard "$menu_box/absent/$name"
@@ -395,6 +404,48 @@ providers_dropbox_move_checks() {
     menus_shot providers-dropbox-undone
 }
 
+# MenuAdditions rule 1 (PR 82, zicochaos): the row is present only while a localsend binary answers
+# on PATH, it hands the app the selected paths themselves, and Flea's own sentence is the dispatch,
+# because LocalSend's window is where a transfer is accepted or refused.
+providers_localsend_checks() {
+    local before marked cursor first_before second_before
+    providers_install localsend yes
+    menus_visit "$menu_dir" 2
+    menus_expect listInFlight '. == false' 'LocalSend listing settles before selection'
+    marked=$(row_index_of a-marked.txt)
+    cursor=$(row_index_of b-cursor.txt)
+    click_row "$marked" left
+    providers_expect ".selected == [$marked] and .refreshing == false" 'the first row is marked before the second is added'
+    click_row "$cursor" left --mods ctrl
+    providers_expect ".selected == [$marked, $cursor]" 'ctrl click adds the second row to the selection'
+    key -M shift -k F10 -m shift >/dev/null || fail 'providers: LocalSend menu key failed'
+    menus_expect menuState '.opened and .snapshotReady' 'the two-row selection opens its own menu'
+    menus_expect menuState 'any(.entries[]; .action == "localsend" and .mark == "localsend" and (.disabled | not) and (.glyph == null))' 'an installed LocalSend is a brand row and never greyed'
+    # The three brand rows in one frame, which is the board's own "beside the Tailscale and Dropbox
+    # marks" proof, taken while the menu is still open rather than after the send closes it.
+    menus_shot providers-localsend-menu
+    before=$(providers_calls localsend)
+    # Read back rather than written down: an earlier block in this case replaced the cursor file's
+    # own bytes, and a send that moved either source would take the file with it.
+    first_before=$(cat "$menu_dir/a-marked.txt")
+    second_before=$(cat "$menu_dir/b-cursor.txt")
+    providers_choose localsend
+    providers_call localsend "$(jq -cn --arg first "$menu_dir/a-marked.txt" --arg second "$menu_dir/b-cursor.txt" '[$first,$second]')" "$before"
+    menus_message 'Sending 2 items with LocalSend.' 'the dispatch is the only result Flea itself knows'
+    menus_equal 'LocalSend reads rather than moves its first source' "$first_before" "$(cat "$menu_dir/a-marked.txt")"
+    menus_equal 'LocalSend reads rather than moves its second source' "$second_before" "$(cat "$menu_dir/b-cursor.txt")"
+    menus_acknowledge
+
+    providers_install localsend no
+    before=$(providers_calls localsend)
+    providers_open
+    menus_expect menuState 'all(.entries[]; .action != "localsend")' 'a box with no localsend offers no row at all'
+    menus_equal 'an absent LocalSend spawns no helper' "$before" "$(providers_calls localsend)"
+    menus_shot providers-localsend-absent
+    providers_close
+    providers_install localsend yes
+}
+
 case_providers() (
     local menu_box="$fixture_root/providers" menu_dir="$fixture_root/providers/list" menus_checks=0
     local taildrop_fd dropbox_fd name before action record reason path saved
@@ -408,7 +459,7 @@ case_providers() (
     wait_listing 2
     menus_expect listInFlight '. == false' 'provider fixture initial listing settles'
     providers_open
-    menus_expect menuState 'all(.entries[]; .action != "taildrop" and .action != "dropbox" and .action != "sharelink")' 'absent providers are not built'
+    menus_expect menuState 'all(.entries[]; .action != "taildrop" and .action != "dropbox" and .action != "sharelink" and .action != "localsend")' 'absent providers are not built'
     menus_equal 'absent providers spawn no helper' 0 "$(jq -s length "$menu_box/calls.jsonl")"
     providers_close
 
@@ -555,6 +606,7 @@ STATES
 
     providers_sharelink_checks
     providers_dropbox_move_checks
+    providers_localsend_checks
 
     providers_selection "$menu_dir"
     providers_mode dropbox-cli gate 'Up to date'

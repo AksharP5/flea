@@ -18,10 +18,10 @@ Item {
     property bool opened: false
     // Driven from ui/Pane.qml's own state, so this file owns no hidden-file logic itself.
     property bool showHidden: false
-    // The application name ui/Opener.qml resolved for the cursor row, shown muted beside "Open".
     // [{id, label}], the reachable Taildrop targets; installed providers keep their disabled reason.
     property var taildropPeers: []
     property bool taildropInstalled: false
+    property bool localSendInstalled: false
     property string taildropReason: ""
     property bool providersRefreshing: false
     // The archive formats this box actually probed, and whether a converter is installed at all.
@@ -136,7 +136,7 @@ Item {
             openWithApps: root.openWithApps,
             openWithLoaded: root.openWithLoaded,
             rowMode: root.rowMode, selectionCount: root.selectionCount,
-            scripts: Flea.Scripts.entries,
+            scripts: Flea.Scripts.entries, localSendInstalled: root.localSendInstalled,
             // The Menus settings section's stored set; ui/js/Menu.js applyHidden is what reads it.
             hiddenActions: ViewState.menuHidden
         })

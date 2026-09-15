@@ -35,7 +35,7 @@ var MENU_GROUPS = [
     { id: "openInspect", label: "Open and inspect",
       ids: ["openwith", "openTerminal", "moveto", "copyto", "properties", "permissions", "copypath"] },
     { id: "extras", label: "Extras", features: ["placeMenu"],  // features gate a surface, not a row
-      ids: ["shelf", "compress", "extract", "convert", "taildrop", "dropbox", "sharelink", "runScript", "placeMenu"] }
+      ids: ["shelf", "compress", "extract", "convert", "taildrop", "localsend", "dropbox", "sharelink", "runScript", "placeMenu"] }
 ]
 
 // Open and Show hidden files draw the lock mark instead of a box, and the board says why: a menu that cannot open the row under the cursor is not a menu, and the hidden toggle is the one background row with no keyboard-independent alternative.
@@ -45,7 +45,7 @@ var LABELS = {
     cut: "Cut", copy: "Copy", paste: "Paste", duplicate: "Duplicate", rename: "Rename",
     trash: "Move to Trash", openTerminal: "Open in terminal", copypath: "Copy path", permissions: "Permissions",
     delete: "Delete permanently", openwith: "Open with", moveto: "Move to", copyto: "Copy to", properties: "Properties",
-    compress: "Compress", extract: "Extract",
+    compress: "Compress", extract: "Extract", localsend: "Send with LocalSend",
     convert: "Convert", taildrop: "Send with Taildrop", dropbox: "Move to Dropbox",
     sharelink: "Copy Share Link", open: "Open", toggleHidden: "Show hidden files", shelf: "Enable shelf", placeMenu: "Places row menu", runScript: "Run script"
 }
@@ -63,8 +63,8 @@ var GLYPHS = {
     convert: "sliders", sharelink: "network", open: "folder-open", toggleHidden: "eye", placeMenu: "folder-open", runScript: "terminal"
 }
 
-// Taildrop and Dropbox are brand reproductions rather than cut glyphs, so they name a component the way a menu entry does; ui/SettingsRow.qml draws the pair exactly as ui/MenuRow.qml does.
-var MARKS = { taildrop: "tailscale", dropbox: "dropbox", shelf: "flea", "display.hyprlandIcons": "hyprland" }
+// Taildrop, LocalSend and Dropbox are brand reproductions rather than cut glyphs, so they name a component the way a menu entry does; ui/SettingsRow.qml draws them exactly as ui/MenuRow.qml does.
+var MARKS = { taildrop: "tailscale", localsend: "localsend", dropbox: "dropbox", shelf: "flea", "display.hyprlandIcons": "hyprland" }
 
 function label(id) {
     return LABELS[id] || id

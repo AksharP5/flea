@@ -39,6 +39,9 @@ var INVENTORY = [
     // else's. Governed by the Enable shelf switch in Settings, Menus, so off is absent and not grey.
     ["shelf", "Add to shelf", "file", "F", "share", "addToShelf"],
     ["taildrop", "Send with Taildrop", "tailscale", "F", "share"],
+    // MenuAdditions rule 1: between Taildrop and Dropbox, present only while a localsend binary is
+    // on PATH, and carrying its own reproduced mark rather than a cut glyph.
+    ["localsend", "Send with LocalSend", "localsend", "F", "share"],
     ["dropbox", "Move to Dropbox", "dropbox", "F", "share"],
     ["sharelink", "Copy Share Link", "network", "F", "share"],
     ["trash", "Move to Trash", "trash", "F", "trash"],
@@ -156,6 +159,13 @@ function availableEntry(e, p, kind) {
         if (e.disabled && p.providersRefreshing !== true) e.errored = true
     }
     if (e.action === "addToShelf") { e.mark = "flea"; delete e.glyph }
+    // Absent rather than greyed when nothing is installed, the Menu board's rule for a row whose
+    // whole destination is missing; the row is a plain send, so it has no submenu and no reason.
+    if (e.action === "localsend") {
+        if (!p.localSendInstalled) return false
+        e.mark = "localsend"
+        delete e.glyph
+    }
     if (e.action === "dropbox" || e.action === "sharelink") {
         if (!p.dropboxInstalled || (e.action === "dropbox" ? p.rowInDropbox : !p.rowInDropbox)) return false
         e.disabled = p.providersRefreshing === true || !p.dropboxPath
