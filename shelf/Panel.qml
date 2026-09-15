@@ -41,6 +41,8 @@ Panel {
   ShelfService {
     id: shelf
     settings: root.settings
+    // EdgeRail rule 1: the default edge is the one opposite the bar, so the rail needs to know it.
+    barPosition: root.bar ? root.bar.position : "top"
     // Rule 4's budget: sizes are asked for while the card is up and never while it is closed.
     drawing: root.opened
     onGrew: landing.restart()
@@ -59,6 +61,22 @@ Panel {
     id: transient
     interval: root.transientMs
     onTriggered: root.result = ""
+  }
+
+  // EdgeRail: the one summon path that is always live, which is why it is the one that must be
+  // switchable. Off, left, right or bottom, defaulting to the edge opposite the bar.
+  ShelfRail {
+    id: rail
+    edge: shelf.railEdge
+    dwellMs: shelf.railDwellMs
+    held: shelf.count
+    foreground: Color.popups.text
+    onDropped: function (paths) {
+      root.error = ""
+      shelf.addAll(paths)
+    }
+    onDwelled: if (!root.opened) root.open()
+    onOpened: root.toggle()
   }
 
   SequentialAnimation {
@@ -198,6 +216,7 @@ Panel {
         height: surface.height - surface.contentTopInset - surface.contentBottomInset
         pile: Model.sized(shelf.pile, shelf.sizes)
         captures: shelf.captures
+        incoming: rail.incoming
         // The empty card names only the routes that are on: the mark is drawn today, the rail edge
         // and the summon bind arrive with the units that build them.
         hint: Model.emptyHint(shelf.pile, shelf.captures,

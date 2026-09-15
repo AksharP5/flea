@@ -21,6 +21,8 @@ Item {
   // ShelfEmpty rules 2 and 5: the tray is on the card whether the pile is empty or not.
   property var captures: []
   property string hint: ""
+  // EdgeRail: how many a drag over the rail is offering, which the header says and the line shows.
+  property int incoming: 0
 
   signal removeRequested(int index)
   signal captureAddRequested(int index)
@@ -124,7 +126,7 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         anchors.right: parent.right
         anchors.rightMargin: root.pad
-        text: "esc"
+        text: Model.headerRight(root.incoming)
         color: root.muted
         font.family: root.fontFamily
         font.pixelSize: Style.font.caption
@@ -209,6 +211,16 @@ Item {
           onHoveredChanged: root.hoveredIndex = hovered ? row.index : (root.hoveredIndex === row.index ? -1 : root.hoveredIndex)
         }
       }
+    }
+
+    // EdgeRail: the line that says where the ones being dragged in will land, which is after the
+    // pile, because the shelf holds what it was given in the order it was given it.
+    Rectangle {
+      width: parent.width - 2 * root.pad
+      x: root.pad
+      height: visible ? Math.max(1, Style.space(2)) : 0
+      visible: root.incoming > 0
+      color: root.accent
     }
 
     // ShelfEmpty rule 6: empty is a state, not a failure. One mark, one caption, and the footer's

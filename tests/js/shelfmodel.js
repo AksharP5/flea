@@ -99,6 +99,16 @@ function run(check) {
         Shelf.stamp("never"), "")
   check("and one item is one item", Shelf.pileText({ count: 1, at: 1789426925000 }).slice(0, 7), "1 item ")
 
+  // EdgeRail: what a drop on the wall is offering, and what the header says while it hovers.
+  var uris = Shelf.pathsFromUris("file:///home/gm/Pictures/one%20two.png\r\nfile:///tmp/a.txt\r\n")
+  check("a uri list is read as paths, percent escapes and all", uris.join("|"),
+        "/home/gm/Pictures/one two.png|/tmp/a.txt")
+  check("a comment line and a foreign scheme are not paths",
+        Shelf.pathsFromUris("# a comment\nhttps://example.com/x\nfile:///tmp/b\n").join("|"), "/tmp/b")
+  check("and a drop carrying nothing is no paths at all", Shelf.pathsFromUris("").length, 0)
+  check("the header says what letting go would do, and the way out when nothing is coming",
+        Shelf.headerRight(2) + "|" + Shelf.headerRight(0), "drop to add 2|esc")
+
   check("the tooltip says what is held, because the bar itself never draws a count",
           Shelf.tooltip(Shelf.empty()) + " / " + Shelf.tooltip(one) + " / " + Shelf.tooltip(mixed),
           "Flea shelf is empty / Flea shelf is holding 1 item / Flea shelf is holding 2 items")

@@ -226,6 +226,23 @@ function emptyHint(pile, captures, routes) {
   return routesHint(routes)
 }
 
+// ---- EdgeRail: what a drag dropped on the wall is offering ----
+
+// Sample input, one URI per line as every toolkit writes a text/uri-list, comments and all:
+// file:///home/gm/Pictures/one.png\r\n
+function pathsFromUris(text) {
+  var lines = String(text || "").split("\n")
+  var out = []
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i].replace("\r", "").trim()
+    if (line.length === 0 || line.charAt(0) === "#" || line.indexOf("file://") !== 0) {
+      continue
+    }
+    out.push(decodeURIComponent(line.substring("file://".length)))
+  }
+  return out
+}
+
 // ---- Summon: the bell, the cleared transient and the Recent piles rows ----
 
 // The bind writes a count, not a state: every write is one more ring, and the card answers each one.
@@ -282,6 +299,13 @@ function stamp(at) {
   }
   return when.getFullYear() + "-" + pad2(when.getMonth() + 1) + "-" + pad2(when.getDate())
          + " " + pad2(when.getHours()) + ":" + pad2(when.getMinutes())
+}
+
+// EdgeRail: while a drag hovers the rail the header says what letting go would do, and the way out
+// is not what the eye needs at that moment.
+function headerRight(incoming) {
+  var n = Number(incoming)
+  return isFinite(n) && n > 0 ? "drop to add " + n : "esc"
 }
 
 // Rule 2's header, which is also the pile's own count: the bar never draws one. An empty shelf says

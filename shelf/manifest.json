@@ -21,7 +21,9 @@
     "defaults": {
       "refreshIntervalSec": 5,
       "fleaCommand": "flea",
-      "recentCaptures": 3
+      "recentCaptures": 3,
+      "railEdge": "",
+      "railDwell": 120
     },
     "schema": [
       {
@@ -47,6 +49,21 @@
         "min": 0,
         "max": 6,
         "step": 1
+      },
+      {
+        "key": "railEdge",
+        "type": "string",
+        "label": "Drop rail edge: off, left, right, bottom, or empty for the edge opposite the bar",
+        "defaultValue": ""
+      },
+      {
+        "key": "railDwell",
+        "type": "integer",
+        "label": "Card opens after the drag rests (ms)",
+        "defaultValue": 120,
+        "min": 60,
+        "max": 600,
+        "step": 10
       }
     ]
   }

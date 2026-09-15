@@ -33,6 +33,18 @@ Item {
   readonly property int refreshIntervalSec: root.intSetting("refreshIntervalSec", 5, 1, 120)
   // ShelfEmpty rule 7: the tray's count is a clamped setting, and zero removes the tray.
   readonly property int recentCaptures: root.intSetting("recentCaptures", 3, 0, 6)
+  // EdgeRail rules 3 and 5: the dwell is clamped on every read, and the edge is one of four words.
+  readonly property int railDwellMs: root.intSetting("railDwell", 120, 60, 600)
+  property string barPosition: "top"
+  readonly property string railEdge: {
+    var raw = root.settings ? root.settings["railEdge"] : undefined
+    var name = String(raw === undefined || raw === null ? "" : raw).trim().toLowerCase()
+    if (name === "off" || name === "left" || name === "right" || name === "bottom") {
+      return name
+    }
+    // The edge opposite the bar, and the right edge when that would be the bar's own.
+    return root.barPosition === "left" ? "right" : (root.barPosition === "right" ? "left" : "bottom")
+  }
   // The command that owns the pile. It is "flea" on an installed box and a path on a development
   // tree, and it is a setting because the plugin ships as its own repository beside the app.
   readonly property string fleaCommand: {
@@ -181,9 +193,17 @@ Item {
     stderr: StdioCollector { waitForEnd: true }
   }
 
-  // ShelfEmpty rule 5: a click on a capture adds it to the pile, the same call a drop makes.
+  // ShelfEmpty rule 5: a click on a capture adds it to the pile, the same call a drop makes, and a
+  // drop on the rail is that same call with everything it was carrying.
   function add(path) {
-    addOne.command = [root.fleaCommand, "shelf", "add", path]
+    root.addAll([path])
+  }
+
+  function addAll(paths) {
+    if (addOne.running || paths.length === 0) {
+      return
+    }
+    addOne.command = [root.fleaCommand, "shelf", "add"].concat(paths)
     addOne.running = true
   }
 
