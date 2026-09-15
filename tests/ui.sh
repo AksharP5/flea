@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Drives the real Quickshell window with omarchy-drive and asserts through the read-only IPC seam.
-# Usage: ./tests/ui.sh [cursor|terminal|open|rows|click|ctrlclick|menu|hidden|selection|select|colour|lifted|icons|thumbs|hashcache|stale|nosweep|oem|header|overflow|focus|preview|network|netmark|networktimeout|networklive|gvfs|sharebrowser|unmount|phones|eject|rename|renamelife|taildrop|grid|columns|operations|tabs|openterminal|renderer|settings ...]; networklive is opt-in.
+# Usage: ./tests/ui.sh [cursor|terminal|open|rows|click|ctrlclick|viewrestart|menu|hidden|selection|select|colour|lifted|icons|thumbs|hashcache|stale|nosweep|oem|header|overflow|focus|preview|network|netmark|networktimeout|networklive|gvfs|sharebrowser|unmount|phones|eject|rename|renamelife|taildrop|grid|columns|operations|tabs|openterminal|renderer|settings ...]; networklive is opt-in.
 set -u
 set -o pipefail
 # Hard rule 9's guard, which owns FIXTURE_ROOT and every create and delete this suite makes.
@@ -1789,6 +1789,51 @@ case_ctrlclick() {
         click_row 2 left
         settle
     done
+}
+
+# PR 97 (DouglasdeMoura), issue 96's neighbour: the view the window is left on is the view the next
+# launch opens on. The write is ui/Pane.qml onViewModeChanged and the read is its Component.onCompleted,
+# so nothing but a relaunch proves the pair; a tab carries its own view and must not be the one stored.
+case_viewrestart() {
+    local dir="$fixture_root/viewrestart"
+    sandbox_scratch "$dir"
+    mkdir -p "$dir/sub"
+    : > "$dir/a.txt"
+    : > "$dir/b.txt"
+    seed_ui_state "$fixture_root/viewrestart-state" '{"view":"list"}'
+    launch "$dir"
+    wait_listing 3
+    [[ "$(ipc viewMode)" == "list" ]] || fail "viewrestart: the seeded state opened on $(ipc viewMode), not the list"
+    switch_view grid
+    launch "$dir"
+    wait_listing 3
+    [[ "$(ipc viewMode)" == "grid" ]] || fail "viewrestart: the next launch opened on $(ipc viewMode), not the grid it was left on"
+    # A second tab standing in the list view is the tab's own answer, and leaving the window on it is
+    # what the next launch takes: the stored view follows the window, never a snapshot nobody is in.
+    key t >/dev/null
+    settle
+    switch_view list
+    launch "$dir"
+    wait_listing 3
+    [[ "$(ipc viewMode)" == "list" ]] || fail "viewrestart: after the tab's own switch the launch opened on $(ipc viewMode), not the list"
+    # A word this build cannot draw, written by hand into the file: the pane draws the list rather
+    # than an empty view, and the launch settle puts a drawable word back. PR 97's own edge case.
+    kill_flea
+    local stored="$fixture_root/viewrestart-state/flea/ui.json"
+    python3 - "$stored" <<'EDIT'
+import json, sys
+path = sys.argv[1]
+with open(path) as f:
+    state = json.load(f)
+state["view"] = "banana"
+with open(path, "w") as f:
+    json.dump(state, f)
+EDIT
+    launch "$dir"
+    wait_listing 3
+    [[ "$(ipc viewMode)" == "list" ]] || fail "viewrestart: a stored word this build cannot draw opened on $(ipc viewMode), not the list"
+    grep -q '"view": *"banana"' "$stored" && fail "viewrestart: the unreadable word is still in the state file"
+    kill_flea
 }
 
 # Catches narrowing the delegate TapHandler back to Qt.LeftButton in ui/Pane.qml.
@@ -8511,7 +8556,7 @@ case_previewviews() {
 . "$repo/tests/ui-convert-design.sh"
 
 declare -a wanted=("$@")
-[[ ${#wanted[@]} -eq 0 ]] && wanted=(cursor scroll terminal open rows click ctrlclick menu background hidden selection watch select colour lifted icons thumbs hashcache stale nosweep oem header overflow focus preview pdffocus network netmark networkauth networktimeout gvfs sharebrowser unmount phones eject rename renamelife taildrop providers grid columns operations tabs openterminal renderer settings clickthrough wheelunder overlays views formats previewviews hangshare openwithdesign)
+[[ ${#wanted[@]} -eq 0 ]] && wanted=(cursor scroll terminal open rows click ctrlclick viewrestart menu background hidden selection watch select colour lifted icons thumbs hashcache stale nosweep oem header overflow focus preview pdffocus network netmark networkauth networktimeout gvfs sharebrowser unmount phones eject rename renamelife taildrop providers grid columns operations tabs openterminal renderer settings clickthrough wheelunder overlays views formats previewviews hangshare openwithdesign)
 
 : > "$run_log"
 : > "$flea_log"

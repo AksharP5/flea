@@ -73,6 +73,13 @@ QtObject {
     // file that never named them.
     readonly property bool keyHints: root.state.keyHints === true
 
+    // The listing's view, "view" in src/uischema.rs, which ui/Pane.qml draws for the first frame so
+    // the view the window was left on is the view the next launch opens on. A word this build cannot
+    // draw reads as the list, which covers both a hand edit made while the window is up and the
+    // stored "dual", a window shape and not a view a pane can be in. PR 97, DouglasdeMoura.
+    readonly property string view: Settings.contains(["list", "columns", "grid"], root.state.view)
+                                   ? root.state.view : "list"
+
     // The Keys section's four-value chooser over the one generated key table, falling back to its
     // first value, Default, which is what SettingsKeys.html says a missing or unknown name means.
     readonly property string keysPreset: Settings.contains(Settings.PRESETS, root.state.keys)
