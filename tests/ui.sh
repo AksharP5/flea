@@ -2924,6 +2924,9 @@ case_dd() {
     key d >/dev/null
     for _attempt in $(seq 1 40); do [[ -e "$dir/f3.txt" ]] || break; sleep 0.25; done
     [[ -e "$dir/f3.txt" ]] && fail "dd: the block was not trashed, the bar reads $(ipc lastMessage)"
+    # Hard rule 9 in the case itself: the rows went to this case's own trash and not the operator's.
+    [[ -s "$XDG_DATA_HOME/Trash/files/f2.txt" && -s "$XDG_DATA_HOME/Trash/files/f3.txt" ]] \
+        || fail "dd: the block did not land in $XDG_DATA_HOME/Trash/files, which holds $(ls -A "$XDG_DATA_HOME/Trash/files" 2>&1)"
     wait_listing 4
     settle
     [[ "$(ipc cursor)" == "1" ]] \
@@ -8799,7 +8802,7 @@ case_previewviews() {
 . "$repo/tests/ui-convert-design.sh"
 
 declare -a wanted=("$@")
-[[ ${#wanted[@]} -eq 0 ]] && wanted=(cursor scroll terminal open rows click ctrlclick viewrestart menu background hidden selection watch select colour lifted icons thumbs hashcache stale nosweep oem header overflow focus preview pdffocus network netmark networkauth networktimeout gvfs sharebrowser unmount phones eject rename renamelife taildrop providers grid columns operations tabs openterminal renderer settings clickthrough wheelunder overlays views formats previewviews hangshare openwithdesign)
+[[ ${#wanted[@]} -eq 0 ]] && wanted=(cursor scroll terminal open rows click ctrlclick viewrestart dd sortrestart editplace menu background hidden selection watch select colour lifted icons thumbs hashcache stale nosweep oem header overflow focus preview pdffocus network netmark networkauth networktimeout gvfs sharebrowser unmount phones eject rename renamelife taildrop providers grid columns operations tabs openterminal renderer settings clickthrough wheelunder overlays views formats previewviews hangshare openwithdesign)
 
 : > "$run_log"
 : > "$flea_log"

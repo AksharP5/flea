@@ -411,7 +411,7 @@ ShellRoot {
             Connections {
                 target: networkDialog.item
                 // FocusScope remembers its own last-focused child, list or rail, and restores it.
-                function onClosed() { view.currentPane.forceActiveFocus() }
+                function onClosed() { view.currentPane.sidebar.editingPlace = ""; view.currentPane.forceActiveFocus() }
                 function onMountRequested(requestId, uri, label, password) {
                     if (!networkDialog.origin) {
                         networkDialog.item.mountFinished(requestId, uri, false, "The requesting pane is no longer available.")

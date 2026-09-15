@@ -206,11 +206,14 @@ function editPlace(sidebar, share) {
     sidebar.networkRetryRequested(entry.uri, entry.label, "", "Edit this address, then connect and save.", false, sidebar.navigationPane)
 }
 
-// The answer to that edit, and only to that one: a place is rewritten when a different address mounts.
+// The answer to that edit: a refused connect keeps the arm, because correcting an address gio could
+// not reach is what the dialog stays open for; ui/shell.qml disarms it when that dialog closes.
 function placeSaved(sidebar, mounts, uri, success) {
+    if (!success || sidebar.editingPlace.length === 0)
+        return
     var was = sidebar.editingPlace
     sidebar.editingPlace = ""
-    if (success && was.length > 0 && normalize(uri) !== was)
+    if (normalize(uri) !== was)
         mounts.replacePlace(was)
 }
 

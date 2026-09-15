@@ -980,7 +980,11 @@ hyprctl dispatch "hl.dsp.window.resize({ x = 1200, y = 800 })" >/dev/null
 sleep 0.4
 hyprctl dispatch "hl.dsp.window.move({ x = 400, y = 300 })" >/dev/null
 sleep 0.8
-read -r wx wy ww wh floating <<< "$(r9_geometry)" || die "R9 window geometry unavailable"
+# A here-string always hands read one line, so the geometry is captured and checked before it is
+# split: a jq that failed would otherwise read as four empty fields and compare equal to itself.
+geometry=$(r9_geometry) || die "R9 window geometry unavailable"
+[ -n "$geometry" ] || die "R9 window geometry is empty"
+read -r wx wy ww wh floating <<< "$geometry"
 check "the window is floating where this case put it" "$floating $wx $wy" "true 400 300"
 point=$(ipc pathCentre) || die "R9 path area has no geometry"
 read -r cx cy <<< "$point"
@@ -992,11 +996,15 @@ for _ in $(seq 1 12); do move_rel 8 4; sleep 0.05; done
 sleep 0.4
 release
 sleep 1
-read -r ax ay _ _ _ <<< "$(r9_geometry)" || die "R9 window geometry unavailable after the drag"
+geometry=$(r9_geometry) || die "R9 window geometry unavailable after the drag"
+[ -n "$geometry" ] || die "R9 window geometry is empty after the drag"
+read -r ax ay _ _ _ <<< "$geometry"
 check "the window followed the pointer" "$([ "$ax" -gt "$wx" ] && [ "$ay" -gt "$wy" ] && echo moved || echo "stayed at $ax,$ay")" "moved"
 note "moved dx=$((ax - wx)) dy=$((ay - wy))"
 # The strip is still a strip: a click that does not travel reaches the control under it.
-read -r bx by _ _ _ <<< "$(r9_geometry)"
+geometry=$(r9_geometry) || die "R9 window geometry unavailable before the click"
+[ -n "$geometry" ] || die "R9 window geometry is empty before the click"
+read -r bx by _ _ _ <<< "$geometry"
 point=$(ipc chromeButtonCentre arrow-up) || die "R9 the up control has no geometry"
 read -r ux uy <<< "$point"
 here=$(ipc path)
@@ -1004,8 +1012,29 @@ omarchy-drive click "$((bx + ux))" "$((by + uy))" left >/dev/null || die "R9 cou
 sleep 0.8
 check "a click with no travel still reached the control under the strip" \
       "$([ "$(ipc path)" != "$here" ] && echo climbed || echo "stayed at $(ipc path)")" "climbed"
-read -r cx2 cy2 _ _ _ <<< "$(r9_geometry)"
+geometry=$(r9_geometry) || die "R9 window geometry unavailable after the click"
+[ -n "$geometry" ] || die "R9 window geometry is empty after the click"
+read -r cx2 cy2 _ _ _ <<< "$geometry"
 check "and that click moved nothing" "$cx2 $cy2" "$bx $by"
+
+# With the path editor up the same gesture is the editor's own, so the strip stops being a title bar.
+native_key -M ctrl -k l -m ctrl
+expect_ipc pathBarOpen true
+glide_to "$((cx2 + cx))" "$((cy2 + cy))"
+sleep 0.3
+press
+sleep 0.3
+for _ in $(seq 1 12); do move_rel 8 4; sleep 0.05; done
+sleep 0.4
+release
+sleep 1
+geometry=$(r9_geometry) || die "R9 window geometry unavailable after the editor drag"
+[ -n "$geometry" ] || die "R9 window geometry is empty after the editor drag"
+read -r ex ey _ _ _ <<< "$geometry"
+check "a drag while the path editor is up moves no window" "$ex $ey" "$cx2 $cy2"
+native_key -k Escape
+expect_ipc pathBarOpen false
+
 hyprctl dispatch "hl.dsp.window.float()" >/dev/null
 sleep 0.5
 echo

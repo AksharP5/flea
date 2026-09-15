@@ -140,7 +140,8 @@ function run(check) {
           Places.replace(saved, "smb://nas/isos", "sftp://nas2/isos", "NAS isos"),
           "file:///home/gm/Downloads Downloads\nsftp://nas2/isos NAS isos\nsmb://other/data Other\n")
     check("the default port the bookmark carried is matched the way a rename matches it",
-          Places.replace(saved, "smb://nas:445/isos/", "smb://nas/plates", "Plates").indexOf("smb://nas/plates Plates") >= 0, true)
+          Places.replace(saved, "smb://nas:445/isos/", "smb://nas/plates", "Plates"),
+          "file:///home/gm/Downloads Downloads\nsmb://nas/plates Plates\nsmb://other/data Other\n")
     check("an address nothing saved is appended rather than rewriting another line",
           Places.replace(saved, "smb://absent/", "smb://nas/new", "New"),
           saved + "smb://nas/new New\n")

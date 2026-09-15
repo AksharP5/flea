@@ -225,6 +225,28 @@ function run(check) {
     check("and a refused connect leaves the saved place alone",
           edited("smb://nas/", false, "smb://nas2/data").length, 1)
 
+    // A refused connect is what this feature exists for, so the arm survives it: the same dialog is
+    // still open, and the attempt that finally mounts is the one that rewrites the line.
+    var armed = { placesEntries: [favourite, { kind: "trash" }], networkEntries: [mounted, saved],
+                  deviceEntries: [volume], editingPlace: "", navigationPane: "pane",
+                  startRename: function () {}, networkRetryRequested: function () {} }
+    var wrote = []
+    var writer = { unmount: function () {}, forget: function () {},
+                   replacePlace: function (was) { wrote.push(was) } }
+    Mounts.release("editPlace", "smb://nas/", { eject: function () {} }, writer, armed)
+    Mounts.placeSaved(armed, writer, "smb://nas2/data", false)
+    check("a refused attempt keeps the place armed", armed.editingPlace, "smb://nas/")
+    Mounts.placeSaved(armed, writer, "smb://nas2/data", true)
+    check("and the attempt that mounts is the one that rewrites it", wrote.join(","), "smb://nas/")
+    check("which disarms it, so a later unrelated mount rewrites nothing", armed.editingPlace, "")
+    Mounts.placeSaved(armed, writer, "smb://stranger/share", true)
+    check("proved by that later mount", wrote.join(","), "smb://nas/")
+    // ui/shell.qml clears editingPlace when the dialog closes, so an abandoned Edit disarms too.
+    Mounts.release("editPlace", "smb://nas/", { eject: function () {} }, writer, armed)
+    armed.editingPlace = ""
+    Mounts.placeSaved(armed, writer, "smb://stranger/share", true)
+    check("an Edit nobody finished rewrites nothing either", wrote.join(","), "smb://nas/")
+
     // Sample input: the operator's own bookmarks file, favourites and places in one list.
     var body = "file:///home/gm/Downloads Downloads\nsmb://nas:445/isos NAS isos\nsmb://other/data Other\n"
     check("the place's own line goes and every other byte stays",

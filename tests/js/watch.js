@@ -95,6 +95,17 @@ function run(check) {
     check("a directory that emptied moves no cursor at all",
           Anchor.apply(emptied, { name: "gone", index: 3, start: 0, path: "/home/gm" }) + "|" + emptied.cursorSetTo, "null|-1")
 
+    // PR 53's own guard: a delete that landed anchors on the row the request went out with, which
+    // for a block is the row the block left; one that failed anchors on the row the cursor was on.
+    var landed = watched(0, [{ n: "a" }, { n: "b" }, { n: "c" }], 2, 3)
+    landed.trashedFirst = 1
+    check("a delete that landed anchors where the block was",
+          Anchor.afterDelete(landed, true).index + "|" + landed.trashedFirst, "1|-1")
+    var refused = watched(0, [{ n: "a" }, { n: "b" }, { n: "c" }], 2, 3)
+    refused.trashedFirst = 1
+    check("and one that failed anchors on the row the cursor was already on",
+          Anchor.afterDelete(refused, false).index + "|" + refused.trashedFirst, "2|-1")
+
     // A cursor deep in a large directory: the re-read answers from row 0, so its own window is asked
     // for and the anchor stands until that window arrives rather than giving up on the first reply.
     var deep = watched(4000, [{ n: "m" }, { n: "n" }], 4001, 100000)
