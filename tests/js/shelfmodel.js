@@ -14,6 +14,7 @@ function run(check) {
     check("and counts what it holds", one.count + "|" + one.ok, "1|true")
 
     var folder = Shelf.parse('{"items":[{"path":"/home/gm/Work/","folder":true}]}')
+  check("and a pile entry says whether it is pinned", folder.items[0].pinned, false)
     check("a folder is named by its own leaf and wears its separator", folder.items[0].name, "Work/")
     check("and a size the writer did not answer is not a zero", folder.items[0].bytes, -1)
 
@@ -37,21 +38,22 @@ function run(check) {
     check("then the last result, and nothing at all when there is none", 
           Shelf.footerText("", "Copied", "") + "|" + Shelf.footerText("", "", ""), "Copied|")
 
-    // Main rule 4's budget: one request per drawn path, never twice, and never for a path off the card.
-    var pile = Shelf.parse('{"items":[{"path":"/a","bytes":12},{"path":"/b/big","folder":true},{"path":"/c"}]}')
-    check("the first ask is the first row the writer left without a size", Shelf.nextSize(pile, {}), "/b/big")
-    var answered = { "/b/big": { bytes: 4096, partial: true } }
-    check("an answered path is never asked again, so the ask moves on", Shelf.nextSize(pile, answered), "/c")
-    answered["/c"] = { bytes: -1, partial: false }
-    check("a path that could not be read is answered too, so nothing loops", Shelf.nextSize(pile, answered), "")
-    var drawn = Shelf.sized(pile, answered)
-    check("the writer's own bytes stand where it had them", drawn.items[0].bytes, 12)
-    check("the answer fills the row that had none, prefix and all", Shelf.sizeText(drawn.items[1]), ">4.1 kB")
-    check("and a path that could not be read draws the same dot a pending one does", Shelf.sizeText(drawn.items[2]), "\u00b7")
-    check("the drawn pile keeps its own shape", drawn.count + "|" + drawn.items[1].name, "3|big/")
-    var pruned = Shelf.keep(answered, Shelf.parse('{"items":[{"path":"/c"}]}'))
-    check("a size the card is no longer drawing is not kept",
-          (pruned["/b/big"] === undefined) + "|" + pruned["/c"].bytes, "true|-1")
+  // Main rule 4's budget: one request per drawn path, never twice, and never for a path off the card.
+  var pile = Shelf.parse('{"items":[{"path":"/a","bytes":12},{"path":"/b/big","folder":true},{"path":"/c"}]}')
+  var drawnRows = Shelf.rows(pile, [])
+  check("the first ask is the first row the writer left without a size", Shelf.nextSize(drawnRows, {}), "/b/big")
+  var answered = { "/b/big": { bytes: 4096, partial: true } }
+  check("an answered path is never asked again, so the ask moves on", Shelf.nextSize(drawnRows, answered), "/c")
+  answered["/c"] = { bytes: -1, partial: false }
+  check("a path that could not be read is answered too, so nothing loops", Shelf.nextSize(drawnRows, answered), "")
+  var drawn = Shelf.rows(pile, [], answered)
+  check("the writer's own bytes stand where it had them", drawn[0].bytes, 12)
+  check("the answer fills the row that had none, prefix and all", Shelf.sizeText(drawn[1]), ">4.1 kB")
+  check("and a path that could not be read draws the same dot a pending one does", Shelf.sizeText(drawn[2]), "\u00b7")
+  check("the drawn row keeps its own name", drawn.length + "|" + drawn[1].name, "3|big/")
+  var pruned = Shelf.keep(answered, Shelf.rows(Shelf.parse('{"items":[{"path":"/c"}]}'), []))
+  check("a size the card is no longer drawing is not kept",
+        (pruned["/b/big"] === undefined) + "|" + pruned["/c"].bytes, "true|-1")
 
     // ShelfEmpty rules 2, 4, 5 and 7: the tray, what it says, and the routes the empty card names.
   var shots = Shelf.parseCaptures("1757890932000 /home/gm/Pictures/screenshot-2026-09-14_19-02-11.png\n"
@@ -70,13 +72,62 @@ function run(check) {
   check("and with only the mark on, it names that one", Shelf.routesHint({ edge: "", mark: true, bind: "" }),
         "the bar mark opens")
   check("with every route off it advertises no gesture at all", Shelf.routesHint({}), "")
-  check("an empty shelf with shots to hand says what the tray does",
+  check("an empty shelf with captures to hand says what a row does",
         Shelf.emptyHint(Shelf.empty(), shots, { mark: true }), "click to add \u00b7 drag to take it straight out")
   check("an empty shelf with nothing recent names the routes instead",
         Shelf.emptyHint(Shelf.empty(), [], { edge: "right", mark: true, bind: "" }),
         "throw at the right edge \u00b7 the bar mark opens")
   check("and a shelf that is holding says none of it", Shelf.emptyHint(one, shots, { mark: true }), "")
   check("the header says an empty shelf is empty", Shelf.headerText(Shelf.empty()), "Shelf  empty")
+
+  // Main rules 9, 10 and 12: one list of three sections, and the header counts the pile alone.
+  var sections = Shelf.parse('{"items":[{"path":"/p/one"},{"path":"/p/pinned","pinned":true},{"path":"/p/two"}]}')
+  var shots = [{ path: "/s/screenshot-a.png", at: 3, recording: false },
+               { path: "/v/screenrecording-b.mp4", at: 2, recording: true }]
+  var list = Shelf.rows(sections, shots)
+  check("the pile comes first, then the pins, then the captures",
+        list.map(function (r) { return r.section }).join("|"),
+        "pile|pile|pinned|capture|capture")
+  check("and the header counts the pile alone", Shelf.headerText(sections), "Shelf  2 items")
+  check("a caption sits above the first row of a section and nowhere else",
+        [Shelf.captionFor(list, 0), Shelf.captionFor(list, 1), Shelf.captionFor(list, 2),
+         Shelf.captionFor(list, 3), Shelf.captionFor(list, 4)].join("|"),
+        "||Pinned|Screenshots & Recordings|")
+  check("the captures caption names the kinds that are checked",
+        Shelf.capturesCaption({ screenshots: true, recordings: false }) + "|"
+        + Shelf.capturesCaption({ screenshots: false, recordings: true }),
+        "Screenshots|Recordings")
+  check("each section says how many it holds",
+        Shelf.sectionCount(list, "pile") + "|" + Shelf.sectionCount(list, "pinned") + "|"
+        + Shelf.sectionCount(list, "capture"), "2|1|2")
+  check("a capture row has no size of its own until one is answered",
+        Shelf.sizeText(list[3]) + "|" + Shelf.sizeText(Shelf.rows(sections, shots, { "/s/screenshot-a.png": { bytes: 2048, partial: false } })[3]),
+        "\u00b7|2.0 kB")
+  check("the subset gesture reaches a capture row like any other",
+        Shelf.actionPaths(Shelf.toggleChosen({}, "/v/screenrecording-b.mp4"), list).join("|"),
+        "/v/screenrecording-b.mp4")
+  check("with nothing chosen the five actions take the pile and its pins, never a capture",
+        Shelf.actionPaths({}, list).join("|") + " / " + Shelf.wholeCount(list),
+        "/p/one|/p/two|/p/pinned / 3")
+  check("a drag carrying a capture or a pinned row is a copy, whole-pile or chosen",
+        [Shelf.dragMoves(["/p/one", "/p/two"], list, true),
+         Shelf.dragMoves(["/p/one", "/v/screenrecording-b.mp4"], list, true),
+         Shelf.dragMoves(["/p/pinned"], list, true),
+         Shelf.dragMoves(Shelf.actionPaths({}, list), list, true),
+         Shelf.dragMoves(["/p/one"], list, false)].join("|"),
+        "true|false|false|false|false")
+
+  // Rule 11 and directive 59: Flea's own settings, read and never written.
+  check("key hints are off until Flea's own file says otherwise",
+        Shelf.keyHintsOf("") + "|" + Shelf.keyHintsOf('{"keyHints":true}'), "false|true")
+  var settings = Shelf.shelfOf('{"shelf":{"screenshots":false,"recent":1}}')
+  check("a Shelf section that names one key leaves the others at their defaults",
+        settings.screenshots + "|" + settings.recordings + "|" + settings.recent, "false|true|1")
+  check("and a file that is not there at all is every default",
+        Shelf.shelfOf("").recent + "|" + Shelf.shelfOf("").screenshots, "3|true")
+  check("the kinds cross the command line as one word",
+        Shelf.kindsArg({ screenshots: true, recordings: true }) + "|"
+        + Shelf.kindsArg({ screenshots: false, recordings: true }), "both|recordings")
   check("the hint is the footer's last voice, behind the hovered row and the error",
         Shelf.footerText("", "", "", "click to add") + "|" + Shelf.footerText("/x/a", "", "", "click to add"),
         "click to add|/x/a")

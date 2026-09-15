@@ -21,8 +21,7 @@ screen-edge rail you throw a drag at, the subset gesture, and the five actions.
 | `Panel.qml` | the bar presence and the card's own layer surface |
 | `ShelfService.qml` | the only thing that touches the outside world: the pile's file and `flea shelf` |
 | `Model.js` | pure functions, no QML imports: what the file's bytes mean |
-| `ShelfCard.qml` | the pile itself, a Flea listing's own row and strip heights |
-| `ShelfTray.qml` | the newest captures Omarchy has taken, on the card at all times |
+| `ShelfCard.qml` | the card: the pile, the pins and the captures as one list of Flea's own rows |
 | `ShelfMenu.qml` | the card's own menu: the last five piles, and the way back to one |
 | `ShelfRail.qml` | the screen edge you throw a drag at, and the notch that says what is held |
 | `ShelfActions.qml` | the doing half: the five actions, what they say, and the rows a flyout offers |
@@ -43,7 +42,6 @@ screen-edge rail you throw a drag at, the subset gesture, and the five actions.
 |---|---|---|
 | `refreshIntervalSec` | how often the pile is re-read when no change has been signalled | 5 |
 | `fleaCommand` | the flea that owns the pile, a name on PATH or a path of its own | `flea` |
-| `recentCaptures` | how many recent captures the card's tray holds, none to six | 3 |
 | `railEdge` | the drop rail's edge: `off`, `left`, `right`, `bottom`, or empty for the edge opposite the bar | empty |
 | `railDwell` | how long a drag rests on the rail before the card opens, in milliseconds, 60 to 600 | 120 |
 
@@ -55,11 +53,18 @@ notch stepped by the pile) and while a drag is over it (the whole region in the 
 no space: no window ever shrinks for it. A drop on it is taken the moment it lands; the dwell only
 decides whether the card has opened on the way.
 
-The tray holds the newest screenshots and screen recordings Omarchy has taken, from the directories
-its own capture commands write to (`OMARCHY_SCREENSHOT_DIR`, else `XDG_PICTURES_DIR`, else
-`~/Pictures`; `OMARCHY_SCREENRECORD_DIR`, else `XDG_VIDEOS_DIR`, else `~/Videos`). They are listed
-when the card opens and on each re-read while it is up, never while it is closed. Click one to add it
-to the pile, drag it to take it straight out; either way the capture stays where Omarchy put it.
+The card is one list of three sections: the pile, `Pinned`, and `Screenshots & Recordings`. The
+captures are the newest few Omarchy has taken, from the directories its own capture commands write
+to (`OMARCHY_SCREENSHOT_DIR`, else `XDG_PICTURES_DIR`, else `~/Pictures`; `OMARCHY_SCREENRECORD_DIR`,
+else `XDG_VIDEOS_DIR`, else `~/Videos`), listed before the card's first frame and re-read every
+second while it is up, never while it is closed. A capture row takes the five actions and the subset
+gesture like any other, and `p` pins one. A pinned row is always there: its drag out is a copy, a
+move takes the file and the pin follows it, and `x` is what takes it off the shelf.
+
+Which kinds the captures section lists, how many, and whether the shelf is in the bar at all are
+Flea's own settings, in its Settings panel under Shelf; this plugin reads them from Flea's
+`ui.json` and never writes them. The action strip draws its key letters only while Flea's own
+keyboard-hints setting is on.
 
 ## State
 
@@ -84,6 +89,7 @@ carries, and `summon.json` the count the keybind writes. The plugin never writes
 | `m` `c` | move or copy the chosen rows, or the whole pile, to a folder |
 | `a` | zip them into one archive, which lands on the shelf |
 | `t` | send them with Taildrop |
+| `p` | pins the cursor row, and unpins a pinned one |
 | `y` | yank the paths to the clipboard |
 | `1` to `9` | in a flyout, take that destination or that peer |
 | `shift + x` | clears the shelf, and it becomes the last pile |

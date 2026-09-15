@@ -8,7 +8,7 @@ import "Run.js" as Run
 Item {
   id: root
 
-  property var state: Run.idle()
+  property var run: Run.idle()
   property color foreground: Color.popups.text
   property color muted: Qt.darker(foreground, 1.55)
   property color accent: Color.accent
@@ -21,7 +21,7 @@ Item {
   readonly property real barHeight: Style.space(5)
   readonly property real buttonHeight: Style.space(24)
 
-  visible: root.state.running
+  visible: root.run.running
   implicitHeight: visible ? column.implicitHeight + 2 * root.gap : 0
 
   Column {
@@ -32,7 +32,7 @@ Item {
     spacing: Style.space(5)
 
     Text {
-      text: Run.runText(root.state)
+      text: Run.runText(root.run)
       color: root.foreground
       font.family: root.fontFamily
       font.pixelSize: Style.font.body
@@ -40,7 +40,7 @@ Item {
     }
 
     Text {
-      text: root.state.name
+      text: root.run.name
       color: root.muted
       font.family: root.fontFamily
       font.pixelSize: Style.font.caption
@@ -56,7 +56,7 @@ Item {
       color: Qt.rgba(root.muted.r, root.muted.g, root.muted.b, 0.35)
 
       Rectangle {
-        width: parent.width * Run.runFraction(root.state)
+        width: parent.width * Run.runFraction(root.run)
         height: parent.height
         color: root.accent
       }

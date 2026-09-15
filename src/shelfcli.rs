@@ -13,6 +13,8 @@ pub fn command(args: &[String]) -> i32 {
         Some("size") => size(&args[3..]),
         Some("forget") => forget(&args[3..]),
         Some("add") => add(&args[3..]),
+        Some("pin") => pin(&args[3..], true),
+        Some("unpin") => pin(&args[3..], false),
         Some("captures") => captures::command(&args[3..]),
         Some("open") => open(&args[3..]),
         Some("move") => shelfops::transfer(true, &args[3..]),
@@ -21,6 +23,7 @@ pub fn command(args: &[String]) -> i32 {
         Some("zip") => shelfops::zip(&args[3..]),
         Some("paths") => shelfops::paths(&args[3..]),
         Some("places") => crate::shelfplaces::command(),
+        Some("choose") => crate::shelfplaces::choose(&args[3..]),
         Some("send") => shelfops::send(&args[3..]),
         Some("peers") => shelfops::peers(),
         Some("clear") => summon::clear(),
@@ -29,7 +32,7 @@ pub fn command(args: &[String]) -> i32 {
         Some("toggle") => summon::toggle(),
         Some("bind") => summon::bind(),
         _ => {
-            eprintln!("flea: shelf takes drag-begin, size, add, open, move, copy, zip, send, peers, paths, places, cancel, forget, captures, clear, restore, piles, toggle or bind");
+            eprintln!("flea: shelf takes drag-begin, size, add, open, move, copy, pin, unpin, zip, send, peers, paths, places, choose, cancel, forget, captures, clear, restore, piles, toggle or bind");
             2
         }
     }
@@ -110,6 +113,28 @@ fn open(rest: &[String]) -> i32 {
         Ok(_) => 0,
         Err(e) => {
             eprintln!("flea: {} could not be shown ({:?})", path, e.kind());
+            2
+        }
+    }
+}
+
+// Main rule 10: `p` on a row, and Flea's own menu row, both land here.
+fn pin(rest: &[String], pinned: bool) -> i32 {
+    if rest.is_empty() {
+        eprintln!("flea: shelf pin and unpin take at least one path");
+        return 2;
+    }
+    let shelf = match Shelf::user() {
+        Ok(shelf) => shelf,
+        Err(e) => {
+            eprintln!("flea: {}", e);
+            return 2;
+        }
+    };
+    match shelf.pin(rest, pinned) {
+        Ok(()) => 0,
+        Err(e) => {
+            eprintln!("flea: {}", e);
             2
         }
     }

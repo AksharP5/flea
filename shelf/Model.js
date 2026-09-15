@@ -34,7 +34,7 @@ function parse(text) {
     var folder = item.folder === true
     // A folder wears its own separator, the way every Flea listing draws one: rule 3's "reads as Flea".
     items.push({ path: item.path, name: leaf(item.path) + (folder ? "/" : ""), bytes: bytesOf(item),
-          folder: folder, partial: item.partial === true })
+          folder: folder, partial: item.partial === true, pinned: item.pinned === true })
   }
   return { items: items, count: items.length, ok: true }
 }
@@ -102,9 +102,9 @@ function size(bytes) {
 // Rule 4's budget: the next path the card is drawing that nobody has answered for, one at a time.
 // A path already answered is never asked again, so nothing here polls, and a path the card is not
 // drawing is never in this list at all.
-function nextSize(pile, sizes) {
-  for (var i = 0; i < pile.items.length; i++) {
-    var item = pile.items[i]
+function nextSize(list, sizes) {
+  for (var i = 0; i < list.length; i++) {
+    var item = list[i]
     if (item.bytes < 0 && sizes[item.path] === undefined) {
       return item.path
     }
@@ -114,10 +114,10 @@ function nextSize(pile, sizes) {
 
 // A size the card is no longer drawing is not kept: the map holds answers for the pile in front of
 // the pointer and nothing else, so a path that leaves and comes back is measured again.
-function keep(sizes, pile) {
+function keep(sizes, list) {
   var kept = {}
-  for (var i = 0; i < pile.items.length; i++) {
-    var path = pile.items[i].path
+  for (var i = 0; i < list.length; i++) {
+    var path = list[i].path
     if (sizes[path] !== undefined) {
       kept[path] = sizes[path]
     }
@@ -295,6 +295,13 @@ function pileText(pile) {
   return n + (n === 1 ? " item" : " items") + " \u00b7 " + stamp(pile.at)
 }
 
+// The archive's own date, which is the stamp cut at its day: 2026-09-12.
+function today() {
+  return stamp(Date.now()).substring(0, DATE_CHARS)
+}
+
+var DATE_CHARS = 10
+
 function stamp(at) {
   var when = new Date(Number(at))
   if (!isFinite(when.getTime())) {
@@ -302,6 +309,132 @@ function stamp(at) {
   }
   return when.getFullYear() + "-" + pad2(when.getMonth() + 1) + "-" + pad2(when.getDate())
          + " " + pad2(when.getHours()) + ":" + pad2(when.getMinutes())
+}
+
+// ---- Flea's own settings, which this plugin reads and never writes ----
+
+// Sample input, the part of ~/.local/state/flea/ui.json this reads:
+// {"keyHints":false,"shelf":{"screenshots":true,"recordings":true,"recent":3}}
+function keyHintsOf(text) {
+  var doc = parsedOr(text)
+  return doc.keyHints === true
+}
+
+function shelfDefaults() {
+  return { screenshots: true, recordings: true, recent: 3 }
+}
+
+function shelfOf(text) {
+  var doc = parsedOr(text)
+  var shelf = doc.shelf && typeof doc.shelf === "object" ? doc.shelf : {}
+  var recent = Number(shelf.recent)
+  return {
+    screenshots: shelf.screenshots !== false,
+    recordings: shelf.recordings !== false,
+    recent: isFinite(recent) && recent >= 0 ? recent : 3
+  }
+}
+
+function parsedOr(text) {
+  try {
+    var doc = JSON.parse(String(text || ""))
+    return doc && typeof doc === "object" ? doc : {}
+  } catch (e) {
+    return {}
+  }
+}
+
+// Which kinds the captures listing is asked for, which is one word on the command line.
+function kindsArg(settings) {
+  if (settings.screenshots && settings.recordings) {
+    return "both"
+  }
+  return settings.screenshots ? "screenshots" : "recordings"
+}
+
+// ---- Main rules 9 and 10: the card is one list of three sections ----
+
+var PILE = "pile"
+var PINNED = "pinned"
+var CAPTURE = "capture"
+var CAPTURES_CAPTION = "Screenshots & Recordings"
+
+// Every row the card draws, in drawn order, each carrying the section it belongs to: the pile, the
+// pins that are always there, and the newest captures. A caption is drawn where the section changes.
+function rows(pile, captures, sizes) {
+  var out = []
+  var items = (pile && pile.items) || []
+  for (var i = 0; i < items.length; i++) {
+    if (!items[i].pinned) {
+      out.push(sectioned(items[i], PILE))
+    }
+  }
+  for (var j = 0; j < items.length; j++) {
+    if (items[j].pinned) {
+      out.push(sectioned(items[j], PINNED))
+    }
+  }
+  for (var k = 0; k < (captures || []).length; k++) {
+    var capture = captures[k]
+    out.push(sectioned({ path: capture.path, name: leaf(capture.path), bytes: -1, folder: false,
+                         partial: false, pinned: false, recording: capture.recording === true }, CAPTURE))
+  }
+  return sizes === undefined ? out : sizedRows(out, sizes)
+}
+
+function sectioned(item, section) {
+  return { path: item.path, name: item.name, bytes: item.bytes, folder: item.folder,
+           partial: item.partial, pinned: item.pinned, recording: item.recording === true,
+           section: section }
+}
+
+// The same answers the pile's rows take, applied to every drawn row: a capture has no size of its
+// own until the card asks for one.
+function sizedRows(list, sizes) {
+  var out = []
+  for (var i = 0; i < list.length; i++) {
+    var row = list[i]
+    var answer = row.bytes < 0 ? sizes[row.path] : undefined
+    if (answer === undefined) {
+      out.push(row)
+      continue
+    }
+    var filled = sectioned(row, row.section)
+    filled.bytes = answer.bytes
+    filled.partial = answer.partial
+    out.push(filled)
+  }
+  return out
+}
+
+// A caption is drawn above the first row of a section, and never above the pile's own.
+function captionFor(list, index, kinds) {
+  var row = list[index]
+  if (!row || row.section === PILE) {
+    return ""
+  }
+  if (index > 0 && list[index - 1].section === row.section) {
+    return ""
+  }
+  return row.section === PINNED ? "Pinned" : capturesCaption(kinds)
+}
+
+// Rule 9: the caption names the kinds that are checked, which is Settings' own answer.
+function capturesCaption(kinds) {
+  if (!kinds || (kinds.screenshots && kinds.recordings)) {
+    return CAPTURES_CAPTION
+  }
+  return kinds.screenshots ? "Screenshots" : "Recordings"
+}
+
+function sectionCount(list, section) {
+  var n = 0
+  for (var i = 0; i < list.length; i++) {
+    if (list[i].section === section) {
+      n += 1
+    }
+  }
+  return n
 }
 
 // ---- Keys: the subset gesture, which every file action reads ----
@@ -361,7 +494,9 @@ function chosenCount(chosen, items) {
 }
 
 // Every file action is chosen-or-whole, with no exceptions: the chosen rows, or the whole pile when
-// nothing is chosen. Order is the pile's own, never the order they were chosen in.
+// nothing is chosen. Order is the pile's own, never the order they were chosen in. Rule 9: a capture
+// row is reached by choosing it, and is never part of "the whole pile", which is what Keys says the
+// five actions take when nothing is chosen.
 function actionPaths(chosen, items) {
   var picked = []
   for (var i = 0; i < items.length; i++) {
@@ -374,9 +509,36 @@ function actionPaths(chosen, items) {
   }
   var all = []
   for (var j = 0; j < items.length; j++) {
-    all.push(items[j].path)
+    if (items[j].section !== CAPTURE) {
+      all.push(items[j].path)
+    }
   }
   return all
+}
+
+// How many rows "none chosen" would take, which is the pile and its pinned rows and no capture.
+function wholeCount(items) {
+  var n = 0
+  for (var i = 0; i < items.length; i++) {
+    if (items[i].section !== CAPTURE) {
+      n += 1
+    }
+  }
+  return n
+}
+
+// Rules 9 and 10: a capture row and a pinned row leave as a copy, so a drag carrying either one is
+// a copy however it was started, and only a set of plain pile rows can be a move.
+function dragMoves(paths, items, wantsMove) {
+  if (!wantsMove) {
+    return false
+  }
+  for (var i = 0; i < items.length; i++) {
+    if (items[i].section !== PILE && paths.indexOf(items[i].path) >= 0) {
+      return false
+    }
+  }
+  return true
 }
 
 // The footer while a subset is being chosen: what the five actions will take, and what none means.
@@ -405,8 +567,21 @@ function headerRight(incoming, chosen, total) {
 // Rule 2's header, which is also the pile's own count: the bar never draws one. An empty shelf says
 // so in the same slot, the way the ShelfEmpty board draws it.
 function headerText(state) {
-  if (!state || state.count === 0) {
+  var n = state ? loose(state.items).length : 0
+  if (n === 0) {
     return "Shelf  empty"
   }
-  return "Shelf  " + state.count + (state.count === 1 ? " item" : " items")
+  return "Shelf  " + n + (n === 1 ? " item" : " items")
+}
+
+// Main rule 12: the header counts the pile alone, because pinned rows and captures are not items
+// anybody sent to the shelf.
+function loose(items) {
+  var out = []
+  for (var i = 0; i < (items || []).length; i++) {
+    if (!items[i].pinned) {
+      out.push(items[i])
+    }
+  }
+  return out
 }

@@ -54,3 +54,15 @@ fn a_user_dirs_line_is_read_the_way_the_capture_scripts_source_it() {
     // A commented-out key is not a value, or the tray would list a directory the scripts never write to.
     assert_eq!(user_dirs_entry("#XDG_PICTURES_DIR=\"$HOME/Nope\"\n", "XDG_PICTURES_DIR", "/home/gm"), None);
 }
+
+#[test]
+fn the_kinds_the_settings_checked_are_the_kinds_that_are_listed() {
+    let shots = TestDir::new("captures-kinds-shots");
+    let clips = TestDir::new("captures-kinds-clips");
+    touch(&shots, "screenshot-2026-09-14_19-02-11.png");
+    touch(&clips, "screenrecording-2026-09-14_18-41-02.mp4");
+    let mut only_shots = Vec::new();
+    collect(shots.path(), SCREENSHOT_PREFIX, SCREENSHOT_SUFFIX, &mut only_shots);
+    collect(clips.path(), RECORDING_PREFIX, RECORDING_SUFFIX, &mut Vec::new());
+    assert_eq!(only_shots.len(), 1, "a kind nobody asked for is never collected");
+}

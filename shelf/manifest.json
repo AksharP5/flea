@@ -21,7 +21,6 @@
     "defaults": {
       "refreshIntervalSec": 5,
       "fleaCommand": "flea",
-      "recentCaptures": 3,
       "railEdge": "",
       "railDwell": 120
     },
@@ -40,15 +39,6 @@
         "type": "string",
         "label": "The flea command that owns the pile",
         "defaultValue": "flea"
-      },
-      {
-        "key": "recentCaptures",
-        "type": "integer",
-        "label": "Recent captures on the card",
-        "defaultValue": 3,
-        "min": 0,
-        "max": 6,
-        "step": 1
       },
       {
         "key": "railEdge",

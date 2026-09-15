@@ -29,3 +29,12 @@ fn a_destination_used_again_moves_to_the_front_rather_than_appearing_twice() {
     assert_eq!(recents().len(), KEPT, "a list, not a log");
     std::env::remove_var("XDG_STATE_HOME");
 }
+
+#[test]
+fn the_chooser_answers_a_directory_or_nothing_at_all() {
+    assert_eq!(chosen_dir(r#"{"response":0,"uris":["file:///home/gm/Work%20notes"]}"#),
+               Some("/home/gm/Work notes".to_string()));
+    // esc in the chooser is response 1, and a cancelled chooser has chosen nothing.
+    assert_eq!(chosen_dir(r#"{"response":1}"#), None);
+    assert_eq!(chosen_dir(""), None);
+}

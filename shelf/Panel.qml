@@ -16,7 +16,6 @@ Panel {
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
 
-  readonly property color foreground: root.bar ? root.bar.foreground : Color.foreground
   // BarMark rule 2: empty is 55 percent present and holding is 100, and nothing else changes.
   readonly property real emptyPresence: 0.55
   readonly property real markOpacity: shelf.holding ? 1.0 : root.emptyPresence
@@ -36,6 +35,7 @@ Panel {
   // True from the lift until the platform drag ends, however it ended.
   property bool carrying: false
   readonly property int transientMs: 4000
+  readonly property int focusHoldMs: 75
 
   // A card that closed while its menu was up must come back as the pile, not as the menu: the menu is
   // a detour, and the shelf is what the next summon is asking for. A closed card also forgets the
@@ -46,6 +46,10 @@ Panel {
       return
     }
     root.menu = false
+    root.pending = ""
+    root.carrying = false
+    root.result = ""
+    root.error = ""
     card.chosen = ({})
     card.cursorIndex = -1
     card.stripIndex = -1
@@ -67,13 +71,22 @@ Panel {
       transient.restart()
     }
     onMinted: function (token, moving) { card.lift(token, !moving) }
-    onFailed: function (why) { root.error = why; root.carrying = false }
+    onFailed: function (why) {
+      // Rule 5: one voice. An error takes the slot from a result and expires the same way.
+      root.result = ""
+      root.error = why
+      root.carrying = false
+      transient.restart()
+    }
   }
 
   Timer {
     id: transient
     interval: root.transientMs
-    onTriggered: root.result = ""
+    onTriggered: {
+      root.result = ""
+      root.error = ""
+    }
   }
 
   // EdgeRail: the one summon path that is always live, which is why it is the one that must be
@@ -111,7 +124,11 @@ Panel {
   property var flyoutRows: []
 
   function actOn(id) {
-    var paths = Model.actionPaths(card.chosen, shelf.pile.items)
+    if (id === "pin") {
+      card.pinRequested(card.cursorIndex)
+      return
+    }
+    var paths = Model.actionPaths(card.chosen, card.rows)
     if (paths.length === 0) {
       return
     }
@@ -123,7 +140,7 @@ Panel {
       return
     }
     if (id === "zip") {
-      doing.zip(Model.stamp(Date.now()).substring(0, 10), paths)
+      doing.zip(Model.today(), paths)
       return
     }
     if (id === "send") {
@@ -145,7 +162,7 @@ Panel {
   }
 
   function runChosen(dest) {
-    var paths = Model.actionPaths(card.chosen, shelf.pile.items)
+    var paths = Model.actionPaths(card.chosen, card.rows)
     if (root.pending === "send") {
       doing.send(dest, paths)
     } else if (root.pending.length > 0) {
@@ -203,21 +220,16 @@ Panel {
     visible: root.opened
     color: "transparent"
     implicitWidth: card.implicitWidth + surface.contentLeftInset + surface.contentRightInset
-    implicitHeight: (root.menu ? pileMenu.implicitHeight : card.implicitHeight)
+    implicitHeight: (root.menu ? pileMenu.implicitHeight
+                              : root.pending.length > 0 ? flyout.implicitHeight
+                              : card.implicitHeight)
                     + surface.contentTopInset + surface.contentBottomInset
     anchors { top: true; right: true }
     margins { right: Style.gapsOut; top: Style.gapsOut }
     WlrLayershell.namespace: "flea-shelf-card"
     WlrLayershell.layer: WlrLayer.Overlay
-    // The card is keyboard-first and esc is how it goes away, so it holds the keyboard while it is
-    // open, the way the shell's own clipboard and emoji panels do. Measured on this box: with the
-    // OEM's prime-then-OnDemand the keyboard went back to whatever the pointer was over, so a card
-    // opened by clicking the bar mark took no keys at all.
-    //
-    // It gives the keyboard up for the length of a drag, and that is not a detail: measured on this
-    // box, a layer surface holding an exclusive keyboard grab is never told the drag left it, so the
-    // drop never reaches the window underneath. The platform loop sees no keys anyway, which is why
-    // the copy modifier is read at the lift, so nothing is lost by letting go of them here.
+    // Measured on this box: an exclusive grab is never told a drag left the surface, so the card
+    // holds the keyboard while it is open and gives it up for the length of a drag; see the README.
     WlrLayershell.keyboardFocus: root.opened && !root.carrying
                                  ? WlrKeyboardFocus.Exclusive
                                  : WlrKeyboardFocus.None
@@ -226,8 +238,9 @@ Panel {
 
     Timer {
       id: focusHold
-      // Enough Qt and Wayland commit cycles for the surface to exist before Qt's own focus is set.
-      interval: 75
+      // Enough Qt and Wayland commit cycles for the surface to exist before Qt's own focus is set,
+      // which is the OEM keyboard panel's own number for the same wait.
+      interval: root.focusHoldMs
       onTriggered: surface.forceActiveFocus()
     }
 
@@ -307,7 +320,7 @@ Panel {
         x: surface.contentLeftInset
         y: surface.contentTopInset
         width: surface.width - surface.contentLeftInset - surface.contentRightInset
-        title: Run.flyoutTitle(root.pending, Model.actionPaths(card.chosen, shelf.pile.items).length)
+        title: Run.flyoutTitle(root.pending, Model.actionPaths(card.chosen, card.rows).length)
         rows: root.flyoutRows
         browsable: root.pending === "move" || root.pending === "copy"
         foreground: Color.popups.text
@@ -315,10 +328,9 @@ Panel {
         stripHeight: card.stripHeight
         rowHeight: card.rowHeight
         onChosen: function (index) { root.runChosen(root.flyoutRows[index]) }
-        onBrowse: {
-          doing.choose(flyout.title, root.flyoutRows.length > 0 ? root.flyoutRows[0] : "")
-          root.pending = ""
-        }
+        // The chooser answers in its own time, so what it is choosing for is still owed until it
+        // does: clearing pending here would drop the destination the operator picked.
+        onBrowse: doing.choose(flyout.title, root.flyoutRows.length > 0 ? root.flyoutRows[0] : "")
         onDismissed: root.pending = ""
       }
 
@@ -329,27 +341,38 @@ Panel {
         y: surface.contentTopInset
         width: surface.width - surface.contentLeftInset - surface.contentRightInset
         height: surface.height - surface.contentTopInset - surface.contentBottomInset
-        pile: Model.sized(shelf.pile, shelf.sizes)
-        captures: shelf.captures
+        pile: shelf.pile
+        rows: Model.rows(shelf.pile, shelf.captures, shelf.sizes)
+        kinds: shelf.shelfSettings
+        keyHints: shelf.keyHints
         incoming: rail.incoming
         // The empty card names only the routes that are on: the mark is drawn today, the rail edge
         // and the summon bind arrive with the units that build them.
         hint: Model.emptyHint(shelf.pile, shelf.captures,
                               { edge: "", mark: true, bind: shelf.summonBind })
+        // Actions: the strip acts on what the card is drawing, chosen or whole.
         foreground: Color.popups.text
         result: root.result
         error: root.error
         onRemoveRequested: function (index) {
+          var row = card.rows[index]
+          if (!row || row.section === "capture") {
+            return
+          }
           root.error = ""
-          shelf.forget(shelf.pile.items[index].path)
+          shelf.forget(row.path)
+        }
+        onPinRequested: function (index) {
+          var row = card.rows[index]
+          if (!row) {
+            return
+          }
+          root.error = ""
+          shelf.pin(row.path, !row.pinned)
         }
         onOpenRequested: function (path) {
           root.error = ""
           shelf.open(path)
-        }
-        onCaptureAddRequested: function (index) {
-          root.error = ""
-          shelf.add(shelf.captures[index].path)
         }
         onMenuRequested: {
           shelf.askPiles()
@@ -359,8 +382,8 @@ Panel {
         onCancelRequested: doing.cancelRun()
         run: doing.run
         onLiftRequested: function (copying) {
-          root.carrying = true
-          shelf.mintDrag(!copying)
+          var carried = Model.actionPaths(card.chosen, card.rows)
+          root.carrying = shelf.mintDrag(Model.dragMoves(carried, card.rows, !copying), carried)
         }
         onCarried: function (carrying) { root.carrying = carrying }
       }

@@ -75,6 +75,57 @@ pub fn places() -> Vec<String> {
     out
 }
 
+// flea shelf choose <title> [start]: the "Choose a folder" row of the destination flyout, which is
+// Flea's own picker rather than a second one. It prints the directory that came back, and nothing at
+// all when the operator pressed esc in it.
+pub fn choose(rest: &[String]) -> i32 {
+    let title = rest.first().map(String::as_str).unwrap_or("Choose a folder");
+    let start = rest.get(1).map(String::as_str).unwrap_or("");
+    let reply = uistore::state_home().unwrap_or_else(|_| PathBuf::from("/tmp")).join(DIR).join("reply.json");
+    if let Err(e) = uistore::make_dir(reply.parent().unwrap_or(Path::new("/tmp"))) {
+        eprintln!("flea: {}", e);
+        return 2;
+    }
+    let _ = fs::remove_file(&reply);
+    let request = Json::Obj(vec![
+        ("mode".to_string(), Json::Str("open".to_string())),
+        ("directory".to_string(), Json::Bool(true)),
+        ("multiple".to_string(), Json::Bool(false)),
+        ("title".to_string(), Json::Str(title.to_string())),
+        ("folder".to_string(), Json::Str(start.to_string())),
+    ]);
+    let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("flea"));
+    let finished = std::process::Command::new(exe)
+        .arg("--pick")
+        .arg(&reply)
+        .env("FLEA_PICKER", jsondoc::render(&request))
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .status();
+    if finished.map(|s| !s.success()).unwrap_or(true) {
+        eprintln!("flea: the chooser could not be opened");
+        return 2;
+    }
+    let answer = fs::read_to_string(&reply).unwrap_or_default();
+    let _ = fs::remove_file(&reply);
+    if let Some(path) = chosen_dir(&answer) {
+        println!("{}", path);
+    }
+    0
+}
+
+// Sample input, what the picker writes into its reply file:
+// {"response":0,"uris":["file:///home/gm/Work"]}
+pub fn chosen_dir(answer: &str) -> Option<String> {
+    let doc = jsondoc::parse(answer).ok()?;
+    if doc.get("response").and_then(Json::as_f64)? as i64 != 0 {
+        return None;
+    }
+    let uri = doc.get("uris").and_then(Json::as_array)?.first().and_then(Json::as_str)?;
+    let path = uri.strip_prefix("file://")?;
+    Some(decode(path))
+}
+
 // Sample input, one line of ~/.config/user-dirs.dirs: XDG_DOWNLOAD_DIR="$HOME/Downloads"
 pub fn user_dirs(text: &str, home: &str) -> Vec<String> {
     let mut out = Vec::new();

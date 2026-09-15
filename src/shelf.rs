@@ -121,7 +121,8 @@ impl Shelf {
     }
 
     // Rule 3: the shelf changes only after completion. A copy leaves every reference, a move removes
-    // the ones the transfer engine reported moved, and a failure or a cancel leaves the rest.
+    // the ones the transfer engine reported moved, and a failure or a cancel leaves the rest. Rule
+    // 10: a pinned row is never consumed, so its entry is re-pointed by `repoint` instead.
     pub fn settle(&self, moved: &[String]) -> Result<(), String> {
         if moved.is_empty() {
             return Ok(());
@@ -130,8 +131,67 @@ impl Shelf {
             items
                 .into_iter()
                 .filter(|item| match item.get("path").and_then(Json::as_str) {
-                    Some(path) => !moved.iter().any(|gone| gone == path),
+                    Some(path) => !moved.iter().any(|gone| gone == path) || is_pinned(item),
                     None => false,
+                })
+                .collect()
+        })
+    }
+
+    // Which of the paths the shelf holds are pinned, which is what a move has to re-point.
+    pub fn pinned_among(&self, paths: &[String]) -> Vec<String> {
+        let text = fs::read_to_string(&self.pile).unwrap_or_default();
+        let doc = jsondoc::parse(&text).unwrap_or(Json::Obj(Vec::new()));
+        let items: Vec<Json> = doc.get("items").and_then(Json::as_array).map(<[Json]>::to_vec).unwrap_or_default();
+        items
+            .iter()
+            .filter(|item| is_pinned(item))
+            .filter_map(|item| item.get("path").and_then(Json::as_str))
+            .filter(|path| paths.iter().any(|asked| asked == path))
+            .map(String::from)
+            .collect()
+    }
+
+    // Main rule 10: a pinned row is always there. The flag rides the pile's own entry, so the bar's
+    // reader needs no second file, and pinning a path the shelf is not holding puts it on first.
+    pub fn pin(&self, paths: &[String], pinned: bool) -> Result<(), String> {
+        let mut entries = Vec::new();
+        for path in paths {
+            entries.push(item_of(path)?);
+        }
+        self.write_pile(move |mut items| {
+            for entry in entries {
+                let path = entry.get("path").and_then(Json::as_str).map(String::from);
+                let mut held = false;
+                for item in items.iter_mut() {
+                    if item.get("path").and_then(Json::as_str).map(String::from) != path {
+                        continue;
+                    }
+                    held = true;
+                    *item = with_pinned(item, pinned);
+                }
+                if !held && pinned {
+                    items.push(with_pinned(&entry, true));
+                }
+            }
+            items
+        })
+    }
+
+    // Rule 10 again: Move on a pinned row moves the file and the pin follows it to the new path.
+    pub fn repoint(&self, moved: &[(String, String)]) -> Result<(), String> {
+        if moved.is_empty() {
+            return Ok(());
+        }
+        self.write_pile(|items| {
+            items
+                .into_iter()
+                .map(|item| {
+                    let path = item.get("path").and_then(Json::as_str).unwrap_or_default().to_string();
+                    match moved.iter().find(|(from, _)| *from == path) {
+                        Some((_, to)) => with_path(&item, to),
+                        None => item,
+                    }
                 })
                 .collect()
         })
@@ -225,6 +285,28 @@ fn live_drags(drags: &Json, now_ms: u64) -> Vec<Json> {
                 .collect()
         })
         .unwrap_or_default()
+}
+
+pub fn is_pinned(item: &Json) -> bool {
+    item.get("pinned").and_then(Json::as_bool) == Some(true)
+}
+
+// An entry with one field changed, because a pile entry is rewritten rather than edited in place.
+fn with_pinned(item: &Json, pinned: bool) -> Json {
+    rebuilt(item, |name| name != "pinned", vec![("pinned".to_string(), Json::Bool(pinned))])
+}
+
+fn with_path(item: &Json, path: &str) -> Json {
+    rebuilt(item, |name| name != "path", vec![("path".to_string(), Json::Str(path.to_string()))])
+}
+
+fn rebuilt(item: &Json, keep: impl Fn(&str) -> bool, mut added: Vec<(String, Json)>) -> Json {
+    let mut fields: Vec<(String, Json)> = match item {
+        Json::Obj(fields) => fields.iter().filter(|(name, _)| keep(name)).cloned().collect(),
+        _ => Vec::new(),
+    };
+    fields.append(&mut added);
+    Json::Obj(fields)
 }
 
 // A pile entry: the path the shelf holds and whether the card draws it as a folder. The size is not

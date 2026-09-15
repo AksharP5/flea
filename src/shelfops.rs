@@ -33,6 +33,7 @@ pub fn transfer(moving: bool, rest: &[String]) -> i32 {
         }
     };
     let dest_name = dest.clone();
+    let dest_dir = dest.clone();
     let dest = match usable_dest(dest) {
         Ok(dest) => dest,
         Err(e) => {
@@ -62,14 +63,31 @@ pub fn transfer(moving: bool, rest: &[String]) -> i32 {
     let _ = engine.join();
     cancel.store(true, Ordering::Relaxed);
     let _ = std::fs::remove_file(&marker);
+    // Main rule 10: a pinned row survives its own move, so its entry follows the file to the new
+    // path while every other moved reference leaves the pile.
+    let pinned = shelf.pinned_among(&moved);
+    let followed: Vec<(String, String)> = pinned
+        .iter()
+        .map(|from| (from.clone(), moved_to(&dest_dir, from)))
+        .collect();
     // Rule 4: a move empties what it moved and nothing else; a copy leaves the pile exactly as it was.
     if let Err(e) = shelf.settle(&moved) {
         eprintln!("flea: the shelf kept its references ({})", e);
+    }
+    if let Err(e) = shelf.repoint(&followed) {
+        eprintln!("flea: a pin stayed on the old path ({})", e);
     }
     if let Err(e) = shelfplaces::remember(&dest_name) {
         eprintln!("flea: the destination was not remembered ({})", e);
     }
     i32::from(failed > 0)
+}
+
+// Where a moved file landed: the destination directory and the name it went in with, which is what
+// a pin has to follow. A rename on collision is the engine's own and is not reported per item.
+fn moved_to(dest: &str, from: &str) -> String {
+    let name = Path::new(from).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    Path::new(dest).join(name).to_string_lossy().to_string()
 }
 
 // Every line the pane's own transfer prints, in the same vocabulary, so the card reads one protocol.

@@ -2,7 +2,6 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import "Model.js" as Model
-import "Run.js" as Run
 
 // The only thing here that touches the outside world: the pile's own state file, which the
 // `flea shelf` backend writes and this reads. The widget never learns how a file got into the pile.
@@ -32,8 +31,6 @@ Item {
   }
 
   readonly property int refreshIntervalSec: root.intSetting("refreshIntervalSec", 5, 1, 120)
-  // ShelfEmpty rule 7: the tray's count is a clamped setting, and zero removes the tray.
-  readonly property int recentCaptures: root.intSetting("recentCaptures", 3, 0, 6)
   // EdgeRail rules 3 and 5: the dwell is clamped on every read, and the edge is one of four words.
   readonly property int railDwellMs: root.intSetting("railDwell", 120, 60, 600)
   property string barPosition: "top"
@@ -92,17 +89,38 @@ Item {
 
   property bool moving: true
 
-  function mintDrag(wantsMove) {
-    if (mint.running || root.pile.count === 0) {
-      return
+  // The card says what is being carried, because a pinned row and a capture row are draggable and
+  // are not pile entries. Answers whether the drag started, which is the card's carrying state.
+  function mintDrag(wantsMove, paths) {
+    if (mint.running || !paths || paths.length === 0) {
+      return false
     }
     root.moving = wantsMove
     var argv = [root.fleaCommand, "shelf", "drag-begin", wantsMove ? "move" : "copy"]
-    for (var i = 0; i < root.pile.items.length; i++) {
-      argv.push(root.pile.items[i].path)
+    for (var i = 0; i < paths.length; i++) {
+      argv.push(paths[i])
     }
     mint.command = argv
     mint.running = true
+    return true
+  }
+
+  // Main rule 10: `p` on a row, whichever section it is in.
+  function pin(path, pinned) {
+    pinner.command = [root.fleaCommand, "shelf", pinned ? "pin" : "unpin", path]
+    pinner.running = true
+  }
+
+  Process {
+    id: pinner
+    running: false
+    onExited: function (code) {
+      if (code !== 0) {
+        root.failed("The shelf could not pin that one.")
+        return
+      }
+      root.reread()
+    }
   }
 
   // Main rule 6: the reference leaves the pile and the file it names is not touched.
@@ -131,6 +149,28 @@ Item {
     stderr: StdioCollector { waitForEnd: true }
   }
 
+  // Rule 11 and directive 59: the key hints toggle and the Shelf section are Flea's own settings,
+  // read from the file Flea writes rather than duplicated in this plugin's manifest.
+  readonly property string fleaStatePath: (Quickshell.env("XDG_STATE_HOME") || root.home + "/.local/state") + "/flea/ui.json"
+  property bool keyHints: false
+  property var shelfSettings: Model.shelfDefaults()
+
+  FileView {
+    id: fleaState
+    path: root.fleaStatePath
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: root.readSettings(fleaState.text())
+    // No Flea has ever run here, so every setting is its own default.
+    onLoadFailed: root.readSettings("")
+  }
+
+  function readSettings(text) {
+    root.keyHints = Model.keyHintsOf(text)
+    root.shelfSettings = Model.shelfOf(text)
+  }
+
   // Main rule 4's budget: a size is asked for only while the card is drawing the row, one path per
   // request, and never twice for the same path. DirSizes.js is the model for the gating and not a
   // call this can make: its queue indexes the active listing, which the shelf is not.
@@ -138,20 +178,26 @@ Item {
   property var sizes: ({})
   property string asking: ""
 
+  // Main rule 9: the captures are listed before the card's first frame, so the ask rides the open.
   onDrawingChanged: {
-    root.askSize()
     root.askCaptures()
+    root.askSize()
+    fast.running = root.drawing
   }
   onPileChanged: {
-    root.sizes = Model.keep(root.sizes, root.pile)
+    root.sizes = Model.keep(root.sizes, root.drawnRows)
     root.askSize()
   }
+
+  // What the card is drawing, which is what a size is asked for and what a capture joins.
+  readonly property var drawnRows: Model.rows(root.pile, root.captures)
+  onDrawnRowsChanged: root.askSize()
 
   function askSize() {
     if (measure.running || !root.drawing) {
       return
     }
-    var path = Model.nextSize(root.pile, root.sizes)
+    var path = Model.nextSize(root.drawnRows, root.sizes)
     if (path.length === 0) {
       return
     }
@@ -182,11 +228,22 @@ Item {
   property var captures: []
 
   function askCaptures() {
-    if (list.running || !root.drawing || root.recentCaptures === 0) {
+    if (list.running || !root.drawing || root.shelfSettings.recent === 0) {
       return
     }
-    list.command = [root.fleaCommand, "shelf", "captures", String(root.recentCaptures)]
+    list.command = [root.fleaCommand, "shelf", "captures",
+                    String(root.shelfSettings.recent), Model.kindsArg(root.shelfSettings)]
     list.running = true
+  }
+
+  // Rule 9 and directive 58: while the card is up a new capture is there within a second, and this
+  // runs only then. The pile keeps its own five second re-read.
+  Timer {
+    id: fast
+    interval: root.millisecondsPerSecond
+    running: false
+    repeat: true
+    onTriggered: root.askCaptures()
   }
 
   Process {

@@ -145,3 +145,34 @@ fn a_path_that_is_not_there_is_not_added_at_all() {
     assert!(shelf.add(&[one, gone]).is_err());
     assert!(shelf.pile().is_empty(), "one bad path adds none of them, rather than half a batch");
 }
+
+#[test]
+fn a_pin_rides_the_pile_entry_and_a_pinned_row_survives_its_own_move() {
+    let (dir, shelf) = shelf("shelfpin");
+    let one = file(&dir, "one.txt");
+    let two = file(&dir, "two.txt");
+    shelf.add(&[one.clone(), two.clone()]).unwrap();
+    shelf.pin(&[two.clone()], true).unwrap();
+    let text = std::fs::read_to_string(shelf.pile_file()).unwrap();
+    assert!(text.contains("\"pinned\": true"), "the flag rides the entry: {}", text);
+    assert_eq!(shelf.pinned_among(&[one.clone(), two.clone()]), vec![two.clone()]);
+    // A move takes both: the loose one leaves the pile and the pinned one stays to be re-pointed.
+    shelf.settle(&[one.clone(), two.clone()]).unwrap();
+    assert_eq!(shelf.pile(), vec![two.clone()], "a pinned row is never consumed");
+    shelf.repoint(&[(two.clone(), "/moved/two.txt".to_string())]).unwrap();
+    assert_eq!(shelf.pile(), vec!["/moved/two.txt".to_string()], "and the pin follows the file");
+    let moved = std::fs::read_to_string(shelf.pile_file()).unwrap();
+    assert!(moved.contains("\"pinned\": true"), "the pin is still a pin after the move: {}", moved);
+}
+
+#[test]
+fn pinning_a_path_the_shelf_is_not_holding_puts_it_on_the_shelf() {
+    let (dir, shelf) = shelf("shelfpinnew");
+    let one = file(&dir, "one.txt");
+    shelf.pin(&[one.clone()], true).unwrap();
+    assert_eq!(shelf.pile(), vec![one.clone()], "Flea's own menu row pins a path the shelf never held");
+    shelf.pin(&[one.clone()], false).unwrap();
+    assert_eq!(shelf.pile(), vec![one], "unpinning leaves the row on the shelf, loose");
+    let text = std::fs::read_to_string(shelf.pile_file()).unwrap();
+    assert!(text.contains("\"pinned\": false"), "{}", text);
+}

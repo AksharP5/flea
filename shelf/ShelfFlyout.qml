@@ -1,6 +1,5 @@
 import QtQuick
 import qs.Commons
-import "Model.js" as Model
 
 // One flyout, two verbs and the send: Flea's own places and Taildrop's own peers, numbered so a
 // keyboard reaches any of them in one press. Actions: recent destinations first, because the same
