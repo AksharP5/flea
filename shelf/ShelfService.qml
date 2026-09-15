@@ -260,8 +260,13 @@ Item {
   property var captures: []
 
   function askCaptures() {
-    if (list.running || !root.drawing || !Model.wantsCaptures(root.shelfSettings)) {
+    // Neither kind checked is no captures at all; a listing already in flight is simply not re-asked,
+    // because clearing the rows it is about to answer for would blink them off the card.
+    if (!Model.wantsCaptures(root.shelfSettings)) {
       root.captures = []
+      return
+    }
+    if (list.running || !root.drawing) {
       return
     }
     list.command = [root.fleaCommand, "shelf", "captures",

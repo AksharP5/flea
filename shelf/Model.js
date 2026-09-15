@@ -178,6 +178,17 @@ function pad2(n) {
 }
 
 
+// A path becomes a file:// URI segment by segment: encodeURI leaves # and ? alone, and a name that
+// carries one then arrives at the drop target cut off at that character.
+function uriPath(path) {
+  var parts = String(path).split("/")
+  var out = []
+  for (var i = 0; i < parts.length; i++) {
+    out.push(encodeURIComponent(parts[i]))
+  }
+  return out.join("/")
+}
+
 // ---- EdgeRail: what a drag dropped on the wall is offering ----
 
 // Sample input, one URI per line as every toolkit writes a text/uri-list, comments and all:

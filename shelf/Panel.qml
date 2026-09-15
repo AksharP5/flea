@@ -114,7 +114,7 @@ Panel {
     edge: shelf.railEdge
     dwellMs: shelf.railDwellMs
     held: shelf.count
-    foreground: Color.popups.text
+    foreground: root.foreground
     onDropped: function (paths) {
       root.error = ""
       shelf.addAll(paths)
@@ -391,9 +391,9 @@ Panel {
           onActionRequested: function (id) { root.actOn(id) }
           onCancelRequested: doing.cancelRun()
           run: doing.run
-          onLiftRequested: function (copying) {
+          onLiftRequested: {
             var carried = card.carriedPaths
-            shelf.mintDrag(Model.dragMoves(carried, card.rows, !copying), carried)
+            shelf.mintDrag(Model.dragMoves(carried, card.rows, true), carried)
           }
           onCarried: function (carrying) { root.carrying = carrying }
         }

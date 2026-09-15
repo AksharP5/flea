@@ -54,6 +54,7 @@ Column {
       id: rowMouse
       anchors.fill: parent
       hoverEnabled: true
+      preventStealing: true
       cursorShape: Qt.PointingHandCursor
       acceptedButtons: Qt.LeftButton
       // Rule 11: a row is the handle the pile is carried out by. The token is minted on the
@@ -73,8 +74,8 @@ Column {
         if (rowMouse.marking) {
           return
         }
+        row.card.pressing = true
         row.card.carriedPaths = Model.carryPaths(row.card.chosen, row.card.rows, row.index)
-        row.card.liftRequested(false)
       }
       onPositionChanged: function (mouse) {
         if (!rowMouse.pressed || rowMouse.marking) {

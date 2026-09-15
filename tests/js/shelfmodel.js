@@ -60,6 +60,8 @@ function run(check) {
 
 
   // The advloop round on shelf/*.js: four the reviewers found, each pinned by the case that failed.
+  check("a name carrying a hash or a question mark survives becoming a uri",
+        Shelf.uriPath("/home/gm/track #1?.mp3"), "/home/gm/track%20%231%3F.mp3")
   check("a uri with an escape that is not one still lands, and takes the rest of the drop with it",
         Shelf.pathsFromUris("file:///home/gm/50%.png\nfile:///home/gm/two.txt\n").join("|"),
         "/home/gm/50%.png|/home/gm/two.txt")

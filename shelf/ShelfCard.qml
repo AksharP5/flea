@@ -44,6 +44,10 @@ Item {
   readonly property int chosenCount: Model.chosenCount(root.chosen, root.rows)
   // Rule 10: the word an empty pile says, which is also what puts a separator above the first group.
   readonly property bool emptyShown: Model.loose(root.pile.items).length === 0 && !root.run.running
+  // Rule 8: the action row, which tab reaches only while it is on the card.
+  readonly property bool stripShown: !root.run.running && root.rows.length > 0
+                                     && (Model.loose(root.pile.items).length > 0 || root.cursorIndex >= 0)
+  onStripShownChanged: if (!root.stripShown) root.stripIndex = -1
 
   // Keys: which action the strip's own focus is on, and -1 while the rows have it.
   property int stripIndex: -1
@@ -52,16 +56,22 @@ Item {
   // than the place that row used to be in, and a second p is an unpin instead of another pin.
   property string followPath: ""
   onRowsChanged: {
+    if (root.cursorIndex >= root.rows.length) {
+      root.cursorIndex = root.rows.length - 1
+    }
+    if (root.hoveredIndex >= root.rows.length) {
+      root.hoveredIndex = -1
+    }
     if (root.followPath === "") {
       return
     }
     for (var i = 0; i < root.rows.length; i++) {
       if (root.rows[i].path === root.followPath) {
         root.cursorIndex = i
-        break
+        root.followPath = ""
+        return
       }
     }
-    root.followPath = ""
   }
 
   signal removeRequested(int index)
@@ -73,9 +83,9 @@ Item {
   // Summon: the pointer's way to the last five piles is the card's own menu.
   signal menuRequested()
   signal actionRequested(string id)
-  // Rule 11: a row is the handle. The modifier is read at the lift and never after it, because a
-  // platform drag runs a loop this window gets no keys in.
-  signal liftRequested(bool copying)
+  // Rule 11: a row is the handle. What the drag is, a move or a copy, is decided from the rows it
+  // carries and not from a modifier, because a platform drag runs a loop this window gets no keys in.
+  signal liftRequested()
   // What that grab is carrying: the chosen rows, or the row it started from.
   property var carriedPaths: []
 
@@ -87,37 +97,39 @@ Item {
   Drag.proposedAction: Qt.CopyAction
   Drag.mimeData: root.dragMime
 
-  // The token arrives from the service a few milliseconds after the press, with the button still
-  // down. It arms the drag rather than starting it: a press that never moves is a click, and a row
-  // is both the handle a pile is carried by and the control a capture is added with.
-  property bool armed: false
+  // The token is asked for when the pointer passes the drag distance and arrives a few milliseconds
+  // later with the button still down, which is where a platform drag can be started from.
   property bool wanted: false
+  // True from the press to the release. A token that arrives after the release arms nothing, because
+  // the gesture it belonged to is over.
+  property bool pressing: false
 
   function lift(token, copying) {
     var uris = []
     var carried = root.carriedPaths
     for (var i = 0; i < carried.length; i++) {
-      uris.push("file://" + encodeURI(carried[i]))
+      uris.push("file://" + Model.uriPath(carried[i]))
     }
     var mime = { "application/x-flea-shelf": token + "\n" + (copying ? "copy" : "move") }
     mime["text/uri-list"] = uris.join("\r\n") + "\r\n"
-    root.dragMime = mime
-    root.armed = true
-    if (root.wanted) {
-      root.beginCarry()
+    if (!root.pressing || !root.wanted) {
+      return
     }
+    root.dragMime = mime
+    root.beginCarry()
   }
 
-  // The pointer left the press by more than the platform's own drag distance, so this is a carry.
+  // The pointer left the press by more than the platform's own drag distance, so this is a carry and
+  // the token is asked for now: a press that stays still is a click and mints nothing at all.
   function wantCarry() {
-    root.wanted = true
-    if (root.armed) {
-      root.beginCarry()
+    if (root.wanted) {
+      return
     }
+    root.wanted = true
+    root.liftRequested()
   }
 
   function beginCarry() {
-    root.armed = false
     root.wanted = false
     // The window gives up the pointer and the keyboard for the length of the carry, and only now:
     // a press that turns out to be a click must still reach the row it landed on.
@@ -128,8 +140,8 @@ Item {
   // A press that ended without ever moving: the token stays unspent and expires on its own.
   function dropCarry() {
     root.wanted = false
+    root.pressing = false
     if (!root.Drag.active) {
-      root.armed = false
       root.dragMime = ({})
       root.carried(false)
     }
@@ -154,14 +166,20 @@ Item {
       root.stripKey(event)
       return
     }
+    if (event.key === Qt.Key_A && control) {
+      root.chosen = Model.chooseAll(root.chosen, items)
+      event.accepted = true
+      return
+    }
+    if (control) {
+      return
+    }
     if (event.key === Qt.Key_J || event.key === Qt.Key_Down) {
       root.step(1, shift)
     } else if (event.key === Qt.Key_K || event.key === Qt.Key_Up) {
       root.step(-1, shift)
     } else if (event.key === Qt.Key_V) {
       root.chosen = Model.toggleChosen(root.chosen, items[Math.max(0, root.cursorIndex)].path)
-    } else if (event.key === Qt.Key_A && control) {
-      root.chosen = Model.chooseAll(root.chosen, items)
     } else if (event.key === Qt.Key_X && !shift) {
       root.removeRequested(Math.max(0, root.cursorIndex))
     } else if (event.key === Qt.Key_P) {
@@ -169,7 +187,7 @@ Item {
       root.pinRequested(Math.max(0, root.cursorIndex))
     } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
       root.openRequested(items[Math.max(0, root.cursorIndex)].path)
-    } else if (event.key === Qt.Key_Tab) {
+    } else if (event.key === Qt.Key_Tab && root.stripShown) {
       root.stripIndex = 0
     } else if (root.actionFor(event.key).length > 0) {
       root.actionRequested(root.actionFor(event.key))
@@ -235,7 +253,7 @@ Item {
     if (items.length === 0) {
       return
     }
-    var was = root.cursorIndex < 0 ? (by > 0 ? -1 : items.length) : root.cursorIndex
+    var was = root.cursorIndex < 0 ? (by > 0 ? -1 : items.length - 1) : root.cursorIndex
     var now = Math.max(0, Math.min(items.length - 1, was + by))
     root.cursorIndex = now
     if (extending) {
@@ -362,8 +380,7 @@ Item {
         width: parent.width
         // Rule 10: on an empty pile there is no action row at all, and a card holding something
         // shows it once a row is under the cursor or the pointer.
-        visible: !root.run.running && root.rows.length > 0
-                 && (Model.loose(root.pile.items).length > 0 || root.cursorIndex >= 0)
+        visible: root.stripShown
         spacing: Style.spacing.controlGap
 
         Repeater {
