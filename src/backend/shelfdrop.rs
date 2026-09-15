@@ -8,7 +8,7 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::mpsc::{channel, Sender};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::thread;
 
 // Rule 4: a token that is unknown, expired, already spent or no longer names the files it was minted
@@ -57,17 +57,23 @@ fn run_and_settle(
     // The engine's own channel, watched on the way past: the client still sees every line unchanged.
     let (mine, watch) = channel::<OpMsg>();
     let watched = paths.clone();
+    let done_tx = tx.clone();
+    // Held here rather than inside the thread: the client's one terminal message has to be sent
+    // whether the bookkeeping finished or panicked, or the pane waits on a transfer forever.
+    let held: Arc<Mutex<Option<OpMsg>>> = Arc::new(Mutex::new(None));
+    let carried = Arc::clone(&held);
     let forward = thread::spawn(move || {
         let mut reported = Vec::new();
-        let mut done = None;
         for msg in watch {
             if let OpMsg::Item { index, ok, .. } = &msg {
                 reported.push((*index, *ok));
             }
-            // Held back until the pile has been settled: a client told the transfer finished must
+            // Withheld until the pile has been settled: a client told the transfer finished must
             // never read a pile that still lists what the move took away.
             if matches!(msg, OpMsg::TransferDone { .. }) {
-                done = Some(msg);
+                if let Ok(mut slot) = carried.lock() {
+                    *slot = Some(msg);
+                }
                 continue;
             }
             let _ = tx.send(msg);
@@ -75,13 +81,18 @@ fn run_and_settle(
         if let Err(e) = shelf.settle(&moved_paths(&reported, &watched, moving)) {
             eprintln!("flea: the shelf kept its references ({})", e);
         }
-        if let Some(done) = done {
-            let _ = tx.send(done);
-        }
     });
     run_transfer_checked(id, moving, paths, dest, cancel, mine, None, None);
     if forward.join().is_err() {
         eprintln!("flea: the shelf's own bookkeeping stopped before it finished");
+    }
+    // The lock is poisoned only by that panic, and the message is still in it either way.
+    let done = match held.lock() {
+        Ok(mut slot) => slot.take(),
+        Err(poisoned) => poisoned.into_inner().take(),
+    };
+    if let Some(done) = done {
+        let _ = done_tx.send(done);
     }
 }
 

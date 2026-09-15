@@ -39,7 +39,7 @@ impl Summon {
         let next = self.rings() + 1;
         let doc = Json::Obj(vec![("summon".to_string(), Json::Num(next.to_string()))]);
         let written = uistore::replace(&self.summon, &jsondoc::render(&doc));
-        self.give_back(lock)?;
+        self.give_back(lock);
         written?;
         Ok(next)
     }
@@ -48,8 +48,12 @@ impl Summon {
         uistore::take_lock(&self.lock)
     }
 
-    fn give_back(&self, lock: fs::File) -> Result<(), String> {
-        lock.unlock().map_err(|e| format!("{} could not be unlocked ({:?})", self.lock.display(), e.kind()))
+    // Said rather than returned: the write either happened or it did not, and an unlock that failed
+    // is not the answer to that question. The lock goes when this process does, either way.
+    fn give_back(&self, lock: fs::File) {
+        if let Err(e) = lock.unlock() {
+            eprintln!("flea: {} could not be unlocked ({:?})", self.lock.display(), e.kind());
+        }
     }
 
     pub fn rings(&self) -> u64 {
@@ -81,7 +85,7 @@ impl Summon {
         piles.insert(0, Json::Obj(vec![("at".to_string(), Json::Num(at_ms.to_string())), ("items".to_string(), Json::Arr(items))]));
         piles.truncate(KEPT_PILES);
         let written = self.write(piles);
-        self.give_back(lock)?;
+        self.give_back(lock);
         written
     }
 
@@ -92,12 +96,12 @@ impl Summon {
         let lock = self.take()?;
         let mut piles = self.piles();
         if index >= piles.len() {
-            self.give_back(lock)?;
+            self.give_back(lock);
             return Err("that pile is not one this shelf kept".to_string());
         }
         let taken = piles.remove(index);
         let written = self.write(piles);
-        self.give_back(lock)?;
+        self.give_back(lock);
         written?;
         Ok(taken.get("items").and_then(Json::as_array).map(<[Json]>::to_vec).unwrap_or_default())
     }
@@ -129,7 +133,15 @@ pub fn clear() -> i32 {
     // Two files, so the second write failing has to undo the first: a pile that could not be kept
     // goes back on the shelf rather than being lost between them.
     if let Err(e) = summon.keep(taken.clone(), now_ms()) {
-        let _ = shelf.put(taken);
+        match shelf.put(taken) {
+            // The pile lock was given up between the two writes, so anything added in that window
+            // is named rather than quietly replaced by the pile going back.
+            Ok(added) if !added.is_empty() => {
+                eprintln!("flea: the pile went back over {} the shelf had taken since", added.len());
+            }
+            Ok(_) => {}
+            Err(back) => eprintln!("flea: the pile could not be kept and could not be put back ({})", back),
+        }
         return failed(&e);
     }
     println!("{}", count);
@@ -158,7 +170,9 @@ pub fn restore(rest: &[String]) -> i32 {
     let was = match shelf.put(pile.clone()) {
         Ok(was) => was,
         Err(e) => {
-            let _ = summon.keep(pile, now_ms());
+            if let Err(back) = summon.keep(pile, now_ms()) {
+                eprintln!("flea: the pile left the history and the shelf would not take it ({})", back);
+            }
             return failed(&e);
         }
     };

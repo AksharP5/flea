@@ -37,7 +37,10 @@ QtObject {
             if (root.waiting.length > 0) {
                 var next = root.waiting[0]
                 root.waiting = root.waiting.slice(1)
-                root.run(next)
+                // Started from the event loop rather than inside this handler, because the process
+                // is still running until it returns; the queued call keeps whatever the last one
+                // said, since a refusal nobody has read is not cleared by the request behind it.
+                Qt.callLater(function () { root.start(next) })
             }
         }
     }
@@ -52,17 +55,23 @@ QtObject {
 
     // Rule 4: the pins are a list the operator orders, and their order is the pile's own.
     function move(path, direction) {
-        var at = -1
-        for (var i = 0; i < root.records.length && at < 0; i++) {
-            if (root.records[i].path === path) {
-                at = i
-            }
-        }
-        var to = at + direction
-        if (at < 0 || to < 0 || to >= root.records.length) {
+        root.moveTo(path, root.at(path) + direction)
+    }
+
+    function moveTo(path, to) {
+        if (root.at(path) < 0 || to < 0 || to >= root.records.length) {
             return
         }
         root.run(["shelf", "order", path, String(to)])
+    }
+
+    function at(path) {
+        for (var i = 0; i < root.records.length; i++) {
+            if (root.records[i].path === path) {
+                return i
+            }
+        }
+        return -1
     }
 
     function run(args) {
@@ -71,6 +80,10 @@ QtObject {
             return
         }
         root.lastError = ""
+        root.start(args)
+    }
+
+    function start(args) {
         root.running = args[1]
         root.writer.command = [Quickshell.env("FLEA_BIN") || "flea"].concat(args)
         root.writer.running = true

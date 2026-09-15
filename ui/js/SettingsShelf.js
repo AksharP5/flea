@@ -32,6 +32,7 @@ function rows(state, choice) {
     for (var i = 0; i < pins.length; i++) {
         out.push({ kind: "favourite", id: "pin:" + i, label: pins[i].name, value: pins[i].path,
                     glyph: pins[i].folder ? "folder" : "file", pinPath: pins[i].path,
+                    pinIndex: i, pinCount: pins.length,
                     available: on, error: pins[i].missing === true ? "missing" : "" })
     }
     return out

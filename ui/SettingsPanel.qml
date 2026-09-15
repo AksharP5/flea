@@ -201,7 +201,7 @@ Item {
     function moveFavourite(index, to) {
         var row = root.rows[index]
         if (!row) return
-        if (row.pinPath !== undefined) { ShelfPins.move(row.pinPath, to > index ? 1 : -1); return }
+        if (row.pinPath !== undefined) { ShelfPins.moveTo(row.pinPath, to); return }
         if (Favourites.move(row.favouriteIndex, to)) root.favouriteMoveTarget = to
     }
 

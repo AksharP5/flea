@@ -86,10 +86,14 @@ Item {
             property real startY: 0
             onActiveChanged: {
                 if (active) { startY = persistentTranslation.y; return }
+                // A pin is a favourite-shaped row ordered inside the shelf's own pile, so the drag
+                // counts rows in whichever list this one came from.
+                var from = root.row.pinIndex !== undefined ? root.row.pinIndex : root.row.favouriteIndex
+                var last = (root.row.pinIndex !== undefined ? root.row.pinCount : Favourites.records.length) - 1
                 // Qt clears active translation before this release callback.
-                var to = Math.max(0, Math.min(Favourites.records.length - 1,
-                    root.row.favouriteIndex + Math.round((persistentTranslation.y - startY) / Theme.railRowHeight)))
-                if (to !== root.row.favouriteIndex) root.moved(to)
+                var to = Math.max(0, Math.min(last,
+                    from + Math.round((persistentTranslation.y - startY) / Theme.railRowHeight)))
+                if (to !== from) root.moved(to)
             }
         }
     }

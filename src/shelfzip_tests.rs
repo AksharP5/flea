@@ -33,12 +33,15 @@ fn a_pile_that_spans_folders_is_archived_from_the_deepest_directory_they_share()
 #[test]
 fn the_days_second_archive_does_not_replace_the_first() {
     let dir = TestDir::new("shelfzipname");
-    let first = free_name(dir.path(), "2026-09-14").expect("a first name");
+    let first = free_name(dir.path(), "2026-09-14").unwrap().expect("a first name");
     assert!(first.ends_with("shelf-2026-09-14.zip"));
     assert!(first.symlink_metadata().is_ok(), "the name is taken by creating it, not by looking");
     std::fs::write(&first, "an archive").unwrap();
-    let second = free_name(dir.path(), "2026-09-14").expect("a second name");
+    let second = free_name(dir.path(), "2026-09-14").unwrap().expect("a second name");
     assert!(second.ends_with("shelf-2026-09-14-2.zip"), "got {}", second.display());
+    // A reservation nobody keeps goes back when it drops, so the next zip of that date takes it again.
+    drop(Reserved { path: second.clone(), kept: false });
+    assert!(second.symlink_metadata().is_err(), "the name is free again");
 }
 
 #[test]
@@ -49,7 +52,7 @@ fn the_cap_is_the_hundred_the_constant_names_and_the_hundred_and_first_is_refuse
     for n in 2..ARCHIVES_A_DAY {
         std::fs::write(dir.path().join(format!("shelf-2026-09-14-{}.zip", n)), "an archive").unwrap();
     }
-    let last = free_name(dir.path(), "2026-09-14").expect("the hundredth name");
+    let last = free_name(dir.path(), "2026-09-14").unwrap().expect("the hundredth name");
     assert!(last.ends_with("shelf-2026-09-14-100.zip"), "got {}", last.display());
-    assert!(free_name(dir.path(), "2026-09-14").is_none(), "the hundred and first is refused");
+    assert!(free_name(dir.path(), "2026-09-14").unwrap().is_none(), "the hundred and first is refused");
 }

@@ -62,27 +62,31 @@ pub fn zip(rest: &[String]) -> i32 {
         return 2;
     }
     let dest = match free_name(&dir, date) {
-        Some(dest) => dest,
-        None => {
+        Ok(Some(dest)) => dest,
+        Ok(None) => {
             eprintln!("flea: there are already a hundred shelf archives for {}", date);
             return 2;
         }
+        Err(e) => {
+            eprintln!("flea: {}", e);
+            return 2;
+        }
     };
+    let mut reserved = Reserved { path: dest.clone(), kept: false };
     // The archive tool stages beside its sources and renames the result into place, so the archive is
     // written there first and relocated after: a pile on another filesystem cannot be renamed home.
     let staged = parent.join(format!(".flea-shelf-{}-{}.zip", std::process::id(), date));
     if let Err(e) = compress(&Formats::probe(), &parent, &names, "zip", &staged) {
         eprintln!("flea: {}", error_line(&e));
         let _ = std::fs::remove_file(&staged);
-        let _ = std::fs::remove_file(&dest);
         return 2;
     }
     if let Err(e) = relocate(&staged, &dest) {
         eprintln!("flea: {}", e);
         let _ = std::fs::remove_file(&staged);
-        let _ = std::fs::remove_file(&dest);
         return 2;
     }
+    reserved.kept = true;
     // Rule 4: a zip replaces the ones it zipped with the one archive, so the pile says what happened.
     let archive = dest.to_string_lossy().to_string();
     // The archive is on disk from here, so its path is printed before the shelf's own bookkeeping:
@@ -105,8 +109,8 @@ pub fn zip(rest: &[String]) -> i32 {
 fn writable(parent: &Path) -> Result<(), String> {
     let probe = parent.join(format!(".flea-shelf-probe-{}", std::process::id()));
     let _ = std::fs::remove_file(&probe);
-    // Exclusively, the way uistore::write_new creates: a name left at this path by somebody else is
-    // refused rather than followed and truncated.
+    // Exclusively, the way uistore::write_new creates: this pid's own leftover goes first, and a
+    // name recreated in the window after that is refused rather than followed and truncated.
     std::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
@@ -137,29 +141,44 @@ fn relocate(from: &Path, to: &Path) -> Result<(), String> {
 
 // shelf-2026-09-12.zip, and the second one that day is -2, because a name that silently replaced an
 // archive would lose a pile nobody can get back.
-fn free_name(dir: &std::path::Path, date: &str) -> Option<PathBuf> {
+fn free_name(dir: &std::path::Path, date: &str) -> Result<Option<PathBuf>, String> {
     let first = dir.join(format!("shelf-{}.zip", date));
-    if reserve(&first) {
-        return Some(first);
+    if reserve(&first)? {
+        return Ok(Some(first));
     }
     for n in 2..=ARCHIVES_A_DAY {
         let next = dir.join(format!("shelf-{}-{}.zip", date, n));
-        if reserve(&next) {
-            return Some(next);
+        if reserve(&next)? {
+            return Ok(Some(next));
         }
     }
-    None
+    Ok(None)
 }
 
 // The name is taken by creating it exclusively, so two zips of one date cannot pick the same one and
-// the second archive cannot land on the first. The caller removes it again if nothing is written.
-fn reserve(path: &Path) -> bool {
-    std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(OWNER_ONLY_FILE)
-        .open(path)
-        .is_ok()
+// the second archive cannot land on the first. A name already taken is the next one to try; any
+// other refusal is this directory saying no, and the caller stops rather than counting to a hundred.
+fn reserve(path: &Path) -> Result<bool, String> {
+    match std::fs::OpenOptions::new().write(true).create_new(true).mode(OWNER_ONLY_FILE).open(path) {
+        Ok(_) => Ok(true),
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(false),
+        Err(e) => Err(format!("{} could not be created ({:?})", path.display(), e.kind())),
+    }
+}
+
+// The reservation is a file, so it is given back by one, and a panic on the way to the archive
+// gives it back too rather than leaving a name that looks like an empty archive.
+struct Reserved {
+    path: PathBuf,
+    kept: bool,
+}
+
+impl Drop for Reserved {
+    fn drop(&mut self) {
+        if !self.kept {
+            let _ = std::fs::remove_file(&self.path);
+        }
+    }
 }
 
 // A hundred archives of one date is not a case this product has, and the alternative to a ceiling
