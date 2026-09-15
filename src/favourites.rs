@@ -192,13 +192,16 @@ fn same_place(held: &Json, path: &str) -> bool {
     }
 }
 
-// The rail's own spelling, and with no home to resolve against a tilde path stays as written rather
-// than becoming a different place: only the trailing slashes go, except the root's own.
 fn resolved(path: &str) -> String {
     let home = crate::userfile::home().ok();
-    let full = match (home.as_ref(), path.strip_prefix("~/")) {
-        (Some(home), Some(rest)) => format!("{}/{}", home.to_string_lossy(), rest),
-        (Some(home), None) if path == "~" => home.to_string_lossy().to_string(),
+    resolved_under(home.as_ref().map(|h| h.to_string_lossy().to_string()).as_deref(), path)
+}
+
+// The rail's own spelling: with no home a tilde path stays as written rather than becoming another place.
+fn resolved_under(home: Option<&str>, path: &str) -> String {
+    let full = match (home, path.strip_prefix("~/")) {
+        (Some(home), Some(rest)) => format!("{}/{}", home, rest),
+        (Some(home), None) if path == "~" => home.to_string(),
         _ => path.to_string(),
     };
     let trimmed = full.trim_end_matches('/');
@@ -345,6 +348,17 @@ mod tests {
             4,
             "a place the list does not hold is still added"
         );
+    }
+
+    // Issue 138: the dedup reads a tilde against the home it has, and a box with no HOME has none.
+    #[test]
+    fn a_tilde_resolves_against_a_home_and_stays_as_written_without_one() {
+        assert_eq!(resolved_under(Some("/home/gm"), "~/Work"), "/home/gm/Work");
+        assert_eq!(resolved_under(Some("/home/gm"), "~"), "/home/gm");
+        assert_eq!(resolved_under(None, "~/Work"), "~/Work");
+        assert_eq!(resolved_under(None, "~"), "~");
+        assert_eq!(resolved_under(Some("/home/gm"), "/a///"), "/a");
+        assert_eq!(resolved_under(Some("/home/gm"), "/"), "/");
     }
 
     #[test]

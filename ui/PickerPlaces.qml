@@ -181,8 +181,8 @@ Item {
     Flea.DeviceMounts {
         id: devices
         onOpened: function (path) { root.deviceOpened(path) }
-        // A mount that failed or timed out says so, and the wait ends with it rather than standing.
-        onMessage: function (text, error) { if (error) root.awaitingDevice = ""; root.picker.say(text, error) }
+        // A message carries no device, so it cannot end a wait: only the awaited device's own open does.
+        onMessage: function (text, error) { root.picker.say(text, error) }
     }
 
     // The phone rows the window draws, read off the same gio listing; their mount is the share leg.

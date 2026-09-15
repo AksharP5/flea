@@ -94,8 +94,7 @@ function run(check) {
     check("a path holding a space is quoted whole",
           Format.shellQuoted("/home/gm/directory two"), "'/home/gm/directory two'")
     check("a tab is quoted the same way", Format.shellQuoted("/home/gm/one\ttwo"), "'/home/gm/one\ttwo'")
-    // Every one of these, byte for byte inside the quotes: a reader that dropped the character it
-    // is afraid of would pass a check that only looked at the ends.
+    // Every one byte for byte inside the quotes, because an ends-only check passes a dropped character.
     for (var dangerous of ["$HOME", "`id`", "a;b", "a&b", "a|b", "a*b", "a?b", "a(b)", "a\nb", "a!b", 'a"b',
                            "a b", "a\\b", "a<b", "a>b", "a#b", "a{b}", "a[b]", "a^b"]) {
         check("a path holding " + JSON.stringify(dangerous) + " is quoted whole",
