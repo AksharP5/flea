@@ -23,11 +23,22 @@ QtObject {
         onLoadFailed: root.records = []
     }
 
+    // What the running call was, so a refusal names it, and the one waiting behind it: a pin pressed
+    // while the last one is still running is answered rather than dropped.
+    property string running: ""
+    property var waiting: []
+
     readonly property var writer: Process {
         running: false
         onExited: function (code) {
-            root.lastError = code === 0 ? "" : "The shelf could not be changed."
+            root.lastError = code === 0 ? "" : "The shelf could not " + root.running + " that row."
+            root.running = ""
             root.pile.reload()
+            if (root.waiting.length > 0) {
+                var next = root.waiting[0]
+                root.waiting = root.waiting.slice(1)
+                root.run(next)
+            }
         }
     }
 
@@ -42,7 +53,7 @@ QtObject {
     // Rule 4: the pins are a list the operator orders, and their order is the pile's own.
     function move(path, direction) {
         var at = -1
-        for (var i = 0; i < root.records.length; i++) {
+        for (var i = 0; i < root.records.length && at < 0; i++) {
             if (root.records[i].path === path) {
                 at = i
             }
@@ -56,9 +67,11 @@ QtObject {
 
     function run(args) {
         if (root.writer.running) {
+            root.waiting = root.waiting.concat([args])
             return
         }
         root.lastError = ""
+        root.running = args[1]
         root.writer.command = [Quickshell.env("FLEA_BIN") || "flea"].concat(args)
         root.writer.running = true
     }

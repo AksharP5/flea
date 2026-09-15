@@ -8,33 +8,33 @@
 function rows(state, choice) {
     var data = (state.data || {}).shelf || {}
     var on = data.enabled !== false
-    var rows = [{ kind: "group", label: "Shelf", id: "shelf.enabled", master: true,
+    var out = [{ kind: "group", label: "Shelf", id: "shelf.enabled", master: true,
                   state: on ? "all" : "none", value: on ? "on" : "off" }]
-    rows.push({ kind: "check", id: "shelf.bar", label: "Show in bar", mark: "flea",
+    out.push({ kind: "check", id: "shelf.bar", label: "Show in bar", mark: "flea",
                 available: on, on: data.bar !== false })
-    rows.push(choice("shelf.rail", "Edge rail", "maximize", ["off", "left", "right", "bottom"],
+    out.push(choice("shelf.rail", "Edge rail", "maximize", ["off", "left", "right", "bottom"],
                      ["Off", "Left", "Right", "Bottom"], railEdge(data.rail)))
-    rows[rows.length - 1].available = on
-    // The bind is the user's own line in hyprland's config, so the hint names the chord and nothing
-    // here pretends to install it; the plugin's README carries the line.
-    rows.push({ kind: "hint", label: "Super+D opens the shelf from anywhere." })
-    rows.push({ kind: "group", label: "Recent captures" })
-    rows.push({ kind: "check", id: "shelf.screenshots", label: "Screenshots", glyph: "image",
+    out[out.length - 1].available = on
+    // The board's own sentence, second half included: the bind is the user's line in hyprland's
+    // config and nothing here installs it.
+    out.push({ kind: "hint", label: "Super+D opens it from anywhere; the README carries the bind." })
+    out.push({ kind: "group", label: "Recent captures" })
+    out.push({ kind: "check", id: "shelf.screenshots", label: "Screenshots", glyph: "image",
                 available: on, on: data.screenshots !== false })
-    rows.push({ kind: "check", id: "shelf.recordings", label: "Recordings", glyph: "film",
+    out.push({ kind: "check", id: "shelf.recordings", label: "Recordings", glyph: "film",
                 available: on, on: data.recordings !== false })
-    rows.push(choice("shelf.recent", "Show", "list", CAPTURE_COUNTS, ["1", "2", "3", "5"],
+    out.push(choice("shelf.recent", "Show", "list", CAPTURE_COUNTS, ["1", "2", "3", "5"],
                      captureCount(data.recent)))
-    rows[rows.length - 1].available = on
-    rows.push({ kind: "group", label: "Pinned", id: "pinFolder", action: "pinFolder",
+    out[out.length - 1].available = on
+    out.push({ kind: "group", label: "Pinned", id: "pinFolder", action: "pinFolder",
                 value: "Pin this folder" })
     var pins = state.pins || []
     for (var i = 0; i < pins.length; i++) {
-        rows.push({ kind: "favourite", id: "pin:" + i, label: pins[i].name, value: pins[i].path,
+        out.push({ kind: "favourite", id: "pin:" + i, label: pins[i].name, value: pins[i].path,
                     glyph: pins[i].folder ? "folder" : "file", pinPath: pins[i].path,
                     available: on, error: pins[i].missing === true ? "missing" : "" })
     }
-    return rows
+    return out
 }
 
 // The four the board offers, and the fallback for a count a hand-edited file left behind.

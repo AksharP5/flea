@@ -71,14 +71,14 @@ Item {
         bar.setActivity(root, text, Ops.emptyTransfer())
     }
 
-    function enterTarget(marker, urls, name, destDev) {
-        root.feedback = DragOps.feedbackFor(marker, urls)
+    function enterTarget(marker, urls, name, destDev, shelf) {
+        root.feedback = DragOps.feedbackFor(marker, urls, shelf)
         root.showTarget(name, destDev)
     }
 
     function showTarget(name, destDev) {
         if (!root.feedback) return
-        root.dragCopy = DragOps.verbFor(root.feedback.own, root.feedback.copy, root.feedback.dev, destDev) === "copy"
+        root.dragCopy = DragOps.copyingFor(root.feedback, destDev)
         root.say(DragOps.feedbackLine(root.feedback, name, destDev))
     }
 

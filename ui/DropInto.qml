@@ -55,7 +55,7 @@ DropArea {
         root.enteredUrls = urls
         // A tab may accept navigation without accepting a drop; only an eligible destination is named.
         feedback.enterTarget(marker, drag.urls, allowed ? root.dest : "",
-            allowed ? root.destDev : DragOps.markerDev(marker))
+            allowed ? root.destDev : DragOps.markerDev(marker), drag.getDataAsString(DragOps.SHELF_MIME))
     }
     onPositionChanged: root.updateFeedback()
     onExited: root.leaveFeedback()

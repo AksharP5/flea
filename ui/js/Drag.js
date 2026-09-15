@@ -268,17 +268,28 @@ function reachNote(canLeave) {
 }
 
 // Sample marker: "<instance>\n1,3\nmove\n/source\n42"; feedback never becomes destination row indices.
-function feedbackFor(marker, urls) {
+function feedbackFor(marker, urls, shelf) {
     var fields = String(marker).split("\n")
     var own = fields[0] === INSTANCE
     var paths = pathsFromUrls(urls)
+    // Rule 4: the shelf fixed its verb at the lift, so Flea says that word rather than deriving one
+    // from a marker the shelf never sent, which would read as a copy for every move.
+    if (shelfToken(shelf).length > 0) {
+        return { own: true, copy: shelfCopying(shelf), dev: 0, fixed: shelfCopying(shelf),
+                 count: paths.length, canLeave: paths.length > 0 }
+    }
     return { own: own, copy: fields[2] === "copy", dev: Number(fields[4]) || 0,
              count: own && fields[1] ? fields[1].split(",").length : paths.length,
              canLeave: paths.length > 0 }
 }
 
+function copyingFor(feedback, destDev) {
+    if (!feedback) return true
+    return feedback.fixed !== undefined ? feedback.fixed === true
+        : verbFor(feedback.own, feedback.copy, feedback.dev, destDev) === "copy"
+}
+
 function feedbackLine(feedback, name, destDev) {
     if (!feedback || feedback.count === 0) return ""
-    return line(feedback.count, name, verbFor(feedback.own, feedback.copy, feedback.dev, destDev) === "copy")
-        + reachNote(feedback.canLeave)
+    return line(feedback.count, name, copyingFor(feedback, destDev)) + reachNote(feedback.canLeave)
 }

@@ -189,6 +189,22 @@ Item {
         root.favouriteActionPending = Favourites.remove(row.favouriteIndex)
     }
 
+    // Rule 4 again: a pin is reordered in the shelf's own pile, and a favourite in Places.
+    function stepFavourite(index, direction) {
+        var row = root.rows[index]
+        if (!row) return
+        if (row.pinPath !== undefined) { ShelfPins.move(row.pinPath, direction); return }
+        var to = Math.max(0, Math.min(Favourites.records.length - 1, row.favouriteIndex + direction))
+        if (to !== row.favouriteIndex && Favourites.move(row.favouriteIndex, to)) root.favouriteMoveTarget = to
+    }
+
+    function moveFavourite(index, to) {
+        var row = root.rows[index]
+        if (!row) return
+        if (row.pinPath !== undefined) { ShelfPins.move(row.pinPath, to > index ? 1 : -1); return }
+        if (Favourites.move(row.favouriteIndex, to)) root.favouriteMoveTarget = to
+    }
+
     // SettingsRest rule 4: the shelf's own Add, the folder the panel was opened over.
     function pinFolder() { if (root.focusHolder) ShelfPins.pin(root.focusHolder.path) }
 
@@ -222,7 +238,8 @@ Item {
             return
         }
         root.cursor = Settings.stepRow(root.rows, root.cursor, delta)
-        if (root.rows[root.cursor] && root.rows[root.cursor].kind === "favourite")
+        // A pin is a favourite-shaped row with no favourite behind it, so it selects nothing.
+        if (root.rows[root.cursor] && root.rows[root.cursor].favouriteIndex !== undefined)
             root.selectedFavourite = root.rows[root.cursor].favouriteIndex
         root.showCursor()
     }
@@ -416,12 +433,10 @@ Item {
                 side: root.side
                 onPointerMoved: function (index) {
                     root.side = "pane"; root.cursor = index
-                    if (root.rows[index].kind === "favourite") root.selectedFavourite = root.rows[index].favouriteIndex
+                    if (root.rows[index].favouriteIndex !== undefined) root.selectedFavourite = root.rows[index].favouriteIndex
                 }
                 onFavouriteRemoved: function (index) { root.removeFavourite(index) }
-                onFavouriteMoved: function (index, to) {
-                    if (Favourites.move(root.rows[index].favouriteIndex, to)) root.favouriteMoveTarget = to
-                }
+                onFavouriteMoved: function (index, to) { root.moveFavourite(index, to) }
                 onActivated: function (index) { root.side = "pane"; root.cursor = index; root.activate(index) }
                 onStepped: function (index, direction) { root.side = "pane"; root.cursor = index; root.stepRowValue(index, direction) }
                 onStopPicked: function (index, stop) { root.side = "pane"; root.cursor = index; root.pickRowStop(index, stop) }
@@ -484,11 +499,7 @@ Item {
             var row = root.rows[root.cursor]
             if (root.side === "pane" && row && row.kind === "favourite" && (event.modifiers & Qt.ShiftModifier)
                     && (event.key === Qt.Key_J || event.key === Qt.Key_K)) {
-                var direction = event.key === Qt.Key_J ? 1 : -1
-                // A pin moves within the shelf's own pile, the list this row came from.
-                if (row.pinPath !== undefined) { ShelfPins.move(row.pinPath, direction); return }
-                var to = Math.max(0, Math.min(Favourites.records.length - 1, row.favouriteIndex + direction))
-                if (to !== row.favouriteIndex && Favourites.move(row.favouriteIndex, to)) root.favouriteMoveTarget = to
+                root.stepFavourite(root.cursor, event.key === Qt.Key_J ? 1 : -1)
                 return
             }
             // SettingsRest rule 4: the row's own mark is x, so x on the cursor row is the same action.

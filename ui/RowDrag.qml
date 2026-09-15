@@ -38,7 +38,8 @@ Item {
                 return
             }
             root.session.dropIndex = root.listingIndex
-            root.session.enterTarget(marker, drag.urls, root.row.n, root.row.v)
+            root.session.enterTarget(marker, drag.urls, root.row.n, root.row.v,
+                                     drag.getDataAsString(DragOps.SHELF_MIME))
         }
         onPositionChanged: function (drag) {
             if (root.session.dropIndex === root.listingIndex)

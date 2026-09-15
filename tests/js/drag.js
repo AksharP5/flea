@@ -280,4 +280,21 @@ function run(check) {
     check("a pathless foreign payload has no live feedback", Drag.feedbackLine(Drag.feedbackFor("", []), "folder", 56), "")
     check("ctrl survives the feedback handoff", Drag.feedbackLine(Drag.feedbackFor(
         Drag.markerPayload([1], true, "/source", 56), ["file:///source/a.txt"]), "folder", 56), "Copy 1 item to folder")
+
+  // DragOut rule 4: Flea is the shelf's one named receiver, so the word it says while a shelf drag
+  // hovers is the intent the lift fixed, not the one a missing rows marker would imply.
+  var moveDrag = "9f2c\nmove"
+  var copyDrag = "9f2c\ncopy"
+  check("a shelf drag's own verb is what the hover says",
+        Drag.feedbackLine(Drag.feedbackFor("", ["file:///p/one", "file:///p/two"], moveDrag), "drafts", 0),
+        "Move 2 items to drafts · ctrl at lift copies")
+  check("and a shelf drag lifted with ctrl says copy",
+        Drag.feedbackLine(Drag.feedbackFor("", ["file:///p/one"], copyDrag), "drafts", 0),
+        "Copy 1 item to drafts")
+  check("a drag with no shelf token is still read off its own marker",
+        Drag.copyingFor(Drag.feedbackFor("", ["file:///p/one"], ""), 0), true)
+  check("the token is the first line and the intent the second",
+        Drag.shelfToken(moveDrag) + "|" + Drag.shelfCopying(moveDrag) + "|" + Drag.shelfCopying(copyDrag),
+        "9f2c|false|true")
+  check("and a payload that carries nothing names no token", Drag.shelfToken(""), "")
 }

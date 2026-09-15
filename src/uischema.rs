@@ -85,8 +85,8 @@ pub const PLACES: &[(&str, Rule)] = &[
     ("sidebarWidth", Rule::SidebarWidth),
 ];
 
-// The shelf's own six. The count is the card's capture group, 0 removing it; the rail is the edge a
-// drag is thrown at, off by default (SettingsRest rule 2).
+// The shelf's own six. SettingsRest rule 3: the panel offers 1, 2, 3 or 5 and both kinds off is what
+// removes the group, so the range here is only what a hand-edited file may leave behind.
 pub const SHELF: &[(&str, Rule)] = &[
     ("enabled", Rule::Bool),
     ("bar", Rule::Bool),
@@ -231,6 +231,8 @@ mod tests {
         assert_eq!(d.get("shelf").and_then(|s| s.get("bar")).and_then(Json::as_bool), Some(true));
         assert_eq!(d.get("shelf").and_then(|s| s.get("rail")).and_then(Json::as_str), Some("off"));
         assert_eq!(d.get("shelf").and_then(|s| s.get("recent")).and_then(Json::as_f64), Some(3.0));
+        assert_eq!(d.get("shelf").and_then(|s| s.get("screenshots")).and_then(Json::as_bool), Some(true));
+        assert_eq!(d.get("shelf").and_then(|s| s.get("recordings")).and_then(Json::as_bool), Some(true));
         assert_eq!(d.get("places").and_then(|p| p.get("sidebarWidth")).and_then(Json::as_f64), Some(192.0));
         assert_eq!(d.get("places").and_then(|p| p.get("driveSize")).and_then(Json::as_bool), Some(false));
         assert_eq!(d.get("places").and_then(|p| p.get("trashCount")).and_then(Json::as_bool), Some(false));

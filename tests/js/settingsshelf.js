@@ -1,10 +1,34 @@
 .import "../../ui/js/Settings.js" as Settings
+.import "../../ui/js/ShelfPile.js" as ShelfPile
 
 // The Shelf section of the settings panel, its own suite because the panel's model is large enough
 // without it. SettingsRest rules 1 to 4 and ledger directive 59.
 
 function run(check) {
     runShelfRows(check)
+    runPinnedReading(check)
+}
+
+// The pile file is written by another process, so the panel's reading of it is held to what that
+// file can actually contain rather than to what a well behaved writer would send.
+function runPinnedReading(check) {
+    var pile = '{"items":[' +
+        '{"path":"/home/gm/Invoices","folder":true,"pinned":true},' +
+        '{"path":"/home/gm/loose.txt","folder":false,"pinned":false},' +
+        '{"path":"/home/gm/Work/","folder":true,"pinned":true,"missing":true},' +
+        '{"folder":true,"pinned":true},' +
+        '{"path":"/home/gm/nope","pinned":"yes"}]}'
+    var pins = ShelfPile.pinned(pile)
+    check("only the pinned entries are listed, and a trailing slash is not part of the name",
+          pins.map(function (pin) { return pin.name }).join("|"), "Invoices|Work")
+    check("a pin says whether it is a folder and whether the file is gone",
+          pins[0].folder + "|" + pins[0].missing + "|" + pins[1].missing, "true|false|true")
+    check("an entry with no path, and a pinned flag that is not a boolean, are not pins",
+          String(pins.length), "2")
+    check("a pile that cannot be parsed is no pins rather than a throw",
+          String(ShelfPile.pinned("{\"items\":[{").length) + String(ShelfPile.pinned("").length), "00")
+    check("and a pile whose items are not a list is no pins either",
+          String(ShelfPile.pinned('{"items":{"path":"/a"}}').length), "0")
 }
 
 function kinds(rows) {
