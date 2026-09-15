@@ -12,6 +12,8 @@ const RECORDING_PREFIX: &str = "screenrecording-";
 const RECORDING_SUFFIX: &str = ".mp4";
 // ShelfEmpty rule 7: the tray is a setting between none and six, so this is the ceiling it can ask for.
 pub const MAX_CAPTURES: usize = 6;
+// What the card asks for when it names no count, which is the Settings default.
+const DEFAULT_CAPTURES: usize = 3;
 
 pub struct Capture {
     pub path: String,
@@ -132,7 +134,18 @@ pub fn user_dirs_entry(text: &str, key: &str, home: &str) -> Option<String> {
 // flea shelf captures [count] [both|screenshots|recordings]: one line per capture, newest first,
 // the mtime then the path.
 pub fn command(rest: &[String]) -> i32 {
-    let count = rest.first().and_then(|n| n.parse::<usize>().ok()).unwrap_or(3);
+    let count = match rest.first() {
+        None => DEFAULT_CAPTURES,
+        Some(asked) => match asked.parse::<usize>() {
+            Ok(n) => n,
+            // Refused rather than defaulted: a word here would slide the kinds argument along and
+            // answer with both kinds at the default count, which is not what was asked for.
+            Err(_) => {
+                eprintln!("flea: shelf captures takes a count first, and {} is not one", asked);
+                return 2;
+            }
+        },
+    };
     let kinds = rest.get(1).map(String::as_str).unwrap_or("both");
     if !matches!(kinds, "both" | "screenshots" | "recordings") {
         eprintln!("flea: shelf captures takes both, screenshots or recordings, and {} is none of them", kinds);

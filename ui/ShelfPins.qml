@@ -40,7 +40,7 @@ QtObject {
                 // Started from the event loop rather than inside this handler, because the process
                 // is still running until it returns; the queued call keeps whatever the last one
                 // said, since a refusal nobody has read is not cleared by the request behind it.
-                Qt.callLater(function () { root.start(next) })
+                Qt.callLater(function () { root.resume(next) })
             }
         }
     }
@@ -80,6 +80,16 @@ QtObject {
             return
         }
         root.lastError = ""
+        root.start(args)
+    }
+
+    // A call that arrived in the turn between the exit and this one is already running, so the
+    // queued one goes back to the front rather than writing over a live process.
+    function resume(args) {
+        if (root.writer.running) {
+            root.waiting = [args].concat(root.waiting)
+            return
+        }
         root.start(args)
     }
 

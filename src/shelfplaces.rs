@@ -88,18 +88,15 @@ pub fn places() -> Vec<String> {
 pub fn choose(rest: &[String]) -> i32 {
     let title = rest.first().map(String::as_str).unwrap_or("Choose a folder");
     let start = rest.get(1).map(String::as_str).unwrap_or("");
-    let reply = match uistore::state_home() {
-        Ok(state) => state.join(DIR).join("reply.json"),
+    let dir = match uistore::state_home() {
+        Ok(state) => state.join(DIR),
         Err(e) => {
             eprintln!("flea: {}", e);
             return 2;
         }
     };
-    let Some(dir) = reply.parent() else {
-        eprintln!("flea: the shelf has no directory to write in");
-        return 2;
-    };
-    if let Err(e) = uistore::make_dir(dir) {
+    let reply = dir.join("reply.json");
+    if let Err(e) = uistore::make_dir(&dir) {
         eprintln!("flea: {}", e);
         return 2;
     }
@@ -128,7 +125,7 @@ pub fn choose(rest: &[String]) -> i32 {
     let answer = match fs::read_to_string(&reply) {
         Ok(answer) => answer,
         Err(e) => {
-            eprintln!("flea: the chooser closed without answering ({:?})", e.kind());
+            eprintln!("flea: {} was not written, so the chooser answered nothing ({:?})", reply.display(), e.kind());
             return 2;
         }
     };

@@ -3,6 +3,7 @@
 use crate::backend::opsdispatch::Ops;
 use crate::backend::opsreq::{op_err, run_transfer_checked, transferstarted_line, usable_dest, OpMsg};
 use crate::backend::proto::error_line;
+use crate::backend::undo::Entry;
 use crate::shelf::{now_ms, Shelf};
 use std::io::Write;
 use std::path::PathBuf;
@@ -58,6 +59,7 @@ fn run_and_settle(
     let (mine, watch) = channel::<OpMsg>();
     let watched = paths.clone();
     let done_tx = tx.clone();
+    let total = paths.len();
     // Held here rather than inside the thread: the client's one terminal message has to be sent
     // whether the bookkeeping finished or panicked, or the pane waits on a transfer forever.
     let held: Arc<Mutex<Option<OpMsg>>> = Arc::new(Mutex::new(None));
@@ -86,14 +88,21 @@ fn run_and_settle(
     if forward.join().is_err() {
         eprintln!("flea: the shelf's own bookkeeping stopped before it finished");
     }
-    // The lock is poisoned only by that panic, and the message is still in it either way.
     let done = match held.lock() {
         Ok(mut slot) => slot.take(),
         Err(poisoned) => poisoned.into_inner().take(),
     };
-    if let Some(done) = done {
-        let _ = done_tx.send(done);
-    }
+    // One terminal message, always: the engine's own when it sent one, and otherwise a failure for
+    // everything it was given, because a pane that is never told will wait on this transfer forever.
+    let _ = done_tx.send(done.unwrap_or_else(|| OpMsg::TransferDone {
+        id,
+        ok: 0,
+        failed: total,
+        skipped: 0,
+        cancelled: false,
+        entry: Entry { op: if moving { "move".to_string() } else { "copy".to_string() }, steps: Vec::new() },
+        retry: Vec::new(),
+    }));
 }
 
 // What leaves the pile: the entries the engine reported moved, so a copy settles nothing and an

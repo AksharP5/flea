@@ -171,7 +171,7 @@ pub fn restore(rest: &[String]) -> i32 {
         Ok(was) => was,
         Err(e) => {
             if let Err(back) = summon.keep(pile, now_ms()) {
-                eprintln!("flea: the pile left the history and the shelf would not take it ({})", back);
+                eprintln!("flea: the shelf would not take the pile and the history would not have it back ({})", back);
             }
             return failed(&e);
         }
