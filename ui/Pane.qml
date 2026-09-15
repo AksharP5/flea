@@ -260,12 +260,14 @@ FocusScope {
         Nav.open(root, newPath)
     }
 
-    function openWithoutHistory(newPath) {
+    // keepHidden is the tab restore's alone: that caller has just put this tab's own answer back, and
+    // the standing preference would overwrite it with the value some other tab last chose.
+    function openWithoutHistory(newPath, keepHidden) {
         if (!root.listInFlight) {
             var applied = root.appliedListingPreferences ? JSON.parse(root.appliedListingPreferences) : []
             // Search exit can enter here before the preferences timer consumes a deferred Settings change.
             if (JSON.stringify(applied[1]) !== JSON.stringify(ViewState.state.sort)) root.backend.resetSort()
-            root.showHidden = ViewState.state.hidden === true
+            if (keepHidden !== true) root.showHidden = ViewState.state.hidden === true
         }
         Nav.openWithoutHistory(root, newPath)
     }

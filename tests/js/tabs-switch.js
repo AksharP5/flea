@@ -82,6 +82,21 @@ function run(check) {
     check("and the tab's own selection comes back rather than being dropped",
           typing.selectedIndices().join(","), "2")
 
+    // The dotfile answer is the tab's own. One tab turns dotfiles on, which writes the standing
+    // preference too; switching back to the tab that had them off used to list them anyway, because
+    // ui/Pane.qml re-read that preference on the way into every listing.
+    var dots = Fixture.pane("/home/gm")
+    Tabs.openNew(dots)
+    dots.showHidden = true
+    dots.preferenceHidden = true
+    dots.path = "/home/gm/Work"
+    dots.listed = []
+    Tabs.selectAt(dots, 0)
+    check("a tab that had dotfiles off keeps them off when the other tab turned them on",
+          dots.showHidden, false)
+    check("and the switch is a re-listing, because the rows it wants are not the ones on screen",
+          dots.listed.join(","), "/home/gm")
+
     // Issue 91, nixfred: an order the fresh listing already has is spent on that same reply, cursor
     // and all. Left pending it revived on the reply answering the user's next sort and reverted it.
     var already = Fixture.pane("/home/gm/a")

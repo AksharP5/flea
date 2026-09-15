@@ -10,6 +10,8 @@ function pane(path) {
         cursorIndex: 4,
         viewMode: "list",
         showHidden: false,
+        // ViewState.state.hidden as ui/Pane.qml reads it: the standing preference, not this tab's.
+        preferenceHidden: false,
         searchMode: "",
         searchFrom: "",
         searchQuery: "",
@@ -34,8 +36,12 @@ function pane(path) {
     p.clearSelection = function () { p.selection.clear(); p.selectionVersion++ }
     p.setCursor = function (i) { p.cursorIndex = i }
     p.message = function (text) { p.said.push(text) }
-    // A new listing is what forgets a selection and asks the backend again: see ui/js/Nav.js.
-    p.openWithoutHistory = function (next) {
+    // A new listing is what forgets a selection and asks the backend again: see ui/js/Nav.js. The
+    // second argument is ui/Pane.qml's own: without it the listing takes the standing dotfile
+    // preference, which is the value the tab being left chose.
+    p.openWithoutHistory = function (next, keepHidden) {
+        if (keepHidden !== true)
+            p.showHidden = p.preferenceHidden === true
         p.listed.push(next)
         p.path = next
         p.cursorIndex = 0

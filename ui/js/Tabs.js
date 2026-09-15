@@ -168,7 +168,9 @@ function apply(pane, item, dropped) {
     pane.tabs.pendingCursor = item.cursorIndex
     pane.tabs.pendingSortBy = item.sortBy
     pane.tabs.pendingSortDesc = item.sortDesc
-    pane.openWithoutHistory(item.path)
+    // The tab's own dotfile answer is restored above, so the listing keeps it rather than taking the
+    // standing preference, which is whatever the tab being left chose.
+    pane.openWithoutHistory(item.path, true)
 }
 
 function applyPending(pane) {
