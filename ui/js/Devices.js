@@ -74,9 +74,10 @@ function collectVolumes(nodes, model, unplugs, out) {
         var kids = n.children || []
         // Only the disk carries a product name, so it is passed down to its own partitions.
         var own = n.model ? String(n.model) : model
-        // And only the disk carries the transport, so the same descent answers for its partitions:
-        // measured by mariobgsp (PR 74), whose USB drive reports tran=usb on sdb and null on sdb1.
-        var pulls = unplugs || unpluggable(n)
+        // Only the disk carries the transport, so its partitions take its answer: measured by
+        // mariobgsp (PR 74), whose USB drive reports tran=usb on sdb and null on sdb1. It stops
+        // there: what a crypt leaf under it reads as is what it read as before that PR.
+        var pulls = unpluggable(n) || (unplugs && String(n.type || "") === "part")
         // Only a leaf is a volume. A partition holding a LUKS container is not what mounts, its crypt
         // child is, and emitting both would put one drive in the rail twice.
         if (n.name && kids.length === 0 && (pulls || mountOf(n).length > 0))

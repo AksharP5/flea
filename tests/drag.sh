@@ -348,10 +348,11 @@ wait_for() {
 # ---------------------------------------------------------------- R0
 echo
 echo "== R0: with Settings up, no drag runs in the pane underneath it =="
-# Issue 120 (tgienger): a drag begun over the open panel moved files in the listing behind it. The
-# row's DragHandler carries CanTakeOverFromItems, so the panel's own ground MouseArea cannot stop it;
-# only the pane being disabled can. PR 124 (tcraid0) is the fix this case holds.
+# Issue 120 (tgienger): a drag begun over the open panel moved files in the listing behind it,
+# because a row's DragHandler carries CanTakeOverFromItems and takes the grab from the panel's own
+# ground. PR 124 (tcraid0) is the fix, and the pane being disabled is the only thing that stops it.
 r0_before=$(ipc total)
+aaa_before_r0=$(ls -A "$HOMEDIR/aaa" | tr '\n' ' ')
 printf 's1 payload\n' > "$HOMEDIR/s1.txt"
 expect_ipc total $((r0_before + 1))
 set -- $(screen_centre s1.txt); s1x=$1; s1y=$2
@@ -366,10 +367,14 @@ check "a drag through the open panel moves nothing" \
       "$([ -e "$HOMEDIR/aaa/s1.txt" ] && echo moved || echo clean)" "clean"
 check "and the file the pointer began on is where it was" \
       "$([ -e "$HOMEDIR/s1.txt" ] && echo still-there || echo gone)" "still-there"
-# The release lands on the panel's own ground, which is a click outside the card, so the panel takes
-# the gesture and closes on it. Measured: the listing behind it never saw a press at all.
+# The release lands on the panel's own ground, which is a click outside the card, so it closes on it.
 check "the gesture belonged to the panel, which closed on the release" "$(ipc settingsOpen)" "false"
+check "and the folder the drag crossed holds exactly what it held" \
+      "$(ls -A "$HOMEDIR/aaa" | tr '\n' ' ')" "$aaa_before_r0"
+# Both paths, because the case that fails is the one where the file is in the folder, and a fixture
+# left with a stray row in aaa is a fixture every case after this one counts wrongly.
 owned_path "$HOMEDIR/s1.txt"; rm -f "$HOMEDIR/s1.txt"
+owned_path "$HOMEDIR/aaa/s1.txt"; rm -f "$HOMEDIR/aaa/s1.txt"
 expect_ipc total "$r0_before"
 
 # ---------------------------------------------------------------- R2

@@ -81,14 +81,28 @@ function run(check) {
     var usb = Devices.parseDevices(bridge)
     check("a mounted USB bridge is a rail row", usb.length + "|" + usb[1].label, "2|Passport")
     check("and it is removable however its RM column reads, because it unplugs", usb[1].removable, true)
+    // The parsed row itself, not a hand-built one: the menu reads group, kind and mounted too.
     check("so the rail offers it the release a stick gets",
-          Mounts.railMenu({ group: "device", kind: "volume", mounted: true, removable: usb[1].removable })
+          Mounts.railMenu(Object.assign({ group: "device" }, usb[1]))
                 .map(function (r) { return r.label }).join(","), "Eject")
     // The same drive with nothing mounted is still a row, the way an unplugged stick is.
     check("an unmounted USB bridge is a row too",
           Devices.parseDevices(bridge.replace('["/run/media/gm/Passport"]', "[null]")).length, 2)
     // And the transport never makes the box's own disk removable: nvme is not usb.
     check("the system disk is not offered an eject", usb[0].removable, false)
+    // The transport reaches a partition and stops: an unlocked crypt leaf under a USB disk reads as
+    // it did before PR 74, because what an eject would release there is the drive and not the map.
+    var lockedUsb = '{"blockdevices":['
+                  + '{"name":"nvme0n1","path":"/dev/nvme0n1","label":null,"mountpoints":["/"],"rm":false,"tran":"nvme","size":256060514304,"type":"disk","model":"KBG40ZNS256G"},'
+                  + '{"name":"sdb","path":"/dev/sdb","label":null,"mountpoints":[null],"rm":false,"tran":"usb","size":8589934592,"type":"disk","model":"Vault Drive",'
+                  + '"children":[{"name":"sdb1","path":"/dev/sdb1","label":null,"mountpoints":[null],"rm":false,"tran":null,"size":8589934592,"type":"part","model":null,'
+                  + '"children":[{"name":"luks-vault","path":"/dev/mapper/luks-vault","label":"vault","mountpoints":["/run/media/gm/vault"],"rm":false,"tran":null,"size":8589934592,"type":"crypt","model":null}]}]}'
+                  + ']}'
+    var locked = Devices.parseDevices(lockedUsb)
+    check("an unlocked volume on a USB drive is the one row, as it always was",
+          locked.length + "|" + locked[locked.length - 1].label, "2|vault")
+    check("and it is not marked removable, so the transport stopped at the partition",
+          locked[locked.length - 1].removable, false)
 
     // An internal partition nothing mounted stays out: a spare EFI or recovery partition is not a
     // place to browse, and Flea offers no way to mount one.

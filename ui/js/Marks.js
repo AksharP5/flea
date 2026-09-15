@@ -52,7 +52,7 @@ function toggleRow(pane, index) {
     pane.selectionVersion += 1
 }
 
-// The rows drawn between the cursor and the anchor, which extend() above is the only caller of.
+// The rows drawn between the cursor and the anchor, for both gestures above.
 function extendTo(pane, anchor) {
     if (pane.shown === null) {
         pane.selection.extendTo(pane.cursorIndex, anchor)

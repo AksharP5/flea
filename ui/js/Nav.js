@@ -196,8 +196,9 @@ function leafOf(path) {
 }
 
 // Backspace, h, and the chrome's up arrow. The root has no parent, so it is where climbing stops.
-// pendingSelect is the directory we are leaving, so the parent listing puts the cursor on it
-// rather than on the first row: h then l is a round trip.
+// pendingSelect is the directory being left, so the parent listing puts the cursor on it rather than
+// on its first row; applyPendingSelect reads the window the listing answered with, so a child
+// sorted past that first screenful is not found and the cursor stays where a climb always left it.
 function parent(pane) {
     if (pane.listInFlight) {
         pane.message("A directory is already loading.", false)

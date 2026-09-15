@@ -1782,16 +1782,14 @@ case_ctrlclick() {
         settle
         [[ "$(ipc selectedIndices)" == "2,3" ]] \
             || fail "ctrlclick: in the $view shift+click selected '$(ipc selectedIndices)', not 2,3"
-        # PR 106's own case, the one the pointer cannot reach on its own: the keyboard leaves the
-        # cursor on a row with nothing marked, which every write operation reads as that row being
-        # the selection, so the ctrl+click has to add to it rather than replace it.
+        # PR 106's own case: a cursor row with nothing marked is that row selected to every write
+        # operation, so the ctrl+click adds to it rather than replacing it.
         key -k Escape >/dev/null
         settle
         [[ "$(ipc selectionCount)" == "0" ]] \
             || fail "ctrlclick: escape left $(ipc selectionCount) rows marked in the $view"
-        # Escape leaves the cursor where the shift+click put it with nothing marked, which is the
-        # state the keyboard is in after j and k: no key is pressed to reach it here, because Up is a
-        # row of tiles in the grid and a row of text in the list.
+        # No key moves it: escape leaves the cursor where the shift+click put it, and Up is a row
+        # of tiles in the grid against a row of text in the list.
         [[ "$(ipc cursor)" == "2" ]] || fail "ctrlclick: the cursor is $(ipc cursor) in the $view, not 2"
         click_row 3 left --mods ctrl
         settle
@@ -1804,9 +1802,11 @@ case_ctrlclick() {
         settle
         [[ "$(ipc selectedIndices)" == "" ]] \
             || fail "ctrlclick: in the $view ctrl+click on the marked row left '$(ipc selectedIndices)' marked"
-        # Leaves one row marked, so the next view starts from the same state as this one did.
-        click_row 1 left
+        # Nothing marked, so the next view's own first click is a transition and can fail.
+        key -k Escape >/dev/null
         settle
+        [[ "$(ipc selectionCount)" == "0" ]] \
+            || fail "ctrlclick: the $view left $(ipc selectionCount) rows marked for the next view"
     done
 }
 
@@ -1819,24 +1819,29 @@ case_viewrestart() {
     mkdir -p "$dir/sub"
     : > "$dir/a.txt"
     : > "$dir/b.txt"
-    seed_ui_state "$fixture_root/viewrestart-state" '{"view":"list"}'
+    # Columns, not the list: the list is what the reader falls back to, so a seeded list would pass
+    # this whether the stored word was read or ignored.
+    seed_ui_state "$fixture_root/viewrestart-state" '{"view":"columns"}'
     launch "$dir"
     wait_listing 3
-    [[ "$(ipc viewMode)" == "list" ]] || fail "viewrestart: the seeded state opened on $(ipc viewMode), not the list"
+    [[ "$(ipc viewMode)" == "columns" ]] || fail "viewrestart: the seeded state opened on $(ipc viewMode), not the columns"
     switch_view grid
     launch "$dir"
     wait_listing 3
     [[ "$(ipc viewMode)" == "grid" ]] || fail "viewrestart: the next launch opened on $(ipc viewMode), not the grid it was left on"
-    # A second tab standing in the list view is the tab's own answer, and leaving the window on it is
-    # what the next launch takes: the stored view follows the window, never a snapshot nobody is in.
+    # The view the window is left on is the one the launch takes, and a tab carries its own: the
+    # second tab is put in the list, the first is switched back to and is still the grid, and that
+    # is what the next launch opens on.
     key t >/dev/null
     settle
     switch_view list
+    key -M ctrl -k Page_Down -m ctrl >/dev/null
+    settle
+    [[ "$(ipc viewMode)" == "grid" ]] || fail "viewrestart: the first tab came back as $(ipc viewMode), not the grid it held"
     launch "$dir"
     wait_listing 3
-    [[ "$(ipc viewMode)" == "list" ]] || fail "viewrestart: after the tab's own switch the launch opened on $(ipc viewMode), not the list"
-    # A word this build cannot draw, written by hand into the file: the pane draws the list rather
-    # than an empty view, and the launch settle puts a drawable word back. PR 97's own edge case.
+    [[ "$(ipc viewMode)" == "grid" ]] || fail "viewrestart: after the second tab's own switch the launch opened on $(ipc viewMode), not the grid the window was left on"
+    # PR 97's own edge: a word this build cannot draw is read as the list and put back drawable.
     kill_flea
     local stored="$fixture_root/viewrestart-state/flea/ui.json"
     python3 - "$stored" <<'EDIT'
