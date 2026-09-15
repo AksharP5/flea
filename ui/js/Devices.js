@@ -29,7 +29,8 @@ function parseDevices(body) {
         // what puts a second internal drive in the rail (operator, 2026-09-11: only sticks appeared).
         if (!nodes[i].name || nodes[i] === system || isPseudo(nodes[i].name))
             continue
-        collectVolumes([nodes[i]], "", unpluggable(nodes[i]), out)
+        // No transport to inherit at the top: the disk answers for itself inside the walk.
+        collectVolumes([nodes[i]], "", false, out)
     }
     return out
 }
