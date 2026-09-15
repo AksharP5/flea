@@ -142,7 +142,7 @@ function sized(pile, sizes) {
 // Rule 5: one slot with one voice. The hovered row's path, or the last result, or the one error, and
 // never two of them at once; the order is the one the card was drawn with. The hint is last, because
 // an empty shelf has no row to hover and nothing has happened on it yet.
-function footerText(hoveredPath, result, error, hint) {
+function footerText(hoveredPath, result, error, hint, chosen) {
   if (error) {
     return String(error)
   }
@@ -151,6 +151,9 @@ function footerText(hoveredPath, result, error, hint) {
   }
   if (result) {
     return String(result)
+  }
+  if (chosen) {
+    return String(chosen)
   }
   return String(hint || "")
 }
@@ -301,11 +304,102 @@ function stamp(at) {
          + " " + pad2(when.getHours()) + ":" + pad2(when.getMinutes())
 }
 
+// ---- Keys: the subset gesture, which every file action reads ----
+
+// Chosen by path rather than by row, so a pile that changes underneath cannot leave a row chosen by
+// position alone. The map is rebuilt on every change, so a binding that reads it re-evaluates.
+function toggleChosen(chosen, path) {
+  var next = {}
+  for (var held in chosen) {
+    next[held] = chosen[held]
+  }
+  if (next[path]) {
+    delete next[path]
+  } else {
+    next[path] = true
+  }
+  return next
+}
+
+// shift-j and shift-k extend a range, which is the rows between where the cursor was and where it is.
+function chooseRange(chosen, items, from, to) {
+  var next = {}
+  for (var held in chosen) {
+    next[held] = chosen[held]
+  }
+  var first = Math.min(from, to)
+  var last = Math.max(from, to)
+  for (var i = first; i <= last; i++) {
+    if (items[i]) {
+      next[items[i].path] = true
+    }
+  }
+  return next
+}
+
+// ctrl-a takes all, and a second ctrl-a clears: the same key both ways, as it is in the pane.
+function chooseAll(chosen, items) {
+  if (chosenCount(chosen, items) === items.length && items.length > 0) {
+    return {}
+  }
+  var next = {}
+  for (var i = 0; i < items.length; i++) {
+    next[items[i].path] = true
+  }
+  return next
+}
+
+// Only the rows the pile still holds count: a chosen row that has left the shelf is not chosen.
+function chosenCount(chosen, items) {
+  var n = 0
+  for (var i = 0; i < items.length; i++) {
+    if (chosen[items[i].path]) {
+      n += 1
+    }
+  }
+  return n
+}
+
+// Every file action is chosen-or-whole, with no exceptions: the chosen rows, or the whole pile when
+// nothing is chosen. Order is the pile's own, never the order they were chosen in.
+function actionPaths(chosen, items) {
+  var picked = []
+  for (var i = 0; i < items.length; i++) {
+    if (chosen[items[i].path]) {
+      picked.push(items[i].path)
+    }
+  }
+  if (picked.length > 0) {
+    return picked
+  }
+  var all = []
+  for (var j = 0; j < items.length; j++) {
+    all.push(items[j].path)
+  }
+  return all
+}
+
+// The footer while a subset is being chosen: what the five actions will take, and what none means.
+function chosenSentence(count, total) {
+  var n = Number(count)
+  if (!isFinite(n) || n <= 0) {
+    return ""
+  }
+  return "5 actions take " + n + " chosen \u00b7 none chosen: all " + total
+}
+
 // EdgeRail: while a drag hovers the rail the header says what letting go would do, and the way out
 // is not what the eye needs at that moment.
-function headerRight(incoming) {
+function headerRight(incoming, chosen, total) {
   var n = Number(incoming)
-  return isFinite(n) && n > 0 ? "drop to add " + n : "esc"
+  if (isFinite(n) && n > 0) {
+    return "drop to add " + n
+  }
+  var picked = Number(chosen)
+  if (isFinite(picked) && picked > 0) {
+    return picked + " of " + total + " chosen"
+  }
+  return "esc"
 }
 
 // Rule 2's header, which is also the pile's own count: the bar never draws one. An empty shelf says

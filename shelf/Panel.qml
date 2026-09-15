@@ -35,8 +35,18 @@ Panel {
   readonly property int transientMs: 4000
 
   // A card that closed while its menu was up must come back as the pile, not as the menu: the menu is
-  // a detour, and the shelf is what the next summon is asking for.
-  onOpenedChanged: if (!root.opened) root.menu = false
+  // a detour, and the shelf is what the next summon is asking for. A closed card also forgets the
+  // gesture it was in the middle of, because the next one is a new question.
+  onOpenedChanged: {
+    if (root.opened) {
+      card.cursorIndex = card.pile.items.length > 0 ? 0 : -1
+      return
+    }
+    root.menu = false
+    card.chosen = ({})
+    card.cursorIndex = -1
+    card.stripIndex = -1
+  }
 
   ShelfService {
     id: shelf
@@ -133,29 +143,19 @@ Panel {
     margins { right: Style.gapsOut; top: Style.gapsOut }
     WlrLayershell.namespace: "flea-shelf-card"
     WlrLayershell.layer: WlrLayer.Overlay
-    // The OEM keyboard panel's own prime: Hyprland gives an OnDemand surface focus only when it
-    // first maps, so a card summoned by the keybind would take no keys at all. Exclusive for the
-    // first commits, then OnDemand, which is what lets a click reach anything underneath again.
-    property bool focusPrimed: false
-    WlrLayershell.keyboardFocus: root.opened
-                                 ? (panel.focusPrimed ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.Exclusive)
-                                 : WlrKeyboardFocus.None
+    // The card is keyboard-first and esc is how it goes away, so it holds the keyboard while it is
+    // open, the way the shell's own clipboard and emoji panels do. Measured on this box: with the
+    // OEM's prime-then-OnDemand the keyboard went back to whatever the pointer was over, so a card
+    // opened by clicking the bar mark took no keys at all.
+    WlrLayershell.keyboardFocus: root.opened ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
 
-    onVisibleChanged: {
-      panel.focusPrimed = false
-      if (panel.visible) {
-        focusPrime.restart()
-      }
-    }
+    onVisibleChanged: if (panel.visible) focusHold.restart()
 
     Timer {
-      id: focusPrime
-      // The OEM panel's own 75 ms: enough Qt and Wayland commit cycles for the surface to be there.
+      id: focusHold
+      // Enough Qt and Wayland commit cycles for the surface to exist before Qt's own focus is set.
       interval: 75
-      onTriggered: {
-        panel.focusPrimed = true
-        surface.forceActiveFocus()
-      }
+      onTriggered: surface.forceActiveFocus()
     }
 
     // The ground, border and corner the shell's own popups draw: Ui/KeyboardPanel.qml and
@@ -183,10 +183,15 @@ Panel {
         if (event.key === Qt.Key_X && (event.modifiers & Qt.ShiftModifier)) {
           shelf.clear()
           event.accepted = true
-        } else if (event.key === Qt.Key_Z) {
+          return
+        }
+        if (event.key === Qt.Key_Z) {
           shelf.restore(0)
           event.accepted = true
+          return
         }
+        // Everything else the card owns: the cursor, the subset gesture and the action strip.
+        card.key(event)
       }
 
       ShelfMenu {
@@ -227,6 +232,10 @@ Panel {
         onRemoveRequested: function (index) {
           root.error = ""
           shelf.forget(shelf.pile.items[index].path)
+        }
+        onOpenRequested: function (path) {
+          root.error = ""
+          shelf.open(path)
         }
         onCaptureAddRequested: function (index) {
           root.error = ""

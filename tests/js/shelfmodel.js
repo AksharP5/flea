@@ -109,6 +109,31 @@ function run(check) {
   check("the header says what letting go would do, and the way out when nothing is coming",
         Shelf.headerRight(2) + "|" + Shelf.headerRight(0), "drop to add 2|esc")
 
+  // Keys: the subset gesture, and what the card says while one is being chosen.
+  var four = Shelf.parse('{"items":[{"path":"/p/a"},{"path":"/p/b"},{"path":"/p/c"},{"path":"/p/d"}]}')
+  var picked = Shelf.toggleChosen({}, "/p/b")
+  check("v takes the cursor row, and a second v gives it back",
+        Shelf.chosenCount(picked, four.items) + "|" + Shelf.chosenCount(Shelf.toggleChosen(picked, "/p/b"), four.items),
+        "1|0")
+  var ranged = Shelf.chooseRange(picked, four.items, 1, 3)
+  check("shift-j takes everything it passes", Shelf.chosenCount(ranged, four.items), 3)
+  check("ctrl-a takes all of them", Shelf.chosenCount(Shelf.chooseAll({}, four.items), four.items), 4)
+  check("and a second ctrl-a gives them all back",
+        Shelf.chosenCount(Shelf.chooseAll(Shelf.chooseAll({}, four.items), four.items), four.items), 0)
+  // A chosen row that has left the shelf is not chosen, which is why the map is keyed by path.
+  var gone = Shelf.parse('{"items":[{"path":"/p/a"}]}')
+  check("a chosen row that left the pile counts for nothing", Shelf.chosenCount(ranged, gone.items), 0)
+  check("every action is chosen-or-whole: the chosen ones in the pile's own order",
+        Shelf.actionPaths(ranged, four.items).join("|"), "/p/b|/p/c|/p/d")
+  check("and the whole pile when nothing is chosen",
+        Shelf.actionPaths({}, four.items).join("|"), "/p/a|/p/b|/p/c|/p/d")
+  check("the header says how many of how many are chosen",
+        Shelf.headerRight(0, 2, 4) + "|" + Shelf.headerRight(0, 0, 4) + "|" + Shelf.headerRight(3, 2, 4),
+        "2 of 4 chosen|esc|drop to add 3")
+  check("and the footer says what the five actions will take",
+        Shelf.chosenSentence(2, 4) + "|" + Shelf.chosenSentence(0, 4),
+        "5 actions take 2 chosen \u00b7 none chosen: all 4|")
+
   check("the tooltip says what is held, because the bar itself never draws a count",
           Shelf.tooltip(Shelf.empty()) + " / " + Shelf.tooltip(one) + " / " + Shelf.tooltip(mixed),
           "Flea shelf is empty / Flea shelf is holding 1 item / Flea shelf is holding 2 items")

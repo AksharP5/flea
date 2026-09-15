@@ -70,10 +70,20 @@ carries, and `summon.json` the count the keybind writes. The plugin never writes
 |---|---|
 | `super + d` | opens the shelf, or closes it, once you have installed the bind below |
 | `esc` | closes the card, and steps out of its menu |
+| `j` `k` | down, up. The arrows do the same |
+| `v` | takes the cursor row, and a second `v` gives it back |
+| `shift + j` `shift + k` | extend the range |
+| `ctrl + a` | takes every row, and a second `ctrl + a` clears |
+| `x` | takes the cursor row off the shelf. The file is untouched |
+| `enter` | opens the file, or reveals the folder in Flea |
+| `tab` | jumps to the action strip, and back; the arrows walk it and `enter` runs it |
 | `shift + x` | clears the shelf, and it becomes the last pile |
 | `z` | brings the last pile back |
 | `1` to `5` | in the menu, takes that pile back |
 | right click | on the bar mark: brings back the last pile you cleared; on the card: its menu |
+
+Every file action is chosen-or-whole: with rows chosen it takes those, with none chosen it takes the
+pile. The card says which in its header and its footer while a subset is being chosen.
 
 The card's action strip draws its own keys beside every action; they run the actions with them.
 

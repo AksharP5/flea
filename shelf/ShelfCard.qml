@@ -23,8 +23,15 @@ Item {
   property string hint: ""
   // EdgeRail: how many a drag over the rail is offering, which the header says and the line shows.
   property int incoming: 0
+  // Keys: the subset gesture. Chosen by path, and the cursor is its own rung on top of it.
+  property var chosen: ({})
+  readonly property int chosenCount: Model.chosenCount(root.chosen, root.pile.items)
+
+  // Keys: which action the strip's own focus is on, and -1 while the rows have it.
+  property int stripIndex: -1
 
   signal removeRequested(int index)
+  signal openRequested(string path)
   signal captureAddRequested(int index)
   // Summon: the pointer's way to the last five piles is the card's own menu.
   signal menuRequested()
@@ -57,6 +64,69 @@ Item {
   Drag.onDragFinished: {
     root.Drag.active = false
     root.dragMime = ({})
+  }
+
+  // Keys, grouped the way the board groups them: move around, change the pile, do something with it.
+  // The shelf card is its own context, so these letters collide with nothing in the pane.
+  function key(event) {
+    var items = root.pile.items
+    if (items.length === 0 && root.stripIndex < 0) {
+      return
+    }
+    var shift = (event.modifiers & Qt.ShiftModifier) !== 0
+    var control = (event.modifiers & Qt.ControlModifier) !== 0
+    if (root.stripIndex >= 0) {
+      root.stripKey(event)
+      return
+    }
+    if (event.key === Qt.Key_J || event.key === Qt.Key_Down) {
+      root.step(1, shift)
+    } else if (event.key === Qt.Key_K || event.key === Qt.Key_Up) {
+      root.step(-1, shift)
+    } else if (event.key === Qt.Key_V) {
+      root.chosen = Model.toggleChosen(root.chosen, items[Math.max(0, root.cursorIndex)].path)
+    } else if (event.key === Qt.Key_A && control) {
+      root.chosen = Model.chooseAll(root.chosen, items)
+    } else if (event.key === Qt.Key_X && !shift) {
+      root.removeRequested(Math.max(0, root.cursorIndex))
+    } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+      root.openRequested(items[Math.max(0, root.cursorIndex)].path)
+    } else if (event.key === Qt.Key_Tab) {
+      root.stripIndex = 0
+    } else {
+      return
+    }
+    event.accepted = true
+  }
+
+  // Tab jumps to the action strip; from there the arrows walk it, enter runs it and tab comes back.
+  function stripKey(event) {
+    if (event.key === Qt.Key_Tab) {
+      root.stripIndex = -1
+    } else if (event.key === Qt.Key_L || event.key === Qt.Key_Right) {
+      root.stripIndex = (root.stripIndex + 1) % root.actions.length
+    } else if (event.key === Qt.Key_H || event.key === Qt.Key_Left) {
+      root.stripIndex = (root.stripIndex + root.actions.length - 1) % root.actions.length
+    } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+      root.actionRequested(root.actions[root.stripIndex].id)
+    } else {
+      return
+    }
+    event.accepted = true
+  }
+
+  // j and k move the cursor; with shift they take everything they pass, which is the range gesture.
+  function step(by, extending) {
+    var items = root.pile.items
+    if (items.length === 0) {
+      return
+    }
+    var was = root.cursorIndex < 0 ? (by > 0 ? -1 : items.length) : root.cursorIndex
+    var now = Math.max(0, Math.min(items.length - 1, was + by))
+    root.cursorIndex = now
+    if (extending) {
+      root.chosen = Model.chooseRange(root.chosen, items, Math.max(0, was), now)
+    }
   }
 
   // Rules 2 and 3: the same strip height and the same row as Flea's own, which means the same
@@ -126,7 +196,7 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         anchors.right: parent.right
         anchors.rightMargin: root.pad
-        text: Model.headerRight(root.incoming)
+        text: Model.headerRight(root.incoming, root.chosenCount, root.pile.items.length)
         color: root.muted
         font.family: root.fontFamily
         font.pixelSize: Style.font.caption
@@ -146,21 +216,46 @@ Item {
         width: column.width
         height: root.rowHeight
         readonly property bool lifted: root.hoveredIndex === row.index || root.cursorIndex === row.index
+        readonly property bool picked: root.chosen[row.modelData.path] === true
 
+        // Three rungs and three grounds, the tokens Row.qml itself reads: the cursor takes the
+        // accent fill, a chosen row the selection fill, and a hovered row the hover rung.
         Rectangle {
           anchors.fill: parent
-          color: root.accent
-          opacity: row.lifted ? 0.14 : 0
+          color: root.cursorIndex === row.index ? Style.selectedAccentFill
+               : row.picked ? Style.selectionFill
+               : root.hoveredIndex === row.index ? Style.hoverFill
+               : "transparent"
         }
 
+        // The cursor keeps its own edge whether or not the row is chosen, which is what tells the
+        // two apart when they land on the same row.
+        Rectangle {
+          visible: root.cursorIndex === row.index
+          width: 2
+          height: parent.height
+          color: root.accent
+        }
+
+        // The mark's own slot, which holds the check instead while a subset is being chosen: a row
+        // cannot say both what kind it is and whether it is taken, and the choosing is the question.
         ShelfGlyph {
           id: mark
           x: root.pad
           anchors.verticalCenter: parent.verticalCenter
           width: root.markSize
           height: root.markSize
+          visible: root.chosenCount === 0
           path: Model.glyphFor(row.modelData)
           color: root.foreground
+        }
+
+        ShelfCheck {
+          anchors.verticalCenter: parent.verticalCenter
+          x: root.pad
+          visible: root.chosenCount > 0
+          on: row.picked
+          foreground: root.foreground
         }
 
         Text {
@@ -277,7 +372,8 @@ Item {
         width: parent.width - 2 * root.pad
         text: Model.footerText(root.hoveredIndex >= 0 && root.pile.items[root.hoveredIndex]
                                ? root.pile.items[root.hoveredIndex].path : "",
-                               root.result, root.error, root.hint)
+                               root.result, root.error, root.hint,
+                               Model.chosenSentence(root.chosenCount, root.pile.items.length))
         color: root.error ? Color.urgent : root.muted
         font.family: root.fontFamily
         font.pixelSize: Style.font.caption
@@ -301,13 +397,14 @@ Item {
 
         Row {
           id: action
+          required property int index
           required property var modelData
           anchors.verticalCenter: parent.verticalCenter
           spacing: Style.space(5)
 
           Text {
             text: action.modelData.label
-            color: actionHover.hovered ? root.foreground : root.muted
+            color: actionHover.hovered || root.stripIndex === action.index ? root.foreground : root.muted
             font.family: root.fontFamily
             font.pixelSize: Style.font.caption
             textFormat: Text.PlainText

@@ -193,6 +193,19 @@ Item {
     stderr: StdioCollector { waitForEnd: true }
   }
 
+  // Keys: enter opens the file with its own handler, or reveals a folder in Flea. Actions rule 1: it
+  // is a flea shelf call like every other, because the plugin draws and nothing else.
+  function open(path) {
+    opener.command = [root.fleaCommand, "shelf", "open", path]
+    opener.running = true
+  }
+
+  Process {
+    id: opener
+    running: false
+    onExited: function (code) { if (code !== 0) root.failed("That one could not be opened.") }
+  }
+
   // ShelfEmpty rule 5: a click on a capture adds it to the pile, the same call a drop makes, and a
   // drop on the rail is that same call with everything it was carrying.
   function add(path) {

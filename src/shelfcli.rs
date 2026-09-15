@@ -3,6 +3,8 @@
 use crate::captures;
 use crate::shelf::{now_ms, size_of, Shelf};
 use crate::summon;
+use std::os::unix::process::CommandExt;
+use std::process::{Command, Stdio};
 
 pub fn command(args: &[String]) -> i32 {
     match args.get(2).map(String::as_str) {
@@ -11,13 +13,14 @@ pub fn command(args: &[String]) -> i32 {
         Some("forget") => forget(&args[3..]),
         Some("add") => add(&args[3..]),
         Some("captures") => captures::command(&args[3..]),
+        Some("open") => open(&args[3..]),
         Some("clear") => summon::clear(),
         Some("restore") => summon::restore(&args[3..]),
         Some("piles") => summon::piles(),
         Some("toggle") => summon::toggle(),
         Some("bind") => summon::bind(),
         _ => {
-            eprintln!("flea: shelf takes drag-begin, size, add, forget, captures, clear, restore, piles, toggle or bind");
+            eprintln!("flea: shelf takes drag-begin, size, add, open, forget, captures, clear, restore, piles, toggle or bind");
             2
         }
     }
@@ -59,6 +62,45 @@ fn add(rest: &[String]) -> i32 {
         Ok(()) => 0,
         Err(e) => {
             eprintln!("flea: {}", e);
+            2
+        }
+    }
+}
+
+// Keys: enter opens the file with its own handler, or reveals the folder in Flea. A folder does not
+// go to gio, which would hand it straight back to Flea's own desktop entry and lose the path.
+fn open(rest: &[String]) -> i32 {
+    let path = match rest.first() {
+        Some(path) => path,
+        None => {
+            eprintln!("flea: shelf open takes one path");
+            return 2;
+        }
+    };
+    let code = crate::open::open(path);
+    if code != crate::open::IS_DIRECTORY {
+        return code;
+    }
+    let exe = match std::env::current_exe() {
+        Ok(exe) => exe,
+        Err(e) => {
+            eprintln!("flea: {} could not be shown ({:?})", path, e.kind());
+            return 2;
+        }
+    };
+    // Detached, because the card's own process is not the window's parent: it asked for it and goes.
+    match Command::new(exe)
+        .arg("--gui")
+        .arg(path)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .process_group(0)
+        .spawn()
+    {
+        Ok(_) => 0,
+        Err(e) => {
+            eprintln!("flea: {} could not be shown ({:?})", path, e.kind());
             2
         }
     }
