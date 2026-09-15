@@ -2,6 +2,7 @@
 
 .import "Protocols.js" as Protocols
 .import "Menu.js" as Menu
+.import "PlaceMenu.js" as PlaceMenu
 
 // Sample input, captured live on the box with one network share mounted (2026-08-31):
 // Drive(0): KBG40ZNS256G NVMe KIOXIA 256GB
@@ -188,7 +189,17 @@ function railMenuFor(sidebar, entry, scenePosition) {
         sidebar.menu.openForRail("trash", Menu.trashEntries(sidebar.trashCount, false), scenePosition)
         return
     }
-    if (entry.kind === "favourite") {
+    // MenuAdditions rule 3: a Places or Favorites row opens the folder menu for its path while that
+    // Extras row is on, and with it off a favourite keeps the one Remove it has offered since 0.2.1.
+    if (entry.kind === "favourite" || entry.kind === "home") {
+        var index = entry.kind === "favourite" ? entry.favouriteIndex : -1
+        var rows = PlaceMenu.entries(sidebar, entry, index)
+        if (rows.length > 0) {
+            sidebar.menu.openForRail(PlaceMenu.key(entry, index), rows, scenePosition)
+            return
+        }
+        if (entry.kind !== "favourite")
+            return
         sidebar.menu.openForRail("favourite:" + entry.favouriteIndex + ":" + JSON.stringify(entry.original),
             [{ label: "Remove", action: "removeFavourite", glyph: "minus" }], scenePosition)
         return

@@ -34,6 +34,7 @@ import "phones.js" as PhonesSuite
 import "picker.js" as PickerSuite
 import "previewkeys.js" as PreviewKeysSuite
 import "places.js" as PlacesSuite
+import "placemenu.js" as PlaceMenuSuite
 import "protocols.js" as ProtocolsSuite
 import "railkeys.js" as RailKeysSuite
 import "recent.js" as RecentSuite
@@ -87,7 +88,7 @@ Item {
             ["keymap", KeymapSuite], ["match", MatchSuite], ["menu", MenuSuite],
             ["marks", MarksSuite], ["mounts", MountsSuite], ["nav", NavSuite], ["crumbs", CrumbsSuite], ["devices", DevicesSuite], ["network", NetworkSuite],
             ["openwith", OpenWithSuite], ["ops", OpsSuite], ["opstrash", OpsTrashSuite],
-            ["palette", PaletteSuite], ["pathbar", PathBarSuite], ["places", PlacesSuite],
+            ["palette", PaletteSuite], ["pathbar", PathBarSuite], ["places", PlacesSuite], ["placemenu", PlaceMenuSuite],
             ["phones", PhonesSuite],
             ["picker", PickerSuite],
             ["previewkeys", PreviewKeysSuite],

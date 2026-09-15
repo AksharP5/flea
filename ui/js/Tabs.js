@@ -203,7 +203,9 @@ function currentItems(pane, here) {
     return [snapshot(pane, here)]
 }
 
-function openNew(pane) {
+// A caller may name where the new tab lands, which is what the Places row menu's own row does;
+// without one it is Settings, View, Opening that decides, and that still defaults to this folder.
+function openNew(pane, where) {
     if (busy(pane))
         return
     // Before the preview and the search go: a refused tenth tab must cost the user nothing.
@@ -216,7 +218,7 @@ function openNew(pane) {
     var dropped = dropOverlay(pane)
     // Settings > View > Opening decides where the new tab lands; it cloned the current folder before
     // 0.2.1 and that is still the default. The tab the operator leaves keeps the path it was on.
-    var target = Startup.newTabPath(pane.uiState, here, pane.home)
+    var target = where || Startup.newTabPath(pane.uiState, here, pane.home)
     var items = currentItems(pane, here)
     var index = currentIndex(pane)
     items[index] = snapshot(pane, here)

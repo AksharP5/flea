@@ -19,7 +19,10 @@ var OPEN_WITH_OTHER = "__another__"
 
 // SettingsMenus and SettingsPlaces share one order; F=file/folder, B=background, T=Trash rail.
 var INVENTORY = [
-    ["open", "Open", "folder-open", "FT", "open"],
+    ["open", "Open", "folder-open", "FTP", "open"],
+    // MenuAdditions rule 3: a Places or Favorites row opens this menu for its own path, so the rows
+    // it carries are the ones that take a path and not the clipboard, archive, send or destroy ones.
+    ["openTab", "Open in new tab", "app-window", "P", "open"],
     ["openwith", "Open with", "app-window", "F", "open", "openWith"],
     ["newFolder", "New Folder", "folder-plus", "B", "open"],
     ["newFile", "New File", "file-plus", "B", "open"],
@@ -40,13 +43,14 @@ var INVENTORY = [
     ["sharelink", "Copy Share Link", "network", "F", "share"],
     ["trash", "Move to Trash", "trash", "F", "trash"],
     ["delete", "Delete permanently", "trash", "F", "trash", "deletePermanently"],
-    ["openTerminal", "Open in terminal", "terminal", "FB", "inspect"],
+    ["openTerminal", "Open in terminal", "terminal", "FBP", "inspect"],
     ["moveto", "Move to", "folder-plus", "F", "inspect", "moveTo"],
     ["copyto", "Copy to", "copy", "F", "inspect", "copyTo"],
     ["properties", "Properties", "info", "F", "inspect"],
     ["permissions", "Permissions", "lock", "F", "inspect"],
-    ["copypath", "Copy path", "file-text", "F", "inspect"],
-    ["addFavourite", "Add to Favorites", "star", "FB", "inspect"],
+    ["copypath", "Copy path", "file-text", "FP", "inspect"],
+    ["addFavourite", "Add to Favorites", "star", "FBP", "inspect"],
+    ["removeFavourite", "Remove from Favorites", "minus", "P", "inspect"],
     ["sort", "Sort by", "sort", "B", "view"],
     ["toggleHidden", "Show hidden files", "eye", "FB", "view"],
     ["settings", "Settings", "sliders", "B", "settings"],
@@ -55,6 +59,8 @@ var INVENTORY = [
 ]
 
 function listingEntries(p) { return buildEntries(p.hasRow ? "F" : "B", p) }
+// The Places rail's own, behind its Extras toggle: off, the rail keeps the menu it has today.
+function placeEntries(p) { return isHidden(p.hiddenActions, "placeMenu") ? [] : buildEntries("P", p) }
 function backgroundEntries(p) { return buildEntries("B", p) }
 function trashEntries(total, busy) { return buildEntries("T", { trashTotal: total, busy: busy }) }
 
@@ -94,6 +100,10 @@ function buildEntries(kind, p) {
 
 function availableEntry(e, p, kind) {
     var count = p.selectionCount === undefined ? 1 : p.selectionCount
+    // Rule 3: the last row adds the favourite or removes it, and the duplicate case is absent rather
+    // than grey, which is what keeps issue 138's second row impossible from the rail as well.
+    if (kind === "P" && (e.id === "addFavourite" || e.id === "removeFavourite"))
+        return (e.id === "removeFavourite") === (p.placeFavourite === true)
     if (e.action === "addFavourite" && kind === "F")
         e.disabled = count !== 1 || ((Number(p.rowMode) || 0) & 0o170000) !== 0o040000
     if (e.action === "paste") e.disabled = p.clipboardAvailable !== true

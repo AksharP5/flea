@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Drives the real Quickshell window with omarchy-drive and asserts through the read-only IPC seam.
-# Usage: ./tests/ui.sh [cursor|terminal|open|rows|click|ctrlclick|viewrestart|dd|sortrestart|editplace|mute|menu|hidden|selection|select|colour|lifted|icons|thumbs|hashcache|stale|nosweep|oem|header|overflow|focus|preview|network|netmark|networktimeout|networklive|gvfs|sharebrowser|unmount|phones|eject|rename|renamelife|taildrop|grid|columns|operations|tabs|openterminal|renderer|settings ...]; networklive is opt-in.
+# Usage: ./tests/ui.sh [cursor|terminal|open|rows|click|ctrlclick|viewrestart|dd|sortrestart|editplace|mute|placemenu|menu|hidden|selection|select|colour|lifted|icons|thumbs|hashcache|stale|nosweep|oem|header|overflow|focus|preview|network|netmark|networktimeout|networklive|gvfs|sharebrowser|unmount|phones|eject|rename|renamelife|taildrop|grid|columns|operations|tabs|openterminal|renderer|settings ...]; networklive is opt-in.
 set -u
 set -o pipefail
 # Hard rule 9's guard, which owns FIXTURE_ROOT and every create and delete this suite makes.
@@ -1974,6 +1974,88 @@ case_mute() {
         || fail "mute: the next preview forgot the session's own flag"
     key -k Escape >/dev/null
     settle
+    kill_flea
+}
+
+# MenuAdditions rule 3: a Places or Favorites row opens the folder menu for its own path, and with
+# the Extras switch off the rail keeps the one Remove a favourite has offered since 0.2.1.
+case_placemenu() {
+    local dir="$fixture_root/placemenu"
+    sandbox_scratch "$dir"
+    mkdir -p "$dir/Work"
+    : > "$dir/Work/one.txt"
+    : > "$dir/plain.txt"
+    local state="$fixture_root/placemenu-state"
+    # The switch on, and one favourite to open the menu over. Everything else is the shipped set.
+    # The switch on, and Open in terminal and Copy path on too, because a row switched off in Settings
+    # is off on this menu as well: with the shipped set those two are absent and the menu is shorter.
+    seed_ui_state "$state" "$(printf '{"menu":{"hidden":["delete","moveto","copyto","properties","permissions"]},"places":{"favourites":[{"label":"Work","path":"%s/Work"}]}}' "$dir")"
+
+    launch "$dir"
+    wait_listing 2
+    local favourite_index
+    favourite_index=$(ipc railEntries | jq -r 'map(.label) | index("Work")')
+    [[ -n "$favourite_index" && "$favourite_index" != "null" ]] \
+        || fail "placemenu: the seeded favourite is not on the rail, which carries $(ipc railEntries)"
+
+    echo "-- a Favorites row ends on Remove, and a Places row on Add --"
+    click_rail_row "$favourite_index" right
+    settle
+    [[ "$(ipc contextMenuVisible)" == "true" ]] || fail "placemenu: the favourite's right click opened no menu"
+    [[ "$(ipc contextMenuEntries)" == "Open|Open in new tab|-|Open in terminal|Copy path|Remove from Favorites" ]] \
+        || fail "placemenu: the favourite offers $(ipc contextMenuEntries)"
+    key -k Escape >/dev/null
+    for _attempt in $(seq 1 20); do
+        [[ "$(ipc contextMenuVisible)" == "false" ]] && break
+        sleep 0.25
+    done
+    [[ "$(ipc contextMenuVisible)" == "false" ]] || fail "placemenu: escape left the favourite's menu open"
+    local home_index
+    home_index=$(ipc railEntries | jq -r 'map(.label) | index("Home")')
+    [[ -n "$home_index" && "$home_index" != "null" ]] \
+        || fail "placemenu: the rail has no Home row, it carries $(ipc railEntries | jq -r 'map(.label) | join(",")')"
+    click_rail_row "$home_index" right
+    settle
+    # Read visible before entries: the menu keeps its last rows, so a row that opens nothing would
+    # otherwise answer with the menu before it, which is exactly how this case first read green.
+    [[ "$(ipc contextMenuVisible)" == "true" ]] || fail "placemenu: the Home row's right click opened no menu"
+    [[ "$(ipc contextMenuEntries)" == "Open|Open in new tab|-|Open in terminal|Copy path|Add to Favorites" ]] \
+        || fail "placemenu: the Home row offers $(ipc contextMenuEntries)"
+
+    echo "-- and a row acts on its own path, not on the listing's cursor --"
+    local tabs_before
+    tabs_before=$(ipc tabCount)
+    menu_seek "Open in new tab"
+    key -k Return >/dev/null
+    for _attempt in $(seq 1 40); do
+        [[ "$(ipc tabCount)" == "$((tabs_before + 1))" ]] && break
+        sleep 0.25
+    done
+    [[ "$(ipc tabCount)" == "$((tabs_before + 1))" ]] \
+        || fail "placemenu: Open in new tab left $(ipc tabCount) tabs"
+    wait_path "$HOME"
+    printf 'PLACEMENU tabs=%s path=%s labels=%s\n' "$(ipc tabCount)" "$(ipc path)" "$(ipc tabLabels)"
+
+    echo "-- with the switch off it is the menu it was --"
+    kill_flea
+    seed_ui_state "$fixture_root/placemenu-off" "$(printf '{"places":{"favourites":[{"label":"Work","path":"%s/Work"}]}}' "$dir")"
+    launch "$dir"
+    wait_listing 2
+    favourite_index=$(ipc railEntries | jq -r 'map(.label) | index("Work")')
+    click_rail_row "$favourite_index" right
+    settle
+    [[ "$(ipc contextMenuVisible)" == "true" ]] || fail "placemenu: with the switch off the favourite opened no menu"
+    [[ "$(ipc contextMenuEntries)" == "Remove" ]] \
+        || fail "placemenu: with the switch off the favourite offers $(ipc contextMenuEntries)"
+    key -k Escape >/dev/null
+    settle
+    local home_off
+    home_off=$(ipc railEntries | jq -r 'map(.label) | index("Home")')
+    click_rail_row "$home_off" right
+    settle
+    [[ "$(ipc contextMenuVisible)" == "false" ]] \
+        || fail "placemenu: with the switch off the Home row opened $(ipc contextMenuEntries)"
+    printf 'PLACEMENU off=%s\n' "$(ipc contextMenuVisible)"
     kill_flea
 }
 
@@ -8909,7 +8991,7 @@ case_previewviews() {
 . "$repo/tests/ui-convert-design.sh"
 
 declare -a wanted=("$@")
-[[ ${#wanted[@]} -eq 0 ]] && wanted=(cursor scroll terminal open rows click ctrlclick viewrestart dd sortrestart editplace mute menu background hidden selection watch select colour lifted icons thumbs hashcache stale nosweep oem header overflow focus preview pdffocus network netmark networkauth networktimeout gvfs sharebrowser unmount phones eject rename renamelife taildrop providers grid columns operations tabs openterminal renderer settings clickthrough wheelunder overlays views formats previewviews hangshare openwithdesign)
+[[ ${#wanted[@]} -eq 0 ]] && wanted=(cursor scroll terminal open rows click ctrlclick viewrestart dd sortrestart editplace mute placemenu menu background hidden selection watch select colour lifted icons thumbs hashcache stale nosweep oem header overflow focus preview pdffocus network netmark networkauth networktimeout gvfs sharebrowser unmount phones eject rename renamelife taildrop providers grid columns operations tabs openterminal renderer settings clickthrough wheelunder overlays views formats previewviews hangshare openwithdesign)
 
 : > "$run_log"
 : > "$flea_log"

@@ -5,6 +5,7 @@ import qs.Commons
 import "js/Icons.js" as Icons
 import "js/Mounts.js" as Mounts
 import "js/Places.js" as Places
+import "js/PlaceMenu.js" as PlaceMenu
 
 // Places, Favorites, Network and Devices share one flat cursor in visual order.
 Item {
@@ -200,11 +201,9 @@ Item {
     // A chosen row arrives with its key rather than its position, and Mounts.release names the row.
     function releaseChosen(action, key) {
         if (key === "trash") return
-        if (action === "removeFavourite" && key.indexOf("favourite:") === 0) {
-            var end = key.indexOf(":", 10)
-            var index = Number(key.substring(10, end))
-            if (JSON.stringify(Favourites.records[index]) === key.substring(end + 1)) Favourites.remove(index)
-            else root.message("Favorites changed; reopen the menu before removing this row.", true)
+        // A place and a favourite are both a path, and ui/js/PlaceMenu.js owns what their rows do.
+        if (key.indexOf("place:") === 0 || key.indexOf("favourite:") === 0) {
+            PlaceMenu.perform(action, key, root, Favourites)
             return
         }
         Mounts.release(action, key, devices, mounts, root)
@@ -365,6 +364,7 @@ Item {
                     cursor: index === root.cursorIndex
                     focused: root.focused
                     onActivated: function (idx) { root.activate(idx) }
+                    onMenuRequested: function(idx, pos) { root.openRailMenu(idx, pos) }
                 }
             }
             Repeater {

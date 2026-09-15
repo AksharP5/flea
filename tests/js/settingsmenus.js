@@ -34,19 +34,29 @@ function runInventory(check) {
     var switched = []
     for (var g = 0; g < Settings.MENU_GROUPS.length; g++)
         switched = switched.concat(Settings.MENU_GROUPS[g].ids)
-    check("every switch in the Menus section is over a row the menu really builds",
-          switched.filter(function (id) { return built[id] === undefined }).join(","), "")
+    // Directive 38 added a second kind of switch: one that gates a whole surface a board draws rather
+    // than one listing row, so those are named in Settings.FEATURES and only they are exempt here.
+    var features = []
+    for (var f = 0; f < Settings.MENU_GROUPS.length; f++)
+        features = features.concat(Settings.MENU_GROUPS[f].features || [])
+    var rowSwitches = switched.filter(function (id) { return features.indexOf(id) < 0 })
+    check("every switch in the Menus section is over a row the menu really builds, or gates a surface",
+          rowSwitches.filter(function (id) { return built[id] === undefined }).join(","), "")
+    check("a feature switch still carries its own wording and mark",
+          features.filter(function (id) {
+              return !Settings.label(id) || Settings.GLYPHS[id] === undefined
+          }).join(","), "")
     check("and each switch carries that row's own wording, so the two cannot drift",
-          switched.filter(function (id) { return id !== "shelf" && Settings.label(id) !== built[id] }).join(",")
+          rowSwitches.filter(function (id) { return id !== "shelf" && Settings.label(id) !== built[id] }).join(",")
           + "|" + Settings.label("shelf") + "|" + built["shelf"], "|Enable shelf|Add to shelf")
     // A switch wears the mark of the row it governs, which is the only way a reader can pair the two.
     check("and each row wears the mark the menu draws for that action",
-          switched.concat(Settings.LOCKED).filter(function (id) {
+          rowSwitches.concat(Settings.LOCKED).filter(function (id) {
               var mine = Settings.GLYPHS[id] !== undefined ? Settings.GLYPHS[id] : Settings.MARKS[id]
               return mine === undefined || mine !== builtMark[id]
           }).join(","), "")
     // SettingsPlaces section 02 adds the listing Favorite action; SettingsMenus keeps its 20 switches and Menus' New folder has none.
-    var reachable = switched.concat(Settings.LOCKED).concat(["newFolder", "addFavourite"])
+    var reachable = rowSwitches.concat(Settings.LOCKED).concat(["newFolder", "addFavourite"])
     check("no other menu action is omitted from the board's switch inventory",
           Object.keys(built).filter(function (id) { return reachable.indexOf(id) < 0 }).join(","), "")
 }
@@ -96,7 +106,7 @@ function runMaster(check) {
     check("every heading reports the group it governs, and a group of one row has no master at all",
           groups.map(function (row) { return row.label + "|" + (row.master ? row.value + "|" + row.state : "no master") }).join(", "),
           "Basic file actions|6 of 6|all, Destructive|no master, Open and inspect|3 of 7|some, "
-          + "Extras|7 of 7|all, Shortcuts|no master, Always shown|no master")
+          + "Extras|8 of 8|all, Shortcuts|no master, Always shown|no master")
     var inspect = groups[2]
     check("a heading with a master is a focus stop and one without is not",
           Settings.focusable(inspect) + "|" + Settings.focusable(groups[1]), "true|false")

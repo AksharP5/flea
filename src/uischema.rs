@@ -37,7 +37,7 @@ pub const DEFAULTS: &str = r#"{
   },
   "keys": "default",
   "display": { "textSize": { "mode": "system" }, "hyprlandIcons": false },
-  "menu": { "hidden": ["delete", "openTerminal",
+  "menu": { "hidden": ["delete", "openTerminal", "placeMenu",
             "moveto", "copyto", "properties", "permissions", "copypath"] }
 }"#;
 
@@ -248,7 +248,7 @@ mod tests {
 
     // menu.hidden stores what is hidden, so an action added later is visible without a migration.
     #[test]
-    fn menu_hidden_holds_the_eight_shipped_ids_and_nothing_else() {
+    fn menu_hidden_holds_the_shipped_ids_and_nothing_else() {
         let d = defaults();
         let hidden: Vec<&str> = d
             .get("menu")
@@ -260,7 +260,9 @@ mod tests {
             .collect();
         assert_eq!(
             hidden,
-            ["delete", "openTerminal", "moveto", "copyto", "properties", "permissions", "copypath"]
+            // Directive 38: every feature this release adds ships with its own id hidden, so a fresh
+            // ui.json behaves as 0.2.1 did. placeMenu is the Places rows' own menu.
+            ["delete", "openTerminal", "placeMenu", "moveto", "copyto", "properties", "permissions", "copypath"]
         );
     }
 
