@@ -67,7 +67,7 @@ function lines(text) {
   var out = []
   var split = String(text || "").split("\n")
   for (var i = 0; i < split.length; i++) {
-    var line = split[i].replace("\r", "")
+    var line = split[i].replace(/\r$/, "")
     if (line.length > 0) {
       out.push(line)
     }

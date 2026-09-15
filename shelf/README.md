@@ -10,10 +10,10 @@ with it.
 
 ## What ships today
 
-Everything the boards draw except the drag out of the card, which is the unit after this one: the bar
-presence, the card the mark opens, the sizes it asks for row by row, the row's own remove, the tray of
-recent captures, the ways back in (the keybind, a cleared pile and the last five piles), the
-screen-edge rail you throw a drag at, the subset gesture, and the five actions.
+Everything the boards draw: the bar presence, the card the mark opens, the sizes it asks for row by
+row, the row's own remove, the tray of recent captures, the ways back in (the keybind, a cleared pile
+and the last five piles), the screen-edge rail you throw a drag at, the drag out of the card, the
+subset gesture, and the six actions.
 
 | Piece | What it is |
 |---|---|
@@ -24,13 +24,15 @@ screen-edge rail you throw a drag at, the subset gesture, and the five actions.
 | `ShelfCard.qml` | the card: the pile, the pins and the captures as one list of OEM panel rows |
 | `ShelfMenu.qml` | the card's own menu: the last five piles, and the way back to one |
 | `ShelfRail.qml` | the screen edge you throw a drag at, and the notch that says what is held |
-| `ShelfActions.qml` | the doing half: the five actions, what they say, and the rows a flyout offers |
+| `ShelfActions.qml` | the doing half: every action, what it says, and the rows a flyout offers |
 | `ShelfFlyout.qml` | one flyout, two verbs and the send: places and peers, numbered |
 | `ShelfRun.qml` | the transfer surface while an action runs, and its cancel |
 | `Run.js` | pure functions again: the running line, and the sentence each action lands with |
 | `ShelfActionButton.qml` | Ui/PanelActionButton's shape with a mark on the Omarchy cut as its ink |
 | `ShelfRow.qml` | one row of the card: its group's separator and header, then the row itself |
 | `ShelfGlyph.qml` | one mark on the Omarchy cut, the way Flea draws its own |
+| `ShelfCheck.qml` | the box a row is marked with, filled rather than tinted |
+| `ShelfTailscaleMark.qml` | Tailscale's own mark, because Send is Taildrop |
 | `FleaShelfMark.qml` | Flea's own mark, reproduced rather than recut |
 
 ## Requirements
@@ -56,7 +58,8 @@ decides whether the card has opened on the way.
 The card is an Omarchy panel, hosted the way every other panel is: a click outside it, a focus loss,
 `esc` or another panel opening closes it. It is one list of three sections, the pile, `Pinned` and
 `Screenshots & recordings`, each a one-line row with its mark, its name and its size, and the six
-actions as icon buttons under the last separator. A row whose file has a thumbnail in the
+actions as icon buttons under the last separator, one of which, Send, is absent on a box with no
+Tailscale. A row whose file has a thumbnail in the
 freedesktop cache draws it in the mark slot instead of the kind mark; the cache is Flea's own, asked
 for by path through `flea shelf thumb`, only for the rows the card is drawing and never while it is
 closed. A row is also the handle it is carried out by: press it and drag, and the drag carries the marked
@@ -100,20 +103,21 @@ carries, and `summon.json` the count the keybind writes. The plugin never writes
 | `tab` | jumps to the action buttons, and back; the arrows walk them and `enter` runs one |
 | `m` `c` | move or copy the chosen rows, or the whole pile, to a folder |
 | `a` | zip them into one archive, which lands on the shelf |
-| `t` | send them with Taildrop |
-| `p` | pins the cursor row, and unpins a pinned one |
+| `t` | send them with Taildrop, on a box that has it |
+| `p` | pins the chosen rows, or the cursor row, and unpins a pinned one |
 | `y` | yank the paths to the clipboard |
 | `1` to `9` | in a flyout, take that destination or that peer |
 | `shift + x` | clears the shelf, and it becomes the last pile |
-| `z` | brings the last pile back |
+| `z` | undo: brings the last pile back |
 | `1` to `5` | in the menu, takes that pile back |
 | right click | on the bar mark: brings back the last pile you cleared; on the card: its menu |
 
 While an action runs, the card is its transfer surface and `esc` cancels it rather than closing the
 card. Every file action is chosen-or-whole: with rows chosen it takes those, with none chosen it takes
-the pile. The card says which in its header and its footer while a subset is being chosen.
+the pile, and the card's own line says which while a subset is being chosen.
 
-The card's action strip draws its own keys beside every action; they run the actions with them.
+An action's tooltip names its key, and only while Flea's keyboard-hints setting is on: the strip
+draws no legend of its own, and this table is the map.
 
 The bind is a line in your own Hyprland config, not one this plugin writes. Add it to
 `~/.config/hypr/bindings.lua`:
@@ -134,7 +138,7 @@ omarchy plugin add https://github.com/thisisgm/flea-shelf.git --enable --yes
 
 ```bash
 omarchy plugin remove io.github.thisisgm.flea-shelf
-rm -rf ~/.local/state/omarchy/flea-shelf
+rm -rf "${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/flea-shelf"
 ```
 
 That directory is the pile itself and the drag tokens Flea mints for it, so removing it empties the

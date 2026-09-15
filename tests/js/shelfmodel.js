@@ -240,6 +240,8 @@ function run(check) {
   check("a destination is named by its leaf, because the flyout said the whole path",
         Run.destName("/home/gm/Work/drafts/"), "drafts")
   check("a listing is its non-empty lines, spaces and all", Run.lines("a\n\n b \n").join("|"), "a| b ")
+  check("only the line ending goes, so a path holding a carriage return keeps it",
+        Run.lines("one\r\ntw\ro\r\n").join("|"), "one|tw\ro")
 
   check("the tooltip says what is held, because the bar itself never draws a count",
           Shelf.tooltip(Shelf.empty()) + " / " + Shelf.tooltip(one) + " / " + Shelf.tooltip(mixed),
