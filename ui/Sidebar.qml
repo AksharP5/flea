@@ -41,6 +41,8 @@ Item {
         : [{ label: "Trash", path: "trash:///", group: "trash", kind: "trash", glyph: "trash", count: root.trashCount }]
     signal trashRequested()
 
+    // The saved place an Edit is rewriting, "" when none is; ui/js/Mounts.js editPlace sets it.
+    property string editingPlace: ""
     readonly property var networkEntries: root.placesState.showNetwork === false ? [] : mounts.entries
     // The poll rebinds its delegates in place, so a rename left standing would edit a different share.
     onNetworkEntriesChanged: root.cancelRename()
@@ -62,8 +64,6 @@ Item {
     signal opened(string path)
     signal networkOpened(string path, var origin)
     signal addRequested()
-    // The saved place an Edit is rewriting, "" when none is being edited; see editNetwork below.
-    property string editingPlace: ""
     signal message(string text, bool isError)
     signal forgetMessage(string text)
     // Bubbled straight from NetworkMounts; shell.qml opens ui/ShareBrowser.qml on this.
@@ -166,7 +166,6 @@ Item {
     }
     function cancelNetwork(requestId) { mounts.cancelLocation(requestId) }
 
-
     function networkResult() {
         return mounts.result
     }
@@ -180,7 +179,9 @@ Item {
     function openRailMenu(index, scenePosition) {
         root.cancelRename()
         var entry = root.entries[index]
-        if (!entry || !root.menu) return
+        if (!entry || !root.menu) {
+            return
+        }
         root.cursorIndex = index
         Mounts.railMenuFor(root, entry, scenePosition)
     }

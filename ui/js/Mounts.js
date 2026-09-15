@@ -157,9 +157,6 @@ function railMenu(entry) {
     return []
 }
 
-// What the rail's own right click opens: the release row above, then the two rows a saved place owns
-// whether or not anything mounted it, marked as a removal because forgetting a place trashes
-// nothing. ui/js/Eject.js reads railMenu and never this, so Ctrl+E still refuses an unmounted row.
 // A root-only remote mount covers its saved addressable paths; SMB shares remain path-specific.
 function addressMountCovers(liveUri, savedUri) {
     var live = normalize(liveUri)
@@ -168,6 +165,9 @@ function addressMountCovers(liveUri, savedUri) {
         && saved.length > live.length && saved.indexOf(live) === 0
 }
 
+// What the rail's own right click opens: the release row above, then the three rows a saved place
+// owns whether or not anything mounted it, the last marked as a removal because forgetting a place
+// trashes nothing. ui/js/Eject.js reads railMenu and never this, so Ctrl+E still refuses an unmounted row.
 function rowMenu(entry) {
     if (entry && entry.kind === "favourite") return [{ label: "Remove", action: "removeFavourite", glyph: "minus" }]
     var rows = railMenu(entry)
