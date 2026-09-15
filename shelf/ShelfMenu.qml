@@ -1,5 +1,6 @@
 import QtQuick
 import qs.Commons
+import qs.Ui
 import "Model.js" as Model
 
 // Summon rule 4: one shelf, plus the last five piles. The pointer route to a cleared pile is here, in
@@ -19,6 +20,16 @@ Item {
 
   signal chosen(int index)
   signal dismissed()
+
+  // Summon rule 4's keyboard route: the number beside a row takes that pile back.
+  function key(event) {
+    var picked = event.key - Qt.Key_1
+    if (picked < 0 || picked >= root.piles.length) {
+      return
+    }
+    root.chosen(picked)
+    event.accepted = true
+  }
 
   implicitHeight: column.implicitHeight
 
@@ -54,32 +65,11 @@ Item {
       }
     }
 
-    Item {
+    PanelSectionHeader {
       width: parent.width
-      height: root.stripHeight
-
-      Text {
-        anchors.verticalCenter: parent.verticalCenter
-        x: root.pad
-        text: "Recent piles"
-        color: root.muted
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.caption
-        font.capitalization: Font.AllUppercase
-        font.letterSpacing: Style.font.caption * 0.14
-        textFormat: Text.PlainText
-      }
-
-      Text {
-        anchors.verticalCenter: parent.verticalCenter
-        anchors.right: parent.right
-        anchors.rightMargin: root.pad
-        text: root.piles.length
-        color: root.muted
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.caption
-        textFormat: Text.PlainText
-      }
+      text: "RECENT PILES"
+      foreground: root.foreground
+      fontFamily: root.fontFamily
     }
 
     Repeater {
@@ -94,8 +84,7 @@ Item {
 
         Rectangle {
           anchors.fill: parent
-          color: Color.accent
-          opacity: root.hoveredIndex === row.index ? 0.14 : 0
+          color: root.hoveredIndex === row.index ? Style.hoverFill : "transparent"
         }
 
         Text {

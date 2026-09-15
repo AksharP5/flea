@@ -30,6 +30,8 @@ Panel {
   // Rule 15: the bar's injected palette, bound once here and passed down, so a bar with its own
   // colours stays coherent inside the card.
   readonly property color foreground: root.bar ? root.bar.foreground : Color.popups.text
+  // One grey for the whole panel, at the factor the OEM agents panel calls dim.
+  readonly property color muted: Qt.darker(root.foreground, 1.55)
   readonly property color urgentColor: root.bar ? root.bar.urgent : Color.urgent
   // The bar's own face, the way every OEM panel takes it: a card in Style.font.family beside panels
   // in the bar's family reads as a different application.
@@ -300,12 +302,7 @@ Panel {
           return
         }
         if (root.menu) {
-          var chosen = event.key - Qt.Key_1
-          if (chosen >= 0 && chosen < shelf.piles.length) {
-            shelf.restore(chosen)
-            root.menu = false
-            event.accepted = true
-          }
+          pileMenu.key(event)
           return
         }
         if (event.key === Qt.Key_X && (event.modifiers & Qt.ShiftModifier)) {
@@ -333,6 +330,7 @@ Panel {
           id: pileMenu
           visible: root.menu
           width: parent.width
+          muted: root.muted
           piles: shelf.piles
           foreground: root.foreground
           fontFamily: root.fontFamily
@@ -347,6 +345,7 @@ Panel {
           id: flyout
           visible: root.pending.length > 0
           width: parent.width
+          muted: root.muted
           title: Run.flyoutTitle(root.pending, Model.actionPaths(card.chosen, card.rows).length)
           rows: root.flyoutRows
           browsable: root.pending === "move" || root.pending === "copy"
@@ -372,6 +371,7 @@ Panel {
           sendable: doing.peerable
           // Actions: the buttons act on what the card is drawing, chosen or whole.
           foreground: root.foreground
+          muted: root.muted
           urgent: root.urgentColor
           fontFamily: root.fontFamily
           result: root.result

@@ -6,10 +6,8 @@ import qs.Ui
 import "Model.js" as Model
 import "Run.js" as Run
 
-// The card, Main board rules 1 to 12 as consolidated. It is an Omarchy panel and not a Flea window
-// in miniature: no hero and no header, the first row is the first thing on it, a PanelSeparator and
-// a PanelSectionHeader open each group, rows are one line in the shape panels/dropbox gives its
-// FileRow, and the six actions are icon buttons under the last separator.
+// The card, Main board rules 1 to 12 as consolidated: an Omarchy panel and not a Flea window in
+// miniature, so there is no hero and no header and the first row is the first thing on it.
 Item {
   id: root
 
@@ -51,6 +49,8 @@ Item {
 
   // Keys: which action the strip's own focus is on, and -1 while the rows have it.
   property int stripIndex: -1
+  // The list loses a row on a box with no Tailscale, so the focus cannot outlive the action it was on.
+  onActionsChanged: if (root.stripIndex >= root.actions.length) root.stripIndex = root.actions.length - 1
 
   // Rule 6: p moves a row from one group to another, so the cursor follows the row it was on rather
   // than the place that row used to be in, and a second p is an unpin instead of another pin.
@@ -149,6 +149,7 @@ Item {
 
   Drag.onDragFinished: {
     root.Drag.active = false
+    root.pressing = false
     root.dragMime = ({})
     root.carried(false)
   }
@@ -174,19 +175,18 @@ Item {
     if (control) {
       return
     }
+    // A card can sit with no cursor, and a key that acts on a row must not invent one.
+    var at = root.cursorIndex
     if (event.key === Qt.Key_J || event.key === Qt.Key_Down) {
       root.step(1, shift)
     } else if (event.key === Qt.Key_K || event.key === Qt.Key_Up) {
       root.step(-1, shift)
-    } else if (event.key === Qt.Key_V) {
-      root.chosen = Model.toggleChosen(root.chosen, items[Math.max(0, root.cursorIndex)].path)
-    } else if (event.key === Qt.Key_X && !shift) {
-      root.removeRequested(Math.max(0, root.cursorIndex))
-    } else if (event.key === Qt.Key_P) {
-      // Main rule 10: the same key pins a pile row and unpins a pinned one.
-      root.pinRequested(Math.max(0, root.cursorIndex))
-    } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-      root.openRequested(items[Math.max(0, root.cursorIndex)].path)
+    } else if (event.key === Qt.Key_V && at >= 0) {
+      root.chosen = Model.toggleChosen(root.chosen, items[at].path)
+    } else if (event.key === Qt.Key_X && !shift && at >= 0) {
+      root.removeRequested(at)
+    } else if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && at >= 0) {
+      root.openRequested(items[at].path)
     } else if (event.key === Qt.Key_Tab && root.stripShown) {
       root.stripIndex = 0
     } else if (root.actionFor(event.key).length > 0) {
@@ -247,13 +247,35 @@ Item {
     root.anchorIndex = index
   }
 
+  // The card is taller than its cap on any real pile, so a cursor the keyboard moved has to bring
+  // the view with it: nothing else scrolls this Flickable.
+  onCursorIndexChanged: root.showCursor()
+
+  function showCursor() {
+    var item = drawn.itemAt(root.cursorIndex)
+    if (!item || flick.height <= 0) {
+      return
+    }
+    var top = item.y
+    var bottom = top + item.height
+    var to = flick.contentY
+    if (top < to) {
+      to = top
+    } else if (bottom > to + flick.height) {
+      to = bottom - flick.height
+    }
+    flick.contentY = Math.max(0, Math.min(to, Math.max(0, flick.contentHeight - flick.height)))
+  }
+
   // j and k move the cursor; with shift they take everything they pass, which is the range gesture.
   function step(by, extending) {
     var items = root.rows
     if (items.length === 0) {
       return
     }
-    var was = root.cursorIndex < 0 ? (by > 0 ? -1 : items.length - 1) : root.cursorIndex
+    // No cursor yet: j starts above the first row and k starts below the last, so one press of
+    // either lands on the end it came from.
+    var was = root.cursorIndex < 0 ? (by > 0 ? -1 : items.length) : root.cursorIndex
     var now = Math.max(0, Math.min(items.length - 1, was + by))
     root.cursorIndex = now
     if (extending) {
@@ -337,6 +359,7 @@ Item {
       }
 
       Repeater {
+        id: drawn
         // While an action runs the body is the transfer surface, not the list: the card has one body.
         model: root.run.running ? [] : root.rows
 
@@ -362,7 +385,7 @@ Item {
         visible: text !== ""
         text: root.run.running ? Run.runFooter(root.run)
                                : root.error !== "" ? root.error : root.result
-        color: root.error !== "" ? root.urgent : root.foreground
+        color: !root.run.running && root.error !== "" ? root.urgent : root.foreground
         font.family: root.fontFamily
         font.pixelSize: Style.font.bodySmall
         elide: Text.ElideMiddle
