@@ -345,6 +345,33 @@ wait_for() {
   return 1
 }
 
+# ---------------------------------------------------------------- R0
+echo
+echo "== R0: with Settings up, no drag runs in the pane underneath it =="
+# Issue 120 (tgienger): a drag begun over the open panel moved files in the listing behind it. The
+# row's DragHandler carries CanTakeOverFromItems, so the panel's own ground MouseArea cannot stop it;
+# only the pane being disabled can. PR 124 (tcraid0) is the fix this case holds.
+r0_before=$(ipc total)
+printf 's1 payload\n' > "$HOMEDIR/s1.txt"
+expect_ipc total $((r0_before + 1))
+set -- $(screen_centre s1.txt); s1x=$1; s1y=$2
+set -- $(screen_centre aaa);    a1x=$1; a1y=$2
+native_key -M ctrl -k comma -m ctrl
+expect_ipc settingsOpen true
+warp "$s1x" "$s1y"; sleep 0.4
+press; sleep 0.3
+glide_to "$a1x" "$a1y"; sleep 0.5
+release; sleep 0.8
+check "a drag through the open panel moves nothing" \
+      "$([ -e "$HOMEDIR/aaa/s1.txt" ] && echo moved || echo clean)" "clean"
+check "and the file the pointer began on is where it was" \
+      "$([ -e "$HOMEDIR/s1.txt" ] && echo still-there || echo gone)" "still-there"
+check "the panel is still the surface that has the pointer" "$(ipc settingsOpen)" "true"
+native_key -k Escape
+expect_ipc settingsOpen false
+owned_path "$HOMEDIR/s1.txt"; rm -f "$HOMEDIR/s1.txt"
+expect_ipc total "$r0_before"
+
 # ---------------------------------------------------------------- R2
 echo
 echo "== R2: the drop lands where the pointer is, not one frame stale =="
