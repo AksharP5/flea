@@ -31,8 +31,12 @@ Item {
     readonly property var recentRow: [{
         path: Picker.RECENT, label: Picker.RECENT_LABEL, group: "favorite", kind: "favorite", glyph: "history"
     }]
-    readonly property var entries: (root.offerRecent ? root.recentRow : [])
+    readonly property var placeEntries: (root.offerRecent ? root.recentRow : [])
         .concat(Places.storedEntries(Flea.Favourites.records, root.home), Places.homeEntries(root.home, root.dirsText, Icons.sidebarGlyphFor))
+    // Directive 55, GM relaying a user's report: a dialog that cannot reach a disk or a share is a
+    // dialog that makes you type the path, so the chooser draws the window's own NETWORK and DEVICES
+    // groups from the same listings. Rows only: nothing here trashes, ejects or renames.
+    readonly property var entries: root.placeEntries.concat(network.entries, devices.entries, phones.entries)
 
     implicitWidth: Math.min(parent.width / 3, Theme.space(172))
     readonly property alias focusItem: rail
@@ -96,6 +100,22 @@ Item {
         if (!entry) return
         if (entry.error) { root.picker.say(entry.error, true); return }
         root.awaitingNetwork = false
+        // The three groups the rail draws below the places, routed the way ui/Sidebar.qml routes
+        // them: a phone mounts through the share leg, a volume mounts through its own.
+        if (entry.group === "device" && entry.kind === "phone") {
+            root.awaitingNetwork = true
+            network.openShare(entry.uri, entry.mounted, entry.label)
+            return
+        }
+        if (entry.group === "device") {
+            devices.activate(index - root.placeEntries.length - network.entries.length)
+            return
+        }
+        if (entry.group === "network") {
+            root.awaitingNetwork = true
+            network.activate(index - root.placeEntries.length)
+            return
+        }
         if (entry.path.indexOf("file://") === 0) {
             try {
                 var path = decodeURIComponent(entry.path.substring(7))
@@ -103,16 +123,15 @@ Item {
                 root.chosen(path)
             } catch (error) { root.picker.say("This favorite has an invalid local file URI.", true) }
         } else if (entry.path.indexOf("://") >= 0) {
-            network.active = true
             root.awaitingNetwork = true
-            network.item.openShare(entry.path, false, entry.label, false)
+            network.openShare(entry.path, false, entry.label, false)
         } else root.chosen(entry.path)
     }
-    function openChild(uri, label) { network.item.openChildShare(uri, label) }
-    function retry(requestId, uri, label, password) { root.awaitingNetwork = true; network.item.saveLocation(uri, label, password, requestId) }
+    function openChild(uri, label) { network.openChildShare(uri, label) }
+    function retry(requestId, uri, label, password) { root.awaitingNetwork = true; network.saveLocation(uri, label, password, requestId) }
     function cancelNetwork(requestId) {
         root.awaitingNetwork = false
-        if (network.item) network.item.cancelLocation(requestId)
+        network.cancelLocation(requestId)
     }
     Connections {
         target: root.picker
@@ -127,21 +146,31 @@ Item {
         }
         return out
     }
-    Loader {
+    // Standing, not loaded on demand: its own listing is what the NETWORK rows are, and the window
+    // pays the same five-second rhythm for them.
+    Flea.NetworkMounts {
         id: network
-        active: false
-        sourceComponent: Component {
-            Flea.NetworkMounts {
-                onCompleted: function(requestId, uri, success, reason) { root.networkCompleted(requestId, uri, success, reason) }
-                onOpened: function(path) { if (root.awaitingNetwork) root.chosen(path) }
-                onMessage: function(text, error) { root.picker.say(text, error) }
-                onRetryRequested: function(uri, label, password, reason, failed) {
-                    if (root.awaitingNetwork) root.picker.retryNetwork(uri, label, password, reason, failed)
-                }
-                onSharesListed: function(uri, label, names) {
-                    if (root.awaitingNetwork) root.picker.showShares(uri, label, names)
-                }
-            }
+        onCompleted: function(requestId, uri, success, reason) { root.networkCompleted(requestId, uri, success, reason) }
+        onOpened: function(path) { if (root.awaitingNetwork) root.chosen(path) }
+        onMessage: function(text, error) { root.picker.say(text, error) }
+        onRetryRequested: function(uri, label, password, reason, failed) {
+            if (root.awaitingNetwork) root.picker.retryNetwork(uri, label, password, reason, failed)
         }
+        onSharesListed: function(uri, label, names) {
+            if (root.awaitingNetwork) root.picker.showShares(uri, label, names)
+        }
+    }
+
+    Flea.DeviceMounts {
+        id: devices
+        onOpened: function (path) { root.chosen(path) }
+        onMessage: function (text, error) { root.picker.say(text, error) }
+    }
+
+    // The phone rows the window draws, read off the same gio listing; their mount is the share leg.
+    Flea.PhoneMounts {
+        id: phones
+        listingText: network.mountListing
+        onMessage: function (text, error) { root.picker.say(text, error) }
     }
 }
