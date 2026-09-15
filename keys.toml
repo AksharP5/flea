@@ -524,7 +524,7 @@ move = ["cursorDown", "cursorUp", "cursorFirst", "cursorLast", "pageDown", "page
         "parent", "pageForward", "historyBack", "historyForward", "focusNext", "focusPreview",
         "tabNew", "tabClose", "tabNext", "tabPrevious", "windowNew", "escape"]
 look = ["viewList", "viewColumns", "viewGrid", "togglePreview", "loadPreview", "preview",
-        "toggleHidden", "zoomIn", "zoomOut", "expand", "textSizeUp", "textSizeDown",
+        "toggleHidden", "zoomIn", "zoomOut", "expand", "mute", "textSizeUp", "textSizeDown",
         "textSizeReset", "keymapSheet"]
 find = ["filter", "search", "reveal", "sortNext", "sortReverse", "pathBar"]
 change = ["copy", "cut", "paste", "movePaste", "duplicate", "rename", "trash",
@@ -1493,6 +1493,18 @@ key = "p"
 keys = "p"
 action = "playPause"
 label = "playPause"
+frontend = "all"
+context = "media"
+
+# MediaMute rule 4: m mutes while a media preview is open, and keeps its listing meaning everywhere
+# else, which the media context is what makes possible.
+[[preset]]
+name = "all"
+mods = "text"
+key = "m"
+keys = "m"
+action = "mute"
+label = "mute"
 frontend = "all"
 context = "media"
 

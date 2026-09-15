@@ -1,5 +1,6 @@
 module flea
 singleton Theme 1.0 Theme.qml
+singleton MediaSound 1.0 MediaSound.qml
 singleton ViewState 1.0 ViewState.qml
 Backend 1.0 Backend.qml
 CheckBox 1.0 CheckBox.qml

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Drives the real Quickshell window with omarchy-drive and asserts through the read-only IPC seam.
-# Usage: ./tests/ui.sh [cursor|terminal|open|rows|click|ctrlclick|viewrestart|dd|sortrestart|editplace|menu|hidden|selection|select|colour|lifted|icons|thumbs|hashcache|stale|nosweep|oem|header|overflow|focus|preview|network|netmark|networktimeout|networklive|gvfs|sharebrowser|unmount|phones|eject|rename|renamelife|taildrop|grid|columns|operations|tabs|openterminal|renderer|settings ...]; networklive is opt-in.
+# Usage: ./tests/ui.sh [cursor|terminal|open|rows|click|ctrlclick|viewrestart|dd|sortrestart|editplace|mute|menu|hidden|selection|select|colour|lifted|icons|thumbs|hashcache|stale|nosweep|oem|header|overflow|focus|preview|network|netmark|networktimeout|networklive|gvfs|sharebrowser|unmount|phones|eject|rename|renamelife|taildrop|grid|columns|operations|tabs|openterminal|renderer|settings ...]; networklive is opt-in.
 set -u
 set -o pipefail
 # Hard rule 9's guard, which owns FIXTURE_ROOT and every create and delete this suite makes.
@@ -1901,6 +1901,79 @@ case_sortrestart() {
     [[ "$(ipc rowAt 0)" == "b.txt|"* && "$(ipc rowAt 1)" == "c.txt|"* && "$(ipc rowAt 2)" == "a.txt|"* ]] \
         || fail "sortrestart: the restored listing reads $(ipc rowAt 0) $(ipc rowAt 1) $(ipc rowAt 2)"
     printf 'SORTRESTART mark=%s rows=%s %s %s\n' "$mark" "$(ipc rowAt 0)" "$(ipc rowAt 1)" "$(ipc rowAt 2)"
+    kill_flea
+}
+
+# MediaMute board: one mark at the strip's right end says the state by its glyph, m flips it while a
+# media preview is open, the mark's own click does the same, and neither pauses the player.
+case_mute() {
+    command -v ffmpeg >/dev/null || fail "ffmpeg is missing, so the audio fixture cannot be built"
+    local dir="$fixture_root/mute"
+    sandbox_scratch "$dir"
+    # Audio, not video: the strip is permanent on an audio preview, so nothing has to be revealed.
+    ffmpeg -y -f lavfi -i "sine=frequency=440:duration=20" "$dir/tone.wav" >/dev/null 2>&1
+    [[ -s "$dir/tone.wav" ]] || fail "mute: ffmpeg produced no tone.wav"
+
+    launch "$dir"
+    wait_listing 1
+    key -k space >/dev/null
+    for _attempt in $(seq 1 60); do
+        [[ "$(ipc previewOpen)" == "true" ]] && break
+        sleep 0.25
+    done
+    [[ "$(ipc previewOpen)" == "true" && "$(ipc previewKind)" == "audio" ]] \
+        || fail "mute: the preview is $(ipc previewKind), open=$(ipc previewOpen)"
+    local strip
+    strip=$(ipc previewStrip) || fail "mute: the strip has no state"
+    [[ "$(jq -r .visible <<< "$strip")" == "true" ]] || fail "mute: an audio preview drew no strip"
+    [[ "$(jq -r .muted <<< "$strip")" == "false" ]] || fail "mute: the session opened muted"
+
+    echo "-- m mutes, and the player keeps going --"
+    local before after
+    before=$(ipc previewPosition)
+    key m >/dev/null
+    for _attempt in $(seq 1 40); do
+        [[ "$(ipc previewStrip | jq -r .muted)" == "true" ]] && break
+        sleep 0.25
+    done
+    [[ "$(ipc previewStrip | jq -r .muted)" == "true" ]] || fail "mute: m did not mute"
+    [[ "$(ipc previewState)" == "playing" ]] || fail "mute: m stopped the player, state is $(ipc previewState)"
+    sleep 2
+    after=$(ipc previewPosition)
+    (( after > before )) || fail "mute: the clock stopped at $after, so mute paused the player"
+    printf 'MUTE position %s then %s while muted\n' "$before" "$after"
+
+    echo "-- and the mark's own click flips it back --"
+    local wx wy cx cy
+    read -r wx wy _ _ < <(window_box) || fail "mute: native window coordinates unavailable"
+    read -r cx cy <<< "$(ipc previewStrip | jq -r .mute)"
+    [[ -n "$cy" ]] || fail "mute: the mark has no centre"
+    omarchy-drive click "$((wx + cx))" "$((wy + cy))" left >/dev/null || fail "mute: could not click the mark"
+    for _attempt in $(seq 1 40); do
+        [[ "$(ipc previewStrip | jq -r .muted)" == "false" ]] && break
+        sleep 0.25
+    done
+    [[ "$(ipc previewStrip | jq -r .muted)" == "false" ]] || fail "mute: the mark's click did not unmute"
+    [[ "$(ipc previewState)" == "playing" ]] || fail "mute: the click stopped the player"
+
+    echo "-- the flag is the session's, so it survives the preview that set it --"
+    key m >/dev/null
+    for _attempt in $(seq 1 40); do
+        [[ "$(ipc previewStrip | jq -r .muted)" == "true" ]] && break
+        sleep 0.25
+    done
+    key -k Escape >/dev/null
+    settle
+    [[ "$(ipc previewOpen)" == "false" ]] || fail "mute: escape left the preview open"
+    key -k space >/dev/null
+    for _attempt in $(seq 1 60); do
+        [[ "$(ipc previewOpen)" == "true" ]] && break
+        sleep 0.25
+    done
+    [[ "$(ipc previewStrip | jq -r .muted)" == "true" ]] \
+        || fail "mute: the next preview forgot the session's own flag"
+    key -k Escape >/dev/null
+    settle
     kill_flea
 }
 
@@ -3880,7 +3953,7 @@ PYEOF
     [[ "$(ipc previewKind)" == "video" ]] || fail "preview: clip.mp4 classified as $(ipc previewKind), not video"
     wait_preview_state playing
     shot preview-video
-    [[ "$(ipc previewStripVisible)" == "true" ]] \
+    [[ "$(ipc previewStrip | jq -r .visible)" == "true" ]] \
         || fail "preview: the strip is not visible right after opening the video preview"
 
     # Fix round 1: the reviewer's finding was that PanelSlider's own MouseArea swallows pointer
@@ -3913,10 +3986,10 @@ PYEOF
     # the "still eventually hides" check below meaningless; moving off the window stops that.
     omarchy-drive move 5 5 >/dev/null
     while (( SECONDS < 6 )); do sleep 0.2; done
-    [[ "$(ipc previewStripVisible)" == "true" ]] \
+    [[ "$(ipc previewStrip | jq -r .visible)" == "true" ]] \
         || fail "preview: the strip hid before the slider interaction's own stripHideMs window expired"
     while (( SECONDS < interact_at + 5 )); do sleep 0.2; done
-    [[ "$(ipc previewStripVisible)" == "false" ]] \
+    [[ "$(ipc previewStrip | jq -r .visible)" == "false" ]] \
         || fail "preview: the strip never auto-hid once the slider interaction's own window expired"
 
     key -k Escape >/dev/null
@@ -8836,7 +8909,7 @@ case_previewviews() {
 . "$repo/tests/ui-convert-design.sh"
 
 declare -a wanted=("$@")
-[[ ${#wanted[@]} -eq 0 ]] && wanted=(cursor scroll terminal open rows click ctrlclick viewrestart dd sortrestart editplace menu background hidden selection watch select colour lifted icons thumbs hashcache stale nosweep oem header overflow focus preview pdffocus network netmark networkauth networktimeout gvfs sharebrowser unmount phones eject rename renamelife taildrop providers grid columns operations tabs openterminal renderer settings clickthrough wheelunder overlays views formats previewviews hangshare openwithdesign)
+[[ ${#wanted[@]} -eq 0 ]] && wanted=(cursor scroll terminal open rows click ctrlclick viewrestart dd sortrestart editplace mute menu background hidden selection watch select colour lifted icons thumbs hashcache stale nosweep oem header overflow focus preview pdffocus network netmark networkauth networktimeout gvfs sharebrowser unmount phones eject rename renamelife taildrop providers grid columns operations tabs openterminal renderer settings clickthrough wheelunder overlays views formats previewviews hangshare openwithdesign)
 
 : > "$run_log"
 : > "$flea_log"

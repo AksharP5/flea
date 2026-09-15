@@ -155,6 +155,21 @@ function run(check) {
             if (sheet[r].keys.split(" / ").length > 2) identifierLabel = "too many spellings: " + sheet[r].keys
         }
     }
+    // MediaMute rule 4: the sheet lists the preview's own mute key once per preset, under Look,
+    // while the listing goes on advertising m as its menu key.
+    var muteRows = 0, muteCap = "", menuStillM = true
+    for (var m = 0; m < Keymap.PRESETS.length; m++) {
+        var preset = Keymap.PRESETS[m], listed = Keymap.sheetFor(preset, "gui")
+        for (var q = 0; q < listed.length; q++)
+            if (listed[q].action === "mute") { muteRows++; muteCap = listed[q].keys }
+        if (Keymap.lookupFor(preset, 0, "m", 0, "listing", "gui") !== "menu") menuStillM = false
+        if (Keymap.lookupFor(preset, 0, "m", 0, "media", "gui") !== "mute") menuStillM = false
+    }
+    check("every preset lists mute once", muteRows, Keymap.PRESETS.length)
+    check("and lists it under its own key", muteCap, "m")
+    check("while m still opens the menu in the listing and mutes in a media preview", menuStillM, true)
+    check("the sheet group that claims it is Look", Keymap.SHEET_GROUPS.look.indexOf("mute") >= 0, true)
+
     check("no cap in any preset outgrows its half of the card", widestCap <= 18, true)
     check("no row prints an action id where its wording belongs", identifierLabel, "")
     check("pointer contract remains populated", Keymap.POINTER.length > 10, true)

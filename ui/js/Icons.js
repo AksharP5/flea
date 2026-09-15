@@ -166,6 +166,10 @@ var PATHS = {
     // The background menu's Sort by row, Menus.html's own geometry: three rules shortening to the
     // right of a bare down arrow. IconSets.html names this mark when it caps the corner radius.
     "sort": "M11 5h10 M11 9h7 M11 13h4 M7 5v14 M7 19l-3-3 M7 19l3-3",
+    // MediaMute rule 2: lucide's speaker polygon is already hard-cornered, and the two waves are
+    // genuine arcs that stay arcs under cut rule 4; the cross is two lines.
+    "volume": "M11 5L6 9H2v6h4l5 4z M15.5 8.5a5 5 0 0 1 0 7 M19 5a10 10 0 0 1 0 14",
+    "volume-x": "M11 5L6 9H2v6h4l5 4z M22 9l-6 6 M16 9l6 6",
     // The three basic clipboard rows the context menu grew with its visibility settings. Lucide's
     // scissors and clipboard both carry arcs; these are the cut's own square handles and square tray.
     "scissors": "M5 3l14 14 M19 3L5 17 M2 17h5v5H2z M17 17h5v5h-5z",

@@ -70,7 +70,8 @@ Item {
         id: player
         source: root.path === "" ? "" : Format.fileUri(root.path)
         autoPlay: root.autoStart
-        audioOutput: AudioOutput {}
+        // MediaMute rule 5: mute silences without pausing, so the clock and the handle keep moving.
+        audioOutput: AudioOutput { muted: Flea.MediaSound.muted }
         videoOutput: video
     }
 

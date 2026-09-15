@@ -72,6 +72,8 @@ function act(action, root) {
     case "zoomOut": root.preview.zoomBy(-1); return
     case "zoomIn": root.preview.zoomBy(1); return
     case "expand": root.preview.toggleExpand(); return
+    // MediaMute rule 5: the flag is the preview's to flip, and it silences without pausing.
+    case "mute": root.preview.toggleMute(); return
     }
 }
 

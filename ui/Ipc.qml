@@ -398,7 +398,7 @@ QtObject {
         function previewPosition(): int { return root.pane.preview.position }
         function previewDuration(): int { return root.pane.preview.duration }
         // Fix round 1: what the strip actually draws, not a re-derived guess at its visible: expression.
-        function previewStripVisible(): bool { return root.pane.preview.stripVisible }
+        function previewStrip(): string { return JSON.stringify({ visible: root.pane.preview.stripVisible, muted: root.pane.preview.muted, mute: root.fleaWindow.centreOf(root.pane.preview.muteMark) }) }
         // A 0.25 zoom step and an expand flag are not legible off a screenshot, so the seam is the
         // only honest answer for either; "" means no PDF is loaded, which is not zoom 1 or false.
         function previewPdfPage(): int { var p = root.pane.preview.pdfItem; return p ? p.page : -1 }

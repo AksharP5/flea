@@ -49,6 +49,9 @@ Item {
     readonly property var pdfItem: pdfLoader.item
     // What the strip actually draws: shell.qml's IPC reads this rather than re-deriving the visible: expression.
     readonly property alias stripVisible: mediaStrip.visible
+    // The strip's own mute mark and the flag it draws from, so a test reads and clicks what is there.
+    readonly property var muteMark: mediaStrip.muteItem
+    readonly property bool muted: Flea.MediaSound.muted
     // fleaWindow.itemRect needs the real Item, the same seam rowCentre already reads through pane.
     readonly property var seekSlider: mediaStrip.seekItem
     readonly property string status: {
@@ -88,6 +91,9 @@ Item {
         if (root.isMedia && mediaLoader.item)
             mediaLoader.item.togglePlay()
     }
+
+    // MediaMute rule 3: one session flag, so the column's strip and this one always agree.
+    function toggleMute() { if (root.isMedia) Flea.MediaSound.toggle() }
 
     // Absolute seek in ms, clamped by PreviewMedia's own seekTo; the slider's onReleased calls this directly.
     function seekTo(ms) {
