@@ -4,6 +4,7 @@ use crate::captures;
 use crate::shelf::{now_ms, size_of, Shelf};
 use crate::shelfops;
 use crate::shelfthumb;
+use crate::shelfzip;
 use crate::summon;
 use std::os::unix::process::CommandExt;
 use std::process::{Command, Stdio};
@@ -23,7 +24,7 @@ pub fn command(args: &[String]) -> i32 {
         Some("move") => shelfops::transfer(true, &args[3..]),
         Some("copy") => shelfops::transfer(false, &args[3..]),
         Some("cancel") => shelfops::cancel(),
-        Some("zip") => shelfops::zip(&args[3..]),
+        Some("zip") => shelfzip::zip(&args[3..]),
         Some("paths") => shelfops::paths(&args[3..]),
         Some("places") => crate::shelfplaces::command(),
         Some("choose") => crate::shelfplaces::choose(&args[3..]),

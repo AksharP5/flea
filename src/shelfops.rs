@@ -1,8 +1,6 @@
 // The shelf's own file actions, Actions rule 1: every one is a `flea shelf` call, and they run the
 // same Rust transfer engine, conflict handling, undo and trash the pane runs. Rule 2: no new file
 // operation exists here, because one the pane cannot do would be a feature in the wrong place.
-use crate::backend::archive::Formats;
-use crate::backend::archiveops::compress;
 use crate::backend::opsreq::{run_transfer_checked, transferdone_line, transferitem_line,
                              transferprogress_line, transferstarted_line, usable_dest, OpMsg};
 use crate::backend::proto::error_line;
@@ -33,7 +31,6 @@ pub fn transfer(moving: bool, rest: &[String]) -> i32 {
         }
     };
     let dest_name = dest.clone();
-    let dest_dir = dest.clone();
     let dest = match usable_dest(dest) {
         Ok(dest) => dest,
         Err(e) => {
@@ -48,8 +45,15 @@ pub fn transfer(moving: bool, rest: &[String]) -> i32 {
             return 2;
         }
     };
+    let landing = dest.clone();
     let cancel = Arc::new(AtomicBool::new(false));
-    let marker = cancel_file();
+    let marker = match cancel_file() {
+        Ok(marker) => marker,
+        Err(e) => {
+            eprintln!("flea: {}", e);
+            return 2;
+        }
+    };
     let _ = std::fs::remove_file(&marker);
     watch_cancel(&marker, &cancel);
     println!("{}", transferstarted_line(0, paths.len(), moving));
@@ -59,8 +63,13 @@ pub fn transfer(moving: bool, rest: &[String]) -> i32 {
         let cancel = Arc::clone(&cancel);
         thread::spawn(move || run_transfer_checked(0, moving, paths, dest, cancel, tx, None, None))
     };
-    let (moved, failed) = report(rx, &watched, moving);
-    let _ = engine.join();
+    let (moved, mut failed) = report(rx, &watched, moving);
+    // A panicking engine reports no item at all, so joining it is the only thing that can tell a
+    // clean run from one that died before it started.
+    if engine.join().is_err() {
+        eprintln!("flea: the transfer engine stopped before it finished");
+        failed += 1;
+    }
     cancel.store(true, Ordering::Relaxed);
     let _ = std::fs::remove_file(&marker);
     // Main rule 10: a pinned row survives its own move, so its entry follows the file to the new
@@ -68,26 +77,33 @@ pub fn transfer(moving: bool, rest: &[String]) -> i32 {
     let pinned = shelf.pinned_among(&moved);
     let followed: Vec<(String, String)> = pinned
         .iter()
-        .map(|from| (from.clone(), moved_to(&dest_dir, from)))
+        .filter_map(|from| landed(&landing, from).map(|to| (from.clone(), to)))
         .collect();
     // Rule 4: a move empties what it moved and nothing else; a copy leaves the pile exactly as it was.
+    let mut kept = true;
     if let Err(e) = shelf.settle(&moved) {
         eprintln!("flea: the shelf kept its references ({})", e);
+        kept = false;
     }
     if let Err(e) = shelf.repoint(&followed) {
         eprintln!("flea: a pin stayed on the old path ({})", e);
+        kept = false;
     }
     if let Err(e) = shelfplaces::remember(&dest_name) {
         eprintln!("flea: the destination was not remembered ({})", e);
     }
-    i32::from(failed > 0)
+    i32::from(failed > 0 || !kept)
 }
 
-// Where a moved file landed: the destination directory and the name it went in with, which is what
-// a pin has to follow. A rename on collision is the engine's own and is not reported per item.
-fn moved_to(dest: &str, from: &str) -> String {
-    let name = Path::new(from).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-    Path::new(dest).join(name).to_string_lossy().to_string()
+// Where a moved file landed, and None when nothing of that name is there: the engine renames on a
+// collision and says so to nobody, so a pin follows only a path this can see for itself.
+fn landed(dest: &Path, from: &str) -> Option<String> {
+    let name = Path::new(from).file_name()?;
+    let to = dest.join(name);
+    if to.symlink_metadata().is_err() {
+        return None;
+    }
+    Some(to.to_string_lossy().to_string())
 }
 
 // Every line the pane's own transfer prints, in the same vocabulary, so the card reads one protocol.
@@ -118,118 +134,6 @@ fn report(rx: std::sync::mpsc::Receiver<OpMsg>, paths: &[String], moving: bool) 
     (moved, failed)
 }
 
-// flea shelf zip <date> <path>...: the four become one, and the archive is on the shelf rather than
-// written to a folder the operator then has to find. A pile spans folders, which is exactly the case
-// the pane's own compress refuses, so the names are taken relative to their own common ancestor.
-pub fn zip(rest: &[String]) -> i32 {
-    let (date, paths) = match rest.split_first() {
-        Some((date, paths)) if !paths.is_empty() => (date.as_str(), paths.to_vec()),
-        _ => {
-            eprintln!("flea: shelf zip takes today's date, then the paths");
-            return 2;
-        }
-    };
-    if !date.chars().all(|c| c.is_ascii_digit() || c == '-') || date.is_empty() {
-        eprintln!("flea: shelf zip takes a date, which is digits and dashes");
-        return 2;
-    }
-    let shelf = match Shelf::user() {
-        Ok(shelf) => shelf,
-        Err(e) => {
-            eprintln!("flea: {}", e);
-            return 2;
-        }
-    };
-    let (parent, names) = match relative_to_ancestor(&paths) {
-        Some(split) => split,
-        None => {
-            eprintln!("flea: those paths have no directory in common to archive them from");
-            return 2;
-        }
-    };
-    let dir = archives_dir();
-    if let Err(e) = uistore::make_dir(&dir) {
-        eprintln!("flea: {}", e);
-        return 2;
-    }
-    let dest = free_name(&dir, date);
-    // The archive tool stages beside its sources and renames the result into place, so the archive is
-    // written there first and relocated after: a pile on another filesystem cannot be renamed home.
-    let staged = parent.join(format!(".{}", dest.file_name().unwrap_or_default().to_string_lossy()));
-    let _ = std::fs::remove_file(&staged);
-    if let Err(e) = compress(&Formats::probe(), &parent, &names, "zip", &staged) {
-        println!("{}", error_line(&e));
-        return 2;
-    }
-    if let Err(e) = relocate(&staged, &dest) {
-        eprintln!("flea: {}", e);
-        let _ = std::fs::remove_file(&staged);
-        return 2;
-    }
-    // Rule 4: a zip replaces the ones it zipped with the one archive, so the pile says what happened.
-    if let Err(e) = shelf.settle(&paths) {
-        eprintln!("flea: the shelf kept its references ({})", e);
-        return 2;
-    }
-    let archive = dest.to_string_lossy().to_string();
-    if let Err(e) = shelf.add(&[archive.clone()]) {
-        eprintln!("flea: {}", e);
-        return 2;
-    }
-    println!("{}", archive);
-    0
-}
-
-// A rename where the two are on one filesystem, and a copy where they are not, which is the case a
-// pile gathered from /tmp or a mount produces.
-fn relocate(from: &Path, to: &Path) -> Result<(), String> {
-    if std::fs::rename(from, to).is_ok() {
-        return Ok(());
-    }
-    std::fs::copy(from, to).map_err(|e| format!("the archive could not be put on the shelf ({:?})", e.kind()))?;
-    std::fs::remove_file(from).map_err(|e| format!("the staged archive stayed behind ({:?})", e.kind()))
-}
-
-// shelf-2026-09-12.zip, and the second one that day is -2, because a name that silently replaced an
-// archive would lose a pile nobody can get back.
-fn free_name(dir: &std::path::Path, date: &str) -> PathBuf {
-    let first = dir.join(format!("shelf-{}.zip", date));
-    if first.symlink_metadata().is_err() {
-        return first;
-    }
-    for n in 2..100 {
-        let next = dir.join(format!("shelf-{}-{}.zip", date, n));
-        if next.symlink_metadata().is_err() {
-            return next;
-        }
-    }
-    first
-}
-
-fn archives_dir() -> PathBuf {
-    uistore::state_home().unwrap_or_else(|_| PathBuf::from("/tmp")).join(DIR).join("archives")
-}
-
-// The deepest directory every path is under, and each path spelled from it, which is what an archive
-// of a pile has to carry so two files of the same name from two folders stay two files.
-pub fn relative_to_ancestor(paths: &[String]) -> Option<(PathBuf, Vec<String>)> {
-    let first = Path::new(paths.first()?).parent()?.to_path_buf();
-    let mut ancestor = first;
-    for path in paths.iter().skip(1) {
-        let parent = Path::new(path).parent()?;
-        while !parent.starts_with(&ancestor) {
-            ancestor = ancestor.parent()?.to_path_buf();
-        }
-    }
-    let mut names = Vec::new();
-    for path in paths {
-        names.push(Path::new(path).strip_prefix(&ancestor).ok()?.to_string_lossy().to_string());
-    }
-    Some((ancestor, names))
-}
-
-// flea shelf paths <path>...: newline joined absolute paths, the one thing a terminal-first operator
-// actually wants from a pile. The card puts them on the clipboard, because a clipboard is a display.
 pub fn paths(rest: &[String]) -> i32 {
     for path in rest {
         println!("{}", path);
@@ -277,9 +181,13 @@ pub fn peers() -> i32 {
         .stdin(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .output();
-    let Ok(out) = out else { return 0 };
+    let Ok(out) = out else {
+        eprintln!("flea: this box has no tailscale to ask for peers");
+        return 2;
+    };
     if !out.status.success() {
-        return 0;
+        eprintln!("flea: tailscale would not answer with its status");
+        return 2;
     }
     for peer in peer_names(&String::from_utf8_lossy(&out.stdout)) {
         println!("{}", peer);
@@ -307,7 +215,13 @@ pub fn peer_names(status: &str) -> Vec<String> {
 
 // flea shelf cancel: esc in the card while an action runs, which the engine reads as its own cancel.
 pub fn cancel() -> i32 {
-    let marker = cancel_file();
+    let marker = match cancel_file() {
+        Ok(marker) => marker,
+        Err(e) => {
+            eprintln!("flea: {}", e);
+            return 2;
+        }
+    };
     let dir = match marker.parent() {
         Some(dir) => dir,
         None => return 2,
@@ -339,9 +253,8 @@ fn watch_cancel(marker: &Path, cancel: &Arc<AtomicBool>) {
     });
 }
 
-fn cancel_file() -> PathBuf {
-    let home = uistore::state_home().unwrap_or_else(|_| PathBuf::from("/tmp"));
-    home.join(DIR).join(CANCEL)
+fn cancel_file() -> Result<PathBuf, String> {
+    Ok(uistore::state_home()?.join(DIR).join(CANCEL))
 }
 
 #[cfg(test)]

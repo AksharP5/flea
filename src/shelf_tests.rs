@@ -12,57 +12,6 @@ fn file(dir: &TestDir, name: &str) -> String {
 }
 
 #[test]
-fn a_token_names_the_entries_and_the_intent_the_lift_fixed() {
-    let (dir, shelf) = shelf("shelfdrag");
-    let one = file(&dir, "one.txt");
-    let token = shelf.drag_begin(true, &[one.clone()], 1_000).unwrap();
-    assert_eq!(token.len(), TOKEN_BYTES * 2, "sixteen bytes of randomness, hex encoded");
-    let redeemed = shelf.redeem(&token, 1_500).unwrap();
-    assert!(redeemed.moving, "a plain shelf drag asks for a move");
-    assert_eq!(redeemed.paths, vec![one]);
-}
-
-#[test]
-fn a_token_is_spent_the_first_time_it_is_redeemed() {
-    let (dir, shelf) = shelf("shelfonce");
-    let token = shelf.drag_begin(false, &[file(&dir, "one.txt")], 1_000).unwrap();
-    assert!(shelf.redeem(&token, 1_100).is_ok());
-    let again = shelf.redeem(&token, 1_200);
-    assert!(again.is_err(), "a replayed token finds nothing: {:?}", again.map(|r| r.paths));
-}
-
-#[test]
-fn a_token_older_than_a_gesture_is_refused() {
-    let (dir, shelf) = shelf("shelfstale");
-    let token = shelf.drag_begin(true, &[file(&dir, "one.txt")], 1_000).unwrap();
-    assert!(shelf.redeem(&token, 1_000 + TOKEN_LIFE_MS).is_err(), "a drag does not outlive its own gesture");
-}
-
-#[test]
-fn a_token_nobody_minted_is_refused() {
-    let (_dir, shelf) = shelf("shelfforged");
-    assert!(shelf.redeem("deadbeefdeadbeefdeadbeefdeadbeef", 1_000).is_err());
-}
-
-#[test]
-fn an_entry_that_is_not_the_file_it_was_is_refused() {
-    let (dir, shelf) = shelf("shelfswapped");
-    let one = file(&dir, "one.txt");
-    let token = shelf.drag_begin(true, &[one.clone()], 1_000).unwrap();
-    // The same name, another inode: what the shelf was holding is gone and the drag is not it.
-    std::fs::remove_file(&one).unwrap();
-    std::fs::write(&one, "another file entirely").unwrap();
-    let refused = shelf.redeem(&token, 1_100);
-    assert!(refused.is_err(), "a path that now names another inode is not what was lifted");
-}
-
-#[test]
-fn a_drag_of_nothing_is_refused_before_a_token_exists() {
-    let (_dir, shelf) = shelf("shelfempty");
-    assert!(shelf.drag_begin(true, &[], 1_000).is_err());
-}
-
-#[test]
 fn only_what_moved_leaves_the_pile() {
     let (dir, shelf) = shelf("shelfsettle");
     let one = file(&dir, "one.txt");
@@ -202,3 +151,31 @@ fn order_ignores_a_path_that_is_not_pinned_and_a_place_that_is_not_there() {
     shelf.order(&one, 9).unwrap();
     assert_eq!(shelf.pile().len(), 1);
 }
+
+// The advloop's Rust pass: a pile that cannot be parsed is not an empty one, and writing over it
+// would take every row with it.
+#[test]
+fn a_pile_that_cannot_be_parsed_is_never_written_over() {
+    let (dir, shelf) = shelf("shelfbadjson");
+    let one = file(&dir, "one.txt");
+    shelf.add(&[one.clone()]).unwrap();
+    std::fs::write(shelf.pile_file(), b"{\"items\": [ truncated").unwrap();
+    let refused = shelf.add(&[file(&dir, "two.txt")]);
+    assert!(refused.is_err(), "a pile this cannot read is not an empty pile");
+    let kept = std::fs::read_to_string(shelf.pile_file()).unwrap();
+    assert!(kept.contains("truncated"), "the operator's own file stayed exactly as it was");
+}
+
+// A pinned row whose file was deleted outside Flea is exactly the row that has to be unpinnable.
+#[test]
+fn a_pin_can_be_taken_off_a_file_that_is_gone() {
+    let (dir, shelf) = shelf("shelfghostpin");
+    let one = file(&dir, "one.txt");
+    shelf.pin(&[one.clone()], true).unwrap();
+    std::fs::remove_file(&one).unwrap();
+    shelf.pin(&[one.clone()], false).unwrap();
+    let pinned = shelf.pinned_among(&[one]);
+    assert!(pinned.is_empty(), "the pin came off, {:?}", pinned);
+}
+
+// The token records the path the pile spells, so a relative argument still names the same row.
