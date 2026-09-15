@@ -84,25 +84,45 @@ fn run_and_settle(
             eprintln!("flea: the shelf kept its references ({})", e);
         }
     });
+    let _terminal = Terminal { tx: done_tx, held: Arc::clone(&held), id, total, moving };
     run_transfer_checked(id, moving, paths, dest, cancel, mine, None, None);
     if forward.join().is_err() {
         eprintln!("flea: the shelf's own bookkeeping stopped before it finished");
     }
-    let done = match held.lock() {
-        Ok(mut slot) => slot.take(),
-        Err(poisoned) => poisoned.into_inner().take(),
-    };
-    // One terminal message, always: the engine's own when it sent one, and otherwise a failure for
-    // everything it was given, because a pane that is never told will wait on this transfer forever.
-    let _ = done_tx.send(done.unwrap_or_else(|| OpMsg::TransferDone {
-        id,
-        ok: 0,
-        failed: total,
-        skipped: 0,
-        cancelled: false,
-        entry: Entry { op: if moving { "move".to_string() } else { "copy".to_string() }, steps: Vec::new() },
-        retry: Vec::new(),
-    }));
+}
+
+// One terminal message, always. It is a guard rather than a line at the end because the engine runs
+// on this thread: a panic there would unwind straight past any send written after it, and a pane
+// that is never told a transfer ended waits on it forever.
+struct Terminal {
+    tx: Sender<OpMsg>,
+    held: Arc<Mutex<Option<OpMsg>>>,
+    id: usize,
+    total: usize,
+    moving: bool,
+}
+
+impl Drop for Terminal {
+    fn drop(&mut self) {
+        let sent = match self.held.lock() {
+            Ok(mut slot) => slot.take(),
+            Err(poisoned) => poisoned.into_inner().take(),
+        };
+        // The engine's own message when it sent one, and otherwise a failure for everything the
+        // drop was given, because nothing else knows what happened to it.
+        let _ = self.tx.send(sent.unwrap_or_else(|| OpMsg::TransferDone {
+            id: self.id,
+            ok: 0,
+            failed: self.total,
+            skipped: 0,
+            cancelled: false,
+            entry: Entry {
+                op: if self.moving { "move".to_string() } else { "copy".to_string() },
+                steps: Vec::new(),
+            },
+            retry: Vec::new(),
+        }));
+    }
 }
 
 // What leaves the pile: the entries the engine reported moved, so a copy settles nothing and an

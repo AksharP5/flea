@@ -75,7 +75,9 @@ QtObject {
     }
 
     function run(args) {
-        if (root.writer.running) {
+        // Anything already waiting goes first, or a call arriving in the turn between one finishing
+        // and the next starting would jump the queue and land a pin and its unpin the wrong way round.
+        if (root.writer.running || root.waiting.length > 0) {
             root.waiting = root.waiting.concat([args])
             return
         }

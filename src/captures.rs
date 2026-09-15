@@ -12,7 +12,7 @@ const RECORDING_PREFIX: &str = "screenrecording-";
 const RECORDING_SUFFIX: &str = ".mp4";
 // ShelfEmpty rule 7: the tray is a setting between none and six, so this is the ceiling it can ask for.
 pub const MAX_CAPTURES: usize = 6;
-// What the card asks for when it names no count, which is the Settings default.
+// What a person who names neither argument gets. The card always names both, from its own setting.
 const DEFAULT_CAPTURES: usize = 3;
 
 pub struct Capture {
