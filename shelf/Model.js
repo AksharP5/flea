@@ -199,46 +199,11 @@ function isRecording(path) {
   return String(path).slice(-4).toLowerCase() === ".mp4"
 }
 
-// The one clock this project draws, cut to the part a tray of three needs.
-function captureTime(at) {
-  var when = new Date(Number(at))
-  if (!isFinite(when.getTime())) {
-    return ""
-  }
-  return pad2(when.getHours()) + ":" + pad2(when.getMinutes())
-}
 
 function pad2(n) {
   return n < 10 ? "0" + n : String(n)
 }
 
-// The empty card names only the routes that are on, so it never advertises a gesture that will not
-// work. The edge and the bind arrive with the units that build them; the mark is drawn today.
-function routesHint(routes) {
-  var parts = []
-  if (routes && routes.edge) {
-    parts.push("throw at the " + routes.edge + " edge")
-  }
-  if (routes && routes.mark) {
-    parts.push("the bar mark opens")
-  }
-  if (routes && routes.bind) {
-    parts.push(routes.bind + " opens")
-  }
-  return parts.join(" \u00b7 ")
-}
-
-// What the one footer slot says on a card with nothing on it: how to use the tray when there is one,
-// and how to fill the shelf when there is not.
-function emptyHint(pile, captures, routes) {
-  if (pile && pile.count > 0) {
-    return ""
-  }
-  if (captures && captures.length > 0) {
-    return "click to add \u00b7 drag to take it straight out"
-  }
-  return routesHint(routes)
-}
 
 // ---- EdgeRail: what a drag dropped on the wall is offering ----
 
@@ -610,6 +575,11 @@ function wholeCount(items) {
     }
   }
   return n
+}
+
+// Rule 8: an action's tooltip is its name, and its key rides along only while Flea's hints are on.
+function actionTip(label, key, hints) {
+  return hints ? label + "  " + key : label
 }
 
 // Rules 9 and 10: a capture row and a pinned row leave as a copy, so a drag carrying either one is

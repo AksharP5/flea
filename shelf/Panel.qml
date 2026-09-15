@@ -32,6 +32,9 @@ Panel {
   // colours stays coherent inside the card.
   readonly property color foreground: root.bar ? root.bar.foreground : Color.popups.text
   readonly property color urgentColor: root.bar ? root.bar.urgent : Color.urgent
+  // The bar's own face, the way every OEM panel takes it: a card in Style.font.family beside panels
+  // in the bar's family reads as a different application.
+  readonly property string fontFamily: root.bar ? root.bar.fontFamily : Style.font.family
 
   // The card's own slot, rule 5: one voice at a time, and the pile's own state owns neither.
   property string result: ""
@@ -60,6 +63,7 @@ Panel {
     card.chosen = ({})
     card.cursorIndex = -1
     card.hoveredIndex = -1
+    card.anchorIndex = -1
     card.stripIndex = -1
   }
 
@@ -311,6 +315,7 @@ Panel {
           width: parent.width
           piles: shelf.piles
           foreground: root.foreground
+          fontFamily: root.fontFamily
           onChosen: function (index) {
             shelf.restore(index)
             root.menu = false
@@ -326,6 +331,7 @@ Panel {
           rows: root.flyoutRows
           browsable: root.pending === "move" || root.pending === "copy"
           foreground: root.foreground
+          fontFamily: root.fontFamily
           onChosen: function (index) { root.runChosen(root.flyoutRows[index]) }
           // The chooser answers in its own time, so what it is choosing for is still owed until it
           // does: clearing pending here would drop the destination the operator picked.
@@ -343,13 +349,10 @@ Panel {
           kinds: shelf.shelfSettings
           keyHints: shelf.keyHints
           incoming: rail.incoming
-          // The empty card names only the routes that are on: the mark is drawn today, the rail edge
-          // and the summon bind arrive with the units that build them.
-          hint: Model.emptyHint(shelf.pile, shelf.captures,
-                                { edge: "", mark: true, bind: shelf.summonBind })
           // Actions: the buttons act on what the card is drawing, chosen or whole.
           foreground: root.foreground
           urgent: root.urgentColor
+          fontFamily: root.fontFamily
           result: root.result
           error: root.error
           onRemoveRequested: function (index) {
@@ -366,6 +369,7 @@ Panel {
               return
             }
             root.error = ""
+            card.followPath = row.path
             shelf.pin(row.path, !row.pinned)
           }
           onCaptureAddRequested: function (index) {

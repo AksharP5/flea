@@ -59,8 +59,11 @@ The card is an Omarchy panel, hosted the way every other panel is: a click outsi
 actions as icon buttons under the last separator. A row whose file has a thumbnail in the
 freedesktop cache draws it in the mark slot instead of the kind mark; the cache is Flea's own, asked
 for by path through `flea shelf thumb`, only for the rows the card is drawing and never while it is
-closed. A row is also the handle it is carried out by: press it and drag, and the drag carries the
-chosen rows, or that one row when none are chosen.
+closed. A row is also the handle it is carried out by: press it and drag, and the drag carries the marked
+rows, or that one row when none are marked. The pointer marks the way Flea's own listing does: a
+row's box appears under the pointer and while anything is marked, a click on the box toggles that
+row, ctrl and a click toggles it too, shift and a click takes the range from the last row clicked,
+and a plain click clears the marks. An empty shelf says one word, `Empty`.
 
 The captures are the newest few Omarchy has taken, from the directories its own capture commands
 write to (`OMARCHY_SCREENSHOT_DIR`, else `XDG_PICTURES_DIR`, else `~/Pictures`;

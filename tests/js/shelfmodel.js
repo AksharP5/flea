@@ -62,22 +62,7 @@ function run(check) {
   check("a capture line is its time and its path, and a line that is neither is dropped", shots.length, 2)
   check("a recording is known by its own extension and never decoded",
         shots[0].recording + "|" + shots[1].recording, "false|true")
-  check("the tray says the time of day, in the one clock this project draws",
-        Shelf.captureTime(shots[0].at).length + "|" + Shelf.captureTime(shots[0].at).charAt(2), "5|:")
-  check("a time that is not one draws nothing", Shelf.captureTime("not a time"), "")
 
-  check("the empty card names only the routes that are on",
-        Shelf.routesHint({ edge: "right", mark: false, bind: "super+d" }),
-        "throw at the right edge \u00b7 super+d opens")
-  check("and with only the mark on, it names that one", Shelf.routesHint({ edge: "", mark: true, bind: "" }),
-        "the bar mark opens")
-  check("with every route off it advertises no gesture at all", Shelf.routesHint({}), "")
-  check("an empty shelf with captures to hand says what a row does",
-        Shelf.emptyHint(Shelf.empty(), shots, { mark: true }), "click to add \u00b7 drag to take it straight out")
-  check("an empty shelf with nothing recent names the routes instead",
-        Shelf.emptyHint(Shelf.empty(), [], { edge: "right", mark: true, bind: "" }),
-        "throw at the right edge \u00b7 the bar mark opens")
-  check("and a shelf that is holding says none of it", Shelf.emptyHint(one, shots, { mark: true }), "")
   check("the header says an empty shelf is empty", Shelf.headerText(Shelf.empty()), "Shelf  empty")
 
   // Main rules 9, 10 and 12: one list of three sections, and the header counts the pile alone.
@@ -143,6 +128,9 @@ function run(check) {
   check("and a stored value this build cannot honour falls back to its default",
         JSON.stringify(Shelf.shelfOf('{"shelf":{"enabled":false,"bar":false,"rail":"diagonal","recent":2}}')),
         '{"enabled":false,"bar":false,"rail":"off","screenshots":true,"recordings":true,"recent":2}')
+  check("an action's tooltip takes its key only while Flea's hints are on",
+        Shelf.actionTip("Move", "m", false) + "|" + Shelf.actionTip("Move", "m", true),
+        "Move|Move  m")
   check("key hints are off until Flea's own file says otherwise",
         Shelf.keyHintsOf("") + "|" + Shelf.keyHintsOf('{"keyHints":true}'), "false|true")
   var settings = Shelf.shelfOf('{"shelf":{"screenshots":false,"recent":1}}')

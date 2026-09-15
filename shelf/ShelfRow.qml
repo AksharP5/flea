@@ -14,16 +14,18 @@ Column {
   required property int index
   required property var modelData
   width: parent ? parent.width : 0
-  spacing: Style.spacing.md
+  // A group opens with the gap the OEM panels leave around a section header, then its rows.
+  spacing: Style.space(10)
   readonly property bool picked: row.card.chosen[row.modelData.path] === true
   readonly property string caption: Model.captionFor(row.card.rows, row.index, row.card.kinds)
   // Rule 4: a thumbnail path is not a thumbnail, because the cache file can be evicted
   // between the answer and the decode; a row whose Image failed is marked by its kind.
   readonly property string thumb: Model.thumbFor(row.card.thumbs, row.modelData)
-  readonly property bool thumbDrawn: row.thumb.length > 0 && shot.status !== Image.Error
+  readonly property bool thumbDrawn: row.thumb.length > 0 && shot.status === Image.Ready
 
+  // Rule 2: a separator between groups, so the first group on the card has nothing above it.
   PanelSeparator {
-    visible: row.caption.length > 0
+    visible: row.caption.length > 0 && row.index > 0
     width: parent.width
     foreground: row.card.foreground
   }
@@ -56,6 +58,8 @@ Column {
       // press because a platform drag cannot be started from inside its own loop, and the
       // drag itself waits for the platform's drag distance so a plain click stays a click.
       property point pressAt: Qt.point(0, 0)
+      // A ctrl or shift press is a marking gesture, so it mints nothing and carries nothing.
+      property bool marking: false
       onEntered: {
         row.card.cursorIndex = row.index
         row.card.hoveredIndex = row.index
@@ -63,11 +67,15 @@ Column {
       onExited: if (row.card.hoveredIndex === row.index) row.card.hoveredIndex = -1
       onPressed: function (mouse) {
         rowMouse.pressAt = Qt.point(mouse.x, mouse.y)
+        rowMouse.marking = (mouse.modifiers & (Qt.ControlModifier | Qt.ShiftModifier)) !== 0
+        if (rowMouse.marking) {
+          return
+        }
         row.card.carriedPaths = Model.carryPaths(row.card.chosen, row.card.rows, row.index)
-        row.card.liftRequested((mouse.modifiers & Qt.ControlModifier) !== 0)
+        row.card.liftRequested(false)
       }
       onPositionChanged: function (mouse) {
-        if (!rowMouse.pressed) {
+        if (!rowMouse.pressed || rowMouse.marking) {
           return
         }
         var dx = mouse.x - rowMouse.pressAt.x
@@ -78,9 +86,21 @@ Column {
       }
       onReleased: row.card.dropCarry()
       onCanceled: row.card.dropCarry()
-      // ShelfEmpty rule 5: a click on a capture puts it on the shelf; every other row is
-      // carried out rather than opened by a stray click.
-      onClicked: if (row.modelData.section === Model.CAPTURE) row.card.captureAddRequested(row.index)
+      // Rule 3, the contract Flea's own listing has: ctrl toggles this row, shift takes the range
+      // from the cursor, a plain click moves the cursor and clears the marks, and a capture row
+      // keeps the click that puts it on the shelf.
+      onClicked: function (mouse) {
+        if ((mouse.modifiers & Qt.ControlModifier) !== 0) {
+          row.card.markRow(row.index)
+        } else if ((mouse.modifiers & Qt.ShiftModifier) !== 0) {
+          row.card.markRange(row.index)
+        } else {
+          row.card.clearMarks(row.index)
+          if (row.modelData.section === Model.CAPTURE) {
+            row.card.captureAddRequested(row.index)
+          }
+        }
+      }
 
       // Rule 9: the row's own full path is its tooltip, so the card never spends a line on it.
       PanelToolTip {
@@ -102,14 +122,18 @@ Column {
       // when the file has one, the kind mark when it does not, and the check while a subset
       // is being chosen: a row cannot say both what it is and whether it is taken.
       Item {
+        id: slot
         Layout.alignment: Qt.AlignVCenter
         implicitWidth: row.card.markSize
         implicitHeight: row.card.markSize
+        // Rule 3: the box is the pointer's way to mark, so it is there whenever the row is under the
+        // pointer and whenever anything is marked; otherwise the slot says what kind the row is.
+        readonly property bool choosing: row.card.chosenCount > 0 || row.card.hoveredIndex === row.index
 
         Image {
           id: shot
           anchors.fill: parent
-          visible: row.card.chosenCount === 0 && row.thumbDrawn
+          visible: !slot.choosing && row.thumbDrawn
           source: row.thumb.length > 0 ? "file://" + row.thumb : ""
           // Sized on purpose, the way ui/Row.qml sizes it: the decode is capped to the slot
           // it is drawn in rather than the cache file's own 256.
@@ -122,16 +146,23 @@ Column {
 
         ShelfGlyph {
           anchors.fill: parent
-          visible: row.card.chosenCount === 0 && !row.thumbDrawn
+          visible: !slot.choosing && !row.thumbDrawn
           path: Model.glyphFor(row.modelData)
           color: row.card.foreground
         }
 
         ShelfCheck {
           anchors.centerIn: parent
-          visible: row.card.chosenCount > 0
+          visible: slot.choosing
           on: row.picked
           foreground: row.card.foreground
+
+          // A click on the box marks the row and nothing else: it never moves the cursor.
+          MouseArea {
+            anchors.fill: parent
+            acceptedButtons: Qt.LeftButton
+            onClicked: row.card.markRow(row.index)
+          }
         }
       }
 

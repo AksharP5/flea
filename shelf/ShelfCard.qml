@@ -6,9 +6,10 @@ import qs.Ui
 import "Model.js" as Model
 import "Run.js" as Run
 
-// The card, Main board rules 9 to 15. It is an Omarchy panel and not a Flea window in miniature:
-// a PanelHero on top, a PanelSeparator and a PanelSectionHeader between groups, rows in the shape
-// panels/dropbox gives its FileRow, and the actions as icon buttons under the last separator.
+// The card, Main board rules 1 to 12 as consolidated. It is an Omarchy panel and not a Flea window
+// in miniature: no hero and no header, the first row is the first thing on it, a PanelSeparator and
+// a PanelSectionHeader open each group, rows are one line in the shape panels/dropbox gives its
+// FileRow, and the six actions are icon buttons under the last separator.
 Item {
   id: root
 
@@ -33,7 +34,6 @@ Item {
   property int hoveredIndex: -1
   // Rule 4: the cache file each drawn path answered with, empty for a path that has none.
   property var thumbs: ({})
-  property string hint: ""
   // EdgeRail: how many a drag over the rail is offering, which the hero says and the line shows.
   property int incoming: 0
   // Actions: what is running, which the body draws and the voice's own half names.
@@ -45,6 +45,22 @@ Item {
 
   // Keys: which action the strip's own focus is on, and -1 while the rows have it.
   property int stripIndex: -1
+
+  // Rule 6: p moves a row from one group to another, so the cursor follows the row it was on rather
+  // than the place that row used to be in, and a second p is an unpin instead of another pin.
+  property string followPath: ""
+  onRowsChanged: {
+    if (root.followPath === "") {
+      return
+    }
+    for (var i = 0; i < root.rows.length; i++) {
+      if (root.rows[i].path === root.followPath) {
+        root.cursorIndex = i
+        break
+      }
+    }
+    root.followPath = ""
+  }
 
   signal removeRequested(int index)
   signal pinRequested(int index)
@@ -187,6 +203,30 @@ Item {
     event.accepted = true
   }
 
+  // Rule 3's pointer half: the three gestures Flea's own listing has, so a hand on the mouse can do
+  // what the keyboard does. A range is taken from the last row clicked and not from the cursor,
+  // because the pointer moves the cursor on its way to the second click.
+  property int anchorIndex: -1
+
+  function markRow(index) {
+    var item = root.rows[index]
+    if (item) {
+      root.chosen = Model.toggleChosen(root.chosen, item.path)
+      root.anchorIndex = index
+    }
+  }
+
+  function markRange(index) {
+    var from = root.anchorIndex >= 0 ? root.anchorIndex : index
+    root.chosen = Model.chooseRange(root.chosen, root.rows, from, index)
+  }
+
+  function clearMarks(index) {
+    root.chosen = ({})
+    root.cursorIndex = index
+    root.anchorIndex = index
+  }
+
   // j and k move the cursor; with shift they take everything they pass, which is the range gesture.
   function step(by, extending) {
     var items = root.rows
@@ -221,9 +261,8 @@ Item {
     return action.id === "pin" && row && row.pinned ? "Unpin" : action.label
   }
 
-  // Rule 8: the tooltip is the name, and the key rides it only when Flea's hints are on.
   function tipFor(action) {
-    return root.keyHints ? root.labelFor(action) + "  " + action.key : root.labelFor(action)
+    return Model.actionTip(root.labelFor(action), action.key, root.keyHints)
   }
 
   implicitWidth: root.cardWidth
@@ -251,7 +290,8 @@ Item {
     Column {
       id: column
       width: flick.width
-      spacing: Style.spacing.md
+      // The gap both OEM panels put between rows of a list, so the shelf's pitch is theirs.
+      spacing: Style.space(6)
 
       ShelfRun {
         width: parent.width
@@ -264,17 +304,14 @@ Item {
         onCancelRequested: root.cancelRequested()
       }
 
-      // Rule 10: on an empty pile the first thing on the card is the one composed hint line, and
-      // the groups that have anything follow it. Empty is a state, not a failure.
-      Text {
+      // Rule 10: an empty pile says one word, in the section headers' own treatment, and the groups
+      // that have anything follow it. Empty is a state, not a failure: no sentence, no onboarding.
+      PanelSectionHeader {
         width: parent.width
-        visible: root.hint !== "" && root.rows.length === 0 && !root.run.running
-        text: root.hint
-        color: root.muted
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.bodySmall
-        wrapMode: Text.WordWrap
-        textFormat: Text.PlainText
+        visible: Model.loose(root.pile.items).length === 0 && !root.run.running
+        text: "Empty"
+        foreground: root.foreground
+        fontFamily: root.fontFamily
       }
 
       Repeater {
