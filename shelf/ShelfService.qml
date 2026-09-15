@@ -19,7 +19,7 @@ Item {
   property var pile: Model.empty()
   readonly property int count: root.pile.count
   readonly property bool holding: root.pile.count > 0
-  // Nothing is known before the first read answers, so the mark must not assert empty on a shell start.
+  // The first read is not a growth, however much it holds, so it is the one that raises nothing.
   property bool read: false
 
   // Re-clamped on read, so a hand-edited shell.json cannot poison the timer.
@@ -99,48 +99,80 @@ Item {
     return true
   }
 
-  // Main rule 10: `p` on a row, whichever section it is in.
-  function pin(path, pinned) {
-    pinner.command = [root.fleaCommand, "shelf", pinned ? "pin" : "unpin", path]
-    pinner.running = true
+  // One queue for the verbs that answer with nothing but their status. A Process ignores an
+  // assignment to command while it runs, so a second p or a second x inside the first one's
+  // lifetime would otherwise be dropped without a word.
+  property var queued: []
+
+  function runQuiet(argv, complaint) {
+    root.queued = root.queued.concat([{ argv: [root.fleaCommand].concat(argv), complaint: complaint }])
+    root.nextQuiet()
   }
 
+  function nextQuiet() {
+    if (quiet.running || root.queued.length === 0) {
+      return
+    }
+    var next = root.queued[0]
+    root.queued = root.queued.slice(1)
+    root.complaint = next.complaint
+    quiet.command = next.argv
+    quiet.running = true
+  }
+
+  property string complaint: ""
+
   Process {
-    id: pinner
+    id: quiet
     running: false
     onExited: function (code) {
       if (code !== 0) {
-        root.failed("The shelf could not pin that one.")
-        return
+        root.failed(root.complaint)
+      } else {
+        root.reread()
       }
-      root.reread()
+      root.nextQuiet()
     }
+  }
+
+  // Main rule 10: `p` on a row, whichever section it is in.
+  function pin(path, pinned) {
+    root.pinAll([path], pinned)
+  }
+
+  function pinAll(paths, pinned) {
+    if (paths.length === 0) {
+      return
+    }
+    root.runQuiet(["shelf", pinned ? "pin" : "unpin"].concat(paths), "The shelf could not pin that one.")
   }
 
   // Main rule 6: the reference leaves the pile and the file it names is not touched.
   function forget(path) {
-    drop.command = [root.fleaCommand, "shelf", "forget", path]
-    drop.running = true
+    root.runQuiet(["shelf", "forget", path], "The shelf kept that row.")
   }
 
-  Process {
-    id: drop
-    running: false
-    onExited: function (code) { if (code !== 0) root.failed("The shelf kept that row.") }
-  }
+  property string token: ""
 
   Process {
     id: mint
     running: false
+    // Sample input, the whole of stdout: 9f2c1d0e7a4b5c6d8e9f0a1b2c3d4e5f
     stdout: StdioCollector {
       waitForEnd: true
-      onStreamFinished: {
-        var token = String(text).trim()
-        if (token.length > 0) root.minted(token, root.moving)
-        else root.failed("The shelf could not start that drag.")
-      }
+      onStreamFinished: root.token = String(text).trim()
     }
-    stderr: StdioCollector { waitForEnd: true }
+    stderr: StdioCollector { id: mintError; waitForEnd: true }
+    // The status decides, not the text: a refused drag can still have printed something.
+    onExited: function (code) {
+      if (code === 0 && root.token.length > 0) {
+        root.minted(root.token, root.moving)
+      } else {
+        root.failed(mintError.text.length > 0 ? String(mintError.text).trim()
+                                              : "The shelf could not start that drag.")
+      }
+      root.token = ""
+    }
   }
 
   // Rule 11 and directive 59: the key hints toggle and the Shelf section are Flea's own settings,
@@ -182,16 +214,14 @@ Item {
     root.askThumbs()
     fast.running = root.drawing
   }
-  onPileChanged: {
-    root.sizes = Model.keep(root.sizes, root.drawnRows)
-    root.thumbs = Model.keep(root.thumbs, root.drawnRows)
-    root.askSize()
-  }
+  onPileChanged: root.askSize()
 
   // What the card is drawing, which is what a size and a thumbnail are asked for and what a capture
   // joins.
   readonly property var drawnRows: Model.rows(root.pile, root.captures)
   onDrawnRowsChanged: {
+    root.sizes = Model.keep(root.sizes, root.drawnRows)
+    root.thumbs = Model.keep(root.thumbs, root.drawnRows)
     root.askSize()
     root.askThumbs()
   }
@@ -199,6 +229,8 @@ Item {
   // Main rule 4: one path-addressed request for the rows the card is drawing, on open and on each
   // re-read while it is up, and nothing at all while it is closed.
   property var thumbs: ({})
+
+  property var asked: []
 
   function askThumbs() {
     if (thumber.running || !root.drawing) {
@@ -208,6 +240,7 @@ Item {
     if (wanted.length === 0) {
       return
     }
+    root.asked = wanted
     thumber.command = [root.fleaCommand, "shelf", "thumb"].concat(wanted)
     thumber.running = true
   }
@@ -217,12 +250,16 @@ Item {
     running: false
     stdout: StdioCollector {
       waitForEnd: true
-      onStreamFinished: {
-        root.thumbs = Model.thumbsFrom(text, root.thumbs)
-        root.askThumbs()
-      }
+      onStreamFinished: root.thumbs = Model.thumbsFrom(text, root.thumbs)
     }
     stderr: StdioCollector { waitForEnd: true }
+    // A path the run did not answer for is answered here as none, or a failed run would leave it
+    // wanted and the chain would spawn this again for as long as the card is up.
+    onExited: {
+      root.thumbs = Model.thumbsNone(root.asked, root.thumbs)
+      root.asked = []
+      root.askThumbs()
+    }
   }
 
   function askSize() {
@@ -263,7 +300,9 @@ Item {
     // Neither kind checked is no captures at all; a listing already in flight is simply not re-asked,
     // because clearing the rows it is about to answer for would blink them off the card.
     if (!Model.wantsCaptures(root.shelfSettings)) {
-      root.captures = []
+      if (root.captures.length > 0) {
+        root.captures = []
+      }
       return
     }
     if (list.running || !root.drawing) {
@@ -297,14 +336,7 @@ Item {
   // Keys: enter opens the file with its own handler, or reveals a folder in Flea. Actions rule 1: it
   // is a flea shelf call like every other, because the plugin draws and nothing else.
   function open(path) {
-    opener.command = [root.fleaCommand, "shelf", "open", path]
-    opener.running = true
-  }
-
-  Process {
-    id: opener
-    running: false
-    onExited: function (code) { if (code !== 0) root.failed("That one could not be opened.") }
+    root.runQuiet(["shelf", "open", path], "That one could not be opened.")
   }
 
   // ShelfEmpty rule 5: a click on a capture adds it to the pile, the same call a drop makes, and a
@@ -314,17 +346,10 @@ Item {
   }
 
   function addAll(paths) {
-    if (addOne.running || paths.length === 0) {
+    if (paths.length === 0) {
       return
     }
-    addOne.command = [root.fleaCommand, "shelf", "add"].concat(paths)
-    addOne.running = true
-  }
-
-  Process {
-    id: addOne
-    running: false
-    onExited: function (code) { if (code !== 0) root.failed("The shelf could not take that one.") }
+    root.runQuiet(["shelf", "add"].concat(paths), "The shelf could not take that one.")
   }
 
   Process {
@@ -400,10 +425,8 @@ Item {
         root.askPiles()
       }
     }
-    stderr: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: if (String(text).trim().length > 0) root.failed("The shelf could not do that.")
-    }
+    stderr: StdioCollector { waitForEnd: true }
+    onExited: function (code) { if (code !== 0) root.failed("The shelf could not do that.") }
   }
 
   // Summon rule 4: one shelf, plus the last five piles, which the card's own menu lists.
@@ -423,20 +446,6 @@ Item {
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: root.piles = Model.parsePiles(text)
-    }
-    stderr: StdioCollector { waitForEnd: true }
-  }
-
-  // The empty card names the bind only once it is installed, and the user's own config owns that line.
-  property string summonBind: ""
-
-  Process {
-    id: bindName
-    command: [root.fleaCommand, "shelf", "bind"]
-    running: true
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: root.summonBind = String(text).trim()
     }
     stderr: StdioCollector { waitForEnd: true }
   }

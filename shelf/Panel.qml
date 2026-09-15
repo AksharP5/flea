@@ -45,14 +45,13 @@ Panel {
   // True from the lift until the platform drag ends, however it ended.
   property bool carrying: false
   readonly property int transientMs: 4000
-  readonly property int focusHoldMs: 75
 
   // A card that closed while its menu was up must come back as the pile, not as the menu: the menu is
   // a detour, and the shelf is what the next summon is asking for. A closed card also forgets the
   // gesture it was in the middle of, because the next one is a new question.
   onOpenedChanged: {
     if (root.opened) {
-      card.cursorIndex = card.pile.items.length > 0 ? 0 : -1
+      card.cursorIndex = card.rows.length > 0 ? 0 : -1
       return
     }
     root.menu = false
@@ -142,11 +141,19 @@ Panel {
   property var flyoutRows: []
 
   function actOn(id) {
+    var paths = Model.actionPaths(card.chosen, card.rows)
     if (id === "pin") {
-      card.pinRequested(card.cursorIndex)
+      // Chosen-or-whole has one exception in the other direction: with nothing chosen, Pin is about
+      // the row under the cursor rather than the whole pile, because pinning a pile is not a gesture.
+      if (card.chosenCount === 0) {
+        card.pinRequested(card.cursorIndex)
+        return
+      }
+      root.error = ""
+      card.followPath = ""
+      shelf.pinAll(paths, !Model.allPinned(paths, card.rows))
       return
     }
-    var paths = Model.actionPaths(card.chosen, card.rows)
     if (paths.length === 0) {
       return
     }
@@ -175,8 +182,14 @@ Panel {
   // The flyout's rows arrive a moment after it opens, because the list is another process's answer.
   Connections {
     target: doing
-    function onPlacesChanged() { if (root.pending === "move" || root.pending === "copy") root.flyoutRows = doing.places }
-    function onPeersChanged() { if (root.pending === "send") root.flyoutRows = doing.peers }
+    // Only the first answer lands: the flyout's own keys are positional, so a late listing would
+    // move the row under the number the operator is about to press.
+    function onPlacesChanged() {
+      if ((root.pending === "move" || root.pending === "copy") && root.flyoutRows.length === 0) root.flyoutRows = doing.places
+    }
+    function onPeersChanged() {
+      if (root.pending === "send" && root.flyoutRows.length === 0) root.flyoutRows = doing.peers
+    }
   }
 
   function runChosen(dest) {
@@ -261,7 +274,8 @@ Panel {
 
       // Actions: while an action runs the first esc cancels it and the card stays; with nothing
       // running esc leaves the flyout, then the menu, and only then closes the card.
-      Keys.onEscapePressed: {
+      Keys.onEscapePressed: function (event) {
+        event.accepted = true
         if (doing.run.running) {
           doing.cancelRun()
         } else if (root.pending.length > 0) {

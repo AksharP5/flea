@@ -438,6 +438,21 @@ function thumbsFrom(text, current) {
   return next
 }
 
+// Every path of a batch the run did not name, answered as no thumbnail: a run that failed outright
+// would otherwise leave them all wanted and the caller would ask again at once.
+function thumbsNone(asked, thumbs) {
+  var next = {}
+  for (var path in thumbs) {
+    next[path] = thumbs[path]
+  }
+  for (var i = 0; i < asked.length; i++) {
+    if (next[asked[i]] === undefined) {
+      next[asked[i]] = ""
+    }
+  }
+  return next
+}
+
 // A path that answered with nothing is asked once more on the next open: the cache records its own
 // failures, so a second ask is a lookup, and a thumbnail produced meanwhile is then drawn.
 function thumbsFound(thumbs) {
@@ -557,6 +572,20 @@ function carryPaths(chosen, items, index) {
     return picked
   }
   return items[index] ? [items[index].path] : []
+}
+
+// Whether every path named is already pinned, which is what makes the strip's Pin an unpin.
+function allPinned(paths, items) {
+  var seen = 0
+  for (var i = 0; i < items.length; i++) {
+    if (paths.indexOf(items[i].path) >= 0) {
+      if (!items[i].pinned) {
+        return false
+      }
+      seen += 1
+    }
+  }
+  return seen > 0
 }
 
 // How many rows "none chosen" would take, which is the pile and its pinned rows and no capture.

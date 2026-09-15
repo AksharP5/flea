@@ -117,6 +117,13 @@ function run(check) {
         Shelf.thumbFor(answered, list[3]) + "|[" + Shelf.thumbFor(answered, list[0]) + "]|["
         + Shelf.thumbFor(answered, list[1]) + "]",
         "/c/a.png|[]|[]")
+  check("a run that answered for nothing still answers every path it was asked about",
+        JSON.stringify(Shelf.thumbsNone(["/a", "/b"], { "/a": "/c/a.png" })),
+        '{"/a":"/c/a.png","/b":""}')
+  check("the strip's Pin is an unpin only when every chosen row is already pinned",
+        Shelf.allPinned(["/p/pinned"], list) + "|" + Shelf.allPinned(["/p/one", "/p/pinned"], list)
+        + "|" + Shelf.allPinned([], list),
+        "true|false|false")
   check("a path that answered with nothing is asked again on the next open",
         JSON.stringify(Shelf.thumbsFound({ "/a": "/c/a.png", "/b": "" })),
         '{"/a":"/c/a.png"}')
