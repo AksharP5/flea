@@ -217,10 +217,7 @@ function placeSubmitted(sidebar, requestId) {
 // The answer to that edit: a refused connect keeps the arm, because correcting an address gio could
 // not reach is what the dialog stays open for; ui/shell.qml disarms it when that dialog closes.
 function placeSaved(sidebar, mounts, requestId, uri, success) {
-    // An empty id is nobody's attempt, so it can never match the arm's own empty starting value.
-    if (!success || sidebar.editingPlace.length === 0 || sidebar.editingRequest.length === 0)
-        return
-    if (requestId !== sidebar.editingRequest)
+    if (!success || sidebar.editingPlace.length === 0 || requestId !== sidebar.editingRequest)
         return
     var was = sidebar.editingPlace
     sidebar.editingPlace = ""

@@ -235,14 +235,14 @@ function run(check) {
     var writer = { unmount: function () {}, forget: function () {},
                    replacePlace: function (was) { wrote.push(was) } }
     Mounts.release("editPlace", "smb://nas/", { eject: function () {} }, writer, armed)
-    // A mount that was in flight when the rail armed is not this edit's, whatever address it took:
-    // ui/NetworkMounts.qml emits no completion at all for one that carries no request, and an empty
-    // id must not read as the arm's own empty starting value either.
+    // Only this edit's own attempt answers for it: a mount in flight when the rail armed carries
+    // another request, and so does one started from the dialog after this attempt was refused.
     Mounts.placeSaved(armed, writer, "older-request", "smb://stranger/share", true)
     check("a mount already in flight when Edit armed rewrites nothing", wrote.join(","), "")
-    Mounts.placeSaved(armed, writer, "", "smb://stranger/share", true)
-    check("and an empty request is nobody's attempt, least of all this one", wrote.join(","), "")
-    check("and both leave the place armed", armed.editingPlace, "smb://nas/")
+    Mounts.placeSubmitted(armed, "r0")
+    Mounts.placeSaved(armed, writer, "another-request", "smb://stranger/share", true)
+    check("and neither does one that is not the attempt this dialog made", wrote.join(","), "")
+    check("both of which leave the place armed", armed.editingPlace, "smb://nas/")
     Mounts.placeSubmitted(armed, "r1")
     Mounts.placeSaved(armed, writer, "r1", "smb://nas2/data", false)
     check("a refused attempt keeps the place armed", armed.editingPlace, "smb://nas/")
