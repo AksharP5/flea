@@ -30,8 +30,7 @@ Column {
     foreground: row.card.foreground
   }
 
-  // The OEM panels pass their headers uppercase, so the shelf's read the way EXIT NODES and
-  // MACHINES do beside them; the board's own wording is what is uppercased.
+  // The OEM panels pass their headers uppercase, so the shelf's read the way EXIT NODES does.
   PanelSectionHeader {
     visible: row.caption.length > 0
     width: parent.width
@@ -42,8 +41,7 @@ Column {
 
   CursorSurface {
     width: parent.width
-    // The OEM contract: the pointer moves the cursor and the paint comes from the cursor,
-    // so one row is lit at a time whether the hand is on the keyboard or the mouse.
+    // The paint comes from the cursor, so one row is lit whichever hand moved it.
     hasCursor: row.card.cursorIndex === row.index
     current: row.picked
     foreground: row.card.foreground
@@ -57,9 +55,8 @@ Column {
       preventStealing: true
       cursorShape: Qt.PointingHandCursor
       acceptedButtons: Qt.LeftButton
-      // Rule 11: a row is the handle the pile is carried out by. The token is minted on the
-      // press because a platform drag cannot be started from inside its own loop, and the
-      // drag itself waits for the platform's drag distance so a plain click stays a click.
+      // Rule 11: the token is minted on the press because a platform drag cannot start from
+      // inside its own loop, and the carry waits for the drag distance so a click stays a click.
       property point pressAt: Qt.point(0, 0)
       // A ctrl or shift press is a marking gesture, so it mints nothing and carries nothing.
       property bool marking: false
@@ -89,9 +86,7 @@ Column {
       }
       onReleased: row.card.dropCarry()
       onCanceled: row.card.dropCarry()
-      // Rule 3, the contract Flea's own listing has: ctrl toggles this row, shift takes the range
-      // from the cursor, a plain click moves the cursor and clears the marks, and a capture row
-      // keeps the click that puts it on the shelf.
+      // Rule 3, the contract Flea's own listing has for ctrl, shift and a plain click.
       onClicked: function (mouse) {
         if ((mouse.modifiers & Qt.ControlModifier) !== 0) {
           row.card.markRow(row.index)
@@ -121,9 +116,7 @@ Column {
       anchors.rightMargin: Style.spacing.rowPaddingX
       spacing: Style.spacing.labelGap
 
-      // Rule 3 and rule 4: the mark slot on the row's centre line, holding the thumbnail
-      // when the file has one, the kind mark when it does not, and the check while a subset
-      // is being chosen: a row cannot say both what it is and whether it is taken.
+      // Rules 3 and 4: one slot, because a row cannot say both what it is and whether it is taken.
       Item {
         id: slot
         Layout.alignment: Qt.AlignVCenter
@@ -180,8 +173,7 @@ Column {
         textFormat: Text.PlainText
       }
 
-      // Rule 3: the size is right-aligned, and the family is Flea's own monospace, so its
-      // figures are tabular without asking for a font feature.
+      // Rule 3: the family is monospace, so the sizes are tabular without a font feature.
       Text {
         Layout.alignment: Qt.AlignVCenter
         text: Model.sizeText(row.modelData)
@@ -192,8 +184,7 @@ Column {
         textFormat: Text.PlainText
       }
 
-      // Rules 3 and 6: one button shape at row size, x on a pile row, the pin on a pinned
-      // one, and an empty slot of the same width on a capture so every size lines up.
+      // Rules 3 and 6: a capture keeps the width and spends it on nothing, so the sizes line up.
       ShelfActionButton {
         id: trailing
         Layout.alignment: Qt.AlignVCenter

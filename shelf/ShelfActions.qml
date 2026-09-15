@@ -2,9 +2,8 @@ import QtQuick
 import Quickshell.Io
 import "Run.js" as Run
 
-// The doing half of the shelf: the five actions, what they say while they run and when they land,
-// and the rows the two flyouts offer. Actions rule 1: every one is a `flea shelf` call, so this
-// starts processes and parses their lines and knows nothing else about files.
+// The doing half of the shelf. Actions rule 1: every action is a `flea shelf` call, so this starts
+// processes and parses their lines and knows nothing else about files.
 Item {
   id: root
   visible: false
@@ -92,8 +91,16 @@ Item {
   Process {
     id: stop
     running: false
+    onExited: function (code) {
+      if (code !== 0) {
+        root.refused("That cancel did not reach the transfer.")
+      }
+    }
   }
 
+  // Sample input, one JSON object per line:
+  //   {"t":"transferitem","ok":false,"err":"drafts is read-only for cover-grade.jpg"}
+  //   {"t":"transferdone","ok":3,"cancelled":false}
   function sampled(line) {
     var next = Run.sampled(root.run, line)
     root.run = next
@@ -128,10 +135,13 @@ Item {
     } else if (root.runVerb === "Sent") {
       root.landed(code === 0 ? Run.sentText(root.sending, root.runDest) : "That send did not go.")
     } else if (root.runVerb.length > 0) {
-      root.landed(root.cancelled
-                  ? "Cancelled"
-                  : Run.movedText(root.runVerb, root.ok, root.runFailed, root.ok + root.runFailed,
-                                  Run.destName(root.runDest), root.runError))
+      var sentence = root.cancelled
+                     ? "Cancelled"
+                     : Run.movedText(root.runVerb, root.ok, root.runFailed, root.ok + root.runFailed,
+                                     Run.destName(root.runDest), root.runError)
+      // A run that died before its first item reports no counts at all, so the exit status is the
+      // only thing left that knows a copy did not happen.
+      root.landed(sentence.length > 0 || code === 0 ? sentence : Run.runFailedText(root.runVerb))
     }
     root.runVerb = ""
     root.ok = 0
@@ -142,6 +152,9 @@ Item {
   // The flyouts' own rows: Flea's places, and Taildrop's peers.
   property var places: []
   property var peers: []
+  // Actions rule 3: unavailable by configuration disappears, so a box whose peers call fails has
+  // no Tailscale and loses the Send action rather than being offered an empty flyout.
+  property bool peerable: true
 
   function askPlaces() {
     if (placeList.running) {
@@ -167,6 +180,11 @@ Item {
       onStreamFinished: root.places = Run.lines(text)
     }
     stderr: StdioCollector { waitForEnd: true }
+    onExited: function (code) {
+      if (code !== 0) {
+        root.refused("Flea would not list its places.")
+      }
+    }
   }
 
   Process {
@@ -177,6 +195,7 @@ Item {
       onStreamFinished: root.peers = Run.lines(text)
     }
     stderr: StdioCollector { waitForEnd: true }
+    onExited: function (code) { root.peerable = code === 0 }
   }
 
   // The chooser, which is Flea's own picker: it answers with a directory or with nothing.
@@ -203,6 +222,12 @@ Item {
       }
     }
     stderr: StdioCollector { waitForEnd: true }
+    // A chooser that never opened answers with nothing, which is the same silence as a cancel.
+    onExited: function (code) {
+      if (code !== 0) {
+        root.refused("That folder chooser did not open.")
+      }
+    }
   }
 
   // Paths: the card puts them on the clipboard, because a clipboard is a display and not a file.

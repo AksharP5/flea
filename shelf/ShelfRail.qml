@@ -4,9 +4,8 @@ import Quickshell.Wayland
 import qs.Commons
 import "Model.js" as Model
 
-// EdgeRail: a live drop region at the screen's edge and no pixels at rest. Rule 6 is the whole of it,
-// a drag thrown at the wall lights the wall, so nobody needs to read anything. Rule 4: the drop is
-// taken the instant it arrives; the dwell only decides whether the card has opened on the way.
+// EdgeRail: a live drop region at the screen's edge and no pixels at rest. Rule 4: the drop is
+// taken the instant it arrives, and the dwell only decides whether the card opened on the way.
 PanelWindow {
   id: root
 
@@ -33,7 +32,7 @@ PanelWindow {
 
   visible: root.edge !== "off"
   color: "transparent"
-  // Rule 1: nobody gives up a pixel of their window for a drop region.
+  // Rule 1: exclusiveZone 0, so no window gives up a pixel of its area for the drop region.
   exclusionMode: ExclusionMode.Ignore
   WlrLayershell.namespace: "flea-shelf-rail"
   WlrLayershell.layer: WlrLayer.Overlay
@@ -88,7 +87,9 @@ PanelWindow {
       var paths = Model.pathsFromUris(event.getDataAsString("text/uri-list"))
       if (paths.length > 0) {
         root.dropped(paths)
-        event.acceptProposedAction()
+        // Copy, never the proposed action: the shelf records a path and the file does not move, so
+        // a source told its move succeeded would delete the original out from under the pile.
+        event.accept(Qt.CopyAction)
       }
     }
   }

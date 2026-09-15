@@ -228,6 +228,10 @@ function run(check) {
   check("a partial failure is one sentence, not two lines",
         Run.movedText("Moved", 3, 1, 4, "drafts", "drafts is read-only for cover-grade.jpg"),
         "Moved 3 of 4 \u00b7 drafts is read-only for cover-grade.jpg")
+  check("a run that died before its first item still says the copy did not happen",
+        Run.movedText("Copied", 0, 0, 0, "drafts", "") + "|" + Run.runFailedText("Copied")
+        + "|" + Run.runFailedText("Moved"),
+        "|That copy did not run.|That move did not run.")
   check("the other three actions say what they did",
         Run.zippedText(4) + "|" + Run.copiedPathsText(4) + "|" + Run.sentText(1, "macbookair"),
         "Zipped 4 items into one archive|Copied 4 paths|Sent 1 item to macbookair")

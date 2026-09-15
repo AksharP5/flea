@@ -266,6 +266,8 @@ Item {
   readonly property real cardWidth: Style.space(380)
   readonly property real cardCap: Style.space(560)
   readonly property real markSize: Style.font.icon
+  // Actions rule 3: Send is absent entirely on a box with no Tailscale, not greyed and not empty.
+  property bool sendable: true
   readonly property var actions: [
     { id: "move", label: "Move", key: "m" },
     { id: "copy", label: "Copy", key: "c" },
@@ -273,7 +275,7 @@ Item {
     { id: "send", label: "Send", key: "t" },
     { id: "paths", label: "Paths", key: "y" },
     { id: "pin", label: "Pin", key: "p" }
-  ]
+  ].filter(function (action) { return action.id !== "send" || root.sendable })
 
   // Rule 6: the same key both ways, so the button says which way it goes for the row under the cursor.
   function labelFor(action) {

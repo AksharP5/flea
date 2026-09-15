@@ -3,9 +3,8 @@ import qs.Commons
 import qs.Ui
 import "Run.js" as Run
 
-// The transfer surface the shelf already has: the pointer's cancellation control and the figures,
-// off the same 250 ms sample the pane's own card reads. No Flea window need be open, because the
-// transfer runs in the backend the action already called.
+// The transfer surface the shelf already has, off the same 250 ms sample the pane's card reads.
+// No Flea window need be open: the transfer runs in the backend the action already called.
 Item {
   id: root
 

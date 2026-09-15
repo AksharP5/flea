@@ -2,9 +2,8 @@ import QtQuick
 import qs.Commons
 import qs.Ui
 
-// Ui/PanelActionButton's shape with Flea's own mark as its ink. The OEM button draws a nerd glyph
-// from a string, and this project's icon language is the Omarchy cut, so the geometry, the hover
-// fill and the tooltip are the shell's and the drawing is ShelfGlyph's.
+// Ui/PanelActionButton's shape with Flea's own mark as its ink: the OEM button draws a nerd glyph
+// from a string, and this project's icon language is the Omarchy cut.
 BorderSurface {
   id: root
 

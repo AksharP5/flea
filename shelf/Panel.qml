@@ -51,6 +51,9 @@ Panel {
   onOpenedChanged: {
     if (root.opened) {
       card.cursorIndex = card.rows.length > 0 ? 0 : -1
+      // The peers answer decides whether the strip carries Send at all, so it is asked on the way
+      // in rather than when the action is pressed.
+      doing.askPeers()
       return
     }
     root.menu = false
@@ -366,6 +369,7 @@ Panel {
           kinds: shelf.shelfSettings
           keyHints: shelf.keyHints
           incoming: rail.incoming
+          sendable: doing.peerable
           // Actions: the buttons act on what the card is drawing, chosen or whole.
           foreground: root.foreground
           urgent: root.urgentColor

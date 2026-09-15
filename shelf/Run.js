@@ -90,6 +90,11 @@ function movedText(verb, ok, failed, total, dest, firstError) {
   return verb === "Moved" ? landed + " · z undoes" : landed
 }
 
+// A run that exited before reporting a single item, so the counts above have nothing to say.
+function runFailedText(verb) {
+  return verb === "Moved" ? "That move did not run." : "That copy did not run."
+}
+
 function zippedText(count) {
   var n = Number(count)
   if (!isFinite(n) || n <= 0) {
