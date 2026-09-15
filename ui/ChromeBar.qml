@@ -434,5 +434,4 @@ Item {
 
     // The pointer's title bar over the whole strip; the controls under it keep their own taps.
     Flea.WindowDrag { anchors.fill: parent; editing: root.editing }
-
 }

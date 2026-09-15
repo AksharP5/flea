@@ -1871,7 +1871,6 @@ EDIT
     kill_flea
 }
 
-# Catches narrowing the delegate TapHandler back to Qt.LeftButton in ui/Pane.qml.
 # Issue 70, TyRichards: the sort choice outlives the window, and the next launch lists in it rather
 # than in name ascending. The order is checked on the rows, not only on the header's own mark.
 case_sortrestart() {
@@ -1905,6 +1904,7 @@ case_sortrestart() {
     kill_flea
 }
 
+# Catches narrowing the delegate TapHandler back to Qt.LeftButton in ui/Pane.qml.
 case_menu() {
     local dir="$fixture_root/menu"
     sandbox_scratch "$dir"
@@ -4675,7 +4675,6 @@ EOS
     settle
     [[ "$(cat "$bookmarks")" == "$legacy_before" ]] || fail "network: legacy GTK bytes changed"
     printf 'NETWORK restart=favourites-and-legacy gtk=unchanged\n'
-
 
     rail_focus
     key a >/dev/null

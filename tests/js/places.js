@@ -148,5 +148,4 @@ function run(check) {
           Places.replace("", "", "smb://nas/plates", ""), "smb://nas/plates plates\n")
     check("and an empty new address rewrites nothing at all",
           Places.replace(saved, "smb://nas/isos", "", "NAS"), saved)
-
 }
