@@ -31,7 +31,7 @@ QtObject {
     // switched off. Every id here is an action ui/js/Menu.js gives a row, or will give one.
     // Mirrors src/uischema.rs DEFAULTS menu.hidden exactly; the two drifted once and a fresh
     // ui.json then hid a row the shipped schema shows.
-    readonly property var defaultMenuHidden: ["delete", "openTerminal", "localsend", "placeMenu", "runScript",
+    readonly property var defaultMenuHidden: ["delete", "openTerminal", "placeMenu", "runScript",
                                               "moveto", "copyto", "properties", "permissions", "copypath"]
 
     // ui.json names what is SHOWN. ui/Header.qml, ui/Row.qml and ui/ContextMenu.qml all ask the
@@ -62,8 +62,13 @@ QtObject {
     // the section's only state: ui/js/Menu.js applyHidden is the consumer and ui/ContextMenu.qml the
     // one caller that passes it in, and the panel's master row is derived from this set, not stored.
     readonly property var menu: root.state.menu || ({})
-    readonly property var menuHidden: Array.isArray(root.menu.hidden) ? root.menu.hidden
-                                                                      : root.defaultMenuHidden
+    // B1, GM's ruling: "Enable shelf" is one switch, so the Menus row is not a stored menu id at all.
+    // It reads the shelf's own boolean, which is what src/shelfplugin.rs installs the bar plugin on.
+    readonly property bool shelfEnabled: (root.state.shelf || ({})).enabled === true
+    readonly property var menuHidden: (Array.isArray(root.menu.hidden) ? root.menu.hidden
+                                                                       : root.defaultMenuHidden)
+                                      .filter(function (id) { return id !== "shelf" })
+                                      .concat(root.shelfEnabled ? [] : ["shelf"])
 
     // The Menus section's "Show keyboard hints" row, `keyHints` in src/uischema.rs. It draws the key
     // beside every menu row and the tip under an empty directory, and it binds no key of its own:
@@ -199,14 +204,18 @@ QtObject {
 
     // The Menus section's own two writers. Both write the hidden set alone, because a group's master is Settings.masterState of that set rather than a value of its own.
     function setMenuHidden(hidden) {
-        root.changeLeaf("menu", { hidden: hidden })
+        root.changeLeaf("menu", { hidden: hidden.filter(function (id) { return id !== "shelf" }) })
     }
 
     function toggleMenuAction(id) {
+        if (id === "shelf") { root.changeLeaf("shelf", { enabled: !root.shelfEnabled }); return }
         root.setMenuHidden(Settings.toggleId(root.menuHidden, id))
     }
 
+    // A master that turns its whole group on turns the shelf on with it, and the same the other way.
     function toggleMenuGroup(ids) {
+        if (ids.indexOf("shelf") >= 0)
+            root.changeLeaf("shelf", { enabled: Settings.masterState(root.menuHidden, ids) !== "all" })
         root.setMenuHidden(Settings.toggleMaster(root.menuHidden, ids))
     }
 

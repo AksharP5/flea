@@ -49,9 +49,11 @@ function runShelfRows(check) {
     var fresh = Settings.rows("shelf", { data: {}, pins: [] })
     check("the Shelf section is the master, the two routes, the captures and Pinned",
           kinds(fresh), "group|check|choice|hint|group|check|check|choice|group")
-    check("it opens with the shelf on, the bar on and the rail off",
+    // Directive 38 and GM's B1 ruling: the master is what installs the bar plugin, so it ships off
+    // and the rows under it open on the values the switch would turn on.
+    check("it opens with the shelf off, and the bar and rail ready underneath",
           [find(fresh, "shelf.enabled").state, find(fresh, "shelf.bar").on,
-           find(fresh, "shelf.rail").selected].join("|"), "all|true|off")
+           find(fresh, "shelf.rail").selected].join("|"), "none|true|off")
     check("the captures group opens on both kinds and three",
           [find(fresh, "shelf.screenshots").on, find(fresh, "shelf.recordings").on,
            find(fresh, "shelf.recent").selected].join("|"), "true|true|3")

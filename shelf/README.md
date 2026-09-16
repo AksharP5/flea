@@ -130,11 +130,19 @@ The empty card names that chord once the line is there, and says nothing about i
 
 ## Install
 
+The shelf ships inside Flea, so there is nothing to clone. Install Flea, open its Settings, and turn
+on **Enable shelf**: Flea copies the plugin into `~/.config/omarchy/plugins/` and enables it, and the
+mark appears on the bar. Turning the switch off disables it again and leaves the pile where it is.
+
+Installing it by hand, for a shelf without Flea's Settings in front of you:
+
 ```bash
 omarchy plugin add https://github.com/thisisgm/flea-shelf.git --enable --yes
 ```
 
 ## Uninstall
+
+Turn **Enable shelf** off in Flea's Settings. To remove the copy as well:
 
 ```bash
 omarchy plugin remove io.github.thisisgm.flea-shelf

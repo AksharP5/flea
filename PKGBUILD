@@ -81,6 +81,9 @@ package() {
   # paths.rs looks for /usr/share/flea/ui/shell.qml, so the UI ships as data beside the binary.
   install -Dm644 ui/qmldir ui/*.qml -t "$pkgdir/usr/share/flea/ui"
   install -Dm644 ui/js/*.js -t "$pkgdir/usr/share/flea/ui/js"
+  # B1: the bar plugin ships as data too, and Flea's own Enable shelf switch copies it from here into
+  # the user's plugin directory. The folder is flat, which is what src/shelfplugin.rs installs.
+  install -Dm644 shelf/manifest.json shelf/README.md shelf/*.qml shelf/*.js -t "$pkgdir/usr/share/flea/shelf"
   # Commons and Ui are Omarchy's own, reached as qs.Commons: the checkout links them and so does the package.
   ln -s /usr/share/omarchy/shell/Commons "$pkgdir/usr/share/flea/ui/Commons"
   ln -s /usr/share/omarchy/shell/Ui "$pkgdir/usr/share/flea/ui/Ui"

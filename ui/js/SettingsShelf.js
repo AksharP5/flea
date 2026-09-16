@@ -7,7 +7,7 @@
 // `choice` is handed in because this library cannot import the one that imports it.
 function rows(state, choice) {
     var data = (state.data || {}).shelf || {}
-    var on = data.enabled !== false
+    var on = data.enabled === true
     var out = [{ kind: "group", label: "Shelf", id: "shelf.enabled", master: true,
                   state: on ? "all" : "none", value: on ? "on" : "off" }]
     out.push({ kind: "check", id: "shelf.bar", label: "Show in bar", mark: "flea",

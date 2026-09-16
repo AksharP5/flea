@@ -314,7 +314,7 @@ function keyHintsOf(text) {
 }
 
 function shelfDefaults() {
-  return { enabled: true, bar: true, rail: "off", screenshots: true, recordings: true, recent: 3 }
+  return { enabled: false, bar: true, rail: "off", screenshots: true, recordings: true, recent: 3 }
 }
 
 var EDGES = ["off", "left", "right", "bottom"]
@@ -328,7 +328,7 @@ function shelfOf(text) {
   var shelf = doc.shelf && typeof doc.shelf === "object" ? doc.shelf : {}
   var recent = Number(shelf.recent)
   return {
-    enabled: shelf.enabled !== false,
+    enabled: shelf.enabled === true,
     bar: shelf.bar !== false,
     rail: EDGES.indexOf(String(shelf.rail)) >= 0 ? String(shelf.rail) : "off",
     screenshots: shelf.screenshots !== false,

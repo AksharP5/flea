@@ -27,7 +27,7 @@ pub const DEFAULTS: &str = r#"{
     "driveSize": false, "trashCount": false, "showUnmounted": false, "rail": "shown", "autoHide": false, "sidebarWidth": 192
   },
   "shelf": {
-    "enabled": true, "bar": true, "rail": "off",
+    "enabled": false, "bar": true, "rail": "off",
     "screenshots": true, "recordings": true, "recent": 3
   },
   "preview": {
@@ -37,7 +37,7 @@ pub const DEFAULTS: &str = r#"{
   },
   "keys": "default",
   "display": { "textSize": { "mode": "system" }, "hyprlandIcons": false },
-  "menu": { "hidden": ["delete", "openTerminal", "localsend", "placeMenu", "runScript",
+  "menu": { "hidden": ["delete", "openTerminal", "placeMenu", "runScript",
             "moveto", "copyto", "properties", "permissions", "copypath"] }
 }"#;
 
@@ -230,7 +230,8 @@ mod tests {
         assert_eq!(d.get("sort").and_then(|s| s.get("reverse")).and_then(Json::as_bool), Some(false));
         assert_eq!(d.get("dual").and_then(|s| s.get("paths")).and_then(Json::as_array).map(<[Json]>::len), Some(0));
         assert_eq!(d.get("dual").and_then(|s| s.get("focus")).and_then(Json::as_f64), Some(0.0));
-        assert_eq!(d.get("shelf").and_then(|s| s.get("enabled")).and_then(Json::as_bool), Some(true));
+        // Directive 38 and GM's B1 ruling: the shelf ships off, and its switch is what installs the plugin.
+        assert_eq!(d.get("shelf").and_then(|s| s.get("enabled")).and_then(Json::as_bool), Some(false));
         assert_eq!(d.get("shelf").and_then(|s| s.get("bar")).and_then(Json::as_bool), Some(true));
         assert_eq!(d.get("shelf").and_then(|s| s.get("rail")).and_then(Json::as_str), Some("off"));
         assert_eq!(d.get("shelf").and_then(|s| s.get("recent")).and_then(Json::as_f64), Some(3.0));
@@ -268,7 +269,7 @@ mod tests {
             hidden,
             // Directive 38: every feature this release adds ships with its own id hidden, so a fresh
             // ui.json behaves as 0.2.1 did. placeMenu is the Places rows' own menu.
-            ["delete", "openTerminal", "localsend", "placeMenu", "runScript", "moveto", "copyto", "properties", "permissions", "copypath"]
+            ["delete", "openTerminal", "placeMenu", "runScript", "moveto", "copyto", "properties", "permissions", "copypath"]
         );
     }
 
