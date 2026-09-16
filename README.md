@@ -22,7 +22,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/images/release-0.1.6-columns.png" alt="Flea 0.1.6 columns view playing an inline video, with file details and the hostname in the sidebar">
+  <img src="docs/images/release-0.3.0-themes.gif" alt="Flea 0.3.0 cycling through ten Omarchy themes, with the iPhone on the Devices rail and a photo in the preview column">
 </p>
 
 Flea combines a Rust backend with a Quickshell interface that follows your Omarchy theme.
@@ -95,13 +95,20 @@ If you previously pinned another directory handler, restore that handler explici
 
 <p align="center">
   <img src="docs/images/grid.png" width="49%" alt="Grid view with image and video thumbnails">
-  <img src="docs/images/list.png" width="49%" alt="List view with sortable file details">
+  <img src="docs/images/list.png" width="49%" alt="Columns view with the preview column, file details and the iPhone on the Devices rail">
 </p>
 
 **Space** opens Quick Look from any view. Page through a PDF, play media or inspect an archive.
 
 <p align="center">
   <img src="docs/images/pdf.png" alt="PDF preview with page navigation">
+</p>
+
+**The shelf** lives in the Omarchy bar: send files there from any menu, drag them out into any app, pin the ones you keep coming back to. **Phones** are Devices rows over MTP, AFC and PTP.
+
+<p align="center">
+  <img src="docs/images/shelf.png" width="49%" alt="The shelf card open over Flea, with thumbnails, pins and the last three screenshots">
+  <img src="docs/images/iphone.png" width="49%" alt="An iPhone camera roll browsed over AFC, with HEIC thumbnails and a preview">
 </p>
 
 ## Performance
