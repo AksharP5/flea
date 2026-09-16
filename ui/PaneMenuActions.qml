@@ -1,4 +1,6 @@
 import QtQuick
+import Quickshell
+import Quickshell.Io
 import "." as Flea
 import "js/LocalSend.js" as LocalSendJs
 import "js/Menu.js" as Menu
@@ -23,10 +25,42 @@ Loader {
         function onLocalSendSent(ok, reason) { root.pane.message(LocalSendJs.verdict(ok, reason), !ok) }
     }
 
+    // A menu opened without a selection carries no paths, so a row action means the row under the
+    // cursor, which is what Copy path has always read and what the send rows read now.
+    function targets(paths) {
+        if (paths && paths.length) return paths
+        return root.pane.cursorRow ? [root.pane.join(root.pane.path, root.pane.cursorRow.n)] : []
+    }
+
+    // Actions rule 1: every shelf action is a `flea shelf` call, so the menu row makes the same one
+    // a drop onto the card makes and nothing here knows the pile's shape.
+    function shelve(paths) {
+        if (paths.length === 0) { root.pane.message("There is nothing to put on the shelf.", true); return }
+        shelver.count = paths.length
+        shelver.command = [Quickshell.env("FLEA_BIN") || "flea", "shelf", "add"].concat(paths)
+        shelver.running = true
+    }
+
+    Process {
+        id: shelver
+        property int count: 0
+        stderr: StdioCollector { waitForEnd: true }
+        onExited: function (code, status) {
+            if (code === 0) {
+                root.pane.message(shelver.count === 1 ? "Added it to the shelf."
+                                                      : "Added " + shelver.count + " items to the shelf.", false)
+                return
+            }
+            var said = shelver.stderr.text.trim().split("\n").pop().replace(/^flea: /, "")
+            root.pane.message(said.length > 0 ? said : "The shelf did not take that.", true)
+        }
+    }
+
     function perform(action, menuId, paths) {
         if (action.indexOf("runScript:") === 0) { Flea.Scripts.run(action.substring("runScript:".length), paths || []); return }
-        if (action.indexOf("localsend:") === 0) { LocalSendJs.send(root.pane, localSend, root.pane.backend.providers.localsend, action.substring("localsend:".length), paths || []); return }
-        if (action.indexOf("taildrop:") === 0) { root.pane.sendTaildrop(action.substring("taildrop:".length), paths && paths.length === 1 ? paths[0] : ""); return }
+        if (action.indexOf("localsend:") === 0) { LocalSendJs.send(root.pane, localSend, root.pane.backend.providers.localsend, action.substring("localsend:".length), root.targets(paths)); return }
+        if (action.indexOf("taildrop:") === 0) { root.pane.sendTaildrop(action.substring("taildrop:".length), root.targets(paths).length === 1 ? root.targets(paths)[0] : ""); return }
+        if (action === "addToShelf") { root.shelve(root.targets(paths)); return }
         if (action === "sharelink") { root.pane.copyShareLink(paths && paths.length === 1 ? paths[0] : ""); return }
         if (action === "copypath") { root.pane.opener.copyText(paths && paths.length ? paths[0] : root.pane.join(root.pane.path, root.pane.cursorRow.n)); return }
         if (action.indexOf("col:") === 0) { ViewState.toggleColumn(action.substring("col:".length)); return }

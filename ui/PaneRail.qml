@@ -25,7 +25,11 @@ Item {
     readonly property int settleMs: 220
     property bool revealed: false
     property bool over: false
-    readonly property bool wanted: edge.hovered || root.over
+    // The rail's own context menu takes the pointer with it, so without this the rail withdraws out
+    // from under the menu it just opened.
+    readonly property bool menuHere: root.pane !== null && root.pane.contextMenu().opened
+                                     && root.pane.contextMenu().forRail
+    readonly property bool wanted: edge.hovered || root.over || root.menuHere
                                    || (root.pane !== null && root.pane.focusView === Focus.RAIL)
 
     onWantedChanged: {
