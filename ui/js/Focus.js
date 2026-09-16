@@ -18,7 +18,7 @@ var RAIL = "rail"
 
 // Tab is the only thing that moves focus between views, so the rule lives in one function.
 function next(current, sidebar) {
-    // RailAdditions rule 4: a hidden rail is not a place the keyboard can go, so Tab stays in the list.
+    // RailAdditions rule 4: a hidden rail is not a place the keyboard can go, so Tab stays in the list. Directive 77: one that auto-hide withdrew is, because arriving there is what reveals it.
     return current === LIST && sidebar ? RAIL : LIST
 }
 
@@ -271,7 +271,7 @@ function handleKey(event, root, sidebar) {
     }
     if (action === "focusNext" || action === "focusPrevious") {
         if (root.dualMode && root.focusView === LIST) root.switchPane()
-        else root.focusView = next(root.focusView, sidebar)
+        else root.focusView = next(root.focusView, sidebar || root.railAvailable)
         return true
     }
     if (action === "focusPreview") {

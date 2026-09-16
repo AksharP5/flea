@@ -413,8 +413,8 @@ function placesRows(state) {
     rows.push({ kind: "group", label: "Rail" })
     var rail = [["driveSize", "Show drive size", "drive"], ["trashCount", "Show Trash count", "trash"], ["showUnmounted", "Show unmounted drives", "drive"], ["autoHide", "Auto-hide sidebar", "maximize"]]
     for (var r = 0; r < rail.length; r++) rows.push({ kind: "check", id: "places." + rail[r][0], label: rail[r][1], glyph: rail[r][2], on: data[rail[r][0]] === true })
-    // Directive 74: the rail is remembered as a word, so this row reads it as one; ctrl-b writes the same leaf.
-    rows.push({ kind: "check", id: "places.rail", label: "Show sidebar", glyph: "columns", on: data.rail !== "hidden" })
+    // Directive 74: the rail is remembered as a word, so this row reads it as one; ctrl-b writes the same leaf. Directive 77: auto-hide answers the pointer instead, so the remembered choice is greyed while that is on rather than quietly ignored.
+    rows.push({ kind: "check", id: "places.rail", label: "Show sidebar", glyph: "columns", on: data.rail !== "hidden", available: data.autoHide !== true })
     rows.push(choice("places.sidebarWidth", "Sidebar width", "maximize", Places.WIDTH_STOPS,
         ["160 px", "192 px", "224 px", "256 px"], Places.sidebarWidth(data.sidebarWidth)))
     // Trash lives in Places, and the sweep is off until switched on: permanent deletion is outside the undo journal.

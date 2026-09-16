@@ -194,6 +194,20 @@ sidebar_stored() {
     fail "sidebar: the state file never held rail=$want, it holds $(jq -c .places "$file")"
 }
 
+sidebar_edge() {
+    local wx wy _ww wh
+    read -r wx wy _ww wh < <(window_box) || fail "sidebar: native window coordinates unavailable"
+    omarchy-drive move "$((wx + 1))" "$((wy + wh / 2))" >/dev/null
+    YDOTOOL_SOCKET="$XDG_RUNTIME_DIR/.ydotool_socket" ydotool mousemove -x 1 -y 0 >/dev/null 2>&1
+    settle
+}
+sidebar_away() {
+    local wx wy ww wh
+    read -r wx wy ww wh < <(window_box) || fail "sidebar: native window coordinates unavailable"
+    omarchy-drive move "$((wx + ww / 2))" "$((wy + wh / 2))" >/dev/null
+    YDOTOOL_SOCKET="$XDG_RUNTIME_DIR/.ydotool_socket" ydotool mousemove -x 1 -y 0 >/dev/null 2>&1
+    settle
+}
 sidebar_wait() {
     local want="$1" attempt
     for attempt in $(seq 1 60); do
@@ -267,14 +281,51 @@ case_sidebar() (
     shot sidebar-settings
     key -k Escape >/dev/null; settle
 
-    echo "-- switched on, the narrow window hides it and widening brings it back --"
+    echo "-- directive 77: switched on, the rail withdraws and the pane keeps the width --"
+    sidebar_wait true
+    [[ "$(sidebar_state .inset)" == "0" ]] || fail "sidebar: the withdrawn rail still holds $(ipc railState)"
+    [[ "$(jq -r '.places.rail' "$stored")" == "shown" ]] \
+        || fail "sidebar: withdrawing wrote the remembered choice, the file holds $(jq -c .places "$stored")"
     sidebar_resize 520
     sidebar_wait true
-    [[ "$(jq -r '.places.rail' "$stored")" == "shown" ]] \
-        || fail "sidebar: the width rule wrote the remembered choice, the file holds $(jq -c .places "$stored")"
-    shot sidebar-narrow
     sidebar_resize 1200
+    sidebar_wait true
+
+    echo "-- and the pointer at the window's own left edge reveals it, over the pane and not beside it --"
+    sidebar_edge
     sidebar_wait false
-    printf 'SIDEBAR narrow=ok remembered=%s autoHide=%s\n' "$(jq -r '.places.rail' "$stored")" "$(jq -r '.places.autoHide' "$stored")"
+    [[ "$(sidebar_state .inset)" == "0" ]] \
+        || fail "sidebar: the revealed rail reflowed the pane, $(ipc railState)"
+    [[ "$(sidebar_state '.width > 0')" == "true" ]] || fail "sidebar: the revealed rail has no width, $(ipc railState)"
+    shot sidebar-overlay
+
+    echo "-- it withdraws a moment after the pointer leaves --"
+    sidebar_away
+    sidebar_wait true
+
+    echo "-- Tab reveals it the same way, and the keyboard leaving withdraws it --"
+    key -k Tab >/dev/null; settle
+    [[ "$(ipc focusView)" == "rail" ]] || fail "sidebar: Tab did not reach the withdrawn rail, it is on $(ipc focusView)"
+    sidebar_wait false
+    key -k Tab >/dev/null; settle
+    sidebar_wait true
+
+    echo "-- and the switch goes off again from its own row --"
+    settings_open_key; settle
+    settings_section places
+    shot sidebar-greyed
+    settings_focus_row places.autoHide
+    key -k Space >/dev/null; settle
+    settings_wait_value '.places.autoHide == false'
+    key -k Escape >/dev/null; settle
+
+    echo "-- switched off, Show sidebar and ctrl-b govern again --"
+    sidebar_wait false
+    [[ "$(sidebar_state '.inset > 0')" == "true" ]] || fail "sidebar: the rail came back as an overlay, $(ipc railState)"
+    key -M ctrl -k b -m ctrl >/dev/null
+    sidebar_wait true
+    key -M ctrl -k b -m ctrl >/dev/null
+    sidebar_wait false
+    printf 'SIDEBAR autohide=ok remembered=%s\n' "$(jq -r '.places.rail' "$stored")"
     kill_flea
 )

@@ -88,7 +88,7 @@ QtObject {
         }
         function railCursor(): int { return root.pane.railCursor }
         function railCount(): int { return root.pane.railCount }
-        function railState(): string { return JSON.stringify({hidden: root.pane.railHidden, width: root.pane.sidebarWidth, pane: root.pane.width}) }
+        function railState(): string { return JSON.stringify({hidden: root.pane.railHidden, width: root.pane.sidebarWidth, inset: root.pane.railInset, pane: root.pane.width}) }
         function path(): string { return root.pane.path }
         function dualState(): string {
             return JSON.stringify({active: ViewState.state.view === "dual",

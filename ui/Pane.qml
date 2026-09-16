@@ -72,10 +72,14 @@ FocusScope {
     readonly property alias header: header
     property var sharedSidebar: null
     property var railPane: root
-    readonly property var sidebar: root.sharedSidebar || railLoader.item
-    readonly property real sidebarWidth: railLoader.width
-    // RailAdditions rule 4: what ctrl-b remembered, plus the width rule, which writes nothing.
-    readonly property bool railHidden: ViewState.railHidden || (ViewState.railAutoHide && root.width < Theme.space(640))
+    readonly property var sidebar: root.sharedSidebar || railHost.item
+    readonly property real sidebarWidth: railHost.railWidth
+    // RailAdditions rule 4 and directive 77, both answered in ui/PaneRail.qml.
+    readonly property bool railHidden: railHost.hidden
+    // What the rail takes from the pane, which an overlay never does; the sidebar case reads it.
+    readonly property real railInset: railHost.inset
+    // Directive 77: a withdrawn rail is still a place Tab can go, because arriving there reveals it.
+    readonly property bool railAvailable: root.sidebar !== null || railHost.overlay
     function toggleRail() { ViewState.toggleRail() }
     property bool paneFocused: true
     property bool listOnly: false
@@ -399,29 +403,17 @@ FocusScope {
         pane: root
     }
 
-    Loader {
-        id: railLoader
-        anchors { left: parent.left; top: parent.top; bottom: parent.bottom }
-        width: item ? item.implicitWidth : 0
-        active: !root.listOnly && root.sharedSidebar === null && !root.railHidden
-        sourceComponent: Flea.Sidebar {
-            backend: root.backend
-            navigationPane: root.railPane
-            focused: root.railPane.focusView === Focus.RAIL
-            trashActive: root.railPane.trash.opened
-            onOpened: function(path) { root.railPane.open(path) }
-            onNetworkOpened: function(path, origin) { if (origin) origin.open(path) }
-            onTrashRequested: root.railPane.trash.open()
-            onMessage: function(text, isError) { root.railPane.message(text, isError) }
-            onForgetMessage: function(text) { root.railPane.forgetMessage(text) }
-            menu: root.railPane.contextMenu()
-            onRenameFinished: root.railPane.listArea.forceActiveFocus()
-        }
+    Flea.PaneRail {
+        id: railHost
+        anchors.left: parent.left
+        // Over the listing, because with auto-hide on the rail is an overlay and not a column.
+        z: 3
+        pane: root
     }
 
     Rectangle {
         id: panePath
-        anchors { left: railLoader.right; right: parent.right; top: parent.top }
+        anchors { left: railHost.right; right: parent.right; top: parent.top }
         height: root.dualMode && !trashHost.opened ? Theme.chromeHeight : 0
         visible: height > 0
         color: root.paneFocused ? Theme.color.surface : Theme.color.background
@@ -458,7 +450,7 @@ FocusScope {
         visible: !trashHost.opened && (root.viewMode === "list" || root.searchMode.length > 0)
         height: visible ? implicitHeight : 0
         anchors.top: panePath.bottom
-        anchors.left: railLoader.right
+        anchors.left: railHost.right
         anchors.right: parent.right
         sortBy: root.backend.sortBy
         sortDesc: root.backend.sortDesc
@@ -489,7 +481,7 @@ FocusScope {
     Flea.FilterStrip {
         id: filterStrip
         anchors.top: header.bottom
-        anchors.left: railLoader.right
+        anchors.left: railHost.right
         anchors.right: parent.right
         pane: root
     }
@@ -504,7 +496,7 @@ FocusScope {
         active: root.viewMode === "columns" || root.columnsBuilt
         visible: !trashHost.opened
         focus: visible && root.viewMode === "columns"
-        anchors { top: filterStrip.bottom; left: railLoader.right; right: parent.right; bottom: parent.bottom }
+        anchors { top: filterStrip.bottom; left: railHost.right; right: parent.right; bottom: parent.bottom }
         Component.onCompleted: setSource("ColumnsArea.qml", { pane: root, menu: menu, focus: true })
         onLoaded: { root.columnsBuilt = true; item.visible = Qt.binding(function () { return root.viewMode === "columns" }) }
     }
@@ -514,7 +506,7 @@ FocusScope {
         active: root.viewMode === "grid" || root.gridBuilt
         visible: !trashHost.opened
         focus: visible && root.viewMode === "grid"
-        anchors { top: filterStrip.bottom; left: railLoader.right; right: parent.right; bottom: parent.bottom }
+        anchors { top: filterStrip.bottom; left: railHost.right; right: parent.right; bottom: parent.bottom }
         Component.onCompleted: setSource("GridArea.qml", { pane: root, menu: menu })
         onLoaded: { root.gridBuilt = true; item.visible = Qt.binding(function () { return root.viewMode === "grid" }) }
     }
@@ -553,7 +545,7 @@ FocusScope {
         visible: !trashHost.opened && root.viewMode === "list"
         focus: visible
         anchors.top: filterStrip.bottom
-        anchors.left: railLoader.right
+        anchors.left: railHost.right
         anchors.right: parent.right
         anchors.bottom: parent.bottom
         pane: root
@@ -570,7 +562,7 @@ FocusScope {
     }
 
     Rectangle {
-        anchors { top: panePath.bottom; bottom: parent.bottom; left: railLoader.right }
+        anchors { top: panePath.bottom; bottom: parent.bottom; left: railHost.right }
         visible: root.dualMode && root.paneFocused
         width: Theme.spacing.hairline * 2
         color: Theme.color.accent
@@ -580,7 +572,7 @@ FocusScope {
         id: trashHost
         pane: root
         overlayParent: root.overlayParent
-        anchors { top: parent.top; left: railLoader.right; right: parent.right; bottom: parent.bottom }
+        anchors { top: parent.top; left: railHost.right; right: parent.right; bottom: parent.bottom }
     }
 
     // Directory cursors retain the installed provider with its explicit file-only reason.

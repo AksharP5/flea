@@ -203,6 +203,13 @@ function runCompletionRows(check) {
     // Directive 74: two handles on one remembered state, so the row reads the word ctrl-b writes.
     check("Show sidebar is checked while the rail is shown", find(places, "places.rail").on, true)
     check("and auto-hide ships off, so nothing hides itself", find(places, "places.autoHide").on, false)
+    // Directive 77: with auto-hide on the pointer governs the rail, so the remembered choice is
+    // greyed and not a stop, the same treatment every other dependent row gets.
+    var hiding = Settings.rows("places", { data: { places: { autoHide: true } } })
+    check("Show sidebar is greyed while auto-hide is on",
+          [find(hiding, "places.rail").available, Settings.focusable(find(hiding, "places.rail"))].join("|"), "false|false")
+    check("and it is a control again with auto-hide off",
+          [find(places, "places.rail").available, Settings.focusable(find(places, "places.rail"))].join("|"), "true|true")
     // The 30 day sweep's own row, at the foot of Places under its own eyebrow. Off unless ui.json says otherwise, which is the whole of GM's opt-in ruling as the panel sees it.
     check("Places ends with the Trash group and its one row",
           places.slice(-2).map(function (row) { return row.label }).join("|"),
