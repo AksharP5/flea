@@ -2,7 +2,7 @@
 // takes arrow keys and Enter. Directive 71 is that Flea drives that CLI rather than opening the app,
 // so this opens a pty of its own and drives it there. No shell is involved at any point, which is
 // what keeps a file name with a quote or a space in it an argument rather than somebody else's word.
-use super::localsendtext::{panel, parse_peers, refusal, strip_ansi, Peer};
+use super::localsendtext::{parse_peers, refusal, strip_ansi, Peer};
 use std::io::{Read, Write};
 use std::os::fd::{FromRawFd, OwnedFd};
 use std::os::unix::process::CommandExt;
@@ -71,22 +71,18 @@ fn open_pty() -> Result<(OwnedFd, std::fs::File), String> {
     Ok((master, slave))
 }
 
-// LocalSend's own port is where a device receives, and the operator's own LocalSend may already hold
-// it. Flea only ever sends, so each run takes a free port of its own and announces itself on that;
-// without this a run alongside the app dies with "Address already in use" and sends nothing.
-fn free_port() -> u16 {
-    match std::net::TcpListener::bind(("127.0.0.1", 0)) {
-        Ok(listener) => listener.local_addr().map(|a| a.port()).unwrap_or(0),
-        Err(_) => 0,
-    }
-}
-
+// No --port: measured on the box, a run on any other port hears nothing at all, because LocalSend
+// announces to the multicast group on 53317 and a CLI bound elsewhere never receives those
+// announcements. A box already running its own LocalSend is told so instead, by refusal() below.
 fn spawn(args: &[String], slave: &std::fs::File) -> Result<Child, String> {
     let stdin = slave.try_clone().map_err(|e| format!("LocalSend terminal setup failed: {}.", crate::error::io_message(&e)))?;
     let stdout = slave.try_clone().map_err(|e| format!("LocalSend terminal setup failed: {}.", crate::error::io_message(&e)))?;
     let stderr = slave.try_clone().map_err(|e| format!("LocalSend terminal setup failed: {}.", crate::error::io_message(&e)))?;
     let mut command = Command::new(COMMAND);
-    command.args(args).stdin(Stdio::from(stdin)).stdout(Stdio::from(stdout)).stderr(Stdio::from(stderr));
+    // A pty is not a terminal until something says which one: the backend inherits no TERM, and
+    // without one the CLI draws its frame and never refreshes the device list inside it.
+    command.args(args).env("TERM", "xterm-256color")
+        .stdin(Stdio::from(stdin)).stdout(Stdio::from(stdout)).stderr(Stdio::from(stderr));
     unsafe {
         // A session of its own, then this pty as its controlling terminal: without one the CLI reads
         // no keys at all, and with Flea's own session it would take Flea's.
@@ -127,10 +123,28 @@ fn text_of(seen: &Arc<Mutex<String>>) -> String {
     }
 }
 
-fn press(slave: &std::fs::File, keys: &[u8]) -> Result<(), String> {
-    let mut writer = slave.try_clone().map_err(|e| format!("LocalSend could not reach its CLI: {}.", crate::error::io_message(&e)))?;
+// Keys go to the master, which is the terminal's input side. Writing them to the slave instead is a
+// key the app never reads: it is the app's own output, so the write lands on its screen and nowhere
+// else, which is why every press before this was silently lost.
+fn press(master: &OwnedFd, keys: &[u8]) -> Result<(), String> {
+    let mut writer = std::fs::File::from(master.try_clone().map_err(|e| format!("LocalSend could not reach its CLI: {}.", crate::error::io_message(&e)))?);
     writer.write_all(keys).map_err(|e| format!("LocalSend could not reach its CLI: {}.", crate::error::io_message(&e)))?;
     writer.flush().map_err(|e| format!("LocalSend could not reach its CLI: {}.", crate::error::io_message(&e)))
+}
+
+// Sample event lines, exactly as the CLI prints them under its panel:
+// "S Clean Lemon: Sent 1 file (61 B, took 0s)" and "D [1] Clean Lemon (192.168.21.23)".
+// The prefix is the whole test, never a substring: a device named "Sent Phone" would otherwise be
+// read as a completed transfer the moment it was discovered, and "Failed Phone" as a refusal.
+pub fn sent(text: &str, name: &str) -> Option<Result<(), String>> {
+    let head = format!("S {}: ", name);
+    let line = text.lines().map(str::trim).rev().find(|l| l.starts_with(&head))?;
+    let said = line[head.len()..].trim();
+    if said.starts_with("Sent ") { return Some(Ok(())) }
+    if said.starts_with("Failed") {
+        return Some(Err(format!("LocalSend could not send to {}: {}.", name, said.trim_end_matches('.'))))
+    }
+    None
 }
 
 fn stop(child: &mut Child) {
@@ -138,28 +152,18 @@ fn stop(child: &mut Child) {
     let _ = child.wait();
 }
 
-// Every run carries its own port, so two of them and the operator's own app can be up at once.
-fn port_args(rest: &[String]) -> Vec<String> {
-    let mut args: Vec<String> = Vec::new();
-    let port = free_port();
-    if port > 0 {
-        args.push("--port".into());
-        args.push(port.to_string());
-    }
-    args.extend_from_slice(rest);
-    args
-}
-
 // The devices this box can see right now. A run that carries no files starts in receive mode, so the
 // panel is asked for by its own D and the run ends as soon as the answer is in.
 pub fn peers(limit: Duration) -> Result<Vec<Peer>, String> {
     let (master, slave) = open_pty()?;
-    let mut child = spawn(&port_args(&[]), &slave)?;
+    let mut child = spawn(&[], &slave)?;
+    let keys = master.try_clone()
+        .map_err(|e| format!("LocalSend could not hold its own terminal: {}.", crate::error::io_message(&e)))?;
     let seen = read_into(master);
     let deadline = Instant::now() + limit;
     // The CLI has to be up before it has a key reader, so the panel is asked for after one poll.
     std::thread::sleep(POLL * 3);
-    let _ = press(&slave, KEY_SHOW_DEVICES);
+    let _ = press(&keys, KEY_SHOW_DEVICES);
     loop {
         let found = parse_peers(&text_of(&seen));
         if !found.is_empty() {
@@ -178,9 +182,11 @@ pub fn peers(limit: Duration) -> Result<Vec<Peer>, String> {
     }
 }
 
-// One send, to the device the front end named. The panel numbers what it found, so the row is reached
-// by pressing down from the first one, and Enter is what starts the transfer; the CLI ends the run
-// itself when the transfer is over, which is the only success this side can honestly report.
+// One send, to the device the front end named, driven on the CLI's own terminal. Two things were
+// measured here the hard way, both by driving it: keys go to the MASTER side of the pty, because the
+// slave is the app's own output and a key written there is never read, and the device the CLI found
+// arrives as an incremental screen update, so the stream is read whole rather than frame by frame.
+// The row is reached with the arrows the CLI's own footer names, Enter sends, and the CLI says so.
 pub fn send(name: &str, paths: &[String], limit: Duration) -> Result<(), String> {
     if paths.is_empty() { return Err("LocalSend was given nothing to send.".into()) }
     let mut args: Vec<String> = Vec::new();
@@ -189,7 +195,9 @@ pub fn send(name: &str, paths: &[String], limit: Duration) -> Result<(), String>
         args.push(path.clone());
     }
     let (master, slave) = open_pty()?;
-    let mut child = spawn(&port_args(&args), &slave)?;
+    let mut child = spawn(&args, &slave)?;
+    let keys = master.try_clone()
+        .map_err(|e| format!("LocalSend could not hold its own terminal: {}.", crate::error::io_message(&e)))?;
     let seen = read_into(master);
     let deadline = Instant::now() + limit;
     let mut index = None;
@@ -199,8 +207,7 @@ pub fn send(name: &str, paths: &[String], limit: Duration) -> Result<(), String>
             stop(&mut child);
             return Err(refusal)
         }
-        // The panel's own rows, because Enter acts on those and not on what the log has printed.
-        if let Some(peer) = parse_peers(panel(&text)).into_iter().find(|p| p.name == name) {
+        if let Some(peer) = parse_peers(&text).into_iter().find(|p| p.name == name) {
             index = Some(peer.index);
             break
         }
@@ -213,21 +220,29 @@ pub fn send(name: &str, paths: &[String], limit: Duration) -> Result<(), String>
             return Err(format!("{} is not answering on this network any more.", name))
         }
     };
-    // The panel opens on its first device, so the row wanted is that many presses further down.
+    // The list opens on its first device, so the row wanted is that many presses further down.
     for _ in 1..index {
-        press(&slave, KEY_DOWN)?;
+        press(&keys, KEY_DOWN)?;
         std::thread::sleep(POLL);
     }
-    press(&slave, KEY_ENTER)?;
-    // The CLI exits when the transfer ends. A run still going at the deadline is a transfer nobody
-    // accepted, which is a refusal on the other machine rather than a failure here.
+    press(&keys, KEY_ENTER)?;
+    // The CLI reports the transfer on its own event line, "S <device>: Sent 1 file (61 B, took 0s)",
+    // and that line is the only success this side can honestly report.
     while Instant::now() < deadline {
-        match child.try_wait() {
-            Ok(Some(status)) if status.success() => return Ok(()),
-            Ok(Some(_)) => return Err(format!("LocalSend could not send to {}.", name)),
-            Ok(None) => std::thread::sleep(POLL),
-            Err(e) => return Err(format!("LocalSend lost its own CLI: {}.", crate::error::io_message(&e))),
+        let text = text_of(&seen);
+        if let Some(verdict) = sent(&text, name) {
+            stop(&mut child);
+            return verdict
         }
+        // The CLI ending is not a transfer. Only its own Sent line is one, so a run that ended
+        // without printing one sent nothing, whatever its exit code was.
+        if let Ok(Some(_)) = child.try_wait() {
+            return match sent(&text_of(&seen), name) {
+                Some(verdict) => verdict,
+                None => Err(format!("LocalSend's own CLI ended without sending to {}.", name)),
+            }
+        }
+        std::thread::sleep(POLL);
     }
     stop(&mut child);
     Err(format!("{} did not accept the transfer.", name))
@@ -269,6 +284,20 @@ pub fn answer(op: &str, peer: &str, paths: &[String], id: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Codex's finding on the first drive that worked: a substring test reads a device named after
+    // the event as the event itself, and a CLI that ended is not a CLI that sent.
+    #[test]
+    fn only_the_transfer_s_own_event_line_is_a_transfer() {
+        let discovered = "D [1] Sent Phone (10.0.0.4)\nD [2] Failed Phone (10.0.0.5)";
+        assert!(sent(discovered, "Sent Phone").is_none());
+        assert!(sent(discovered, "Failed Phone").is_none());
+        assert!(sent("S Sent Phone: Sent 1 file (61 B, took 0s)", "Sent Phone").expect("a verdict").is_ok());
+        let refused = sent("S Clean Lemon: Failed to send: connection refused", "Clean Lemon").expect("a verdict");
+        assert!(refused.unwrap_err().contains("connection refused"));
+        // The peer's own name is what anchors it, so another device's line is not this one's.
+        assert!(sent("S Other Box: Sent 1 file (61 B, took 0s)", "Clean Lemon").is_none());
+    }
 
     #[test]
     fn nothing_to_send_is_refused_before_a_terminal_is_opened() {

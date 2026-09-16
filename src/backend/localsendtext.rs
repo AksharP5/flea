@@ -86,15 +86,6 @@ pub fn refusal(text: &str) -> Option<String> {
     Some(format!("LocalSend's own CLI refused to start: {}.", said.trim_end_matches('.')))
 }
 
-// The CLI repaints the whole panel every frame and logs its events under it, so a device shows up in
-// the log a few seconds before the panel itself lists it, and only a panel row can be chosen. This is
-// the last panel drawn: from its own top border to the bottom border that closes it.
-pub fn panel(text: &str) -> &str {
-    let start = match text.rfind("┌Devices") { Some(i) => i, None => return "" };
-    let rest = &text[start..];
-    match rest.find('└') { Some(end) => &rest[..end], None => rest }
-}
-
 
 #[cfg(test)]
 mod tests {
@@ -139,16 +130,18 @@ mod tests {
         assert_eq!(strip_ansi("\u{1b}(Bkept"), "kept");
     }
 
+    // A device is named the same way wherever the CLI drew it, in its panel or in the log under it,
+    // which is what lets discovery read the whole stream and ignore where on screen the row landed.
     #[test]
-    fn the_rows_that_can_be_chosen_are_the_panel_s_own() {
-        let frame = "┌Devices┐│Paired││  (none)││Discovered││  (none)│└────┘  [1] Clean Lemon (192.168.21.23)";
-        assert!(parse_peers(panel(frame)).is_empty());
-        assert_eq!(parse_peers(frame).len(), 1);
+    fn a_device_reads_the_same_from_the_panel_and_from_the_log() {
+        let logged = "┌Devices┐│Paired││  (none)││Discovered││  (none)│└────┘  [1] Clean Lemon (192.168.21.23)";
         let listed = "┌Devices┐│Paired││  (none)││Discovered││  [1] Clean Lemon (192.168.21.23)│└────┘";
-        assert_eq!(parse_peers(panel(listed)).len(), 1);
-        // Frames repaint over each other, so it is the last one that says what is on screen now.
-        let both = format!("{}{}", listed, frame);
-        assert!(parse_peers(panel(&both)).is_empty());
+        for drawn in [logged, listed] {
+            let peers = parse_peers(drawn);
+            assert_eq!(peers.len(), 1, "{}", drawn);
+            assert_eq!(peers[0].name, "Clean Lemon");
+            assert_eq!(peers[0].address, "192.168.21.23");
+        }
     }
 
     #[test]
