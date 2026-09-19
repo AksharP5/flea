@@ -511,6 +511,7 @@ run_case() {
             "FLEA_NETWORK_LIVE_MOUNT_URI=$uri"
             "FLEA_NETWORK_LIVE_ROOT=$product_root"
             "FLEA_NETWORK_LIVE_RELATIVE=${case_path#"$product_root"/}"
+            "FLEA_NETWORK_LIVE_MOUNT_RELATIVE=${case_path#"$local_path"/}"
             "FLEA_NETWORK_LIVE_PROTOCOL=$protocol"
             "FLEA_NETWORK_LIVE_HOST=$form_host"
             "FLEA_NETWORK_LIVE_PATH=$form_path"

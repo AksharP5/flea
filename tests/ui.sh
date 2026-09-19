@@ -5845,19 +5845,22 @@ EOS
 case_networklive() {
     local uri=${FLEA_NETWORK_LIVE_URI:-}
     local mount_uri=${FLEA_NETWORK_LIVE_MOUNT_URI:-$uri}
-    local mount_root=${FLEA_NETWORK_LIVE_ROOT:-}
+    local product_root=${FLEA_NETWORK_LIVE_ROOT:-}
     local relative=${FLEA_NETWORK_LIVE_RELATIVE:-}
+    local mount_relative=${FLEA_NETWORK_LIVE_MOUNT_RELATIVE:-}
     local protocol=${FLEA_NETWORK_LIVE_PROTOCOL:-}
     local host=${FLEA_NETWORK_LIVE_HOST:-}
     local remote_path=${FLEA_NETWORK_LIVE_PATH:-}
     local remote_user=${FLEA_NETWORK_LIVE_USER:-}
     local auth=${FLEA_NETWORK_LIVE_AUTH:-none}
-    local product_root
+    local mount_root
     [[ "$uri" == *://* && "$mount_uri" == *://* \
-        && "$mount_root" == "/run/user/$(id -u)/gvfs/"* ]] \
+        && "$product_root" == "/run/user/$(id -u)/gvfs/"* ]] \
         || fail "networklive: missing or unsafe live mount contract"
     [[ -n "$relative" && "$relative" != /* && "$relative" != *".."* ]] \
         || fail "networklive: unsafe relative test path"
+    [[ -n "$mount_relative" && "$mount_relative" != /* && "$mount_relative" != *".."* ]] \
+        || fail "networklive: unsafe mount-relative test path"
     [[ -n "$host" && ( "$auth" == password || "$auth" == none ) ]] \
         || fail "networklive: incomplete form contract"
 
@@ -5901,12 +5904,11 @@ case_networklive() {
     fi
     wait_network_result mounted 120
     product_root=$(timeout 5 gio info "$uri" 2>/dev/null | sed -n 's/^local path: //p')
-    [[ "$product_root" == "/run/user/$(id -u)/gvfs/"* ]] \
+    [[ "$product_root" == "/run/user/$(id -u)/gvfs/"* && -d "$product_root" ]] \
         || fail "networklive: product mount has no safe FUSE root"
-    mount_root=$product_root
-    [[ -f "${mount_root%/}/$relative/alpha.txt" ]] \
-        || fail "networklive: relative fixture is absent below product mount root $mount_root"
-    wait_path_wall "$mount_root" 25
+    [[ -f "${product_root%/}/$relative/alpha.txt" ]] \
+        || fail "networklive: relative fixture is absent below product mount root $product_root"
+    wait_path_wall "$product_root" 25
 
     wait_network_entry_state true
     local entries entry label network_count network_index step
@@ -5930,13 +5932,18 @@ case_networklive() {
     key g >/dev/null
     for ((step = 0; step < network_index; step++)); do key j >/dev/null; done
     key -k Return >/dev/null
+    mount_root=$(timeout 5 gio info "$mount_uri" 2>/dev/null | sed -n 's/^local path: //p')
+    [[ "$mount_root" == "/run/user/$(id -u)/gvfs/"* && -d "$mount_root" ]] \
+        || fail "networklive: mount URI has no safe FUSE root"
+    printf 'NETWORKLIVE roots product=%q mount=%q product-relative=%q mount-relative=%q\n' \
+        "$product_root" "$mount_root" "$relative" "$mount_relative"
     wait_path_wall "$mount_root" 25
     key -k Escape >/dev/null
     settle
     [[ "$(ipc focusView)" == "list" ]] || fail "networklive: Escape did not return focus to the list"
 
     local current=$mount_root component row
-    IFS=/ read -ra components <<< "$relative"
+    IFS=/ read -ra components <<< "$mount_relative"
     for component in "${components[@]}"; do
         [[ -n "$component" ]] || continue
         row=$(find_row_wall "$component" 25) \
