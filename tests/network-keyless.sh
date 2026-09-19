@@ -38,6 +38,8 @@ case "$1 ${2:-}" in
   "info sftp://key@slot.test/home") printf 'local path: %s\n' "$FLEA_TEST_KEY_PATH" ;;
   # A server root that a password would open: no path of its own, and no shares without one.
   "list sftp://ask@slot.test/") exit 2 ;;
+  # An SMB root whose info refuses but whose list enumerates must still be tried.
+  "list smb://nas.test/") printf 'docs\nmedia\n' ;;
   # Everything else wants a password: measured against a real host, gio answers this in 171 ms
   # with exit 2 rather than waiting on a stdin nobody is reading.
   *) exit 2 ;;
@@ -55,7 +57,7 @@ output=$(env \
     QT_FORCE_STDERR_LOGGING=1 \
     timeout 20 qs -p "$test_root/config" 2>&1)
 
-pass_count=$(printf '%s\n' "$output" | grep -c 'NETWORK_KEYLESS passwordless=open needs-password=asked bare-root=asked remembered=kept')
+pass_count=$(printf '%s\n' "$output" | grep -c 'NETWORK_KEYLESS passwordless=open needs-password=asked bare-root=asked remembered=kept smb-root=listed')
 fail_count=$(printf '%s\n' "$output" | grep -c 'NETWORK_KEYLESS FAIL')
 if [ "$pass_count" -ne 1 ] || [ "$fail_count" -ne 0 ]; then
     printf 'FAIL sftp keyless mount changed its answer\n%s\n' "$output"

@@ -496,18 +496,21 @@ Item {
                 root.opened(path, root._pendingOrigin)
                 return
             }
-            if (failed) {
-                // The keyless attempt just failed, and a bare-root listing cannot authenticate.
-                var ask = Mounts.keyless(root._pendingUri) && Mounts.credentialed(root._pendingUri)
-                root.failMount(ask ? "Enter the password to mount this location."
-                        : "Connect failed: network location was refused", root.passwordFor(root._pendingUri), false, ask)
+            // A refused keyless sftp attempt is a missing credential and not a refused location, sftp only.
+            if (failed && Mounts.keyless(root._pendingUri) && Mounts.credentialed(root._pendingUri)) {
+                root.failMount("Enter the password to mount this location.",
+                               root.passwordFor(root._pendingUri), false, true)
                 return
             }
-            // A server root has no FUSE path of its own, so its shares are listed instead, and the
-            // exit code is not read: gio refuses on some servers and answers on others.
+            // A server root lists its shares whatever the exit code said, so this stays ahead of the refusal.
             if (root.isBareRoot(root._pendingUri)) {
                 root.result = "resolving"
                 root.listShares(root._pendingUri)
+                return
+            }
+            if (failed) {
+                root.failMount("Connect failed: network location was refused",
+                               root.passwordFor(root._pendingUri))
                 return
             }
             root.failMount("Connect failed: location has no browsable folder", root.passwordFor(root._pendingUri))

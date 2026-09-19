@@ -157,7 +157,8 @@ const originContext = vm.createContext({root: originService,
     mountProcess: {running: false}, authProcess: {running: false}, infoProcess: {running: false},
     listSharesProcess: {running: false}, mountTimeout: {stop() {}, restart() {}}, infoOut: {text: 'local path: /fixture/mounted'}});
 install(originContext, serviceSource, ['openShare', 'openChildShare', 'finishRequest']);
-const paneSource = fs.readFileSync(path.join(__dirname, '../ui/Pane.qml'), 'utf8');
+// The origin-preserving receiver moved to ui/PaneRail.qml in the 0.3.0 rail split; reading Pane.qml left this file red.
+const paneSource = fs.readFileSync(path.join(__dirname, '../ui/PaneRail.qml'), 'utf8');
 const paneHandler = paneSource.match(/onNetworkOpened: function\(path, origin\) \{([^}]+)}/);
 assert.ok(paneHandler, 'the production pane receiver preserves network origin');
 const paneContext = vm.createContext({root: {railPane: paneB}});

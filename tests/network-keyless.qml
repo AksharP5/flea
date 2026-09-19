@@ -42,12 +42,23 @@ ShellRoot {
             network.openShare("sftp://pw@slot.test/home", false, "Pw slot")
         }
 
+        // Phase 6: an SMB server root whose info fails but whose list enumerates must still be listed.
+        onSharesListed: function (uri, label, names) {
+            if (root.phase === 6 && uri === "smb://nas.test/" && names.join(",") === "docs,media")
+                root.finish("NETWORK_KEYLESS passwordless=open needs-password=asked bare-root=asked"
+                            + " remembered=kept smb-root=listed")
+            else
+                root.finish("NETWORK_KEYLESS FAIL shares=" + uri + " names=" + names.join(",")
+                            + " phase=" + root.phase)
+        }
+
         onRetryRequested: function (uri, label, password, reason, failedConnect) {
             var asked = reason === "Enter the password to mount this location."
                 && failedConnect === false
             // Phase 2 is a refused path-shaped place; phase 3 is a refused server root, which the
             // bare-root listing used to claim before the prompt could reach it; phase 5 is a refused
-            // place whose password this session already remembered, and it must come back with it.
+            // place whose password this session already remembered, and it must come back with it;
+            // phase 6 is the SMB root and must never reach this signal at all.
             if (root.phase === 2 && asked && password === "" && uri === "sftp://ask@slot.test/home") {
                 root.phase = 3
                 network.openShare("sftp://ask@slot.test/", false, "Ask root")
@@ -63,8 +74,8 @@ ShellRoot {
             }
             if (root.phase === 5 && asked && password === "fixture-secret"
                     && uri === "sftp://pw@slot.test/home") {
-                root.finish("NETWORK_KEYLESS passwordless=open needs-password=asked bare-root=asked"
-                            + " remembered=kept")
+                root.phase = 6
+                network.openShare("smb://nas.test/", false, "Nas root")
                 return
             }
             root.finish("NETWORK_KEYLESS FAIL retry=" + uri + " reason=" + reason
@@ -83,7 +94,7 @@ ShellRoot {
     }
 
     Timer {
-        interval: 6000
+        interval: 8000
         running: true
         repeat: false
         onTriggered: root.finish("NETWORK_KEYLESS FAIL timeout phase=" + root.phase)
