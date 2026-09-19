@@ -30,7 +30,25 @@ expect {
         send -- "never\r"
         exp_continue
     }
-    -re {(Password|password|Passphrase|passphrase).*:} {
+    # Issue 98: Domain takes its default empty answer; class "[^]]*" keeps expect's derived gate glob matching.
+    -re {(?i)\mDomain \[[^]]*\]: *\r?$} {
+        send -- "\r"
+        exp_continue
+    }
+    # The real prompt only: keyword immediately before the colon, so the informational header cannot match.
+    -re {(?i)\m(password|passphrase): *\r?$} {
+        if {$password_sent} {
+            catch {close}
+            catch {wait}
+            exit 1
+        }
+        send -- "$password\r"
+        set password ""
+        set password_sent 1
+        exp_continue
+    }
+    # ssh's encrypted-key prompt keeps the old pattern's passphrase support.
+    -re {(?i)\mEnter passphrase for key [^\r\n]*: *\r?$} {
         if {$password_sent} {
             catch {close}
             catch {wait}

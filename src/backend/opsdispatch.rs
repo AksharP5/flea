@@ -260,7 +260,7 @@ pub(crate) fn start_redo(out: &mut impl Write, ops: &mut Ops) {
 // Every message an operation thread sends, written out and, when terminal, recorded in the journal.
 pub(crate) fn report_op(out: &mut impl Write, ops: &mut Ops, msg: OpMsg) {
     match msg {
-        OpMsg::MenuDeleteDone { line } => {
+        OpMsg::MenuDeleteDone { line } | OpMsg::SlotDone { line } => {
             ops.live.finished();
             writeln!(out, "{}", line).ok();
         }

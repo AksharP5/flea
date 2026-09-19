@@ -53,3 +53,35 @@ function formatEntries(formats) {
     }
     return out
 }
+
+// Whether an installed tool reads this archive: .7z needs 7z, .zip/.rar either tool, tar bsdtar.
+function canExtract(name, extraction) {
+    var lower = String(name).toLowerCase()
+    var caps = extraction || ({})
+    if (hasSuffix(lower, ".7z")) return caps.sevenZip === true
+    if (hasSuffix(lower, ".zip") || hasSuffix(lower, ".rar")) return caps.zip === true
+    return caps.archive === true
+}
+
+// The missing program for a disabled Extract: only bsdtar offers "tar" and only 7z offers "7z".
+function extractHint(formats) {
+    var table = formats || []
+    if (table.indexOf("7z") >= 0) return "bsdtar is not installed"
+    if (table.indexOf("tar") >= 0) return "7-Zip is not installed"
+    return "No archive tool is installed"
+}
+
+// Ui/js/Menu.js's Extract row: absent for none, disabled with its reason for no reader.
+function extractEntry(entry, p, count) {
+    if (!p.rowIsArchive || count !== 1) return false
+    if (p.canExtract !== true) {
+        entry.disabled = true
+        entry.hint = extractHint(p.archiveFormats)
+        entry.hintWrap = true
+    }
+    return true
+}
+
+function hasSuffix(lower, suffix) {
+    return lower.length >= suffix.length && lower.indexOf(suffix, lower.length - suffix.length) !== -1
+}

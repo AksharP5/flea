@@ -4,13 +4,14 @@
 use crate::backend::archive::Formats;
 use crate::backend::archiveops::{compress, convert_one, extract, split_paths};
 use crate::backend::convert;
-use crate::backend::opsreq::{op_err, OpMsg};
+use crate::backend::opsreq::{op_err, transferprogress_line, OpMsg};
 use crate::error::io_message;
 use crate::json::escape;
 use std::path::PathBuf;
 use crate::backend::opsdispatch::Ops;
 use crate::backend::proto::error_line;
 use std::io::Write;
+use std::sync::atomic::AtomicBool;
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::thread;
@@ -56,15 +57,21 @@ fn collision_message(dest: &std::path::Path) -> String {
     format!("{} already exists", dest.file_name().unwrap_or_default().to_string_lossy())
 }
 
-// Sample output: {"t":"formats","archive":["zip","tar","tar.zst"],"convert":true}
+// Sample output: {"t":"formats","archive":["zip","tar","tar.zst"],"convert":true,"extract":{"archive":true,"sevenZip":false,"zip":true}}
 pub fn formats_line(formats: &Formats, can_convert: bool) -> String {
     let names: Vec<String> = formats.names().iter().map(|n| format!(r#""{}""#, escape(n))).collect();
-    format!(r#"{{"t":"formats","archive":[{}],"convert":{},"extract":{{"archive":{},"sevenZip":{}}}}}"#,
-        names.join(","), can_convert, formats.offers("tar"), formats.offers("7z"))
+    format!(r#"{{"t":"formats","archive":[{}],"convert":{},"extract":{{"archive":{},"sevenZip":{},"zip":{}}}}}"#,
+        names.join(","), can_convert, formats.offers("tar"), formats.offers("7z"), formats.zip_readable())
+}
+
+// The extract gets its own start type so an older client never owns a card it cannot finish.
+fn extractstarted_line(id: usize) -> String {
+    format!(r#"{{"t":"extractstarted","id":{}}}"#, id)
 }
 
 pub(crate) fn run_archive(id: usize, compressing: bool, paths: Vec<String>, format: String,
-                   archive: PathBuf, dest: PathBuf, formats: &Formats, tx: Sender<OpMsg>, selection: Option<Vec<Selected>>) {
+                   archive: PathBuf, dest: PathBuf, formats: &Formats, tx: Sender<OpMsg>, selection: Option<Vec<Selected>>,
+                   cancel: Arc<AtomicBool>) {
     let sources: Vec<PathBuf> = if compressing { paths.iter().map(PathBuf::from).collect() } else { vec![archive.clone()] };
     let result = if let Err(error) = validate_sources(selection.as_deref(), &sources) {
         Err(op_err("archive", "", &error))
@@ -75,13 +82,15 @@ pub(crate) fn run_archive(id: usize, compressing: bool, paths: Vec<String>, form
             None => Err(op_err("archive", "", "a compress takes absolute paths from one directory")),
         }
     } else {
-        extract(formats, &archive, &dest)
+        extract(formats, &archive, &dest, &cancel)
     };
     let line = match result {
         Ok(verified) => archivedone_line(id, true, verified, ""),
         Err(e) => archivedone_line(id, false, true, &e.msg),
     };
-    let _ = tx.send(OpMsg::Meta { line });
+    // An extract frees the slot its terminal line took; a compress claims none.
+    let message = if compressing { OpMsg::Meta { line } } else { OpMsg::SlotDone { line } };
+    let _ = tx.send(message);
 }
 
 pub(crate) fn run_convert(id: usize, request_id: usize, input: PathBuf, dest: PathBuf, strip: bool, tx: Sender<OpMsg>, selection: Option<Vec<Selected>>) {
@@ -122,12 +131,25 @@ pub fn start_archive(
         Err(message) => { writeln!(out, "{}", error_line(&op_err("archive", "", &message))).ok(); out.flush().ok(); return; }
     };
     let compressing = op == "compress";
-    let id = ops.claim_id();
+    // An extract takes the copy slot, so a copy, move or second extract is refused busy.
+    if !compressing && ops.live.running().is_some() {
+        writeln!(out, "{}", error_line(&op_err("archive", "", "an operation is already running"))).ok();
+        out.flush().ok();
+        return;
+    }
+    // A compress carries a flag nothing sets; only an extract's is ever claimed.
+    let (id, cancel) = if compressing { (ops.claim_id(), Arc::new(AtomicBool::new(false))) } else { ops.claim_transfer() };
     writeln!(out, "{}", archivestarted_line(id)).ok();
+    if !compressing {
+        let name = archive.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+        writeln!(out, "{}", extractstarted_line(id)).ok();
+        // The card's name row; no bytes, so no fabricated percentage, rate or time left.
+        writeln!(out, "{}", transferprogress_line(id, 0, &name, 0, 0, 0)).ok();
+    }
     out.flush().ok();
     let tx = ops.tx.clone();
     thread::spawn(move || {
-        run_archive(id, compressing, paths, format, archive, dest, &formats, tx, selection)
+        run_archive(id, compressing, paths, format, archive, dest, &formats, tx, selection, cancel)
     });
 }
 
@@ -171,6 +193,7 @@ mod tests {
                    r#"{"t":"archivedone","id":13,"ok":true,"verified":true,"err":""}"#);
         assert_eq!(archivedone_line(13, true, false, ""),
                    r#"{"t":"archivedone","id":13,"ok":true,"verified":false,"err":""}"#);
+        assert_eq!(extractstarted_line(13), r#"{"t":"extractstarted","id":13}"#);
         assert_eq!(convertstarted_line(15, 7, "/home/gm/photo.png"),
             r#"{"t":"convertstarted","id":15,"requestId":7,"source":"/home/gm/photo.png"}"#);
         assert_eq!(
@@ -180,11 +203,16 @@ mod tests {
         let f = Formats::from_tools(true, false);
         assert_eq!(
             formats_line(&f, true),
-            r#"{"t":"formats","archive":["zip","tar","tar.gz","tar.bz2","tar.xz","tar.zst"],"convert":true,"extract":{"archive":true,"sevenZip":false}}"#
+            r#"{"t":"formats","archive":["zip","tar","tar.gz","tar.bz2","tar.xz","tar.zst"],"convert":true,"extract":{"archive":true,"sevenZip":false,"zip":true}}"#
         );
         assert_eq!(
             formats_line(&Formats::from_tools(false, false), false),
-            r#"{"t":"formats","archive":[],"convert":false,"extract":{"archive":false,"sevenZip":false}}"#
+            r#"{"t":"formats","archive":[],"convert":false,"extract":{"archive":false,"sevenZip":false,"zip":false}}"#
+        );
+        // #165: 7z alone reads zip and rar, so this box offers Extract with no tar format.
+        assert_eq!(
+            formats_line(&Formats::from_tools(false, true), false),
+            r#"{"t":"formats","archive":["7z"],"convert":false,"extract":{"archive":false,"sevenZip":true,"zip":true}}"#
         );
     }
 
@@ -206,7 +234,7 @@ mod tests {
         assert_eq!(std::fs::read_to_string(d.join("out.zip")).unwrap(), "already here");
 
         d.dir("out");
-        let e = extract(&f, &d.join("x.zip"), &d.join("out")).unwrap_err();
+        let e = extract(&f, &d.join("x.zip"), &d.join("out"), &AtomicBool::new(false)).unwrap_err();
         assert!(e.msg.contains("already exists"), "merging into a directory in use is the surprise this rules out");
     }
 

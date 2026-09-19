@@ -3,12 +3,14 @@
 // archivereq.rs's job, the staging and the jail are archivework.rs's, and reading an index is
 // archivelist.rs's.
 use crate::backend::archive::Formats;
-use crate::backend::archivework::{archive_produced_count, is_empty_dir, run_boxed, Work};
+use crate::backend::archivework::{archive_produced_count_cancellable, is_empty_dir,
+                                  run_boxed, run_boxed_cancellable, Work};
 use crate::backend::convert;
 use crate::backend::ops::rename_noreplace;
 use crate::backend::opsreq::op_err;
 use crate::error::{from_io, FleaError};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 // One archive out of a selection that all shares a parent, which is what a listing selection is.
 pub fn compress(
@@ -39,7 +41,8 @@ pub fn compress(
 // Ok(true) is a verified success and Ok(false) one this could not check, which is a real difference
 // to the operator: three rounds of this branch went into an empty directory published as a success,
 // and publishing an unverified one as an ordinary success is a quieter version of the same thing.
-pub fn extract(formats: &Formats, archive: &Path, dest: &Path) -> Result<bool, FleaError> {
+// cancel stops the job, kills its child and publishes nothing; the Work guard drops the stage.
+pub fn extract(formats: &Formats, archive: &Path, dest: &Path, cancel: &AtomicBool) -> Result<bool, FleaError> {
     if dest.symlink_metadata().is_ok() {
         return Err(op_err("archive", &dest.to_string_lossy(), "that destination already exists"));
     }
@@ -51,9 +54,13 @@ pub fn extract(formats: &Formats, archive: &Path, dest: &Path) -> Result<bool, F
         Some(a) => a,
         None => return Err(op_err("archive", &archive.to_string_lossy(), "this box offers no tool for that archive")),
     };
+    // A cancel that landed while the job waited for the slot aborts before any child runs.
+    if cancel.load(Ordering::Relaxed) {
+        return Err(op_err("archive", &archive.to_string_lossy(), "cancelled"));
+    }
     // Measured on this box: bsdtar exits 1 on a .. member and de-fangs an absolute one, printing
     // "Removing leading '/'" and extracting it relative. Neither escapes the staging directory.
-    run_boxed("archive", inner, archive, &work.dir)?;
+    run_boxed_cancellable("archive", inner, archive, &work.dir, cancel)?;
     // compress and convert stat a path Flea never creates, so their existence check is a real test.
     // This one creates its own staging directory, so the same shape always passes. Two archives
     // legally extract to nothing: an empty one, and one whose only member is the archive root, which
@@ -66,7 +73,7 @@ pub fn extract(formats: &Formats, archive: &Path, dest: &Path) -> Result<bool, F
     // directories. Counting entries missed the root; counting files missed nested directories.
     let mut verified = true;
     if is_empty_dir(&staged) {
-        match archive_produced_count(formats, archive) {
+        match archive_produced_count_cancellable(formats, archive, cancel)? {
             // The index named something and nothing arrived: the tool exited 0 having written nothing.
             Some(n) if n > 0 => {
                 return Err(op_err("archive", &archive.to_string_lossy(), "the archive tool wrote nothing"));
@@ -80,6 +87,10 @@ pub fn extract(formats: &Formats, archive: &Path, dest: &Path) -> Result<bool, F
             // corner: a tool that lies AND an unreadable index at once publishes an empty directory.
             None => verified = false,
         }
+    }
+    // A cancel during the index read still discards; a cancelled job publishes nothing.
+    if cancel.load(Ordering::Relaxed) {
+        return Err(op_err("archive", &archive.to_string_lossy(), "cancelled"));
     }
     rename_noreplace(&staged, dest)?;
     Ok(verified)
@@ -125,6 +136,7 @@ pub fn split_paths(paths: &[String]) -> Option<(PathBuf, Vec<String>)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::backend::archivework::archive_produced_count;
     use crate::backend::testdir::TestDir;
 
     // Archive operations run concurrently by design, so two extracts into the same directory ask for
@@ -156,7 +168,7 @@ mod tests {
         assert_eq!(archive_produced_count(&formats, &archive), Some(0),
                    "the root is the only member, so nothing should appear in the destination");
         let dest = d.join("out");
-        extract(&formats, &archive, &dest).expect("a root-only archive extracts legally");
+        extract(&formats, &archive, &dest, &AtomicBool::new(false)).expect("a root-only archive extracts legally");
         assert!(dest.is_dir(), "and its destination is published rather than refused");
 
         // The root's other spelling, which bsdtar writes for `-C dir ./.`. This exact archive
@@ -169,7 +181,7 @@ mod tests {
         if made_edot.map(|s| s.success()).unwrap_or(false) {
             assert_eq!(archive_produced_count(&formats, &edot), Some(0),
                        "././ is the root as well, so it produces nothing either");
-            extract(&formats, &edot, &d.join("edotout")).expect("and it extracts legally too");
+            extract(&formats, &edot, &d.join("edotout"), &AtomicBool::new(false)).expect("and it extracts legally too");
         }
 
         // The case this test was named for and did not cover: directories that are NOT the root.
@@ -185,7 +197,7 @@ mod tests {
             assert!(archive_produced_count(&formats, &nested).unwrap_or(0) > 0,
                     "nested directories are destination entries, so an empty result is a failure");
             let nest_dest = d.join("nestout");
-            extract(&formats, &nested, &nest_dest).expect("it extracts");
+            extract(&formats, &nested, &nest_dest, &AtomicBool::new(false)).expect("it extracts");
             assert!(std::fs::read_dir(&nest_dest).unwrap().count() > 0,
                     "and the destination really does receive them");
         }
@@ -204,7 +216,7 @@ mod tests {
             return;
         }
         let dest = d.join("out");
-        extract(&formats, &empty, &dest).expect("an empty archive is a legal archive");
+        extract(&formats, &empty, &dest, &AtomicBool::new(false)).expect("an empty archive is a legal archive");
         assert!(dest.is_dir(), "and its destination is published, empty");
         assert_eq!(std::fs::read_dir(&dest).unwrap().count(), 0);
     }
@@ -323,8 +335,57 @@ mod tests {
         let formats = Formats::from_tools(true, true);
         let not_an_archive = d.file("notreally.tar", "this is not an archive at all");
         let dest = d.join("out");
-        assert!(extract(&formats, &not_an_archive, &dest).is_err());
+        assert!(extract(&formats, &not_an_archive, &dest, &AtomicBool::new(false)).is_err());
         assert!(!dest.exists(), "no destination is published for a job that produced nothing");
+    }
+
+    // #156: the fixture is built by the HOST's bsdtar under a pinned locale; the jail extract is asserted.
+    #[test]
+    fn a_utf8_member_name_round_trips_through_the_jail_byte_for_byte() {
+        if crate::backend::sandboxprobe::skipped() { return; }
+        let d = TestDir::new("archutf8");
+        let formats = Formats::from_tools(true, true);
+        let folder = "Remoção de Viés 1º Mês";
+        let member = "Relatório Março.txt";
+        let source = d.join(folder);
+        std::fs::create_dir_all(&source).expect("source directory");
+        std::fs::write(source.join(member), b"conteudo\n").expect("payload");
+        let archive = d.join("bundle.tar");
+        let mut build = std::process::Command::new("bsdtar");
+        build.env("LC_ALL", "C.UTF-8")
+            .args(["-a", "-c", "-f", &archive.to_string_lossy(),
+                   "-C", &d.path().to_string_lossy(), folder]);
+        let built = match build.status() {
+            Ok(status) => status,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                // Missing bsdtar is a missing prerequisite, so it skips; nothing else is a skip.
+                std::io::Write::write_all(&mut std::io::stderr(), b"SKIP backend::archiveops::tests::a_utf8_member_name_round_trips_through_the_jail_byte_for_byte: no bsdtar on this box, so the fixture cannot be built\n").ok();
+                return;
+            }
+            Err(e) => panic!("bsdtar could not be started: {}", e),
+        };
+        assert!(built.success(), "bsdtar failed to build the fixture archive");
+        let dest = d.join("out");
+        extract(&formats, &archive, &dest, &AtomicBool::new(false)).expect("a utf8 name extracts through the real jail");
+        assert!(dest.join(folder).is_dir(), "the folder name survived the jail");
+        assert_eq!(std::fs::read(dest.join(folder).join(member)).unwrap(), b"conteudo\n",
+                   "the member name and its bytes survived the jail");
+    }
+
+    // A cancel before any child runs publishes nothing and leaves no staging directory.
+    #[test]
+    fn a_cancelled_extract_publishes_nothing_and_leaves_no_staging_directory() {
+        use crate::backend::archivework::WORK_PREFIX;
+        let d = TestDir::new("archcancelextract");
+        let formats = Formats::from_tools(true, true);
+        let dest = d.join("out");
+        let e = extract(&formats, Path::new("/nonexistent/a.zip"), &dest, &AtomicBool::new(true)).unwrap_err();
+        assert_eq!(e.msg, "cancelled");
+        assert!(!dest.exists(), "a cancelled extract published a destination");
+        let litter = std::fs::read_dir(d.path()).unwrap()
+            .filter(|entry| entry.as_ref().map(|e| e.file_name().to_string_lossy().starts_with(WORK_PREFIX)).unwrap_or(false))
+            .count();
+        assert_eq!(litter, 0, "a cancelled extract left its staging directory behind");
     }
 
     #[test]

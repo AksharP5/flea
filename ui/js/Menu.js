@@ -131,7 +131,7 @@ function availableEntry(e, p, kind) {
     // Issue 133: a mount with no trash directory never offers the row, rather than offering one that
     // fails; ui/js/Mounts.js trashable is the one reader of what the path says about that.
     if (e.action === "trash" && p.canTrash === false) return false
-    if (e.action === "extract" && !(p.rowIsArchive && p.canExtract === true && count === 1)) return false
+    if (e.action === "extract" && !Archive.extractEntry(e, p, count)) return false
     if (e.action === "convert" && !(p.rowIsImage && p.canConvert && count === 1)) return false
     // OpenWith.html: the desktop's current default is first and carries the muted caption "default"
     // in the hint slot, the registry order follows it, and the tail row sits under its own
