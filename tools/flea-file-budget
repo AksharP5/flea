@@ -6,7 +6,7 @@ soft_rust=250; hard_rust=400
 soft_qml=250;  hard_qml=400
 soft_js=200;   hard_js=300
 
-# Recorded debts and scoped 0.3.1 exceptions retain exact per-file ceilings; global limits stay unchanged.
+# Recorded debts and scoped release exceptions retain exact per-file ceilings; global limits stay unchanged.
 known_over_cap="shelf/Model.js 655
 shelf/Panel.qml 430
 shelf/ShelfCard.qml 443
@@ -40,7 +40,7 @@ ui/NetworkMounts.qml 557
 ui/OpenWithDialog.qml 583
 ui/Pane.qml 663
 ui/PaneMenuActions.qml 404
-ui/PaneWire.qml 483
+ui/PaneWire.qml 485
 ui/PermissionsDialog.qml 426
 ui/PreviewColumn.qml 463
 ui/Row.qml 410

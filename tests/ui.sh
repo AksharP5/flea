@@ -2650,6 +2650,9 @@ case_watch() {
     wait_listing 4
     [[ "$(flea_pid)" == "$watch_pid" ]] || fail "watch: the move case relaunched Flea"
     printf 'WATCH move=ok parent-row=gone child-bytes=exact no-relaunch=ok\n'
+    [[ "$(ipc selectionCount)" == 1 ]] || fail "watch: returning to the parent did not select the folder"
+    key -k Escape >/dev/null
+    [[ "$(ipc selectionCount)" == 0 ]] || fail "watch: Escape did not release the folder selection"
     rm "$dir/move-target/move-source.txt"
     rmdir "$dir/move-target"
     omarchy-drive wait ipc -p "$flea_ui" flea total 3 --timeout 15 >/dev/null \
