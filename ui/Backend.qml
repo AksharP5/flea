@@ -425,10 +425,13 @@ Item {
 
         // A spawn that fails raises runningChanged and never exited, measured, so it reports here.
         onRunningChanged: {
-            if (root.queueing && !child.running && !(root.pickerOnly && root.quitting)) {
+            if (root.queueing && !child.running) {
                 root.queueing = false
                 root.pending = []
-                root.failed("backend", "", "the backend could not be started", 0)
+                // FailedToStart has no exited signal. A chooser already cancelling still owes its
+                // lifecycle an answer; a started child clears queueing and must be reaped in exited.
+                if (root.pickerOnly && root.quitting) root.quitReady()
+                else root.failed("backend", "", "the backend could not be started", 0)
             }
         }
 

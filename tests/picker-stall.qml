@@ -16,7 +16,7 @@ ShellRoot {
     Flea.PickerListing {
         id: listing
         onFailed: function(reason) {
-            if (root.scenario === "missing") root.stop()
+            if (root.scenario.indexOf("missing") >= 0) root.stop()
             else { console.log(reason); root.failures++; root.stop() }
         }
         onMessage: function(message) {
@@ -38,7 +38,7 @@ ShellRoot {
         pickerOnly: true
         onPickerResult: function(message) { if (message.op === "blocked") root.validationBlocked = true }
         onFailed: function(where, input, message, mode) {
-            if (root.scenario !== "missing") { console.log(message); root.failures++ }
+            if (root.scenario.indexOf("missing") < 0) { console.log(message); root.failures++ }
         }
     }
     Flea.PickerLifecycle {
@@ -47,7 +47,7 @@ ShellRoot {
         listing: listing
         onStopped: {
             var good = root.stopping && !root.failures && Date.now() - root.began < 2000
-            if (root.scenario !== "missing" && root.scenario !== "early")
+            if (root.scenario.indexOf("missing") < 0 && root.scenario.indexOf("early") < 0)
                 good = good && root.stalled && root.validationBlocked
             if (root.scenario === "navigate") good = good && root.localReady && root.paged
             console.log("picker-stall", root.scenario, good ? "PASS" : "FAIL", Date.now() - root.began)
@@ -64,11 +64,17 @@ ShellRoot {
             } else root.stop()
         }
     }
+    Timer {
+        id: failedStartOrder
+        interval: 100
+        onTriggered: { root.stopping = true; listing.quit(); checks.testFailedStartDuringQuit() }
+    }
     Timer { interval: 3000; running: true; onTriggered: Qt.exit(1) }
     Component.onCompleted: {
+        if (scenario === "missing-order") { failedStartOrder.start(); return }
         listing.request({c: "list", path: "/stalled", first: 1})
         checks.send({c: "transfer", rows: [0], dest: "/not-allowed"})
         checks.send({c: "picker", op: "validate", id: 1})
-        if (scenario === "early") stop()
+        if (scenario.indexOf("early") === 0) stop()
     }
 }
