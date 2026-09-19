@@ -31,8 +31,8 @@ cat > "$test_root/bin/flea-gio-auth" <<'EOS'
 IFS= read -r password || exit 3
 [ "$password" = "fixture-secret" ] || exit 4
 password=
-printf 'auth uri=%s stdin-lines=1 token=accepted\n' "$1" >> "$FLEA_TEST_CALL_LOG"
-printf 'uri=%s stdin-lines=1 token=accepted\n' "$1" >> "$FLEA_TEST_HELPER_LOG"
+printf 'auth uri=%s token=accepted\n' "$1" >> "$FLEA_TEST_CALL_LOG"
+printf 'uri=%s token=accepted\n' "$1" >> "$FLEA_TEST_HELPER_LOG"
 : > "$FLEA_TEST_AUTH_MARKER"
 EOS
 chmod +x "$test_root/bin/flea-gio-auth"
@@ -103,7 +103,7 @@ gio mount sftp://key@slot.test/home
 gio info sftp://key@slot.test/home
 gio mount sftp://pw@slot.test/home
 gio info sftp://pw@slot.test/home
-auth uri=sftp://pw@slot.test/home stdin-lines=1 token=accepted
+auth uri=sftp://pw@slot.test/home token=accepted
 gio info sftp://pw@slot.test/home
 gio mount --anonymous smb://nas.test/
 gio info smb://nas.test/
@@ -116,7 +116,7 @@ if [ "$actual_calls" != "$expected_calls" ]; then
     failures=1
 fi
 
-expected_helper='uri=sftp://pw@slot.test/home stdin-lines=1 token=accepted'
+expected_helper='uri=sftp://pw@slot.test/home token=accepted'
 actual_helper=$(<"$helper_log")
 if [ "$actual_helper" != "$expected_helper" ]; then
     printf 'FAIL authenticated helper route was not one exact nonsecret call\nexpected: %s\nactual: %s\n' \
