@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Drives the real Quickshell window with omarchy-drive and asserts through the read-only IPC seam.
-# Usage: ./tests/ui.sh [cursor|terminal|open|rows|click|ctrlclick|viewrestart|dd|sortrestart|editplace|mute|placemenu|runscript|unmounted|sidebar|menu|hidden|selection|select|colour|lifted|icons|thumbs|hashcache|stale|nosweep|oem|header|overflow|focus|preview|network|netmark|networktimeout|networklive|gvfs|sharebrowser|unmount|phones|eject|rename|renamelife|taildrop|grid|columns|operations|tabs|openterminal|renderer|settings ...]; networklive is opt-in.
+# Usage: ./tests/ui.sh [cursor|terminal|open|rows|click|ctrlclick|viewrestart|dd|sortrestart|editplace|mute|placemenu|runscript|unmounted|sidebar|menu|hidden|selection|watch|optical|select|colour|lifted|icons|thumbs|hashcache|stale|nosweep|oem|header|overflow|focus|preview|network|netmark|networktimeout|networklive|gvfs|sharebrowser|unmount|phones|eject|rename|renamelife|taildrop|grid|columns|operations|tabs|openterminal|renderer|settings ...]; networklive is opt-in.
 set -u
 set -o pipefail
 # Hard rule 9's guard, which owns FIXTURE_ROOT and every create and delete this suite makes.
@@ -2615,6 +2615,46 @@ case_watch() {
     wait_listing 3
     [[ "$(ipc rowAt 0)" == alpha.txt\|* ]] || fail "watch: row 0 is $(ipc rowAt 0), not alpha.txt"
 
+    # Issue 159's move-into-new-directory case: create and move from outside Flea while its one window stays open.
+    local move_bytes='watch-move-payload-159' watch_pid
+    watch_pid=$(flea_pid)
+    printf '%s' "$move_bytes" > "$dir/move-source.txt"
+    mkdir "$dir/move-target"
+    mv "$dir/move-source.txt" "$dir/move-target/move-source.txt"
+    omarchy-drive wait ipc -p "$flea_ui" flea total 4 --timeout 15 >/dev/null \
+        || fail "watch: creating a directory and moving a file into it left the listing at $(ipc total) rows"
+    [[ "$(ipc rowAt 0)" == move-target\|dir\|* ]] \
+        || fail "watch: the moved-into directory is not row 0, got $(ipc rowAt 0)"
+    for _move_row in 0 1 2 3; do
+        [[ "$(ipc rowAt "$_move_row")" != move-source.txt\|* ]] \
+            || fail "watch: the moved file stayed in the parent listing at row $_move_row"
+    done
+    seek_row_named move-target
+    key -k Return >/dev/null
+    wait_path "$dir/move-target"
+    wait_listing 1
+    [[ "$(ipc rowAt 0)" == move-source.txt\|file\|* ]] \
+        || fail "watch: entering the new directory lists $(ipc rowAt 0), not the moved file"
+    open_row move-source.txt
+    local preview_wait
+    for preview_wait in $(seq 1 100); do
+        [[ "$(ipc previewState)" == ready ]] && break
+        sleep 0.05
+    done
+    [[ "$(ipc previewState)" == ready && "$(ipc previewText)" == "$move_bytes" ]] \
+        || fail "watch: the moved file preview is state=$(ipc previewState), bytes=$(ipc previewText | od -An -tx1)"
+    key -k Escape >/dev/null
+    settle
+    key -k Backspace >/dev/null
+    wait_path "$dir"
+    wait_listing 4
+    [[ "$(flea_pid)" == "$watch_pid" ]] || fail "watch: the move case relaunched Flea"
+    printf 'WATCH move=ok parent-row=gone child-bytes=exact no-relaunch=ok\n'
+    rm "$dir/move-target/move-source.txt"
+    rmdir "$dir/move-target"
+    omarchy-drive wait ipc -p "$flea_ui" flea total 3 --timeout 15 >/dev/null \
+        || fail "watch: move-case cleanup left the parent listing at $(ipc total) rows"
+
     # The reporter's four changes, from another process, while the window sits on the folder.
     printf 'new\n' > "$dir/NEWFILE-appeared.txt"
     mv "$dir/alpha.txt" "$dir/alpha-RENAMED.txt"
@@ -2707,6 +2747,137 @@ case_watch() {
     settle
     assert_window
     kill_flea
+}
+
+# Issue 143, stubbed at lsblk and gio: empty, inserted and mounted optical media are all exercised without a real drive.
+case_optical() {
+    local dir="$fixture_root/optical" state="$fixture_root/optical-state"
+    local label='MATSHITA DVD+/-RW UJ8FB' payload='optical-payload-143' gio_log="$dir/gio.log"
+    sandbox_scratch "$dir"
+    sandbox_scratch "$state"
+    mkdir -p "$dir/bin" "$dir/files" "$dir/mnt/DVD" "$state/flea"
+    printf 'keep\n' > "$dir/files/keep.txt"
+    printf '%s' "$payload" > "$dir/mnt/DVD/disc-bytes.txt"
+    : > "$gio_log"
+
+    cat > "$dir/bin/lsblk" <<EOS
+#!/bin/sh
+if [ -f "$dir/malformed" ]; then
+    printf 'not json at all\\n'
+    exit 0
+fi
+if [ -f "$dir/mounted" ]; then
+    optical_points='["$dir/mnt/DVD"]'
+    optical_fs='"iso9660"'
+elif [ -f "$dir/inserted" ]; then
+    optical_points='[null]'
+    optical_fs='"iso9660"'
+else
+    optical_points='[null]'
+    optical_fs=null
+fi
+cat <<JSON
+{"blockdevices":[
+{"name":"nvme0n1","path":"/dev/nvme0n1","label":null,"mountpoints":[null],"rm":false,"size":256060514304,"type":"disk","model":"KBG40ZNS256G",
+"children":[{"name":"nvme0n1p1","path":"/dev/nvme0n1p1","label":null,"mountpoints":["/"],"rm":false,"size":256060514304,"type":"part","model":null}]},
+{"name":"sr0","path":"/dev/sr0","label":null,"mountpoints":\$optical_points,"rm":true,"size":0,"type":"rom","fstype":\$optical_fs,"model":"$label"},
+{"name":"sdb","path":"/dev/sdb","label":"USB","mountpoints":[null],"rm":true,"size":34359738368,"type":"disk","model":"USB Flash Disk"}
+]}
+JSON
+EOS
+    chmod +x "$dir/bin/lsblk"
+
+    cat > "$dir/bin/gio" <<EOS
+#!/bin/sh
+printf '%s\\n' "\$*" >> "$gio_log"
+if [ "\$1 \$2 \$3" = "mount -d /dev/sr0" ]; then
+    [ -f "$dir/refuse" ] && exit 1
+    : > "$dir/mounted"
+fi
+exit 0
+EOS
+    chmod +x "$dir/bin/gio"
+
+    local fixture_home="$fixture_root/optical-home" real_home="$HOME" saved_path="$PATH" old_state="${XDG_STATE_HOME:-}"
+    fixture_home_make "$fixture_home"
+    export PATH="$dir/bin:$PATH"
+    export HOME="$fixture_home"
+    export XDG_STATE_HOME="$state"
+    launch "$dir/files"
+    export HOME="$real_home"
+    export PATH="$saved_path"
+    wait_listing 1
+
+    local entries
+    for _attempt in $(seq 1 200); do
+        entries=$(ipc deviceEntries)
+        [[ "$entries" == *"USB|device|volume|false"* ]] && break
+        sleep 0.05
+    done
+    [[ "$entries" == *"USB|device|volume|false"* ]] \
+        || fail "optical: the unmounted USB negative control is missing, got $entries"
+    [[ "$entries" != *"$label|device|volume|"* ]] \
+        || fail "optical: an empty optical drive was offered, got $entries"
+    if grep -q '^mount -d /dev/sr0$' "$gio_log"; then
+        fail "optical: an empty drive reached gio mount, log is $(cat "$gio_log")"
+    fi
+    shot optical-empty
+
+    : > "$dir/inserted"
+    wait_rail_label "$label"
+    for _attempt in $(seq 1 200); do
+        entries=$(ipc deviceEntries)
+        [[ "$entries" == *"$label|device|volume|false"* ]] && break
+        sleep 0.05
+    done
+    [[ "$entries" == *"$label|device|volume|false"* ]] \
+        || fail "optical: inserted media did not remain unmounted, got $entries"
+    : > "$dir/refuse"
+    click_rail_row "$(rail_row_of "$label")" left
+    wait_message "$label could not be mounted."
+    [[ "$(ipc lastMessage)" != *unplug* ]] || fail "optical: refusal still advised unplugging: $(ipc lastMessage)"
+    grep -q '^mount -d /dev/sr0$' "$gio_log" \
+        || fail "optical: inserted media never reached gio mount, log is $(cat "$gio_log")"
+    shot optical-refused
+
+    rm -f "$dir/refuse"
+    : > "$dir/mounted"
+    for _attempt in $(seq 1 200); do
+        entries=$(ipc deviceEntries)
+        [[ "$entries" == *"$label|device|volume|true"* ]] && break
+        sleep 0.05
+    done
+    [[ "$entries" == *"$label|device|volume|true"* ]] \
+        || fail "optical: mounted media did not retain its row, got $entries"
+    click_rail_row "$(rail_row_of "$label")" left
+    wait_path "$dir/mnt/DVD"
+    wait_listing 1
+    [[ "$(ipc rowAt 0)" == disc-bytes.txt\|file\|* ]] \
+        || fail "optical: mounted disc lists $(ipc rowAt 0), not disc-bytes.txt"
+    shot optical-mounted
+    open_row disc-bytes.txt
+    for _attempt in $(seq 1 100); do
+        [[ "$(ipc previewState)" == ready ]] && break
+        sleep 0.05
+    done
+    [[ "$(ipc previewState)" == ready && "$(ipc previewText)" == "$payload" ]] \
+        || fail "optical: mounted disc bytes are state=$(ipc previewState), bytes=$(ipc previewText | od -An -tx1)"
+    key -k Escape >/dev/null
+    settle
+
+    : > "$dir/malformed"
+    for _attempt in $(seq 1 200); do
+        entries=$(ipc deviceEntries)
+        [[ "$entries" != *"$label|device|volume|"* ]] && break
+        sleep 0.05
+    done
+    [[ "$entries" != *"$label|device|volume|"* ]] \
+        || fail "optical: malformed lsblk input retained a stale row, got $entries"
+    rm -f "$dir/malformed"
+    printf 'OPTICAL empty-hidden=ok usb-retained=ok inserted=ok refusal=observable mounted=ok bytes=exact malformed=clears\n'
+    if [[ -n "$old_state" ]]; then export XDG_STATE_HOME="$old_state"; else unset XDG_STATE_HOME; fi
+    kill_flea
+    sandbox_remove "$fixture_home"
 }
 
 # Mirrors the two env vars src/gui.rs sets from a resolved --select; tests/modes.sh covers the resolution itself.
@@ -9244,7 +9415,7 @@ case_previewviews() {
 . "$repo/tests/ui-convert-design.sh"
 
 declare -a wanted=("$@")
-[[ ${#wanted[@]} -eq 0 ]] && wanted=(cursor scroll terminal open rows click ctrlclick viewrestart dd sortrestart editplace mute placemenu runscript unmounted sidebar menu background hidden selection watch select colour lifted icons thumbs hashcache stale nosweep oem header overflow focus preview pdffocus network netmark networkauth networktimeout gvfs sharebrowser unmount phones eject rename renamelife taildrop providers grid columns operations tabs openterminal renderer settings clickthrough wheelunder overlays views formats previewviews hangshare openwithdesign)
+[[ ${#wanted[@]} -eq 0 ]] && wanted=(cursor scroll terminal open rows click ctrlclick viewrestart dd sortrestart editplace mute placemenu runscript unmounted sidebar menu background hidden selection watch optical select colour lifted icons thumbs hashcache stale nosweep oem header overflow focus preview pdffocus network netmark networkauth networktimeout gvfs sharebrowser unmount phones eject rename renamelife taildrop providers grid columns operations tabs openterminal renderer settings clickthrough wheelunder overlays views formats previewviews hangshare openwithdesign)
 
 : > "$run_log"
 : > "$flea_log"

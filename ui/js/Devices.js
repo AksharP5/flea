@@ -83,7 +83,10 @@ function collectVolumes(nodes, model, unplugs, out, unmounted) {
         var pulls = unpluggable(n) || (unplugs && String(n.type || "") === "part")
         // Only a leaf is a volume. A partition holding a LUKS container is not what mounts, its crypt
         // child is, and emitting both would put one drive in the rail twice.
-        if (n.name && kids.length === 0 && (pulls || mountOf(n).length > 0 || (unmounted && browsable(n))))
+        var emptyOptical = String(n.type || "").toLowerCase() === "rom"
+                        && mountOf(n).length === 0 && String(n.fstype || "").length === 0
+        if (n.name && kids.length === 0 && !emptyOptical
+                && (pulls || mountOf(n).length > 0 || (unmounted && browsable(n))))
             out.push(volumeRow(n, own, pulls, unmounted))
         collectVolumes(kids, own, pulls, out, unmounted)
     }

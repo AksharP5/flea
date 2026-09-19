@@ -155,6 +155,28 @@ function run(check) {
     check("an unmounted volume still carries the device node its mount needs", u[0].device, "/dev/sda1")
     check("an unmounted volume keeps its capacity separate from its label", u[0].size, 124656812032)
 
+    // Issue 143's three states, with a USB disk beside the optical device as the negative control: empty rom hidden, inserted and mounted iso9660 rows retained.
+    var opticalSystem = '{"name":"nvme0n1","path":"/dev/nvme0n1","label":null,"mountpoints":[null],"rm":false,"size":256060514304,"type":"disk","model":"KBG40ZNS256G",'
+                     + '"children":[{"name":"nvme0n1p1","path":"/dev/nvme0n1p1","label":null,"mountpoints":["/"],"rm":false,"size":256060514304,"type":"part","model":null}]},'
+    var opticalUsb = '{"name":"sdb","path":"/dev/sdb","label":"USB","mountpoints":[null],"rm":true,"size":34359738368,"type":"disk","model":"USB Flash Disk"}'
+    var opticalEmpty = '{"blockdevices":[' + opticalSystem
+                     + '{"name":"sr0","path":"/dev/sr0","label":null,"mountpoints":[null],"rm":true,"size":0,"type":"rom","model":"MATSHITA DVD+/-RW UJ8FB"},'
+                     + opticalUsb + ']}'
+    var emptyOpticalRows = Devices.parseDevices(opticalEmpty)
+    check("an empty optical drive is hidden while the unmounted USB disk remains", emptyOpticalRows.map(function (e) { return e.label }).join(","), "nvme0n1,USB")
+    var opticalInserted = '{"blockdevices":[' + opticalSystem
+                        + '{"name":"sr0","path":"/dev/sr0","label":null,"mountpoints":[null],"rm":true,"size":0,"type":"rom","fstype":"iso9660","model":"MATSHITA DVD+/-RW UJ8FB"},'
+                        + opticalUsb + ']}'
+    var inserted = Devices.parseDevices(opticalInserted)
+    check("an inserted optical disc remains a row", inserted.map(function (e) { return e.label }).join(","), "nvme0n1,MATSHITA DVD+/-RW UJ8FB,USB")
+    check("an inserted optical disc is still unmounted", inserted[1].mounted, false)
+    var opticalMounted = '{"blockdevices":[' + opticalSystem
+                       + '{"name":"sr0","path":"/dev/sr0","label":null,"mountpoints":["/run/media/gm/DVD"],"rm":true,"size":0,"type":"rom","fstype":"iso9660","model":"MATSHITA DVD+/-RW UJ8FB"},'
+                       + opticalUsb + ']}'
+    var mountedOptical = Devices.parseDevices(opticalMounted)
+    check("a mounted optical disc remains a row", mountedOptical[1].label, "MATSHITA DVD+/-RW UJ8FB")
+    check("a mounted optical disc keeps its published path", mountedOptical[1].path, "/run/media/gm/DVD")
+
     // Several at once, and the internal disk row is one whatever the box has.
     var many = '{"blockdevices":['
              + '{"name":"nvme0n1","path":"/dev/nvme0n1","label":null,"mountpoints":[null],"rm":false,"size":256060514304,"type":"disk","model":"KBG40ZNS256G",'

@@ -285,7 +285,7 @@ Item {
             }
             mountTimeout.stop()
             root._pendingOpenDevice = ""
-            root.message(root._pendingOpenLabel + " could not be mounted; unplug it and plug it back in.", true)
+            root.message(root._pendingOpenLabel + " could not be mounted.", true)
         }
     }
 
