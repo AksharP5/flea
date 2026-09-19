@@ -259,7 +259,7 @@ impl Snapshot {
                 cursor.current()?;
                 return Ok(format!(r#""action":"{}","paths":["{}"]"#, escape(&action), escape(&cursor.path.to_string_lossy())));
             }
-            let needs_paths = op == "validate" || matches!(action.as_str(), "copy" | "cut" | "copypath" | "addFavourite" | "localsend") || action.starts_with("compress:") || action.starts_with("runScript:");
+            let needs_paths = op == "validate" || matches!(action.as_str(), "copy" | "cut" | "copypath" | "addFavourite" | "localsend") || action.starts_with("compress:") || action.starts_with("runScript:") || action.starts_with("localsend:");
             let paths: Vec<String> = if needs_paths { self.items.iter().map(|i| format!(r#""{}""#, escape(&i.path.to_string_lossy()))).collect() } else { Vec::new() };
             return Ok(format!(r#""action":"{}","paths":[{}],"dest":"{}""#,
                 escape(&action), paths.join(","),
@@ -507,6 +507,22 @@ mod tests {
         assert!(snapshot.handle(r#"{"op":"activate","id":12,"action":"taildrop:peer"}"#, vec![]).contains("Cursor source was not captured"));
         assert_eq!(std::fs::read_to_string(marked).unwrap(), "marked");
         assert_eq!(std::fs::read_to_string(cursor).unwrap(), "replacement");
+    }
+    // The menu spells a submenu action as "localsend:<peer>"; both selected paths must survive, in order.
+    #[test]
+    fn local_send_keeps_every_selected_path_for_a_submenu_peer_action() {
+        let sandbox = TestDir::new("menu-localsend-paths");
+        sandbox.dir("list");
+        let marked = sandbox.file("list/marked", "marked");
+        let cursor = sandbox.file("list/cursor", "cursor");
+        let mut snapshot = Snapshot::default();
+        snapshot.handle_request(r#"{"op":"snapshot","id":21}"#,
+            vec![marked.to_string_lossy().into(), cursor.to_string_lossy().into()],
+            cursor.to_str(), &Registry::default(), &Cancellation::default());
+        let reply = snapshot.handle(r#"{"op":"activate","id":21,"action":"localsend:Fixture Phone"}"#, vec![]);
+        assert!(crate::json::field_bool(&reply, "ok"), "{}", reply);
+        assert_eq!(crate::json::field_str_array(&reply, "paths"),
+            vec![marked.to_string_lossy().into_owned(), cursor.to_string_lossy().into_owned()]);
     }
     #[test]
     fn provider_activation_refuses_a_replaced_account_directory() {
