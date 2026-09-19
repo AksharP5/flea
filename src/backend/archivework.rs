@@ -2,14 +2,16 @@
 // two reads an extract is verified against. The jobs themselves are archiveops.rs.
 use crate::backend::sandbox;
 use crate::backend::archive::Formats;
+use crate::backend::archivespec::ListSpec;
 use crate::backend::archivelist::parse_reader;
 use crate::backend::opsreq::op_err;
 use crate::error::{from_io, FleaError};
-use std::io::Read;
+use std::io::{self, Read};
 use std::path::{Path, PathBuf};
-use std::process::Command;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
+use std::process::{Child, Command};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::time::{Duration, Instant};
 
 // A private directory beside the destination, so the rename that follows never crosses a filesystem.
 pub(crate) const WORK_PREFIX: &str = ".flea-work-";
@@ -91,6 +93,11 @@ pub fn run_boxed(what: &str, inner: Vec<String>, read_only: &Path, writable: &Pa
 // run_boxed, watched for a cancel: kill and reap here, so nothing is renamed and stderr is drained.
 pub fn run_boxed_cancellable(what: &str, inner: Vec<String>, read_only: &Path, writable: &Path,
                              cancel: &AtomicBool) -> Result<(), FleaError> {
+    run_boxed_cancellable_inner(what, inner, read_only, writable, cancel, None)
+}
+
+fn run_boxed_cancellable_inner(what: &str, inner: Vec<String>, read_only: &Path, writable: &Path,
+                               cancel: &AtomicBool, started: Option<&AtomicU32>) -> Result<(), FleaError> {
     if !sandbox::available() {
         let tool = inner.first().map_or("", |s| s.as_str());
         return Err(op_err(what, tool, "the sandbox is unavailable: bwrap or prlimit is not on PATH"));
@@ -103,6 +110,9 @@ pub fn run_boxed_cancellable(what: &str, inner: Vec<String>, read_only: &Path, w
         .stderr(std::process::Stdio::piped())
         .spawn()
         .map_err(|e| from_io(what, &full[0], &e))?;
+    if let Some(pid) = started {
+        pid.store(child.id(), Ordering::SeqCst);
+    }
     let stderr = child.stderr.take();
     let reader = std::thread::spawn(move || {
         let mut text = String::new();
@@ -139,6 +149,12 @@ pub fn run_boxed_cancellable(what: &str, inner: Vec<String>, read_only: &Path, w
     }
 }
 
+#[cfg(test)]
+fn run_boxed_cancellable_observed(what: &str, inner: Vec<String>, read_only: &Path, writable: &Path,
+                                  cancel: &AtomicBool, started: &AtomicU32) -> Result<(), FleaError> {
+    run_boxed_cancellable_inner(what, inner, read_only, writable, cancel, Some(started))
+}
+
 pub fn is_empty_dir(dir: &Path) -> bool {
     std::fs::read_dir(dir).map(|mut e| e.next().is_none()).unwrap_or(true)
 }
@@ -148,33 +164,123 @@ pub fn is_empty_dir(dir: &Path) -> bool {
 // honest answer for a listing that failed, timed out or was truncated, because a count of zero from a
 // read that never finished is indistinguishable from an archive holding nothing, and reading the
 // first as the second is what restored the defect this check exists for.
+#[cfg(test)]
 pub fn archive_produced_count(formats: &Formats, archive: &Path) -> Option<usize> {
+    let cancel = AtomicBool::new(false);
     let (inner, spec) = formats.list_argv(archive)?;
+    archive_produced_count_inner(inner, spec, archive, &cancel, None, None).ok().flatten()
+}
+
+// The extract owns this token too: an empty staging directory is the one branch that reads the archive again.
+pub fn archive_produced_count_cancellable(formats: &Formats, archive: &Path,
+                                          cancel: &AtomicBool) -> Result<Option<usize>, FleaError> {
+    let (inner, spec) = match formats.list_argv(archive) {
+        Some(value) => value,
+        None => return Ok(None),
+    };
+    archive_produced_count_inner(inner, spec, archive, cancel, None, None)
+}
+
+fn archive_produced_count_inner(inner: Vec<String>, spec: ListSpec, read_only: &Path,
+                                cancel: &AtomicBool, started: Option<&AtomicU32>,
+                                ready: Option<Arc<AtomicBool>>) -> Result<Option<usize>, FleaError> {
     if !sandbox::available() {
-        return None;
+        return Ok(None);
     }
-    let full = sandbox::wrap_readonly(&inner, archive);
+    let full = sandbox::wrap_readonly(&inner, read_only);
     // Streamed, not .output(): buffering the whole index here would contradict the streaming
     // contract the parser exists for, and a 200k-entry archive is exactly the case that motivated it.
-    let mut child = Command::new(&full[0])
+    let mut child = match Command::new(&full[0])
         .args(&full[1..])
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null())
         .spawn()
-        .ok()?;
-    let listed = match child.stdout.take() {
-        Some(out) => parse_reader(std::io::BufReader::new(out), &spec),
+    {
+        Ok(child) => child,
+        Err(_) => return Ok(None),
+    };
+    if let Some(pid) = started {
+        pid.store(child.id(), Ordering::SeqCst);
+    }
+    let deadline = Instant::now() + Duration::from_millis(crate::backend::archivelist::ARCHIVE_READ_MS);
+    let output = match child.stdout.take() {
+        Some(output) => output,
         None => {
-            let _ = child.wait();
-            return None;
+            kill_and_reap(&mut child);
+            return Ok(None);
         }
     };
-    let status = child.wait().ok()?;
-    if !status.success() || listed.failed {
-        return None;
+    let parser = std::thread::spawn(move || {
+        parse_reader(std::io::BufReader::new(ReadyReader { reader: output, ready }), &spec)
+    });
+    loop {
+        if cancelled(cancel) {
+            kill_and_reap(&mut child);
+            let _ = parser.join();
+            return Err(op_err("archive", "", "cancelled"));
+        }
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                let listed = match parser.join() {
+                    Ok(listed) => listed,
+                    Err(_) => return Ok(None),
+                };
+                if cancelled(cancel) {
+                    return Err(op_err("archive", "", "cancelled"));
+                }
+                if !status.success() || listed.failed {
+                    return Ok(None);
+                }
+                return Ok(Some(listed.produced_entries));
+            }
+            Ok(None) if Instant::now() >= deadline => {
+                kill_and_reap(&mut child);
+                let _ = parser.join();
+                return Ok(None);
+            }
+            Ok(None) => std::thread::sleep(CANCEL_STEP),
+            Err(_) => {
+                kill_and_reap(&mut child);
+                let _ = parser.join();
+                return Ok(None);
+            }
+        }
     }
-    Some(listed.produced_entries)
+}
+
+fn cancelled(cancel: &AtomicBool) -> bool {
+    cancel.load(Ordering::Relaxed)
+}
+
+fn kill_and_reap(child: &mut Child) {
+    child.kill().ok();
+    child.wait().ok();
+}
+
+struct ReadyReader<R> {
+    reader: R,
+    ready: Option<Arc<AtomicBool>>,
+}
+
+impl<R: Read> Read for ReadyReader<R> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        let read = self.reader.read(buf);
+        if read.as_ref().is_ok_and(|count| *count > 0) {
+            if let Some(flag) = &self.ready {
+                flag.store(true, Ordering::SeqCst);
+            }
+        }
+        read
+    }
+}
+
+#[cfg(test)]
+fn archive_produced_count_with_inner(inner: Vec<String>, spec: ListSpec, read_only: &Path,
+                                     cancel: &AtomicBool, started: &AtomicU32,
+                                     ready: &Arc<AtomicBool>) -> Result<Option<usize>, FleaError> {
+    archive_produced_count_inner(inner, spec, read_only, cancel, Some(started),
+                                 Some(Arc::clone(ready)))
 }
 
 
@@ -198,29 +304,67 @@ mod tests {
         assert!(!kept.exists(), "the work directory goes with the job that made it");
     }
 
-    // Cancel kills and reaps; the pid-named duration keeps the /proc gate off other suites' sleeps.
+    // Cancel kills and reaps; the exact spawned pid keeps the /proc gate off other suites' processes.
     #[test]
     fn a_cancelled_child_is_killed_and_reaped_rather_than_left_running() {
         if crate::backend::sandboxprobe::skipped() { return; }
         let d = TestDir::new("archworkcancel");
         let work = Work::new(d.path(), "ext").expect("work");
         let cancel = std::sync::Arc::new(AtomicBool::new(false));
+        let started_pid = std::sync::Arc::new(AtomicU32::new(0));
         let flag = std::sync::Arc::clone(&cancel);
-        std::thread::spawn(move || {
-            std::thread::sleep(Duration::from_millis(200));
+        let child_pid = std::sync::Arc::clone(&started_pid);
+        let notifier = std::thread::spawn(move || {
+            let deadline = Instant::now() + Duration::from_secs(5);
+            while child_pid.load(Ordering::SeqCst) == 0 && Instant::now() < deadline {
+                std::thread::yield_now();
+            }
             flag.store(true, Ordering::Relaxed);
         });
         let seconds = format!("30.{}", std::process::id());
-        let started = std::time::Instant::now();
-        let e = run_boxed_cancellable("archive", vec!["/usr/bin/sleep".to_string(), seconds.clone()],
-                                      d.path(), &work.dir, &cancel).unwrap_err();
+        let began = std::time::Instant::now();
+        let e = run_boxed_cancellable_observed("archive", vec!["/usr/bin/sleep".to_string(), seconds],
+                                               d.path(), &work.dir, &cancel, &started_pid).unwrap_err();
+        notifier.join().expect("the cancellation notifier finished");
         assert_eq!(e.msg, "cancelled");
-        assert!(started.elapsed() < Duration::from_secs(10), "a cancelled child was waited out");
+        assert!(began.elapsed() < Duration::from_secs(10), "a cancelled child was waited out");
         assert!(work.dir.is_dir(), "the runner must not remove the caller's staging directory");
-        std::thread::sleep(Duration::from_millis(200));
-        let want = format!("/usr/bin/sleep\0{}\0", seconds);
-        let alive = std::fs::read_dir("/proc").map(|p| p.flatten().any(|e| std::fs::read(e.path().join("cmdline")).map(|c| c == want.as_bytes()).unwrap_or(false))).unwrap_or(false);
-        assert!(!alive, "the sandboxed child outlived its cancel");
+        let pid = started_pid.load(Ordering::SeqCst);
+        assert_ne!(pid, 0, "the cancellation fixture never observed its child pid");
+        let proc_entry = PathBuf::from(format!("/proc/{pid}"));
+        assert!(!proc_entry.exists(), "the owned child was not reaped");
+    }
+
+    // The parser must cancel while a real jailed child holds stdout open after one bounded line.
+    #[test]
+    fn a_cancelled_index_reader_kills_and_reaps_a_child_blocked_on_stdout() {
+        if crate::backend::sandboxprobe::skipped() { return; }
+        let d = TestDir::new("archworkindexcancel");
+        let cancel = std::sync::Arc::new(AtomicBool::new(false));
+        let started = std::sync::Arc::new(AtomicU32::new(0));
+        let ready = std::sync::Arc::new(AtomicBool::new(false));
+        let flag = std::sync::Arc::clone(&cancel);
+        let parsed = std::sync::Arc::clone(&ready);
+        let notifier = std::thread::spawn(move || {
+            let deadline = Instant::now() + Duration::from_secs(5);
+            while !parsed.load(Ordering::SeqCst) && Instant::now() < deadline {
+                std::thread::yield_now();
+            }
+            flag.store(true, Ordering::Relaxed);
+        });
+        let fixture = "printf '%s\\n' '-rw-r--r-- 0 gm gm 1 Jan 1 00:00 a.txt'; exec /usr/bin/sleep 600";
+        let result = archive_produced_count_with_inner(
+            vec!["/usr/bin/sh".to_string(), "-c".to_string(), fixture.to_string()],
+            crate::backend::archivespec::tar_spec(), d.path(), &cancel, &started, &ready,
+        );
+        notifier.join().expect("the readiness notifier finished");
+        let error = result.unwrap_err();
+        assert_eq!(error.msg, "cancelled");
+        assert!(ready.load(Ordering::SeqCst), "the fixture never delivered its first line");
+        let pid = started.load(Ordering::SeqCst);
+        assert_ne!(pid, 0, "the verification fixture never exposed its child pid");
+        let proc_entry = PathBuf::from(format!("/proc/{pid}"));
+        assert!(!proc_entry.exists(), "the blocked verification child was not reaped");
     }
 
     #[test]
