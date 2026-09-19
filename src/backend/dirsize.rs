@@ -1,7 +1,6 @@
 use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 use std::time::Instant;
-#[cfg(test)]
 use std::time::Duration;
 
 // A directory over this deadline answers with what it saw, marked partial: a floor, not a wrong exact number.
@@ -13,7 +12,6 @@ pub struct DirSize {
 }
 
 // walk_until is the testable core: a test passes an already-past deadline to force partial without waiting 2000 ms.
-#[cfg(test)]
 pub fn walk(path: &Path) -> DirSize {
     walk_until(path, Instant::now() + Duration::from_millis(DEADLINE_MS))
 }

@@ -30,7 +30,8 @@ class Backend:
         for path in (self.slow, self.fast, self.destination):
             path.mkdir(parents=True)
         (self.slow / "data").write_bytes(b"slow")
-        (self.fast / "data").write_bytes(b"fast")
+        # Different payload sizes expose a stale row-0 reply after sorting.
+        (self.fast / "data").write_bytes(b"fast-with-a-different-size")
         (self.destination / "data").write_bytes(b"destination")
         env = dict(os.environ, LD_PRELOAD=str(library),
                    FLEA_TEST_SIZE_PATH=str(self.slow),
