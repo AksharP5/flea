@@ -31,6 +31,7 @@ PYEND
 trap cleanup EXIT
 mkdir -p "$fixture/flea/js"
 cp ui/PickerListing.qml ui/PickerLifecycle.qml ui/Backend.qml "$fixture/flea/"
+cp ui/js/Messages.js "$fixture/flea/js/"
 # Drive the real runningChanged handler in the rare cancel-before-FailedToStart order. Natural
 # missing-executable timing here fails before cancel; this test-only method fixes the event order,
 # not the handler, so restoring the old guard makes missing-order time out.
