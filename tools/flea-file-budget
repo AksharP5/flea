@@ -13,7 +13,8 @@ soft_js=200;   hard_js=300
 # than a switch that has been turned off. Shrink one and re-record it; never add a row to excuse a
 # new breach. This replaces the 0.1.4 and 0.1.6 name-only exceptions, which let a named file grow
 # without limit.
-known_over_cap="src/backend/menu_actions.rs 544
+known_over_cap="shelf/ShelfCard.qml 440
+src/backend/menu_actions.rs 544
 src/backend/menu_registry.rs 563
 src/backend/metareq.rs 404
 src/backend/opsdispatch.rs 536
@@ -90,6 +91,6 @@ while IFS= read -r file; do
   elif [ "$lines" -gt "$soft" ]; then
     echo "over soft $file: $lines lines, budget $soft, split it"
   fi
-done < <(find src ui tests -type f \( -name '*.rs' -o -name '*.qml' -o -name '*.js' \) 2>/dev/null)
+done < <(find src ui shelf tests -type f \( -name '*.rs' -o -name '*.qml' -o -name '*.js' \) 2>/dev/null)
 
 exit $status
