@@ -22,14 +22,17 @@ pub fn queue_dirsizes(out: &mut BufWriter<io::Stdout>, st: &mut State, rows: &[u
     out.flush().ok();
 }
 
-// The event loop submits at most one job; cancellation never adds another worker.
+// The event loop submits one bounded batch; cancellation never adds another worker.
 pub fn start_next(st: &mut State) {
-    while !st.dirsize_worker.busy() && !st.dirsize_queue.is_empty() {
-        let row = st.dirsize_queue.remove(0);
-        if row < st.listing.len() {
-            st.dirsize_worker.start(row, st.base.join(st.listing.name(row)));
-        }
+    if st.dirsize_worker.busy() || st.dirsize_queue.is_empty() {
+        return;
     }
+    let queued = std::mem::take(&mut st.dirsize_queue);
+    let rows: Vec<_> = queued.into_iter()
+        .filter(|&row| row < st.listing.len() && st.listing.is_dir(row))
+        .map(|row| (row, st.base.join(st.listing.name(row))))
+        .collect();
+    st.dirsize_worker.start(rows);
 }
 
 pub fn report_done(out: &mut impl Write, st: &mut State, done: Done) {
@@ -38,4 +41,54 @@ pub fn report_done(out: &mut impl Write, st: &mut State, done: Done) {
     st.dirsizes.insert(done.row, (result.bytes, result.partial));
     writeln!(out, "{}", dirsized_line(done.row, result.bytes, result.partial, done.ms)).ok();
     out.flush().ok();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::backend::{events::Event, listing::Listing, testdir::TestDir};
+    use std::collections::HashMap;
+    use std::path::PathBuf;
+    use std::sync::mpsc::channel;
+    use std::time::{Duration, Instant};
+
+    fn state(base: PathBuf, events: std::sync::mpsc::Sender<Event>) -> State {
+        let mut listing = Listing::new();
+        listing.push("a", true);
+        listing.push("b", true);
+        listing.push("file", false);
+        State {
+            listing,
+            base,
+            asked: Vec::new(),
+            outstanding: 0,
+            dirsizes: HashMap::new(),
+            dirsize_queue: Vec::new(),
+            dirsize_worker: crate::backend::dirsizeworker::Worker::new(events),
+            search: None,
+            search_reported: Instant::now(),
+        }
+    }
+
+    #[test]
+    fn start_next_drains_unique_current_directories_into_one_batch() {
+        let sandbox = TestDir::new("dirsize-queue");
+        sandbox.dir("a");
+        sandbox.dir("b");
+        let (events, rx) = channel();
+        let mut st = state(sandbox.path().to_path_buf(), events);
+        st.dirsize_queue.extend([0, 0, 1, 2]);
+        start_next(&mut st);
+        assert!(st.dirsize_queue.is_empty());
+        assert!(st.dirsize_worker.busy());
+
+        let mut out = Vec::new();
+        for (index, row) in [0, 1].into_iter().enumerate() {
+            let Event::DirSize(done) = rx.recv_timeout(Duration::from_secs(2)).unwrap() else { panic!() };
+            assert_eq!(done.row, row);
+            report_done(&mut out, &mut st, done);
+            assert_eq!(st.dirsize_worker.busy(), index == 0);
+        }
+        assert_eq!(st.dirsizes.len(), 2);
+    }
 }
