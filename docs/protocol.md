@@ -389,14 +389,16 @@ indices are resolved against the listing at request time and the operation runs 
 so it still owns a snapshot that outlives whatever the listing does next. `paths` wins when both are
 present, and an index past the end of the listing is dropped in silence.
 
-**One of `transfer`, `trash` or `duplicate` runs at a time.** One of those arriving while another is
-still running answers an `error` line saying so and touches nothing. The cap is one because the status
-bar carries one transient slot for the running operation, so a second concurrent operation would have
-nowhere to report. `rename` and `mkdir` never take that slot, and an `archive` or a `convert` is keyed by its own
-`id` and runs alongside by design, so the cap was never one write of any kind.
+**One of `transfer`, `trash`, `duplicate` or an archive `extract` runs at a time.** One of those
+arriving while another is still running answers an `error` line saying so and touches nothing. The cap
+is one because the status bar carries one transient slot for the running operation, and an extract
+drives that same card, so a second concurrent operation would have nowhere to report. `rename` and
+`mkdir` never take that slot, and an archive `compress` and a `convert` are keyed by their own `id` and
+run alongside by design, so the cap was never one write of any kind.
 
-The answer is a `transferstarted` line, then per top-level item a bounded stream of `transferprogress`
-lines and exactly one `transferitem`, then one `transferdone`.
+The answer is a `transferstarted` line for a file transfer, then per top-level item a bounded stream of
+`transferprogress` lines and exactly one `transferitem`, then one `transferdone`. An archive `extract`
+uses `extractstarted` for its activity card and `archivedone` for its terminal line.
 
 **Semantics that are decided here rather than left to the caller.** A same-filesystem move is a
 `rename(2)`; a cross-filesystem move is a copy followed by removing the source, and the source is only
@@ -417,14 +419,17 @@ on how deep a folder is.
 
 Example: `{"c":"transfercancel","id":12}`
 
-Cancels the running transfer if `id` names it, and does nothing otherwise, so a cancel aimed at an
-operation that already finished can never reach the one after it. There is no response line of its own:
-the running transfer answers with its own `transferdone` carrying `cancelled` true.
+Cancels the running transfer or archive `extract` if `id` names it, and does nothing otherwise, so a
+cancel aimed at an operation that already finished can never reach the one after it. There is no
+response line of its own: a transfer answers with its own `transferdone` carrying `cancelled` true, and
+an extract answers its own `archivedone` with `ok` false and an `err` of `cancelled`.
 
 **The item in flight is stopped rather than allowed to finish, and what it had already written is
 removed: a partial file by `copy_file`, a partly-copied directory by `copy_dir`.** A cancel that waited out a multi-gigabyte copy would not be a cancel, and a half-written file
 at the destination is not a result anyone asked for. That item is reported `ok:false` with an `err` of
-`cancelled`; every item not yet started is counted in `skipped`.
+`cancelled`; every item not yet started is counted in `skipped`. A cancelled extract stops and reaps
+its sandboxed child, removes its staging directory and publishes no destination, so the same rule holds
+there without a partial tree.
 
 A `quit`, or stdin closing, cancels a running operation the same way and waits for its terminal line
 before the process exits, so shutting down mid-copy also leaves nothing half-written behind.
@@ -824,6 +829,15 @@ exactly `"move"` copies. It is on the wire because the client cannot derive it: 
 clipboard before this line arrives, and a move to Dropbox never touches the clipboard at all, so a
 client reading its own clipboard reports a move as a copy.
 
+### extractstarted
+
+`{"t":"extractstarted","id":<uint>}`
+
+An archive `extract` sends this line before its one zero-byte `transferprogress` line. A current client
+routes it into the existing transfer card as `n` 1, `moving` false and `extract` true, so the card says
+Extracting without inventing bytes, a rate or an ETA. Older clients ignore this new type, while the
+existing `archivedone` terminal line remains unchanged for archive clients.
+
 ### meta
 
 `{"t":"meta","row":<uint>,"w":<uint>,"h":<uint>,"ms":<uint>,"rate":<uint>,"entries":<uint>,"unpacked":<uint>,"afailed":<bool>,"names":[{"n":"<string>","d":<bool>},...],"lines":<uint>,"partial":<bool>,"lfailed":<bool>,"target":"<string>","targetdir":<bool>,"owner":"<string>"}`
@@ -880,6 +894,10 @@ before its terminal line; that is correct and not a missing message.
 **Only a regular file reports bytes.** A directory has no total without the sweep this codebase does not
 do, and a same-filesystem move is a single `rename(2)` with nothing to report partway through, so
 neither emits these lines at all. A client renders an item with no progress as indeterminate.
+
+**An extract's one progress line is not a transfer's.** It carries the archive's own file name as
+`name` with `bytes` and `total` both 0: the unpacking tool streams no per-item bytes, so any figure for
+it would be invented and no percentage or time left is offered for it.
 
 ### transferitem
 
@@ -1045,6 +1063,14 @@ file.
 `peek`, `paths`, `archive`, `convert`, `formats` and `fsinfo` are on the wire and are not documented
 here yet. `tools/flea-acceptance` derives its checklist from this file, so each one is a gap in that
 battery until its section is written.
+
+The `formats` and `archive` parts of that set are named here exactly, because they changed. A `formats` reply's `extract`
+object carries one bit per extension class: `{"archive":<bool>,"sevenZip":<bool>,"zip":<bool>}`, where
+`archive` is the tar class on `bsdtar`, `sevenZip` is the `.7z` class on `7z`, and `zip` is the
+`.zip`/`.rar` class served by whichever of those two is installed. An `archive` request with an `op` of
+`extract` takes the one-at-a-time slot `transfer` describes, drives that same transfer card and answers
+`archivedone`, never `transferdone`; a `transfercancel` naming its `id` cancels it, and it is not
+journaled, so no `undo` reverses it.
 
 One `peek` field is worth naming ahead of that section, because it is new. A `peeked` line whose scan
 failed carries `"failed":true`, with `"mode":<uint>` beside it under the same rule the `error` line

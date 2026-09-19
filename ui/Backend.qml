@@ -24,8 +24,8 @@ Item {
     signal dirSized(int row, real bytes, bool partial)
     signal searching(int total, int scanned, real ms)
     signal searched(int total, int scanned, real ms, bool cancelled)
-    // The write operations, see docs/protocol.md; every one of them is reversible with undo.
-    signal transferStarted(int id, int n, bool moving)
+    // Copy/move support undo; extract uses the same activity card without an undo journal.
+    signal transferStarted(int id, int n, bool moving, bool extract)
     signal transferProgress(int id, int index, string name, real bytes, real total, real scanned)
     signal transferItem(int id, int index, string name, bool ok, string err)
     signal transferDone(int id, int ok, int failed, int skipped, bool cancelled, var retryPaths)
@@ -65,7 +65,7 @@ Item {
     // The compress submenu is exactly this list, so a box with no 7zip never shows .7z.
     property var archiveFormats: []
     property bool canConvert: false
-    property var extraction: ({archive: false, sevenZip: false})
+    property var extraction: ({archive: false, sevenZip: false, zip: false})
     property var providers: ({})
     property int formatsToken: 0
 
@@ -296,6 +296,7 @@ Item {
     // Sample input: {"t":"changed","path":"/home/gm/Downloads"}
     // Sample input: {"t":"searching","n":812,"scanned":41200,"ms":300.114}
     // Sample input: {"t":"transferstarted","id":12,"n":2,"moving":true}
+    // Sample input: {"t":"transferstarted","id":12,"n":1,"moving":false,"extract":true}
     // Sample input: {"t":"transferprogress","id":12,"index":0,"name":"a.txt","bytes":40000000,"total":120000000,"scanned":8400000000}
     // Sample input: {"t":"transferitem","id":12,"index":1,"name":"photos","ok":false,"err":"permission denied"}
     // Sample input: {"t":"transferdone","id":12,"ok":1,"failed":1,"skipped":0,"cancelled":false}

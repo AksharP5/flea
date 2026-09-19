@@ -1,5 +1,6 @@
 .import "../../ui/js/Archive.js" as Archive
 .import "../../ui/js/Convert.js" as Convert
+.import "../../ui/js/Messages.js" as Messages
 
 function run(check) {
     check("the longest extension is matched first, so tar.gz is not read as gz",
@@ -23,6 +24,39 @@ function run(check) {
           "photos|backup")
     check("a name with no archive extension is its own directory name",
           Archive.extractDir("plain"), "plain")
+
+    // #165: Extract is per extension class; ui/Pane.qml feeds these bits from the formats line.
+    var both = {archive: true, sevenZip: true, zip: true}
+    var seven_only = {archive: false, sevenZip: true, zip: true}
+    var tar_only = {archive: true, sevenZip: false, zip: true}
+    var neither = {archive: false, sevenZip: false, zip: false}
+    check("a box with both tools reads every class", [".zip", ".7z", ".tar.gz", ".rar", ".tgz"].map(function (e) {
+        return Archive.canExtract("x" + e, both)
+    }).join(","), "true,true,true,true,true")
+    check("a box with only 7z reads its own class and the zip class, and no tar",
+          Archive.canExtract("x.zip", seven_only) + "|" + Archive.canExtract("x.rar", seven_only)
+          + "|" + Archive.canExtract("x.tar.zst", seven_only), "true|true|false")
+    check("a box with only bsdtar reads everything but the 7z class",
+          Archive.canExtract("x.zip", tar_only) + "|" + Archive.canExtract("x.7z", tar_only), "true|false")
+    check("a box with neither reads nothing",
+          Archive.canExtract("x.zip", neither) + "|" + Archive.canExtract("x.tar", neither), "false|false")
+    check("a missing capability object is not a capability", Archive.canExtract("x.zip", undefined), false)
+    check("the zip capability accepts the exact .zip boundary", Archive.canExtract(".zip", {zip: true}), true)
+    check("the zip capability accepts the exact .rar boundary", Archive.canExtract(".rar", {zip: true}), true)
+    check("the 7z capability accepts the exact .7z boundary", Archive.canExtract(".7z", {sevenZip: true}), true)
+    check("the disabled row's reason names the missing program",
+          Archive.extractHint(["7z"]) + "|" + Archive.extractHint(["zip", "tar", "tar.gz"]) + "|" + Archive.extractHint([]),
+          "bsdtar is not installed|7-Zip is not installed|No archive tool is installed")
+
+    var transferCalls = []
+    var messageRoot = {transferStarted: function (id, n, moving, extract) {
+        transferCalls.push([id, n, moving, extract].join("|"))
+    }}
+    Messages.route(messageRoot, {t: "transferstarted", id: 4, n: 2, moving: true})
+    check("ordinary transferstarted keeps its three-field schema", transferCalls.join(","), "4|2|true|false")
+    transferCalls = []
+    Messages.route(messageRoot, {t: "extractstarted", id: 5})
+    check("the new extract start reaches the existing card as an extract", transferCalls.join(","), "5|1|false|true")
 
     check("one row compresses under its own name",
           Archive.archiveStem(["notes.txt"], "claude"), "notes")

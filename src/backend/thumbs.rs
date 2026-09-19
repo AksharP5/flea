@@ -390,9 +390,13 @@ mod tests {
         let done = fixture.receiver.as_ref().unwrap().recv_timeout(Duration::from_secs(10)).expect("no result");
         assert_eq!(done.path, PathBuf::from(MISSING));
         assert!(matches!(done.result, Outcome::Failed));
-        // A vanished input is not a broken file, so nothing is recorded and no temp is left behind.
+        // A vanished input is not a broken file; a box with no host thumbnailer never creates large/.
         let recorded = fixture.sandbox.join("fail").exists();
-        let left = std::fs::read_dir(fixture.sandbox.join("large")).unwrap().count();
+        let left = match std::fs::read_dir(fixture.sandbox.join("large")) {
+            Ok(entries) => entries.count(),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => 0,
+            Err(e) => panic!("large/ could not be read: {}", e),
+        };
         assert!(!recorded, "a vanished input was recorded in fail/");
         assert_eq!(left, 0, "a temp file survived a failed job");
     }
@@ -402,6 +406,11 @@ mod tests {
         if crate::backend::sandboxprobe::skipped() { return; }
         let aliases = Arc::new(Aliases::load());
         let specs = Arc::new(Thumbnailers::load(&aliases));
+        // This one test needs a real host thumbnailer; a builder without one is told, not failed.
+        if specs.for_mime("image/png", &aliases).is_none() {
+            std::io::Write::write_all(&mut std::io::stderr(), b"SKIP backend::thumbs::tests::a_real_file_round_trips_to_a_stamped_cache_entry: no thumbnailer declares image/png here\n").ok();
+            return;
+        }
         let fixture = TestPool::new("thumbs-roundtrip", aliases, specs);
         let src = fixture.sandbox.join("in.png");
         // A real thumbnailer needs a real image, and the fail marker writer already makes the smallest valid one.

@@ -11,13 +11,13 @@ function sideways(event) {
          : event.key === Qt.Key_Right || event.text === "l" ? 1 : 0
 }
 
-// An arrow requires an existing visual cell, even when item-order navigation wraps at the ends.
+// Arrow and letter actions share visual cells; absent neighbours clamp even when list navigation wraps.
 function arrow(event, action, root) {
     if (root.viewMode !== "grid") return false
     var columns = root.cursorStride
     var across = sideways(event)
-    var delta = event.key === Qt.Key_Down && (action === "cursorDown" || action === "extendDown") ? columns
-              : event.key === Qt.Key_Up && (action === "cursorUp" || action === "extendUp") ? -columns
+    var delta = (action === "cursorDown" || action === "extendDown") ? columns
+              : (action === "cursorUp" || action === "extendUp") ? -columns
               : across < 0 && action === "cursorLeft" ? -1
               : across > 0 && action === "cursorRight" ? 1 : 0
     if (!delta) return false

@@ -98,6 +98,16 @@ function normalize(uri) {
     return bareRoot ? stripped + "/" : stripped
 }
 
+// A password may be given to any scheme here whose authority names a user.
+function credentialed(uri) {
+    return /^(smb|sftp|ftp|ftps|dav|davs):\/\/[^\/]*@/i.test(String(uri || ""))
+}
+
+// Try sftp keys before asking for a password.
+function keyless(uri) {
+    return /^sftp:\/\//i.test(String(uri || ""))
+}
+
 // PR #21: a live mount wins the rail row, and the operator's own bookmark label wins its name, or a
 // rename typed on a mounted share is written to the file and never drawn. Matched the way rebuild dedups.
 function railLabel(mount, marks) {

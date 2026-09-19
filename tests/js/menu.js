@@ -52,7 +52,10 @@ function run(check) {
     }), true)
     check("missing converter removes Convert", entry(Menu.listingEntries(state({ canConvert: false })), "convert").action, undefined)
     check("missing archiver removes Compress", entry(Menu.listingEntries(state({ archiveFormats: [] })), "compress").action, undefined)
-    check("archive needs actual extraction capability", entry(Menu.listingEntries(state({ rowIsArchive: true, canExtract: false })), "extract").action, undefined)
+    var noReader = entry(Menu.listingEntries(state({ rowIsArchive: true, canExtract: false, archiveFormats: ["zip", "tar"] })), "extract")
+    check("a recognized archive with no reader keeps its Extract row", noReader.action, "extract")
+    check("and the disabled row carries the missing reader as its reason",
+          noReader.disabled + "|" + noReader.hint + "|" + noReader.hintWrap, "true|7-Zip is not installed|true")
     check("supported archive offers Extract", entry(Menu.listingEntries(state({ rowIsArchive: true })), "extract").action, "extract")
     check("absent Taildrop provider removes its row", entry(Menu.listingEntries(state({ taildropInstalled: false })), "taildrop").action, undefined)
     var offline = entry(Menu.listingEntries(state({ taildropPeers: [] })), "taildrop")

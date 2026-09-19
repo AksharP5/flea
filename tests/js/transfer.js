@@ -96,4 +96,13 @@ function run(check) {
     // The file line goes back to naming the item and its size: the bytes are the line under the bar.
     check("the file line states the size and never the running count",
           Transfer.fileLine({ name: "captures", total: 0, bytes: 700 * megabyte }), "captures")
+
+    // #165: an extract drives this card with no byte sample, so nothing it draws can be invented.
+    var extracting = { id: 9, n: 1, moving: false, index: 0, name: "slow.zip", running: true,
+                       extract: true, done: 0, bytes: 0, total: 0, moved: 0 }
+    check("an extract's headline names its verb alone", Transfer.head(extracting), "Extracting")
+    check("and the archive's own name is the row under it", Transfer.fileLine(extracting), "slow.zip")
+    check("with no byte sample, so it draws no invented byte line", Transfer.byteParts(extracting, 0).length, 0)
+    check("and the bar stays at its no-sample state", Transfer.fraction(extracting), 0)
+    check("a copy's headline is unchanged", Transfer.head(oneFile), "Copying 1 of 1")
 }

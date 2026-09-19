@@ -24,7 +24,9 @@ function route(root, message) {
     } else if (message.t === "searched") {
         root.searched(message.n, message.scanned, message.ms, message.cancelled)
     } else if (message.t === "transferstarted") {
-        root.transferStarted(message.id, message.n, message.moving)
+        root.transferStarted(message.id, message.n, message.moving, false)
+    } else if (message.t === "extractstarted") {
+        root.transferStarted(message.id, 1, false, true)
     } else if (message.t === "transferprogress") {
         root.transferProgress(message.id, message.index, message.name, message.bytes, message.total, message.scanned || 0)
     } else if (message.t === "transferitem") {

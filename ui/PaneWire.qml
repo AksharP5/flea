@@ -265,11 +265,11 @@ Item {
         // Sample input: {"t":"transferstarted","id":12,"n":2,"moving":true}
         // The verb comes off the wire, never off the clipboard: paste spends a cut before this line
         // arrives, and a Dropbox move never touches the clipboard at all.
-        function onTransferStarted(id, n, moving) {
+        function onTransferStarted(id, n, moving, extract) {
             root.retryId = 0
             root.retryPaths = []
             root.retrySelectionText = ""
-            pane.transfer = Ops.started(id, moving, n)
+            pane.transfer = Ops.started(id, moving, n, extract)
             pane.sticky(Ops.progressLine(pane.transfer))
         }
 
@@ -374,8 +374,10 @@ Item {
         // A success nobody could check must not read as one that was checked, so the unverified
         // extract says so in the same slot rather than in a dialog.
         function onArchiveDone(id, ok, verified, err) {
+            if (pane.transfer.extract === true && pane.transfer.id === id)
+                pane.transfer = Ops.emptyTransfer()
             pane.sticky("")
-            pane.message(ok ? Ops.archiveDoneLine(verified) : Errors.sentence("archive", err), !ok)
+            pane.message(ok ? Ops.archiveDoneLine(verified) : err === "cancelled" ? "Extraction cancelled." : Errors.sentence("archive", err), !ok && err !== "cancelled")
             pane.refresh("")
         }
 
