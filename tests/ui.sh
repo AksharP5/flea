@@ -3266,6 +3266,18 @@ case_grid() {
     (( $(ipc cursor) == right - (down - start) )) || fail "grid: Up did not undo the row Down moved"
     printf 'GRID columns=%s cursorAfterDown=%s afterRight=%s\n' "$((down - start))" "$down" "$right"
 
+    # Issue 162: j moves the row of tiles Down moved, and k undoes it; a [[text]] chord goes bare.
+    local jfrom jdown
+    jfrom=$(ipc cursor)
+    key j >/dev/null
+    settle
+    jdown=$(ipc cursor)
+    (( jdown == jfrom + (down - start) )) \
+        || fail "grid: j moved $((jdown - jfrom)) from $jfrom, not the row of tiles Down moved"
+    key k >/dev/null
+    settle
+    (( $(ipc cursor) == jfrom )) || fail "grid: k did not undo the row j moved"
+
     click_chrome list
     settle
     [[ "$(ipc viewMode)" == "list" ]] || fail "grid: the list button did not switch back"
@@ -3275,6 +3287,13 @@ case_grid() {
     settle
     (( $(ipc cursor) == start + 1 )) \
         || fail "grid: after switching back the list did not take one step, so focus stayed with the grid"
+    # Issue 162 is the grid's only: the same letter is one row in the list.
+    local lstart lnext
+    lstart=$(ipc cursor)
+    key j >/dev/null
+    settle
+    lnext=$(ipc cursor)
+    (( lnext == lstart + 1 )) || fail "grid: in the list j moved $((lnext - lstart)), not one item"
     kill_flea
 }
 
