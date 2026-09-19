@@ -68,6 +68,8 @@ function sidebarGlyphFor(label) {
 // hard corners, real curves stayed; see AGENTS.md "Lucide path data", "The Omarchy cut".
 var PATHS = {
     "info": "M12 11v6 M12 7h.01 M22 12a10 10 0 1 1-20 0a10 10 0 1 1 20 0",
+    "shelf": "M21 21H3V3h18v14H7V7h10v6h-6",
+    "pin": "M9 3h6v6l3 3v2H6v-2l3-3z M12 14v7",
     "star": "M12 2l2.9 6.6 7.1.6-5.4 4.7 1.6 7L12 17.3l-6.2 3.6 1.6-7L2 9.2l7.1-.6z",
     "globe": "M2 12h20 M12 2a15 15 0 0 1 0 20 M12 2a15 15 0 0 0 0 20 M22 12a10 10 0 1 1-20 0a10 10 0 1 1 20 0",
 
@@ -98,6 +100,12 @@ var PATHS = {
     // Lucide's hard-drive with its four baked 2 unit corner arcs cut square, which lands the body on
     // (6,4) (18,4) (22,12) (22,20) (2,20) (2,12); the divider and the two LED dots are lucide's own.
     "drive": "M6 4h12l4 8v8H2v-8z M2 12h20 M6 16L6.01 16 M10 16L10.01 16",
+    // The DEVICES rail's phone mark, lucide's smartphone with its rx=2 body rect cut square the way
+    // drive's arcs were; the home-button dot is lucide's own near-zero line, drawn as server's are.
+    "smartphone": "M5 2h14v20H5z M12 18L12.01 18",
+    // Its GPhoto2 sibling, per the PhoneMark board: lucide's camera with the four a2 2 body arcs cut
+    // to (2,7) (22,7) (22,20) (2,20), the pentaprism kept, and the lens a genuine circle, cut rule 4.
+    "camera": "M14.5 4h-5L7 7H2v13h20V7h-5z M15 13a3 3 0 1 1-6 0a3 3 0 1 1 6 0",
     // The rail menu's release mark, the shelf's "for: unmount": lucide's triangle corner arcs
     // extend to (12, 2.09) (22.32, 13) (1.68, 13) and snap to grid, its rx=1 bar rect squares off.
     "eject": "M12 2 22 13H2z M3 17h18v4H3z",
@@ -153,9 +161,15 @@ var PATHS = {
     "maximize": "M8 3H3v5 M16 3h5v5 M8 21H3v-5 M16 21h5v-5",
     "x": "M6 6l12 12 M18 6 6 18",
     "sliders": "M4 21v-7 M4 10V3 M12 21v-9 M12 8V3 M20 21v-5 M20 12V3 M2 14h4 M10 8h4 M18 16h4",
+    // Grid zoom's own mark, the SettingsGrammar board's arrows, lucide's move-horizontal recut sharp.
+    "move-horizontal": "M4 12h16 M8 8l-4 4 4 4 M16 8l4 4-4 4",
     // The background menu's Sort by row, Menus.html's own geometry: three rules shortening to the
     // right of a bare down arrow. IconSets.html names this mark when it caps the corner radius.
     "sort": "M11 5h10 M11 9h7 M11 13h4 M7 5v14 M7 19l-3-3 M7 19l3-3",
+    // MediaMute rule 2: lucide's speaker polygon is already hard-cornered, and the two waves are
+    // genuine arcs that stay arcs under cut rule 4; the cross is two lines.
+    "volume": "M11 5L6 9H2v6h4l5 4z M15.5 8.5a5 5 0 0 1 0 7 M19 5a10 10 0 0 1 0 14",
+    "volume-x": "M11 5L6 9H2v6h4l5 4z M22 9l-6 6 M16 9l6 6",
     // The three basic clipboard rows the context menu grew with its visibility settings. Lucide's
     // scissors and clipboard both carry arcs; these are the cut's own square handles and square tray.
     "scissors": "M5 3l14 14 M19 3L5 17 M2 17h5v5H2z M17 17h5v5h-5z",

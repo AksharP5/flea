@@ -1,8 +1,10 @@
 .pragma library
 .import "Eject.js" as Eject
 .import "Filter.js" as Filter
+.import "Grid.js" as Grid
 .import "Format.js" as Format
 .import "Keymap.js" as Keymap
+.import "Mounts.js" as Mounts
 .import "Ops.js" as Ops
 .import "PreviewKeys.js" as PreviewKeys
 .import "RailKeys.js" as RailKeys
@@ -15,8 +17,9 @@ var LIST = "list"
 var RAIL = "rail"
 
 // Tab is the only thing that moves focus between views, so the rule lives in one function.
-function next(current) {
-    return current === LIST ? RAIL : LIST
+function next(current, sidebar) {
+    // RailAdditions rule 4: a hidden rail is not a place the keyboard can go, so Tab stays in the list. Directive 77: one that auto-hide withdrew is, because arriving there is what reveals it.
+    return current === LIST && sidebar ? RAIL : LIST
 }
 
 function shareBrowserHere(root) {
@@ -26,35 +29,28 @@ function shareBrowserHere(root) {
 // The one lookup Pane.qml's Keys.onPressed calls. "addNetwork" is a rail-only action (the
 // dialog is reached from the rail's own "+" mark), so "a" does nothing in the list;
 // filtering it here, not in Keymap.js, keeps the generated file a pure keys.toml mirror.
-// seekBack/seekForward get the same treatment, scoped to an open MEDIA preview instead of the
-// rail, so Left/Right stay silent everywhere else rather than reaching act()'s "not built yet".
+// seekBack/seekForward get the same treatment, scoped to an open MEDIA preview instead of the rail.
 function lookup(event, root) {
     var context = root.preview.active ? (root.preview.isPdf ? "pdf" : root.preview.isMedia ? "media" : "preview")
                   : shareBrowserHere(root) ? "menu" : root.focusView === RAIL ? "rail" : "listing"
     // Grid arrows address visual neighbours even when the preset uses them to open folders in List.
+    // Issue 114, muellan: h and l are the arrows spelled as letters, so in the grid they mean what
+    // the arrows mean and not the tree's own pair, which is what the eye reads off a row of tiles.
     if (context === "listing" && root.viewMode === "grid" && event.modifiers === Qt.NoModifier) {
-        if (event.key === Qt.Key_Left) return "cursorLeft"
-        if (event.key === Qt.Key_Right) return "cursorRight"
+        if (Grid.sideways(event) < 0) return "cursorLeft"
+        if (Grid.sideways(event) > 0) return "cursorRight"
     }
     var action = Keymap.lookup(event.key, event.text, event.modifiers, context)
     // The share listing borrows the menu context for j/k/enter, but it has no submenu to step into.
     if (action === "menuRight" && shareBrowserHere(root)) return "open"
-    // Only the bare a is rail-only; Ctrl+K is scoped to neither view and opens the dialog anywhere.
-    if (action === "addNetwork" && root.focusView !== RAIL && !(event.modifiers & Qt.ControlModifier))
-        return ""
     // List and Grid filter held rows; search owns the header while its results are active.
     if (action === "filter")
         return (root.viewMode !== "columns" && root.searchMode.length === 0) ? action : ""
-    // Left and Right seek inside a media preview and turn the page in a PDF one. With no preview
-    // open they are free, and in the grid they are the only sensible way to move one tile sideways,
-    // so the grid claims them there.
-    if (action === "seekBack" || action === "seekForward") {
-        if (root.preview.active && (root.preview.isMedia || root.preview.isPdf))
-            return action
-        if (root.viewMode === "grid")
-            return action === "seekBack" ? "cursorLeft" : "cursorRight"
-        return ""
-    }
+    // Left and Right seek inside a media preview and turn the page in a PDF one, which is the only
+    // place the map binds either action now that the browsing pair is parent and browse-in; the grid
+    // takes the bare arrows above, before the map is consulted.
+    if (action === "seekBack" || action === "seekForward")
+        return root.preview.active && (root.preview.isMedia || root.preview.isPdf) ? action : ""
     // Minus, plus and e mean nothing outside a PDF. l is h's forward: page, else enter or preview.
     if (action === "zoomOut" || action === "zoomIn" || action === "expand")
         return (root.preview.active && root.preview.isPdf) ? action : ""
@@ -66,6 +62,10 @@ function lookup(event, root) {
         var row = root.rowFor(root.cursorIndex)
         return row && (row.d || (Format.isSymlink(row.p) && row.i === "folder")) ? "open" : (row ? "preview" : "")
     }
+    // Issue 133: the key follows the row. A mount gio cannot trash into offers neither, rather than
+    // arming a d that can only fail; ui/js/Mounts.js trashable is the same reader the menu uses.
+    if ((action === "trashArm" || action === "trash") && !Mounts.trashable(root.path))
+        return ""
     // reveal only means something on a search result, so o is discarded everywhere else.
     if (action === "reveal" && root.searchMode !== Search.RESULTS)
         return ""
@@ -80,7 +80,7 @@ function lookup(event, root) {
 // Takes the Pane root because every case is a method call or a property read on it.
 function act(action, root, menuId, paths) {
     switch (action) {
-    // Letter bindings follow item order; physical grid arrows use gridArrow's visual neighbours.
+    // Letter bindings follow item order; the grid's own arrows take ui/js/Grid.js's visual cells.
     case "cursorDown": step(root, 1); return
     case "cursorUp": step(root, -1); return
     case "cursorLeft": step(root, -1); return
@@ -98,6 +98,7 @@ function act(action, root, menuId, paths) {
     case "focusPreview": root.focusPreviewColumn(); return
     case "windowNew": root.newWindow(); return
     case "toggleHidden": root.toggleHidden(); return
+    case "sidebar": root.toggleRail(); return
     // Popups handle Escape first; the focused listing then unwinds filter, search, status and marks.
     case "escape":
         if (root.filterTyping || root.filterQuery.length > 0) Filter.close(root)
@@ -144,7 +145,7 @@ function act(action, root, menuId, paths) {
     // The header answers the same two through ui/Pane.qml, so the key and the click share one route.
     case "sortNext": Sort.next(root); return
     case "sortReverse": Sort.reverse(root); return
-    case "addNetwork": root.sidebar.addRequested(); return
+    case "addNetwork": if (root.sidebar) root.sidebar.addRequested(); return
     case "eject": Eject.release(root, root.sidebar, false); return
     // Finder's Cmd+1/2/3; the chrome's three buttons write the same property, so they follow.
     case "viewList": root.chooseView("list"); return
@@ -170,25 +171,6 @@ function act(action, root, menuId, paths) {
     // a sentence any more: tabs run here, and handleKey opens the path bar before the views see it.
     if (action.indexOf("tab") === 0) { Tabs.act(action, root); return }
     root.message(action + " is not built yet.", false)
-}
-
-// Arrows require an existing visual cell, even when item-order navigation wraps at the ends.
-function gridArrow(event, action, root) {
-    if (root.viewMode !== "grid") return false
-    var columns = root.cursorStride
-    var delta = event.key === Qt.Key_Down && (action === "cursorDown" || action === "extendDown") ? columns
-              : event.key === Qt.Key_Up && (action === "cursorUp" || action === "extendUp") ? -columns
-              : event.key === Qt.Key_Left && action === "cursorLeft" ? -1
-              : event.key === Qt.Key_Right && action === "cursorRight" ? 1 : 0
-    if (!delta) return false
-    var index = Filter.viewOf(root.shown, root.cursorIndex)
-    var nextIndex = index + delta
-    if (nextIndex < 0 || nextIndex >= root.shownTotal
-            || (event.key === Qt.Key_Left && index % columns === 0)
-            || (event.key === Qt.Key_Right && nextIndex % columns === 0)) return true
-    if (action === "extendDown" || action === "extendUp") root.extendSelection(delta)
-    else Filter.moveCursor(root, delta)
-    return true
 }
 
 // Only a step from an end wraps; page overshoots and selection extensions retain their clamps.
@@ -250,7 +232,7 @@ function handleKey(event, root, sidebar) {
     // "blocked:" lesson; the row editor and the rail's own field both need it. The index alone is not
     // asked, because an editor released by a scroll or hidden by a view change left it set with
     // nothing to give the keys to, and every later key was swallowed for the life of the window.
-    if (sidebar.renameEditor() !== null || root.renameEditor() !== null) {
+    if ((sidebar && sidebar.renameEditor() !== null) || root.renameEditor() !== null) {
         return true
     }
     root.inputAt = Date.now()
@@ -289,7 +271,7 @@ function handleKey(event, root, sidebar) {
     }
     if (action === "focusNext" || action === "focusPrevious") {
         if (root.dualMode && root.focusView === LIST) root.switchPane()
-        else root.focusView = next(root.focusView)
+        else root.focusView = next(root.focusView, sidebar || root.railAvailable)
         return true
     }
     if (action === "focusPreview") {
@@ -322,11 +304,11 @@ function handleKey(event, root, sidebar) {
         root.act(action)
         return true
     }
-    if (root.focusView === RAIL) {
+    if (root.focusView === RAIL && sidebar) {
         RailKeys.act(action, root, sidebar)
         return true
     }
-    if (gridArrow(event, action, root)) return true
+    if (Grid.arrow(event, action, root)) return true
     if (action.length > 0 || Keymap.lookup(event.key, event.text, event.modifiers).length > 0) {
         if (action.length > 0) root.act(action)
         return true

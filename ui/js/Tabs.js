@@ -2,6 +2,8 @@
 
 .import "Filter.js" as Filter
 .import "Format.js" as Format
+.import "Sort.js" as Sort
+.import "Startup.js" as Startup
 
 // Hidden tabs are snapshots, so the pane and backend still own only one listing.
 // The nine-tab cap matches TUI's direct digit selection; GUI shortcuts cycle through the same state.
@@ -31,6 +33,8 @@ function snapshot(pane, path) {
         selected: elsewhere ? [] : pane.selectedIndices().slice(),
         sortBy: pane.backend.sortBy,
         sortDesc: pane.backend.sortDesc,
+        // Issue 94, nixfred: the counter every list bumps, so a selection only returns to its own rows.
+        listRequests: pane.backend.listRequests,
         // The directory's filesystem, so a drop on this tab while another shows decides move against copy.
         dev: elsewhere ? 0 : pane.backend.dirDev
     }
@@ -91,7 +95,9 @@ function currentIndex(pane) {
     return pane.tabs ? pane.tabs.index : 0
 }
 
+// Issue 93, nixfred: says whether it dropped a walk's results, which are not the directory's rows.
 function dropOverlay(pane) {
+    var dropped = pane.searchMode === "results"
     if (pane.searchMode.length > 0) {
         if (pane.searchRunning)
             pane.backend.searchcancel()
@@ -103,6 +109,7 @@ function dropOverlay(pane) {
         pane.searchScanned = 0
     }
     Filter.close(pane)
+    return dropped
 }
 
 function closePreview(pane) {
@@ -135,48 +142,53 @@ function restoreSelection(pane, selected) {
         pane.selectionVersion++
 }
 
-function apply(pane, item) {
-    var same = pane.path === item.path && pane.showHidden === item.showHidden
+function apply(pane, item, dropped) {
+    // Issue 93: a search dropped onto the scope it walked leaves rows that are not that directory's.
+    var same = pane.path === item.path && pane.showHidden === item.showHidden && dropped !== true
     pane.history = item.history.slice()
     pane.forwardHistory = (item.forwardHistory || []).slice()
     pane.viewMode = item.viewMode
     pane.showHidden = item.showHidden
     if (same) {
         if (pane.backend && (pane.backend.sortBy !== item.sortBy || pane.backend.sortDesc !== item.sortDesc)) {
-            pane.backend.sort(item.sortBy, item.sortDesc)
-            pane.backend.sortBy = item.sortBy
-            pane.backend.sortDesc = item.sortDesc
-            pane.backend.window(0, pane.windowSize)
+            // Issue 94: the one reset a reorder takes, ui/js/Sort.js's, which this branch half repeated.
+            Sort.resort(pane, item.sortBy, item.sortDesc)
             pane.tabs.pendingCursor = item.cursorIndex
             return
         }
-        // The one switch that re-reads nothing, so the rows behind these indices are the rows the
-        // selection was made on and restoring it is safe. Every other path below drops it.
+        // The switch that re-reads nothing, unless something else did: the watch and a write both list.
         pane.setCursor(item.cursorIndex)
-        restoreSelection(pane, item.selected)
+        if (pane.backend && item.listRequests === pane.backend.listRequests) {
+            restoreSelection(pane, item.selected)
+            return
+        }
+        pane.clearSelection()
         return
     }
     pane.tabs.pendingCursor = item.cursorIndex
     pane.tabs.pendingSortBy = item.sortBy
     pane.tabs.pendingSortDesc = item.sortDesc
-    pane.openWithoutHistory(item.path)
+    // The tab's own dotfile answer is restored above, so the listing keeps it rather than taking the
+    // standing preference, which is whatever the tab being left chose.
+    pane.openWithoutHistory(item.path, true)
 }
 
 function applyPending(pane) {
     if (!pane.tabs)
         return
     var t = pane.tabs
-    if (t.pendingSortBy && t.pendingSortBy.length > 0
-            && pane.backend
-            && (pane.backend.sortBy !== t.pendingSortBy || pane.backend.sortDesc !== t.pendingSortDesc)) {
+    // Issue 91, nixfred: spent on the first reply either way, or an order already in force never was.
+    if (t.pendingSortBy && t.pendingSortBy.length > 0 && pane.backend) {
         var by = t.pendingSortBy
         var desc = t.pendingSortDesc
         t.pendingSortBy = ""
-        pane.backend.sort(by, desc)
-        pane.backend.sortBy = by
-        pane.backend.sortDesc = desc
-        pane.backend.window(0, pane.windowSize)
-        return
+        if (pane.backend.sortBy !== by || pane.backend.sortDesc !== desc) {
+            pane.backend.sort(by, desc)
+            pane.backend.sortBy = by
+            pane.backend.sortDesc = desc
+            pane.backend.window(0, pane.windowSize)
+            return
+        }
     }
     if (t.pendingCursor >= 0) {
         var last = pane.total > 0 ? pane.total - 1 : 0
@@ -191,7 +203,9 @@ function currentItems(pane, here) {
     return [snapshot(pane, here)]
 }
 
-function openNew(pane) {
+// A caller may name where the new tab lands, which is what the Places row menu's own row does;
+// without one it is Settings, View, Opening that decides, and that still defaults to this folder.
+function openNew(pane, where) {
     if (busy(pane))
         return
     // Before the preview and the search go: a refused tenth tab must cost the user nothing.
@@ -201,16 +215,19 @@ function openNew(pane) {
     }
     var here = restingPath(pane)
     closePreview(pane)
-    dropOverlay(pane)
+    var dropped = dropOverlay(pane)
+    // Settings > View > Opening decides where the new tab lands; it cloned the current folder before
+    // 0.2.1 and that is still the default. The tab the operator leaves keeps the path it was on.
+    var target = where || Startup.newTabPath(pane.uiState, here, pane.home)
     var items = currentItems(pane, here)
     var index = currentIndex(pane)
     items[index] = snapshot(pane, here)
-    items.push(snapshot(pane, here))
+    items.push(snapshot(pane, target))
     pane.tabs = pack(items, items.length - 1)
-    // dropOverlay clears the search but leaves the pane on the scope it walked, so the new tab has
-    // to land on the path it just recorded; this is what Escape out of a search already does.
-    if (pane.path !== here)
-        pane.openWithoutHistory(here)
+    // dropOverlay clears the search but leaves the pane on the scope it walked and its rows on that
+    // walk's results, so a target equal to the scope still has to be listed again. Escape already does.
+    if (pane.path !== target || dropped)
+        pane.openWithoutHistory(target)
 }
 
 function selectAt(pane, i) {
@@ -226,10 +243,10 @@ function selectAt(pane, i) {
     if (i === index)
         return
     closePreview(pane)
-    dropOverlay(pane)
+    var dropped = dropOverlay(pane)
     items[index] = snapshot(pane, here)
     pane.tabs = pack(items, i)
-    apply(pane, items[i])
+    apply(pane, items[i], dropped)
 }
 
 function closeAt(pane, i) {
@@ -253,9 +270,9 @@ function closeAt(pane, i) {
         next = Math.min(i, items.length - 1)
     if (i === index) {
         closePreview(pane)
-        dropOverlay(pane)
+        var dropped = dropOverlay(pane)
         pane.tabs = pack(items, next)
-        apply(pane, items[next])
+        apply(pane, items[next], dropped)
     } else {
         pane.tabs = pack(items, next)
     }

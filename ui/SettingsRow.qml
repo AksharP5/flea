@@ -16,6 +16,7 @@ Item {
     signal activated()
     signal pointerMoved()
     signal favouriteMoved(int to)
+    signal favouriteRemoved()
     // Every steppable row steps the same way, so h/l and the two chevrons fire one signal, never two.
     signal stepped(int direction)
     // The ruler's own way in: the same writer a step reaches, addressed by stop instead of direction.
@@ -24,36 +25,38 @@ Item {
     readonly property string kind: root.row.kind || "fact"
     readonly property bool isGroup: root.kind === "group"
     readonly property bool firstGroup: root.isGroup && root.firstRow
-    // Settings headings scale their resolved 12/15/4/8 insets once from the boards' bodySmall 13 anchor.
-    readonly property real groupScale: Theme.font.bodySmall / 13
-    readonly property real groupGap: root.firstGroup ? 0 : Math.round(8 * root.groupScale)
-    readonly property real groupPaddingTop: Math.round((root.firstGroup ? 12 : 15) * root.groupScale)
-    readonly property real groupPaddingBottom: Math.round(4 * root.groupScale)
-    readonly property real groupLineHeight: Theme.font.caption * 1.6
     readonly property bool isHint: root.kind === "hint"
     readonly property bool isFooter: root.isHint && root.row.footer === true
-    readonly property bool isFavourite: root.kind === "favourite" || root.kind === "favouriteActions"
+    readonly property bool isFavourite: root.kind === "favourite"
     readonly property Item favouriteItem: favourite
     readonly property bool isHero: root.kind === "hero"
     readonly property bool isKeyPreview: root.kind === "keyPreview"
     readonly property bool isLock: root.kind === "lock"
     readonly property bool isRuler: root.kind === "ruler"
-    readonly property bool hasBox: root.kind === "check" || root.kind === "master"
-    // A row that names its options draws them side by side, so it is not one the chevrons walk.
+    readonly property bool hasBox: root.kind === "check"
+    // SettingsMenus rule 3 and SettingsRest rule 3: a heading carrying its group's master or its one action is operated like any other control.
+    readonly property bool isGroupControl: root.isGroup && (root.row.master === true || (root.row.action || "") !== "")
     // Length and not Array.isArray: a Repeater hands the delegate a QVariantList wrapper, on which
     // isArray reads false while typeof is "object" and length is right, so the segment never drew.
-    readonly property bool hasSegment: root.row.options !== undefined && root.row.options.length > 1
+    // Which control a choice gets, SettingsGrammar rule 1: a segment when every option fits on the row beside the label, the chevron walk when they do not, and nothing else decides it. A Row reports its own implicitWidth whether or not it is itself visible, so measuring the segment and hiding it on the answer is no loop.
+    readonly property real segmentChrome: 2 * Theme.spacing.rowPaddingX + Theme.markSize + 3 * Theme.spacing.gap
+    readonly property bool hasSegment: root.kind === "choice" && root.row.labels !== undefined && root.row.labels.length > 1
+        && segment.implicitWidth + rowLabel.implicitWidth + root.segmentChrome <= root.width
     readonly property bool hasSteps: root.kind === "choice" && !root.hasSegment
     // The hover lift ui/MenuRow.qml uses, so a settings row and a menu row read alike.
     readonly property real hoverOpacity: 0.08
-    // The tri-state master: all six on is a check, some on is a dash, none is an empty box.
-    readonly property string boxGlyph: root.kind === "master"
-        ? (root.row.state === "all" ? "check" : (root.row.state === "some" ? "minus" : ""))
-        : (root.row.on === true ? "check" : "")
+    // SettingsGrammar rule 7: a dependent greys in place while its parent is off, and the grey takes the row's handlers with it, because a control that cannot act must not answer a tap.
+    readonly property bool greyed: root.row.available === false
+    readonly property string boxValue: root.row.on === true ? "on" : "off"
+    // SettingsMenus rule 5: the one row that can destroy a file carries the urgent role the model already gives it.
+    readonly property bool isUrgent: root.row.role === "error" && !root.isHint
 
-    height: root.isGroup ? groupLabel.y + groupLabel.height + root.groupPaddingBottom
+    enabled: !root.greyed
+    opacity: root.greyed ? Theme.disabledOpacity : 1
+    height: root.isGroup ? groupHead.implicitHeight
             : root.isFavourite ? favourite.implicitHeight : root.isHero ? hero.implicitHeight + 4 * Theme.spacing.rowPaddingY
             : root.isKeyPreview ? keyPreview.implicitHeight + 2 * Theme.spacing.rowPaddingY
+            : root.isRuler ? ruler.implicitHeight + 2 * Theme.spacing.rowPaddingY
             : root.isHint ? hint.y + hint.implicitHeight + (root.isFooter
                 ? Theme.settings.railPaddingY + 2 * Theme.spacing.hairline : Theme.spacing.rowPaddingY) : Theme.rowHeight
 
@@ -125,8 +128,8 @@ Item {
         visible: root.isFavourite
         row: root.row
         onActivated: root.activated()
-        onActionPicked: function (action) { root.stopPicked(action) }
         onMoved: function (to) { root.favouriteMoved(to) }
+        onRemoved: root.favouriteRemoved()
     }
 
     Column {
@@ -168,7 +171,7 @@ Item {
 
     Rectangle {
         anchors.top: parent.top
-        anchors.topMargin: root.isFooter ? Theme.settings.railPaddingY : root.groupGap
+        anchors.topMargin: root.isFooter ? Theme.settings.railPaddingY : groupHead.gap
         width: parent.width
         height: Theme.spacing.hairline
         visible: root.isFooter || root.isGroup && !root.firstGroup
@@ -176,26 +179,14 @@ Item {
         opacity: 0.4
     }
 
-    // A heading and a hint are the only two rows that are not a label and a control, so they draw
-    // instead of the pair below rather than beside it.
-    Text {
-        id: groupLabel
+    // A heading and a hint are the only two rows that are not a label and a control on one line, so
+    // they draw instead of the pair below rather than beside it.
+    Flea.SettingsGroup {
+        id: groupHead
         visible: root.isGroup
-        anchors.left: parent.left
-        anchors.leftMargin: Theme.spacing.rowPaddingX
-        y: root.groupGap + (root.firstGroup ? 0 : Theme.spacing.hairline) + root.groupPaddingTop
-        height: root.groupLineHeight + topPadding
-        topPadding: Math.ceil(font.pixelSize * 0.15)
-        verticalAlignment: Text.AlignVCenter
-        text: root.row.label || ""
-        color: Theme.color.muted
-        font.family: Theme.font.family
-        font.pixelSize: Theme.font.caption
-        font.bold: true
-        // The canvas sets every group eyebrow in small caps, the same treatment the rail's own headings take.
-        font.capitalization: Font.AllUppercase
-        font.letterSpacing: Theme.font.caption * 0.14
-        textFormat: Text.PlainText
+        width: parent.width
+        row: root.row
+        first: root.firstGroup
     }
 
     Text {
@@ -221,7 +212,7 @@ Item {
         id: markSlot
         visible: !root.isGroup && !root.isHint && !root.isHero && !root.isFavourite && !root.isKeyPreview
         anchors.left: parent.left
-        anchors.leftMargin: root.row.indented === true ? Theme.settings.indent - Theme.spacing.rowPaddingX : Theme.spacing.rowPaddingX
+        anchors.leftMargin: Theme.spacing.rowPaddingX
         anchors.verticalCenter: parent.verticalCenter
         width: Theme.markSize
         height: Theme.markSize
@@ -230,7 +221,7 @@ Item {
             anchors.fill: parent
             visible: root.row.glyph !== undefined && root.row.mark === undefined
             name: root.row.glyph !== undefined ? root.row.glyph : "file"
-            color: Theme.color.muted
+            color: root.isUrgent ? Theme.color.error : Theme.color.muted
         }
 
         Flea.TailscaleMark {
@@ -246,18 +237,42 @@ Item {
             iconSize: Theme.markSize
             color: Theme.color.muted
         }
+
+        Flea.LocalSendMark {
+            anchors.centerIn: parent
+            visible: root.row.mark === "localsend"
+            iconSize: Theme.markSize
+            color: Theme.color.muted
+        }
+
+        Flea.HyprlandMark {
+            anchors.centerIn: parent
+            visible: root.row.mark === "hyprland"
+            iconSize: Theme.markSize
+            color: Theme.color.muted
+        }
+
+        // The shelf is Flea's own destination, so its switch carries Flea's own mark, the way ui/MenuRow.qml draws the row it governs.
+        Flea.FleaMark {
+            anchors.centerIn: parent
+            visible: root.row.mark === "flea"
+            width: Theme.markSize
+            height: Theme.markSize
+            color: Theme.color.muted
+        }
     }
 
     // A ruler is the row above it continued, so it takes the boards' own continuation indent
     // rather than the label column: five settings boards draw both it and a hint at that inset.
     Flea.SettingsRuler {
+        id: ruler
         visible: root.isRuler
         anchors.left: parent.left
         anchors.leftMargin: Theme.settings.indent
-        anchors.right: trailing.left
-        anchors.rightMargin: Theme.spacing.gap
+        anchors.right: parent.right
+        anchors.rightMargin: Theme.spacing.rowPaddingX
         anchors.verticalCenter: parent.verticalCenter
-        height: Theme.markSize
+        height: ruler.implicitHeight
         stops: root.row.stops !== undefined ? root.row.stops : []
         index: root.row.index !== undefined ? root.row.index : -1
         active: root.row.on === true
@@ -269,31 +284,15 @@ Item {
         visible: !root.isGroup && !root.isHint && !root.isHero && !root.isFavourite && !root.isRuler && !root.isKeyPreview
         anchors.left: markSlot.right
         anchors.leftMargin: Theme.spacing.gap
-        anchors.right: caption.visible ? caption.left : trailing.left
+        anchors.right: trailing.left
         anchors.rightMargin: Theme.spacing.gap
         anchors.verticalCenter: parent.verticalCenter
         text: root.row.label || ""
-        color: root.isLock ? Theme.color.muted : Theme.color.foreground
+        color: root.isUrgent ? Theme.color.error
+             : root.isLock || root.kind === "fact" ? Theme.color.muted : Theme.color.foreground
         font.family: Theme.font.family
         font.pixelSize: Theme.font.body
         textFormat: Text.PlainText
-        elide: Text.ElideRight
-    }
-
-    Text {
-        id: caption
-        visible: !!root.row.caption && width > 0
-        anchors.right: trailing.left
-        anchors.rightMargin: Theme.spacing.gap + Theme.settings.railPaddingY
-        anchors.verticalCenter: parent.verticalCenter
-        text: root.row.caption || ""
-        color: Theme.color.foreground
-        font.family: Theme.font.family
-        font.pixelSize: Theme.font.caption
-        textFormat: Text.PlainText
-        // Preserve the label and real controls first; only the explanatory caption elides in the remaining space.
-        width: Math.min(implicitWidth, Math.max(0, trailing.x - anchors.rightMargin
-            - Theme.spacing.gap - rowLabel.x - rowLabel.implicitWidth))
         elide: Text.ElideRight
     }
 
@@ -306,26 +305,40 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         spacing: Theme.spacing.gap
 
-        // The master's count, a choice's name and a fact's value are all one thing: the value the
-        // row currently holds, drawn on the right the way the boards draw it. A ruler has no label
-        // of its own on the left, so it carries the board's "Effective 14px" reading here instead.
+        // A choice's name, a fact's value and the caption a check row carries are all one thing: the value the row currently holds, drawn on the right the way the boards draw it. SettingsRest rule 6 mutes a fact whole, and the one fact reporting a live number keeps the foreground for it; rule 5 takes the head off a value whose identity is in its tail.
         Text {
-            visible: root.kind === "fact" || root.kind === "action" || root.hasSteps || root.kind === "master" || root.isRuler
+            visible: root.kind === "fact" || root.kind === "action" || root.hasSteps
+                     || (root.hasBox && (root.row.value || "") !== "")
             height: Theme.markSize
             verticalAlignment: Text.AlignVCenter
-            text: root.isRuler ? (root.row.label || "") + " " + (root.row.value || "")
-                               : (root.row.value || "")
-            color: root.hasSteps || root.isRuler ? Theme.color.foreground : Theme.color.muted
+            text: root.row.value || ""
+            color: root.hasSteps || root.row.role === "live" ? Theme.color.foreground : Theme.color.muted
             font.family: Theme.font.family
-            font.pixelSize: root.isRuler ? Theme.font.caption : Theme.font.body
+            font.pixelSize: Theme.font.body
             textFormat: Text.PlainText
             width: Math.min(implicitWidth, root.width * 0.56)
+            elide: root.row.elide === "head" ? Text.ElideLeft : Text.ElideRight
+        }
+
+        // SettingsRest draws the sentence after the value it explains, so the row reads label, value, sentence; half the row at most, or the label would elide to make space for prose.
+        Text {
+            id: caption
+            visible: !!root.row.caption && width > 0
+            height: Theme.markSize
+            verticalAlignment: Text.AlignVCenter
+            text: root.row.caption || ""
+            color: Theme.color.muted
+            font.family: Theme.font.family
+            font.pixelSize: Theme.font.caption
+            textFormat: Text.PlainText
+            width: Math.min(implicitWidth, Math.round(root.width * 0.5))
             elide: Text.ElideRight
         }
 
         Flea.SettingsSegment {
+            id: segment
             visible: root.hasSegment
-            options: root.hasSegment ? root.row.options : []
+            options: root.row.labels !== undefined ? root.row.labels : []
             value: root.row.value || ""
             glyphs: root.row.id === "view" ? root.row.values : []
             onPicked: function (i) { root.stopPicked(i) }
@@ -355,30 +368,16 @@ Item {
             color: Theme.color.muted
         }
 
-        Rectangle {
+        Flea.CheckBox {
             visible: root.hasBox
-            // The boards frame a 14px interior at bodySmall 13 with two 2px borders.
-            width: root.hasBox ? height : 0
-            height: Math.round(14 * Theme.font.bodySmall / 13) + 2 * border.width
-            color: "transparent"
-            border.width: 2 * Theme.spacing.hairline
-            border.color: root.boxGlyph.length > 0 ? Theme.color.accent : Theme.color.muted
-
-            Flea.Glyph {
-                anchors.centerIn: parent
-                width: Theme.font.bodySmall * 10 / 13
-                height: width
-                strokeWidth: 3
-                visible: root.boxGlyph.length > 0
-                name: root.boxGlyph
-                color: Theme.color.accent
-            }
+            width: root.hasBox ? implicitWidth : 0
+            value: root.boxValue
         }
     }
 
     HoverHandler {
         id: pointer
-        enabled: root.hasBox || root.kind === "choice" || root.kind === "action" || root.isFavourite
+        enabled: root.hasBox || root.isGroupControl || root.kind === "choice" || root.kind === "action" || root.isFavourite
         property bool armed: false
         property point restingAt
         onHoveredChanged: pointer.armed = false
@@ -400,7 +399,7 @@ Item {
     // A segment and a ruler each own their own targets, so the row behind them must not also fire:
     // a tap on the option already showing would otherwise toggle the very setting it names.
     TapHandler {
-        enabled: (root.hasBox || root.kind === "action") && !root.isLock && !root.hasSteps
+        enabled: (root.hasBox || root.isGroupControl || root.kind === "action") && !root.isLock && !root.hasSteps
                  && !root.hasSegment && !root.isRuler
         acceptedButtons: Qt.LeftButton
         gesturePolicy: TapHandler.ReleaseWithinBounds

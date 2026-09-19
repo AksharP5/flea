@@ -68,7 +68,7 @@ mod tests {
         within("a copy", move || {
             let flag = AtomicBool::new(false);
             let mut sink = |_: u64, _: u64| {};
-            let mut p = Progress { cancel: &flag, on_bytes: &mut sink, partial: None };
+            let mut p = Progress { cancel: &flag, on_bytes: &mut sink, partial: None, tree: None };
             copy_any(&src, &dst, &mut p).map_err(|e| e.msg)
         })
     }
@@ -146,7 +146,7 @@ mod tests {
             chunks += 1;
             flag.store(true, Ordering::Relaxed);
         };
-        let mut p = Progress { cancel: &flag, on_bytes: &mut sink, partial: None };
+        let mut p = Progress { cancel: &flag, on_bytes: &mut sink, partial: None, tree: None };
         let _ = copy_any(Path::new("/dev/zero"), &dst, &mut p);
         assert_eq!(chunks, 0, "a device node is recreated, never read: it has no end and would fill the filesystem");
         assert!(
@@ -185,7 +185,7 @@ mod tests {
         let e = within("copy_file on a fifo", move || {
             let flag = AtomicBool::new(false);
             let mut sink = |_: u64, _: u64| {};
-            let mut p = Progress { cancel: &flag, on_bytes: &mut sink, partial: None };
+            let mut p = Progress { cancel: &flag, on_bytes: &mut sink, partial: None, tree: None };
             copy_file(&src, &target, 0, &mut p).map_err(|e| e.where_)
         })
         .expect_err("a fifo source is refused, not waited on");

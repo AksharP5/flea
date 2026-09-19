@@ -10,10 +10,9 @@ function slot(over) {
         transient: "",
         transientIsError: false,
         searching: false,
-        searchKeys: "",
+        searchLine: "",
         stickyHere: false,
-        sticky: "",
-        fsText: "btrfs · 412 GB free"
+        sticky: ""
     }
     for (var k in over) {
         s[k] = over[k]
@@ -22,27 +21,36 @@ function slot(over) {
 }
 
 function run(check) {
+    // The disk facts have a zone of their own now, so an idle centre says nothing at all.
     var quiet = slot({})
-    check("an idle bar says what the filesystem is", Status.rightText(quiet), "btrfs · 412 GB free")
-    check("idle filesystem text keeps the board's foreground role", Status.rightRole(quiet), "foreground")
-    check("idle counts without filesystem information keep foreground contrast",
-          Status.rightRole(slot({ fsText: "" })), "foreground")
+    check("an idle centre is empty rather than borrowing the disk's zone", Status.centreText(quiet), "")
+    check("and an empty centre keeps the board's foreground role", Status.centreRole(quiet), "foreground")
 
-    var searching = slot({ searching: true, searchKeys: "esc cancels" })
-    check("a search on its own owns the slot", Status.rightText(searching), "esc cancels")
-    check("a running search uses foreground text", Status.rightRole(searching), "foreground")
+    var searching = slot({ searching: true, searchLine: "3 found · Searching, 12 scanned" })
+    check("a search on its own owns the slot", Status.centreText(searching), "3 found · Searching, 12 scanned")
+    check("a running search uses foreground text", Status.centreRole(searching), "foreground")
 
     var working = slot({ stickyHere: true, sticky: "Compressing 2 of 5" })
-    check("a running operation owns the slot", Status.rightText(working), "Compressing 2 of 5")
-    check("and reads at full contrast", Status.rightRole(working), "foreground")
+    check("a running operation owns the slot", Status.centreText(working), "Compressing 2 of 5")
+    check("and reads at full contrast", Status.centreRole(working), "foreground")
 
-    var both = slot({ searching: true, searchKeys: "esc cancels", stickyHere: true, sticky: "Copying 2 of 5" })
-    check("transfer precedes search", Status.rightText(both), "Copying 2 of 5")
-    check("transfer retains foreground during search", Status.rightRole(both), "foreground")
+    // Directive 51: a transfer's own progress never reaches this slot any more, the card draws it, so
+    // the activity that can still hold one is a drag's feedback. The precedence itself is unchanged.
+    var both = slot({ searching: true, searchLine: "3 found · Searching, 12 scanned", stickyHere: true, sticky: "Copy 1 item to dest" })
+    check("an activity precedes search", Status.centreText(both), "Copy 1 item to dest")
+    check("and retains foreground during search", Status.centreRole(both), "foreground")
+
+    // The precedence with an empty sticky, which is what the strip hands in while a transfer runs.
+    var errorOverSearch = slot({ transient: "Copy failed: c.txt · already exists", transientIsError: true,
+                                 searching: true, searchLine: "3 found in 1.6 s" })
+    check("an error beats a search that is still reporting",
+          Status.centreText(errorOverSearch), "Copy failed: c.txt · already exists")
+    check("and keeps the error role while it does",
+          Status.centreRole(errorOverSearch), "error")
 
     var failed = slot({ transient: "Copy failed: photo.heic · disk full", transientIsError: true })
-    check("a failure owns the slot", Status.rightText(failed), "Copy failed: photo.heic · disk full")
-    check("and takes the error role", Status.rightRole(failed), "error")
+    check("a failure owns the slot", Status.centreText(failed), "Copy failed: photo.heic · disk full")
+    check("and takes the error role", Status.centreRole(failed), "error")
 
     // The defect this suite was written for. Operations.html's third specimen draws exactly this
     // pair: the failure holds the slot and the walk is reduced to a secondary count.
@@ -50,12 +58,12 @@ function run(check) {
         transient: "Copy failed: photo.heic · disk full",
         transientIsError: true,
         searching: true,
-        searchKeys: "esc cancels"
+        searchLine: "3 found · Searching, 12 scanned"
     })
     check("a search never hides an unacknowledged error",
-          Status.rightText(failedWhileSearching), "Copy failed: photo.heic · disk full")
+          Status.centreText(failedWhileSearching), "Copy failed: photo.heic · disk full")
     check("and the error keeps its role rather than painting the search keys red",
-          Status.rightRole(failedWhileSearching), "error")
+          Status.centreRole(failedWhileSearching), "error")
 
     // The same rule against a running operation, which the board ranks below a failure for the same
     // reason: the operation will end on its own and the error will not.
@@ -66,24 +74,66 @@ function run(check) {
         sticky: "Converting 1 of 3"
     })
     check("a running operation never hides an unacknowledged error",
-          Status.rightText(failedWhileWorking), "Convert failed: no encoder")
+          Status.centreText(failedWhileWorking), "Convert failed: no encoder")
     check("and it is drawn as an error, not as the operation",
-          Status.rightRole(failedWhileWorking), "error")
+          Status.centreRole(failedWhileWorking), "error")
 
     // An ordinary result is not an error, so it stays behind activity and times out on its own.
     var noticeWhileSearching = slot({
         transient: "Moved 4 items to Trash",
         searching: true,
-        searchKeys: "esc cancels"
+        searchLine: "3 found · Searching, 12 scanned"
     })
     check("a plain notice still yields to the search",
-          Status.rightText(noticeWhileSearching), "esc cancels")
+          Status.centreText(noticeWhileSearching), "3 found · Searching, 12 scanned")
+
+    // V7: the clipboard's own hint joins the undo hint on the secondary, so no sentence here ends
+    // in advice. ui/js/Ops.js builds both into its result lines and this is what takes them apart.
+    check("an undoable result carries the undo hint", Status.hintOf("Moved 4 items to Trash · z undoes"), " · z undoes")
+    check("a clipboard result carries the paste hint", Status.hintOf("Copied 1 item · p pastes"), " · p pastes")
+    check("a plain result carries neither", Status.hintOf("Renamed to notes.txt"), "")
+    check("and the secondary is handed the key alone, because it draws its own separator",
+          Status.hintKey(Status.UNDO_HINT) + "|" + Status.hintKey(Status.PASTE_HINT), "z undoes|p pastes")
+
+    // StatusBar board rule 3: the byte total appears only when every selected row is held and every
+    // size is known and complete, and nothing here starts a sweep to fill a gap.
+    function pane(over) {
+        var p = {
+            held: 0,
+            rows: [{ s: 1000 }, { s: 2000 }, { d: true }, { s: 4000 }],
+            dirSizeState: { file: { 2: { bytes: 8000, partial: false } }, order: [2] },
+            picked: [0, 1]
+        }
+        for (var k in over) { p[k] = over[k] }
+        p.selection = { count: function () { return p.picked.length },
+                        indices: function () { return p.picked } }
+        return p
+    }
+    check("two held files add up", Status.selectionBytes(pane({})), 3000)
+    check("a directory with a finished walk counts too",
+          Status.selectionBytes(pane({ picked: [0, 2] })), 9000)
+    check("a directory whose walk is still partial removes the total",
+          Status.selectionBytes(pane({ picked: [0, 2],
+              dirSizeState: { file: { 2: { bytes: 8000, partial: true } }, order: [2] } })), -1)
+    check("a directory nothing has walked removes the total",
+          Status.selectionBytes(pane({ picked: [0, 2], dirSizeState: { file: {}, order: [] } })), -1)
+    check("a directory asked about and still waiting removes the total",
+          Status.selectionBytes(pane({ picked: [0, 2],
+              dirSizeState: { file: { 2: null }, order: [2] } })), -1)
+    check("a selected row outside the held window removes the total",
+          Status.selectionBytes(pane({ picked: [0, 9] })), -1)
+    check("a selection wider than the window is refused before it is walked",
+          Status.selectionBytes(pane({ picked: [0, 1, 2, 3, 4] })), -1)
+    check("an empty selection has no total to state", Status.selectionBytes(pane({ picked: [] })), -1)
+    // The window is not always at row zero, so the row lookup has to go through held.
+    check("a held window further down the listing still resolves its rows",
+          Status.selectionBytes(pane({ held: 100, picked: [100, 101] })), 3000)
 
     check("errorHere is the one test for an unacknowledged failure",
           Status.errorHere(failed), true)
     check("and a plain notice is not one", Status.errorHere(noticeWhileSearching), false)
     check("a completion notice uses the board's running-text role",
-          Status.rightRole(slot({transient: "Moved 4 items to Trash"})), "foreground")
+          Status.centreRole(slot({transient: "Moved 4 items to Trash"})), "foreground")
 
     var left = {}, right = {}
     var transfer = { id: 1, running: true }

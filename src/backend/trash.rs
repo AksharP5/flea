@@ -57,9 +57,16 @@ pub(crate) fn trash_checked(paths: &[PathBuf], selection: Option<&[super::menu_a
     if paths.is_empty() {
         return Ok((Vec::new(), 0));
     }
+    // Issue 88, nixfred: a path already gone before the call read as trashed afterwards and was
+    // journaled as a step with no trash entry, which is where undo stopped, so it is a failure here.
+    let (present, missing): (Vec<&PathBuf>, Vec<&PathBuf>) =
+        paths.iter().partition(|p| p.symlink_metadata().is_ok());
+    if present.is_empty() {
+        return Ok((Vec::new(), missing.len()));
+    }
     let before = list();
     let mut argv: Vec<String> = vec!["trash".to_string(), "--".to_string()];
-    for p in paths {
+    for p in &present {
         argv.push(p.to_string_lossy().to_string());
     }
     let refs: Vec<&str> = argv.iter().map(|s| s.as_str()).collect();
@@ -68,8 +75,8 @@ pub(crate) fn trash_checked(paths: &[PathBuf], selection: Option<&[super::menu_a
     let _ = gio(&refs);
     let after = list();
     let mut ok = Vec::new();
-    let mut failed = 0;
-    for p in paths {
+    let mut failed = missing.len();
+    for p in present {
         if p.symlink_metadata().is_ok() {
             failed += 1;
             continue;
@@ -77,7 +84,7 @@ pub(crate) fn trash_checked(paths: &[PathBuf], selection: Option<&[super::menu_a
         match newest_entry_for(&before, &after, p) {
             Some(e) => ok.push(e),
             // corner: the file went but gio listed no entry for it, so it is gone and simply not reversible.
-            None => ok.push(Entry { original: p.clone(), uri: String::new() }),
+            None => ok.push(Entry { original: (*p).clone(), uri: String::new() }),
         }
     }
     Ok((ok, failed))
@@ -112,6 +119,16 @@ fn err(msg: &str) -> FleaError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Issue 88, nixfred: a path the user's listing still names and the filesystem no longer has is a
+    // failure, so it never becomes a journal step that undo cannot reverse. tests/ops.sh drives the pair.
+    #[test]
+    fn paths_that_are_already_gone_are_failures_rather_than_trashed() {
+        let gone = vec![PathBuf::from("/nonexistent/flea-88-a.txt"), PathBuf::from("/nonexistent/flea-88-b.txt")];
+        let (entries, failed) = trash_checked(&gone, None).expect("a batch of missing paths is not an error");
+        assert!(entries.is_empty(), "nothing was trashed, so nothing is journaled");
+        assert_eq!(failed, 2, "both are counted as failures rather than as trashed");
+    }
 
     #[test]
     fn a_list_line_splits_on_the_tab_and_keeps_a_path_containing_spaces() {

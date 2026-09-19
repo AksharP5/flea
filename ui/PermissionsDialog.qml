@@ -157,20 +157,23 @@ FocusScope {
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: Theme.spacing.gap
                 Flea.Glyph { width: Theme.chromeMarkSize; height: title.height; name: "lock"; color: Theme.color.accent }
-                Text {
-                    id: title
-                    text: "Permissions"
-                    color: Theme.color.foreground
-                    font { family: Theme.font.family; pixelSize: Theme.font.caption; bold: true }
-                    textFormat: Text.PlainText
-                }
+                Text { id: title; text: "Permissions"; color: Theme.color.foreground; textFormat: Text.PlainText; font { family: Theme.font.family; pixelSize: Theme.font.caption; bold: true } }
             }
+            // Dialogs rule 7: the way out is named beside the mark that performs it, the settings panel's own corner.
+            Flea.EscapeHint {
+                anchors.right: closeMark.left
+                anchors.rightMargin: Theme.spacing.gap
+                anchors.verticalCenter: closeMark.verticalCenter
+            }
+
             Flea.ChromeButton {
                 id: closeMark
                 anchors.right: parent.right
                 anchors.rightMargin: Theme.spacing.rowPaddingX
                 anchors.verticalCenter: parent.verticalCenter
                 glyph: "x"
+                // The one chrome control here, so brightness is all it has to say where the keyboard is: muted at rest, foreground under focus.
+                restingColor: Theme.color.muted
                 enabled: !root.applying
                 accessName: "Close permissions"
                 activeFocusOnTab: true
@@ -237,7 +240,6 @@ FocusScope {
                                 height: permissionRow.height
                                 activeFocusOnTab: true
                                 enabled: root.editable
-                                opacity: root.editable ? 1 : 0.45
                                 Accessible.role: Accessible.CheckBox
                                 Accessible.name: permissionRow.modelData + " " + ["read", "write", root.facts.directory ? "enter" : "execute"][index]
                                 Accessible.checked: checked
@@ -247,14 +249,12 @@ FocusScope {
                                 Keys.onSpacePressed: toggle()
                                 Keys.onTabPressed: function(event) { root.stepFocus((event.modifiers & Qt.ShiftModifier) !== 0) }
                                 Keys.onBacktabPressed: root.stepFocus(true)
-                                Rectangle {
+                                Flea.CheckBox {
                                     anchors.centerIn: parent
-                                    width: Theme.font.bodySmall * 16 / 13
-                                    height: width
-                                    color: "transparent"
-                                    border.width: Theme.spacing.hairline * 2
-                                    border.color: checkbox.checked || checkbox.activeFocus ? Theme.color.accent : Theme.color.muted
-                                    Flea.Glyph { anchors.centerIn: parent; width: Theme.font.bodySmall * 10 / 13; height: width; strokeWidth: 3; name: "check"; visible: checkbox.checked; color: Theme.color.accent }
+                                    value: checkbox.checked ? "on" : "off"
+                                    focused: checkbox.activeFocus
+                                    // A disabled row stays checked, so the box dims and keeps its value.
+                                    available: root.editable
                                 }
                                 TapHandler { onTapped: checkbox.toggle() }
                             }

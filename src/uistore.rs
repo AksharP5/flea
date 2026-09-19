@@ -133,7 +133,7 @@ impl Store {
     }
 }
 
-fn state_home() -> Result<PathBuf, String> {
+pub(crate) fn state_home() -> Result<PathBuf, String> {
     Ok(state_dir(userfile::env_dir("XDG_STATE_HOME"), &userfile::home()?))
 }
 
@@ -143,7 +143,7 @@ fn state_dir(from_env: Option<PathBuf>, home: &Path) -> PathBuf {
     from_env.unwrap_or_else(|| home.join(".local").join("state"))
 }
 
-fn make_dir(dir: &Path) -> Result<(), String> {
+pub(crate) fn make_dir(dir: &Path) -> Result<(), String> {
     fs::DirBuilder::new()
         .recursive(true)
         .mode(OWNER_ONLY_DIR)
@@ -152,7 +152,7 @@ fn make_dir(dir: &Path) -> Result<(), String> {
 }
 
 // flock(2) through std: advisory, exclusive, cross-process, and released when this file closes or the process dies.
-fn take_lock(path: &Path) -> Result<fs::File, String> {
+pub(crate) fn take_lock(path: &Path) -> Result<fs::File, String> {
     let file = fs::OpenOptions::new()
         .read(true)
         .write(true)
@@ -186,7 +186,7 @@ fn read_write_target(path: &Path) -> Result<Option<String>, String> {
 }
 
 // AGENTS.md "Predictable path writes": unlink this pid's own leftover, create exclusively, rename last.
-fn replace(path: &Path, text: &str) -> Result<(), String> {
+pub(crate) fn replace(path: &Path, text: &str) -> Result<(), String> {
     let tmp = PathBuf::from(format!("{}.{}.tmp", path.display(), std::process::id()));
     let _ = fs::remove_file(&tmp);
     let written = write_new(&tmp, text).and_then(|()| {

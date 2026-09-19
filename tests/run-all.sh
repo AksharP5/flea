@@ -19,7 +19,7 @@ cargo build -q || { printf 'run-all: cargo build failed, nothing else was run\n'
 printf 'run-all: building target/release/flea, thumbs.sh needs it\n'
 cargo build -q --release || { printf 'run-all: release build failed, nothing else was run\n' >&2; exit 1; }
 
-headless="js keymap-gen charts budget empty-state sandbox capability-ownership gio-auth gvfs ops modes protocol portal archive thumbs network-open-share mount-listing uistate uiwriter media filemanager1 dragwire shellload"
+headless="js keymap-gen charts budget signalarity empty-state sandbox capability-ownership gio-auth gvfs ops modes protocol portal archive thumbs network-open-share mount-listing uistate uiwriter media filemanager1 dragwire shellload acceptance-matrix"
 failed=0
 ran=0
 
@@ -51,6 +51,8 @@ bench|is a separate headless benchmark-contract suite
 package|needs a real makepkg archive in FLEA_PACKAGE_FILE
 picker|needs the display, a session bus, and Flea activatable as the FileChooser backend
 network-live|needs live share credentials and the approved runtime bundle, controller only
+ui-tui|is a standalone native TUI proof that needs the display and owns the display lock
+themes|needs the display: it launches the candidate once per stock theme, and tests/js/themes.js is the half that runs here
 "
 
 printf '\nNot run here, and why:\n'
@@ -74,6 +76,12 @@ for suite in tests/*.sh; do
     case " $headless $named " in
         *" $name "*) continue ;;
     esac
+    # A ui-*.sh that tests/ui.sh sources is a case library, not a suite: it is run whenever ui.sh is,
+    # and it has no entry point of its own. Read out of ui.sh rather than listed here, so a library
+    # that stops being sourced becomes an orphan again instead of staying quietly excused.
+    if grep -q "tests/$name\.sh" tests/ui.sh 2>/dev/null; then
+        continue
+    fi
     orphans="$orphans $name"
 done
 if [ -n "$orphans" ]; then

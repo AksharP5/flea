@@ -46,7 +46,14 @@ pub fn count_lines(path: &Path) -> LineCount {
         }
         read += n as u64;
         if read >= LINE_BUDGET {
-            return LineCount { lines: newlines, partial: true, failed: false };
+            // Issue 96, nixfred: the budget bounds the work, it does not decide the answer. A file
+            // ending exactly at it was read whole, and one more byte is what tells the two apart.
+            let mut past = [0u8; 1];
+            match f.read(&mut past) {
+                Ok(0) => break,
+                // A byte back, or a read that failed, both leave this count a floor and not a total.
+                _ => return LineCount { lines: newlines, partial: true, failed: false },
+            }
         }
     }
     if !any {
@@ -63,6 +70,19 @@ mod tests {
     use crate::backend::testdir::TestDir;
     use std::os::unix::fs::PermissionsExt;
     use std::path::PathBuf;
+
+    // Issue 96, nixfred: a file of exactly the budget had been read whole, and the early return
+    // reported the newline count as a floor, which for one unterminated line of a megabyte was zero.
+    #[test]
+    fn a_file_of_exactly_the_budget_is_counted_whole() {
+        let d = TestDir::new("linecountbudget");
+        let exact = count_lines(&d.file("exact.txt", &"a".repeat(LINE_BUDGET as usize)));
+        let ended = count_lines(&d.file("ended.txt", &("a".repeat(LINE_BUDGET as usize - 1) + "\n")));
+        let over = count_lines(&d.file("over.txt", &"a".repeat(LINE_BUDGET as usize + 1)));
+        assert_eq!((exact.lines, exact.partial), (1, false), "a megabyte with no newline is one whole line");
+        assert_eq!((ended.lines, ended.partial), (1, false), "and so is one that ends on the budget");
+        assert_eq!((over.lines, over.partial), (0, true), "one byte more and the count is a floor again");
+    }
 
     #[test]
     fn a_file_that_cannot_be_opened_is_not_an_empty_one() {

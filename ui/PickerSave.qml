@@ -47,7 +47,10 @@ Item {
                     implicitHeight: Math.max(Theme.hitMin, field.implicitHeight + 2 * Theme.spacing.rowPaddingY)
                     color: Theme.color.background
                     border.width: Theme.spacing.hairline
-                    border.color: field.activeFocus ? Theme.color.accent : root.picker.edge
+                    // Muted at rest, accent on focus: what DialogField, MenuActionDialog, OpenWithDialog
+                    // and PermissionsDialog all draw. This was the last control in the product still
+                    // framed in the divider's own ink.
+                    border.color: field.activeFocus ? Theme.color.accent : Theme.color.muted
                     TextInput {
                         id: field
                         anchors.fill: parent
@@ -157,22 +160,32 @@ Item {
         Keys.onSpacePressed: control.pressed()
         Keys.onTabPressed: function(event) { root.picker.stepFocus(control, (event.modifiers & Qt.ShiftModifier) !== 0) }
         Keys.onBacktabPressed: root.picker.stepFocus(control, true)
+        // GM's 2026-09-11 ruling, the same one ui/PickerChrome.qml's controls carry: the frame is the
+        // control's own role and never the divider's ink, and the wash inside it is the state.
+        readonly property color ink: control.danger ? Theme.color.error : Theme.color.foreground
+        readonly property color frame: control.danger ? Theme.color.error : Theme.color.muted
+        readonly property real wash: (control.activeFocus || collisionPress.pressed) ? Theme.washActive
+            : collisionHover.hovered ? Theme.washHover : 0
+
         Rectangle {
             anchors.fill: parent
-            color: control.activeFocus ? Qt.alpha(Theme.color.accent, 0.14) : "transparent"
+            color: Qt.alpha(control.ink, control.wash)
             border.width: Theme.spacing.hairline
-            border.color: control.danger ? Theme.color.error : root.picker.edge
+            border.color: control.frame
         }
         Text {
             id: caption
             anchors.centerIn: parent
             text: control.label
             textFormat: Text.PlainText
-            color: control.danger ? Theme.color.error : Theme.color.foreground
+            color: control.ink
             font { family: Theme.font.family; pixelSize: Theme.font.caption }
         }
-        HoverHandler { cursorShape: Qt.PointingHandCursor }
-        TapHandler { onTapped: { control.forceActiveFocus(Qt.MouseFocusReason); control.pressed() } }
+        HoverHandler { id: collisionHover; cursorShape: Qt.PointingHandCursor }
+        TapHandler {
+            id: collisionPress
+            onTapped: { control.forceActiveFocus(Qt.MouseFocusReason); control.pressed() }
+        }
     }
     function focusCancel() { cancelButton.forceActiveFocus(Qt.TabFocusReason) }
     function focusItems() { return root.visible ? [field, outputUri].concat(root.picker.saveCollision ? [cancelButton, useButton] : []) : [] }

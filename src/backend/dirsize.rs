@@ -16,6 +16,13 @@ pub fn walk(path: &Path) -> DirSize {
 }
 
 pub fn walk_until(path: &Path, deadline: Instant) -> DirSize {
+    walk_while(path, &|| Instant::now() >= deadline)
+}
+
+// Issue F1e: a copy's walk answers to the copy and not to a clock. The listing needs a floor inside
+// two seconds; the transfer needs the whole total, however long the tree takes, or it draws no
+// estimate at all, so the stop it is given is its own cancel rather than a deadline.
+pub fn walk_while(path: &Path, stop: &dyn Fn() -> bool) -> DirSize {
     let mut bytes = 0u64;
     let mut partial = false;
     // The target's own directory entry counts too, matching what `du -s` reports for the directory itself.
@@ -23,13 +30,13 @@ pub fn walk_until(path: &Path, deadline: Instant) -> DirSize {
         Ok(meta) => bytes += meta.size(),
         Err(_) => partial = true,
     }
-    walk_into(path, deadline, &mut bytes, &mut partial);
+    walk_into(path, stop, &mut bytes, &mut partial);
     DirSize { bytes, partial }
 }
 
 // Recursion, not an explicit stack: a tree deep enough to blow it is not a shape this one box produces.
-fn walk_into(path: &Path, deadline: Instant, bytes: &mut u64, partial: &mut bool) {
-    if Instant::now() >= deadline {
+fn walk_into(path: &Path, stop: &dyn Fn() -> bool, bytes: &mut u64, partial: &mut bool) {
+    if stop() {
         *partial = true;
         return;
     }
@@ -42,7 +49,7 @@ fn walk_into(path: &Path, deadline: Instant, bytes: &mut u64, partial: &mut bool
         }
     };
     for entry in entries {
-        if Instant::now() >= deadline {
+        if stop() {
             *partial = true;
             return;
         }
@@ -79,7 +86,7 @@ fn walk_into(path: &Path, deadline: Instant, bytes: &mut u64, partial: &mut bool
         };
         *bytes += meta.size();
         if file_type.is_dir() {
-            walk_into(&entry.path(), deadline, bytes, partial);
+            walk_into(&entry.path(), stop, bytes, partial);
         }
     }
 }
@@ -143,6 +150,32 @@ mod tests {
         let past = Instant::now() - Duration::from_secs(1);
         let result = walk_until(&d, past);
         assert!(result.partial);
+    }
+
+    // Directive 50: a copy's walk carries no deadline, so what ends it early is its own stop, which
+    // the transfer sets on a cancel and on its own completion.
+    #[test]
+    fn a_walk_ends_on_its_stop_rather_than_on_a_clock() {
+        let (_sandbox, d) = fixture("dirsize-stop");
+        // Flat, so the stop fires between two entries rather than on the way into another directory.
+        for name in ["a", "b", "c", "d", "e", "f"] {
+            fs::write(d.join(name), "abcdefgh").unwrap();
+        }
+        fs::create_dir(d.join("inner")).unwrap();
+        fs::write(d.join("inner/g"), "abcdefgh").unwrap();
+        let whole = walk_while(&d, &|| false);
+        assert!(!whole.partial, "a stop that never fires walks the tree whole");
+        // Fires part way in, so the stop inside the loop is what ends it rather than the one on entry.
+        let seen = std::sync::atomic::AtomicUsize::new(0);
+        let cut = walk_while(&d, &|| seen.fetch_add(1, std::sync::atomic::Ordering::Relaxed) >= 3);
+        assert!(cut.partial, "a stop that fires leaves a floor, which publishes no total at all");
+        // The root's own entry is counted before the walk starts, so an entry seen is bytes above that.
+        let root_only = fs::symlink_metadata(&d).unwrap().size();
+        assert!(cut.bytes > root_only, "and it keeps what it saw before the stop: {} against {}", cut.bytes, root_only);
+        assert!(cut.bytes < whole.bytes, "which is less than the whole tree: {} against {}", cut.bytes, whole.bytes);
+        // The other entry point on the same tree, whose clock still bounds it where the copy's has none.
+        let past = Instant::now() - Duration::from_secs(1);
+        assert!(walk_until(&d, past).partial, "the listing's own deadline still bounds it");
     }
 
     #[test]

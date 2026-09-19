@@ -17,6 +17,7 @@ Item {
     property var menu: null
     // The active column's thumbnail plan, relayed for ui/Pane.qml to write, the grid's own contract.
     signal thumbsApplied(var work)
+    signal dirSizesApplied(var ask)
     // Whichever view is up owns the keyboard, and Focus.handleKey is the one route all three take.
     Keys.onPressed: function (event) { event.accepted = Focus.handleKey(event, root.pane, root.pane.sidebar) }
 
@@ -232,10 +233,11 @@ Item {
             // Only this column's rows are the pane's own, so only it can paint the pane's selection.
             pane: root.pane
             // The list's and the grid's own two routes, reached from the one column whose rows are the pane's listing, so a click means the same thing in all three views.
-            onPicked: function (index, tapCount, modifiers) { Tap.tapped(index, tapCount, modifiers, root.pane) }
+            onPicked: function (index, tapCount, modifiers) { Tap.tappedMiddle(index, tapCount, modifiers, root.pane) }
             onMenuRequested: function (index, eventPoint) { Tap.tappedMenu(index, eventPoint, root.pane, root.menu) }
             onBackgroundMenuRequested: function (eventPoint) { root.menu.openBackground(eventPoint.scenePosition) }
             onThumbsApplied: function (work) { root.thumbsApplied(work) }
+            onDirSizesApplied: function (ask) { root.dirSizesApplied(ask) }
         }
 
         // The cursor row: what is inside it when it is a directory, what it is when it is a file.

@@ -1,11 +1,12 @@
 import Quickshell
 import Quickshell.Io
 import QtQuick
+import "js/Messages.js" as Messages
 
 Item {
     id: root
 
-    signal listed(int total, real readMs, real sortMs)
+    signal listed(int total, real readMs, real sortMs, string path)
     // The listing directory's filesystem, straight off the listed line: a drag compares it against
     // the dropped-on folder's own to tell a move within one volume from a copy across two.
     property var dirDev: 0
@@ -16,13 +17,16 @@ Item {
     }
     // mode rides only on a denied listing, the one failure a pane draws more than a sentence for.
     signal failed(string where, string input, string message, int mode)
+    // Directive 71: LocalSend's own CLI answers on its own thread, so both legs arrive as their own line.
+    signal localSendPeers(var peers, string reason)
+    signal localSendSent(bool ok, string reason)
     signal thumbed(int row, string file)
     signal dirSized(int row, real bytes, bool partial)
     signal searching(int total, int scanned, real ms)
     signal searched(int total, int scanned, real ms, bool cancelled)
     // The write operations, see docs/protocol.md; every one of them is reversible with undo.
     signal transferStarted(int id, int n, bool moving)
-    signal transferProgress(int id, int index, string name, real bytes, real total)
+    signal transferProgress(int id, int index, string name, real bytes, real total, real scanned)
     signal transferItem(int id, int index, string name, bool ok, string err)
     signal transferDone(int id, int ok, int failed, int skipped, bool cancelled, var retryPaths)
     signal trashed(int ok, int failed)
@@ -42,7 +46,7 @@ Item {
     signal metaResult(var message)
     property int metaToken: 0
     signal meta(int row, int w, int h, real durationMs, int sampleRate, int entries, real unpacked, bool archiveFailed, var names, real lines, bool partial, bool linesFailed, string target, bool targetDir, string owner)
-    signal fsInfo(string fs, real free)
+    signal fsInfo(string fs, real free, string path)
     // The one line no request asked for: the directory the current listing came from changed under
     // it. path is that directory, so a pane that has since moved can ignore it; see docs/protocol.md.
     signal changed(string path)
@@ -115,17 +119,17 @@ Item {
         child.write(line)
     }
 
-    function list(path, first, hidden) {
+    // One composition, two senders: the chooser adds the caller's filter to it and counts its own
+    // replies, and issue 134 was the chooser building this by hand without the saved order in it.
+    // A fresh scan is always name ascending, so a refresh after a write puts the header's mark back.
+    function listRequest(path, first, hidden) {
         root.listRequests += 1
-        // A fresh scan is always name ascending, so every refresh after a write operation puts the
-        // header's mark back rather than leaving it describing the order before the refresh.
         if (!root.preserveSort || !root.hasListed) root.resetSort()
         root.hasListed = true
-        root.send({ c: "list", path: path, first: first, hidden: hidden,
-                    by: root.sortBy, desc: root.sortDesc,
-                    foldersFirst: ViewState.state.foldersFirst !== false,
-                    groupByKind: ViewState.state.groupByKind === true })
+        return { c: "list", path: path, first: first, hidden: hidden, by: root.sortBy, desc: root.sortDesc,
+                 foldersFirst: ViewState.state.foldersFirst !== false, groupByKind: ViewState.state.groupByKind === true }
     }
+    function list(path, first, hidden) { root.send(root.listRequest(path, first, hidden)) }
 
     // A listing built from the paths named here, in that order and never sorted; see
     // docs/protocol.md "listpaths". The header's sort mark is left where the caller set it, because
@@ -217,6 +221,11 @@ Item {
         root.send({ c: "peek", path: path, first: first, hidden: hidden })
     }
 
+    // op is "peers" for the flyout's list and "send" for the transfer it chooses; both answer late.
+    function localSend(op, peer, paths) {
+        root.send({ c: "localsend", op: op, peer: peer, paths: paths, id: ++root.formatsToken })
+    }
+
     function askFormats() {
         root.send({ c: "formats", id: ++root.formatsToken })
         return root.formatsToken
@@ -296,7 +305,7 @@ Item {
     // Sample input: {"t":"changed","path":"/home/gm/Downloads"}
     // Sample input: {"t":"searching","n":812,"scanned":41200,"ms":300.114}
     // Sample input: {"t":"transferstarted","id":12,"n":2,"moving":true}
-    // Sample input: {"t":"transferprogress","id":12,"index":0,"name":"a.txt","bytes":40000000,"total":120000000}
+    // Sample input: {"t":"transferprogress","id":12,"index":0,"name":"a.txt","bytes":40000000,"total":120000000,"scanned":8400000000}
     // Sample input: {"t":"transferitem","id":12,"index":1,"name":"photos","ok":false,"err":"permission denied"}
     // Sample input: {"t":"transferdone","id":12,"ok":1,"failed":1,"skipped":0,"cancelled":false}
     // Sample input: {"t":"trashed","ok":1,"failed":0}
@@ -313,83 +322,7 @@ Item {
             root.failed("parse", "", "the backend sent a line this build cannot read", 0)
             return
         }
-        if (message.t === "listed") {
-            root.dirDev = message.v || 0
-            root.listed(message.n, message.read, message.sort)
-        } else if (message.t === "rows") {
-            root.rows(message.start, message.rows, message.ms, message.kinds || [])
-        } else if (message.t === "error") {
-            root.failed(message.where, message.path, message.msg, message.mode || 0)
-        } else if (message.t === "thumbed") {
-            root.thumbed(message.row, message.file)
-        } else if (message.t === "dirsized") {
-            root.dirSized(message.row, message.bytes, message.partial)
-        } else if (message.t === "searching") {
-            root.searching(message.n, message.scanned, message.ms)
-        } else if (message.t === "searched") {
-            root.searched(message.n, message.scanned, message.ms, message.cancelled)
-        } else if (message.t === "transferstarted") {
-            root.transferStarted(message.id, message.n, message.moving)
-        } else if (message.t === "transferprogress") {
-            root.transferProgress(message.id, message.index, message.name, message.bytes, message.total)
-        } else if (message.t === "transferitem") {
-            // err rides only on a failure, so an ok item has no field to read here.
-            root.transferItem(message.id, message.index, message.name, message.ok, message.err || "")
-        } else if (message.t === "transferdone") {
-            root.transferDone(message.id, message.ok, message.failed, message.skipped, message.cancelled, message.retryPaths || [])
-        } else if (message.t === "trashed") {
-            root.trashed(message.ok, message.failed)
-        } else if (message.t === "renamed") {
-            root.renamed(message.ok, message.path)
-        } else if (message.t === "made") {
-            root.made(message.ok, message.path)
-        } else if (message.t === "duplicated") {
-            root.duplicated(message.ok, message.path)
-        } else if (message.t === "undone") {
-            root.undone(message.op, message.ok)
-        } else if (message.t === "redone") {
-            root.redone(message.op, message.ok)
-        } else if (message.t === "redostarted") {
-            root.redoStarted(message.id, message.n, message.op)
-        } else if (message.t === "paths") {
-            root.paths(message.paths || [])
-        } else if (message.t === "located") {
-            root.located(message)
-        } else if (message.t === "trashbrowse") {
-            root.trashResult(message)
-        } else if (message.t === "permissions") {
-            root.permissionsResult(message)
-        } else if (message.t === "picker") {
-            root.pickerResult(message)
-        } else if (message.t === "menuaction") {
-            root.menuResult(message)
-        } else if (message.t === "meta") {
-            root.metaResult(message)
-            root.meta(message.row, message.w, message.h, message.ms, message.rate, message.entries, message.unpacked, message.afailed, message.names, message.lines, message.partial, message.lfailed === true, message.target, message.targetdir, message.owner || "")
-        } else if (message.t === "fsinfo") {
-            root.fsInfo(message.fs, message.free)
-        } else if (message.t === "changed") {
-            root.changed(message.path || "")
-        } else if (message.t === "peeked") {
-            root.peeked(message.path, message.hidden === true, message.n, message.rows || [], message.failed === true, message.mode || 0)
-        } else if (message.t === "formats") {
-            root.archiveFormats = message.archive || []
-            root.canConvert = message.convert === true
-            root.extraction = message.extract || ({archive: false, sevenZip: false})
-            root.providers = message.providers || ({})
-            root.formatsResult(message)
-        } else if (message.t === "archivestarted") {
-            root.archiveStarted(message.id)
-        } else if (message.t === "archivedone") {
-            root.archiveDone(message.id, message.ok, message.verified !== false, message.err || "")
-        } else if (message.t === "convertchecked") {
-            root.convertChecked(message)
-        } else if (message.t === "convertstarted") {
-            root.convertStarted(message.id, message.requestId || 0, message.source || "")
-        } else if (message.t === "convertdone") {
-            root.convertDone(message.id, message.ok, message.path || "", message.err || "", message.requestId || 0,
-                             message.source || "", message.collision === true)
-        }
+        Messages.route(root, message)
     }
 
     // Longer than the backend's own 25 s drain limit, so this only fires for a child that never

@@ -5,9 +5,7 @@ import "." as Flea
 import "js/Keymap.js" as Keymap
 import "js/Settings.js" as Settings
 
-// The settings panel the Settings board draws: one floating surface, a fixed rail of sections and a
-// pane that scrolls inside the work-area clamp. A plain overlay and not a QQC Popup, the call
-// ui/ContextMenu.qml already made, because the one Controls import cost 10 ms of warm startup.
+// The settings panel the Settings board draws: one floating surface, a fixed rail of sections and a pane that scrolls inside the work-area clamp. A plain overlay and not a QQC Popup, the call ui/ContextMenu.qml already made, because the one Controls import cost 10 ms of warm startup.
 Item {
     id: root
 
@@ -17,7 +15,6 @@ Item {
     property string section: "view"
     property int cursor: 0
     property int selectedFavourite: -1
-    property int favouriteActionIndex: 0
     property int favouriteMoveTarget: -1
     property bool favouriteActionPending: false
     // "rail" or "pane", which side Tab last gave the cursor to.
@@ -44,8 +41,8 @@ Item {
         data: ViewState.state,
         home: Quickshell.env("HOME"),
         favouriteStatuses: Favourites.statuses,
+        pins: ShelfPins.records,
         selectedFavourite: root.selectedFavourite,
-        favouriteAction: root.favouriteActionIndex,
         about: aboutFacts.facts,
         saveStatus: ViewState.saveStatus,
         textSize: ViewState.textSize,
@@ -100,12 +97,27 @@ Item {
         if (!row || !Settings.focusable(row))
             return
         if (row.kind === "favourite") {
+            // A pin opens the folder it names, the way the sidebar opens a favourite.
+            if (row.pinPath !== undefined) { root.openPin(row.pinPath); return }
             root.selectedFavourite = row.favouriteIndex
             if (root.focusHolder && root.focusHolder.sidebar) root.focusHolder.sidebar.openFavourite(row.favouriteIndex)
             return
         }
-        if (row.kind === "favouriteActions") { root.favouriteAction(root.favouriteActionIndex); return }
+        // The only headings the cursor can reach: the one carrying its group's master, and the one carrying Places' own Add.
+        if (row.kind === "group") {
+            if (row.action === "addFavourite") root.addFavourite()
+            else if (row.action === "pinFolder") root.pinFolder()
+            // The shelf's master is one stored boolean rather than a set of menu ids.
+            else if (row.id === "shelf.enabled") ViewState.changeSetting(row.id, row.state !== "all")
+            else ViewState.toggleMenuGroup(row.ids)
+            return
+        }
         if (row.id === "columns") { root.showSection("columns"); return }
+        // The folder the panel was opened over, which is the pane behind it: the same folder Places' own "Add this folder" takes, and the only one on screen to mean.
+        if (row.id === "startFolder") {
+            if (root.focusHolder) ViewState.setStartFolder(root.focusHolder.path)
+            return
+        }
         if (row.id === "backView") { root.showSection("view"); return }
         if (row.id === "keyboardSheet") {
             var holder = root.focusHolder
@@ -114,7 +126,7 @@ Item {
             return
         }
         if (row.id === "reportIssue" || row.id === "support") {
-            Qt.openUrlExternally(row.id === "support" ? "https://buymeacoffee.com/thisisgm"
+            Qt.openUrlExternally(row.id === "support" ? "https://github.com/sponsors/thisisgm"
                                                      : "https://github.com/thisisgm/flea/issues")
             return
         }
@@ -128,8 +140,6 @@ Item {
             ViewState.toggleKeyHints()
         else if (row.kind === "check")
             ViewState.toggleMenuAction(row.id)
-        else if (row.kind === "master")
-            ViewState.toggleMenuBasic()
         else
             root.stepRowValue(index, 1)
     }
@@ -140,9 +150,6 @@ Item {
         var row = root.rows[index]
         if (!row || !Settings.focusable(row))
             return
-        if (row.kind === "favouriteActions") {
-            root.favouriteActionIndex = Math.max(0, Math.min(1, root.favouriteActionIndex + direction)); return
-        }
         if (row.id === "textMode") {
             ViewState.toggleTextFollow()
             return
@@ -151,7 +158,7 @@ Item {
             ViewState.stepTextSize(direction)
             return
         }
-        // A check or a master is toggled by activate(), never walked, so h and l stop here.
+        // A check or a group's master is toggled by activate(), never walked, so h and l stop here.
         if (row.kind !== "choice")
             return
         if (row.values !== undefined) {
@@ -165,25 +172,49 @@ Item {
         ViewState.setKeysPreset(Settings.PRESETS[next])
     }
 
-    // A tick on the ruler names a stop outright. It lands in the same ViewState writer stepTextSize
-    // itself calls, so a click, an h and a Ctrl+Shift+Plus cannot leave two different sizes stored.
-    function favouriteAction(action) {
-        if (action === 0 && root.focusHolder) {
-            var path = root.focusHolder.path
-            var label = path.substring(path.lastIndexOf("/") + 1) || path
-            root.favouriteActionPending = Favourites.add(path, label)
-        } else if (action === 1 && root.selectedFavourite >= 0) {
-            root.favouriteActionPending = Favourites.remove(root.selectedFavourite)
-        }
+    // The folder the panel was opened over, which is the pane behind it: SettingsRest rule 3 puts this on the Favorites heading, where it governs the whole list.
+    function addFavourite() {
+        if (!root.focusHolder)
+            return
+        var path = root.focusHolder.path
+        root.favouriteActionPending = Favourites.add(path, path.substring(path.lastIndexOf("/") + 1) || path)
     }
+
+    // Rule 4: removal is addressed by the row it acts on, from the row's own mark or from the x key on it.
+    // A pin is the shelf's own entry, so its x unpins it rather than touching Places.
+    function removeFavourite(index) {
+        var row = root.rows[index]
+        if (!row || row.kind !== "favourite") return
+        if (row.pinPath !== undefined) { ShelfPins.unpin(row.pinPath); return }
+        root.favouriteActionPending = Favourites.remove(row.favouriteIndex)
+    }
+
+    // Rule 4 again: a pin is reordered in the shelf's own pile, and a favourite in Places.
+    function stepFavourite(index, direction) {
+        var row = root.rows[index]
+        if (!row) return
+        if (row.pinPath !== undefined) { ShelfPins.move(row.pinPath, direction); return }
+        var to = Math.max(0, Math.min(Favourites.records.length - 1, row.favouriteIndex + direction))
+        if (to !== row.favouriteIndex && Favourites.move(row.favouriteIndex, to)) root.favouriteMoveTarget = to
+    }
+
+    function moveFavourite(index, to) {
+        var row = root.rows[index]
+        if (!row) return
+        if (row.pinPath !== undefined) { ShelfPins.moveTo(row.pinPath, to); return }
+        if (Favourites.move(row.favouriteIndex, to)) root.favouriteMoveTarget = to
+    }
+
+    // SettingsRest rule 4: the shelf's own Add, the folder the panel was opened over.
+    function pinFolder() { if (root.focusHolder) ShelfPins.pin(root.focusHolder.path) }
+
+    function openPin(path) { if (root.focusHolder && root.focusHolder.sidebar) root.focusHolder.sidebar.opened(path) }
 
     function pickRowStop(index, stop) {
         var row = root.rows[index]
         if (!row || !Settings.focusable(row))
             return
-        if (row.kind === "favouriteActions") { root.favouriteAction(stop); return }
-        // A segment names the value it was clicked on where the ruler names a stop, so both arrive
-        // here addressed by index and the row decides which writer that index belongs to.
+        // A segment names the value it was clicked on where a ruler tick names a stop outright, so both arrive here addressed by index, the row decides which writer that index belongs to, and a tick lands in the same ViewState writer stepTextSize itself calls: a click, an h and a Ctrl+Shift+Plus cannot leave two different sizes stored.
         if (row.id === "textMode") {
             ViewState.toggleTextFollow()
             return
@@ -207,12 +238,13 @@ Item {
             return
         }
         root.cursor = Settings.stepRow(root.rows, root.cursor, delta)
-        if (root.rows[root.cursor] && root.rows[root.cursor].kind === "favourite")
+        // A pin is a favourite-shaped row with no favourite behind it, so it selects nothing.
+        if (root.rows[root.cursor] && root.rows[root.cursor].favouriteIndex !== undefined)
             root.selectedFavourite = root.rows[root.cursor].favouriteIndex
         root.showCursor()
     }
 
-    function showCursor() { pane.showCursor(root.cursor) }
+    function showCursor() { pane.showCursor(root.cursor, Settings.stepRow(root.rows, root.cursor, 1) === root.cursor) }
     function sectionsText() { return JSON.stringify(Settings.SECTIONS) }
     function rowItemForId(id) {
         for (var i = 0; i < root.rows.length; i++) {
@@ -401,11 +433,10 @@ Item {
                 side: root.side
                 onPointerMoved: function (index) {
                     root.side = "pane"; root.cursor = index
-                    if (root.rows[index].kind === "favourite") root.selectedFavourite = root.rows[index].favouriteIndex
+                    if (root.rows[index].favouriteIndex !== undefined) root.selectedFavourite = root.rows[index].favouriteIndex
                 }
-                onFavouriteMoved: function (index, to) {
-                    if (Favourites.move(root.rows[index].favouriteIndex, to)) root.favouriteMoveTarget = to
-                }
+                onFavouriteRemoved: function (index) { root.removeFavourite(index) }
+                onFavouriteMoved: function (index, to) { root.moveFavourite(index, to) }
                 onActivated: function (index) { root.side = "pane"; root.cursor = index; root.activate(index) }
                 onStepped: function (index, direction) { root.side = "pane"; root.cursor = index; root.stepRowValue(index, direction) }
                 onStopPicked: function (index, stop) { root.side = "pane"; root.cursor = index; root.pickRowStop(index, stop) }
@@ -422,9 +453,7 @@ Item {
             root.favouriteActionPending = false
             if (root.opened && root.section === "places") {
                 if (wasFavourite) {
-                    for (var i = 0; i < root.rows.length; i++) {
-                        if (root.rows[i].id === "favouriteActions") root.cursor = i
-                    }
+                    root.cursor = Settings.firstRow(root.rows)
                 } else if (root.cursor > previousCount + 1) {
                     root.cursor += Favourites.records.length - previousCount
                 }
@@ -436,10 +465,8 @@ Item {
                 root.favouriteActionPending = false
                 root.selectedFavourite = Math.min(root.selectedFavourite, Favourites.records.length - 1)
                 if (root.opened && root.section === "places") {
-                    // Adding or removing a row moves the buttons; keep their keyboard focus by identity.
-                    for (var i = 0; i < root.rows.length; i++) {
-                        if (root.rows[i].id === "favouriteActions") root.cursor = i
-                    }
+                    // Adding or removing a row moves every row under it, so the cursor takes the heading that carries Add rather than whatever slid into its index.
+                    root.cursor = Settings.firstRow(root.rows)
                     root.showCursor()
                 }
             }
@@ -472,9 +499,13 @@ Item {
             var row = root.rows[root.cursor]
             if (root.side === "pane" && row && row.kind === "favourite" && (event.modifiers & Qt.ShiftModifier)
                     && (event.key === Qt.Key_J || event.key === Qt.Key_K)) {
-                var direction = event.key === Qt.Key_J ? 1 : -1
-                var to = Math.max(0, Math.min(Favourites.records.length - 1, row.favouriteIndex + direction))
-                if (to !== row.favouriteIndex && Favourites.move(row.favouriteIndex, to)) root.favouriteMoveTarget = to
+                root.stepFavourite(root.cursor, event.key === Qt.Key_J ? 1 : -1)
+                return
+            }
+            // SettingsRest rule 4: the row's own mark is x, so x on the cursor row is the same action.
+            if (root.side === "pane" && row && row.kind === "favourite"
+                    && (event.text === "x" || event.key === Qt.Key_Delete)) {
+                root.removeFavourite(root.cursor)
                 return
             }
             if (event.key === Qt.Key_Down || event.text === "j") {
@@ -501,7 +532,7 @@ Item {
                 if (root.side === "rail")
                     root.side = "pane"
                 else if (event.key !== Qt.Key_Space || (root.rows[root.cursor] &&
-                         (root.rows[root.cursor].kind === "check" || root.rows[root.cursor].kind === "master")))
+                         (root.rows[root.cursor].kind === "check" || root.rows[root.cursor].kind === "group")))
                     root.activate(root.cursor)
             }
             // Every other key stops here: an open panel that let one through would move the cursor

@@ -18,6 +18,8 @@ function pane() {
         searchMode: "",
         // The selection ui/js/Tap.js reads before it decides what a right click means.
         picked: [],
+        // Only tappedMiddle asks what kind of row it landed on; the listing's own taps never do.
+        rowFor: function () { return null },
         commitOpenRename: function () { if (this.renamingIndex >= 0) this.did.push("commitRename") },
         selectedIndices: function () { return this.picked },
         clearSelection: function () { this.picked = []; this.did.push("clearSelection") },
@@ -58,6 +60,10 @@ function verbOf(did) {
     if (tape === "commitRename,selectOnly") return "commitRename"
     if (tape === "selectOnly,selectOnly,open") return "open"
     if (tape === "selectOnly,selectOnly,reveal") return "reveal"
+    // A result reveals on the first tap, so a double click on one is still that single reveal, and
+    // the columns view's one-tap open on a directory reads the same way.
+    if (tape === "selectOnly,reveal") return "reveal"
+    if (tape === "selectOnly,open") return "open"
     if (tape === "toggleSelect") return "toggleSelect"
     if (tape === "extendSelect") return "extendSelect"
     return tape
@@ -99,6 +105,18 @@ function driveNeighbour(row) {
     return verb.length > 0 ? verb : "nothing"
 }
 
+// The columns view's middle column: an ordinary listing tap plus the one rule of its own, so the
+// row kind has to be real here where driveListing never needs it.
+function driveColumn(row) {
+    var p = press(row.press)
+    var sink = pane()
+    var entry = row.row === "file" ? { n: "notes.txt", d: false } : { n: "sub", d: true }
+    sink.rowFor = function () { return entry }
+    for (var t = 1; t <= p.taps; t++)
+        Tap.tappedMiddle(2, t, p.modifiers, sink)
+    return verbOf(sink.did)
+}
+
 function countWhere(where) {
     return Keymap.POINTER.filter(function (row) { return row.where === where }).length
 }
@@ -106,8 +124,9 @@ function countWhere(where) {
 function run(check) {
     var rows = Keymap.POINTER
     // The denominator first: an empty table would pass every loop below by having nothing in it.
-    check("the pointer table reached the tests at all", rows.length, 18)
-    check("the table declares the listing's clicks", countWhere("listing"), 9)
+    check("the pointer table reached the tests at all", rows.length, 20)
+    check("the table declares the listing's clicks", countWhere("listing"), 10)
+    check("the table declares the middle column's own click", countWhere("column"), 1)
     check("the table declares the neighbour columns' clicks", countWhere("neighbour"), 4)
     check("the table declares the rail's clicks", countWhere("rail"), 2)
     // Issue 20's back button belongs to no row, so it is declared against the window itself and
@@ -116,17 +135,23 @@ function run(check) {
     // Issue 45's crumbs are ui/ChromeBar.qml's own targets, above the listing and not in it, so
     // driveListing has nothing to press for them either; the same tests/ui.sh case clicks one.
     check("the table declares the chrome path's clicks", countWhere("chrome"), 2)
-    check("every row lands in one of those five places",
-          countWhere("listing") + countWhere("neighbour") + countWhere("rail")
+    check("every row lands in one of those six places",
+          countWhere("listing") + countWhere("column") + countWhere("neighbour") + countWhere("rail")
           + countWhere("window") + countWhere("chrome"),
           rows.length)
 
     var drivenListing = 0
+    var drivenColumn = 0
     var drivenNeighbour = 0
     for (var i = 0; i < rows.length; i++) {
         if (rows[i].where === "listing") {
             drivenListing += 1
             check("listing, " + rows[i].press + ", does " + rows[i].does, driveListing(rows[i]), rows[i].does)
+        }
+        if (rows[i].where === "column") {
+            drivenColumn += 1
+            check("middle column, " + rows[i].press + " on a " + rows[i].row + ", does " + rows[i].does,
+                  driveColumn(rows[i]), rows[i].does)
         }
         if (rows[i].where === "neighbour") {
             drivenNeighbour += 1
@@ -134,7 +159,8 @@ function run(check) {
                   driveNeighbour(rows[i]), rows[i].does)
         }
     }
-    check("every listing row of the table was driven", drivenListing, 9)
+    check("every listing row of the table was driven", drivenListing, 10)
+    check("every middle column row of the table was driven", drivenColumn, 1)
     check("every neighbour row of the table was driven", drivenNeighbour, 4)
 
     // The operator's own defect, stated as the thing that must never come back: a single left click
@@ -165,14 +191,73 @@ function run(check) {
     check("a third tap does not open a second time",
           triple.did.filter(function (v) { return v === "open" }).length, 1)
 
-    // The second tap on a search result takes you to the file rather than launching it, which is
-    // ui/js/Search.js activateAction's whole job and which it had no caller for until 2026-09-02.
+    // A tap on a search result takes you to the file rather than launching it, which is
+    // ui/js/Search.js activateAction's whole job, and the operator's 2026-09-11 ruling is that the
+    // first tap is what does it. Nothing else in the listing acts on one tap.
     var result = pane()
     result.searchMode = "results"
     Tap.tapped(4, 1, Qt.NoModifier, result)
+    check("one tap on a search result reveals it instead of opening it",
+          result.did.join(","), "selectOnly,reveal")
+    // The reveal already moved the pane, so the row under a second tap is another directory's: it
+    // must not select it and must not reveal a second time.
     Tap.tapped(4, 2, Qt.NoModifier, result)
-    check("a double click on a search result reveals it instead of opening it",
-          result.did.join(","), "selectOnly,selectOnly,reveal")
+    check("and the second tap of a double click adds nothing",
+          result.did.join(","), "selectOnly,reveal")
+
+    // The columns view's middle column. The operator's 2026-09-11 ruling is that one tap goes into a
+    // directory there, the way both neighbour columns already do; ui/ColumnsArea.qml is the only
+    // caller, so the list and the grid keep their two-tap rule.
+    var column = pane()
+    column.rowFor = function () { return { n: "sub", d: true } }
+    Tap.tappedMiddle(4, 1, Qt.NoModifier, column)
+    check("one tap on a directory in the middle column opens it",
+          column.did.join(","), "selectOnly,open")
+    Tap.tappedMiddle(4, 2, Qt.NoModifier, column)
+    check("and the second tap of a double click opens nothing a second time",
+          column.did.join(","), "selectOnly,open")
+
+    // The same tap in the list and the grid still only selects, which is the whole point of scoping
+    // the rule to one caller: this is tapped(), the function those two views reach.
+    var listed = pane()
+    listed.rowFor = function () { return { n: "sub", d: true } }
+    Tap.tapped(4, 1, Qt.NoModifier, listed)
+    check("one tap on a directory in the list view still opens nothing",
+          listed.did.join(","), "selectOnly")
+
+    // A file in the middle column is an ordinary row, so it waits for the second tap as it always did.
+    var columnFile = pane()
+    columnFile.rowFor = function () { return { n: "notes.txt", d: false } }
+    Tap.tappedMiddle(4, 1, Qt.NoModifier, columnFile)
+    check("one tap on a file in the middle column opens nothing", columnFile.did.join(","), "selectOnly")
+    Tap.tappedMiddle(4, 2, Qt.NoModifier, columnFile)
+    check("and the second tap opens it", columnFile.did.join(","), "selectOnly,selectOnly,open")
+
+    // A modifier never opens anywhere, and the middle column's own rule must not be the exception.
+    var columnCtrl = pane()
+    columnCtrl.rowFor = function () { return { n: "sub", d: true } }
+    Tap.tappedMiddle(4, 1, Qt.ControlModifier, columnCtrl)
+    check("ctrl on a directory in the middle column still only selects",
+          columnCtrl.did.join(","), "toggleSelect")
+    var columnShift = pane()
+    columnShift.rowFor = function () { return { n: "sub", d: true } }
+    Tap.tappedMiddle(4, 1, Qt.ShiftModifier, columnShift)
+    check("shift on a directory in the middle column still only extends",
+          columnShift.did.join(","), "extendSelect")
+
+    // A delegate can outlive its row by a frame, the same guard every reader of pane.rows carries.
+    var columnGone = pane()
+    Tap.tappedMiddle(-1, 1, Qt.NoModifier, columnGone)
+    check("a recycled middle column delegate cannot act on a negative row", columnGone.did.length, 0)
+
+    // A directory listed as a search result is still a result: the middle column reveals it rather
+    // than opening it, exactly as the same row does in the list view.
+    var columnResult = pane()
+    columnResult.searchMode = "results"
+    columnResult.rowFor = function () { return { n: "sub", d: true } }
+    Tap.tappedMiddle(4, 1, Qt.NoModifier, columnResult)
+    check("a directory that is a search result reveals from the middle column too",
+          columnResult.did.join(","), "selectOnly,reveal")
 
     // Right click sets the cursor to the row under the pointer. Setting the cursor is NOT on its own
     // what makes every menu action address that row: ui/ContextMenu.qml builds every entry it draws

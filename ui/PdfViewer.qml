@@ -15,6 +15,9 @@ Item {
     property bool expanded: false
     property int pdfControlIndex: -1
     readonly property var pdfControls: [previous, next, zoomOut, zoomIn, expand, close]
+    // Containers Tier A: a keyboard walk says where it is by brightness, so the control it is on keeps the foreground and the rest of the strip dims.
+    readonly property color controlRest: root.activeFocus && root.pdfControlIndex >= 0
+        ? Theme.color.muted : Theme.color.foreground
     onActiveFocusChanged: if (root.activeFocus && root.pageCount > 0 && root.pdfControlIndex < 0)
         PreviewKeys.pdfAction("focusNext", root)
     onPageCountChanged: if (root.activeFocus && root.pageCount > 0 && root.pdfControlIndex < 0)
@@ -108,7 +111,7 @@ Item {
             anchors.left: kindMark.right
             anchors.leftMargin: Theme.spacing.gap
             anchors.verticalCenter: parent.verticalCenter
-            width: Math.min(implicitWidth, Math.max(0, tools.x - x - counter.implicitWidth - 2 * Theme.spacing.gap))
+            width: Math.min(implicitWidth, Math.max(0, tools.x - x - pager.implicitWidth - 2 * Theme.spacing.gap))
             text: root.path.substring(root.path.lastIndexOf("/") + 1)
             color: Theme.color.foreground
             font.family: Theme.font.family
@@ -117,17 +120,51 @@ Item {
             elide: Text.ElideRight
         }
 
-        Text {
-            id: counter
+        // MediaPdf rule 3: the count and the turn are one control, so they share the header the
+        // filename is already on, and rule 4 leaves a one-page document with the count alone, where
+        // two chevrons dead for the life of the document would be worse than absent.
+        Row {
+            id: pager
             anchors.left: nameText.right
             anchors.leftMargin: Theme.spacing.gap
             anchors.verticalCenter: parent.verticalCenter
             visible: root.pageCount > 0
-            text: (root.page + 1) + " / " + root.pageCount
-            color: Theme.color.foreground
-            font.family: Theme.font.family
-            font.pixelSize: Theme.font.caption
-            textFormat: Text.PlainText
+            spacing: Theme.spacing.gap
+
+            Flea.ChromeButton {
+                id: previous
+                glyph: "chevron-left"
+                accessName: "Previous page"
+                visible: root.pageCount > 1
+                width: visible ? implicitWidth : 0
+                keyboardFocused: root.activeFocus && root.pdfControlIndex === 0
+                restingColor: root.controlRest
+                enabled: root.page > 0
+                onActivated: root.turn(-1)
+            }
+
+            Text {
+                id: counter
+                height: previous.implicitHeight
+                verticalAlignment: Text.AlignVCenter
+                text: (root.page + 1) + " / " + root.pageCount
+                color: Theme.color.foreground
+                font.family: Theme.font.family
+                font.pixelSize: Theme.font.caption
+                textFormat: Text.PlainText
+            }
+
+            Flea.ChromeButton {
+                id: next
+                glyph: "chevron-right"
+                accessName: "Next page"
+                visible: root.pageCount > 1
+                width: visible ? implicitWidth : 0
+                keyboardFocused: root.activeFocus && root.pdfControlIndex === 1
+                restingColor: root.controlRest
+                enabled: root.page + 1 < root.pageCount
+                onActivated: root.turn(1)
+            }
         }
 
         Row {
@@ -141,9 +178,8 @@ Item {
                 id: zoomOut
                 glyph: "minus"
                 accessName: "Zoom out"
-                restingColor: Theme.color.foreground
-                disabledOpacity: 0.55
                 keyboardFocused: root.activeFocus && root.pdfControlIndex === 2
+                restingColor: root.controlRest
                 enabled: root.pageCount > 0 && root.zoom > root.minZoom
                 onActivated: root.zoomBy(-1)
             }
@@ -152,9 +188,8 @@ Item {
                 id: zoomIn
                 glyph: "plus"
                 accessName: "Zoom in"
-                restingColor: Theme.color.foreground
-                disabledOpacity: 0.55
                 keyboardFocused: root.activeFocus && root.pdfControlIndex === 3
+                restingColor: root.controlRest
                 enabled: root.pageCount > 0 && root.zoom < root.maxZoom
                 onActivated: root.zoomBy(1)
             }
@@ -163,8 +198,8 @@ Item {
                 id: expand
                 glyph: "maximize"
                 accessName: "Expand"
-                restingColor: Theme.color.foreground
                 keyboardFocused: root.activeFocus && root.pdfControlIndex === 4
+                restingColor: root.controlRest
                 active: root.expanded
                 onActivated: root.toggleExpand()
             }
@@ -173,8 +208,8 @@ Item {
                 id: close
                 glyph: "x"
                 accessName: "Close"
-                restingColor: Theme.color.foreground
                 keyboardFocused: root.activeFocus && root.pdfControlIndex === 5
+                restingColor: root.controlRest
                 onActivated: root.closed()
             }
         }
@@ -183,7 +218,7 @@ Item {
     Flickable {
         id: pageFlick
         anchors.top: topBar.bottom
-        anchors.bottom: bottomBar.top
+        anchors.bottom: parent.bottom
         anchors.left: parent.left
         anchors.right: parent.right
         clip: true
@@ -236,64 +271,6 @@ Item {
             font.pixelSize: Theme.font.caption
             textFormat: Text.PlainText
             wrapMode: Text.Wrap
-        }
-    }
-
-    Rectangle {
-        id: bottomBar
-        anchors.bottom: parent.bottom
-        anchors.left: parent.left
-        anchors.right: parent.right
-        height: Theme.hitMin + 2 * Theme.space(8) + Theme.spacing.hairline
-        color: Theme.color.surface
-
-        Rectangle {
-            anchors.top: parent.top
-            anchors.left: parent.left
-            anchors.right: parent.right
-            height: Theme.spacing.hairline
-            color: Theme.color.foreground
-            opacity: 0.12
-        }
-
-        Row {
-            id: pager
-            anchors.centerIn: parent
-            spacing: Theme.space(20)
-            visible: root.pageCount > 0
-
-            Flea.ChromeButton {
-                id: previous
-                glyph: "chevron-left"
-                accessName: "Previous page"
-                implicitHeight: Theme.hitMin
-                restingColor: Theme.color.foreground
-                disabledOpacity: 0.55
-                keyboardFocused: root.activeFocus && root.pdfControlIndex === 0
-                enabled: root.page > 0
-                onActivated: root.turn(-1)
-            }
-
-            Text {
-                anchors.verticalCenter: parent.verticalCenter
-                text: "page " + (root.page + 1)
-                color: Theme.color.foreground
-                font.family: Theme.font.family
-                font.pixelSize: Theme.font.caption
-                textFormat: Text.PlainText
-            }
-
-            Flea.ChromeButton {
-                id: next
-                glyph: "chevron-right"
-                accessName: "Next page"
-                implicitHeight: Theme.hitMin
-                restingColor: Theme.color.foreground
-                disabledOpacity: 0.55
-                keyboardFocused: root.activeFocus && root.pdfControlIndex === 1
-                enabled: root.page + 1 < root.pageCount
-                onActivated: root.turn(1)
-            }
         }
     }
 }

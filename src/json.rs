@@ -51,31 +51,11 @@ pub fn field_str(line: &str, key: &str) -> Option<String> {
     if !rest.starts_with('"') {
         return None;
     }
-    let mut out = String::new();
-    let mut chars = rest[1..].chars();
-    while let Some(c) = chars.next() {
-        match c {
-            '"' => return Some(out),
-            '\\' => match chars.next() {
-                Some('n') => out.push('\n'),
-                Some('r') => out.push('\r'),
-                Some('t') => out.push('\t'),
-                Some('b') => out.push('\u{8}'),
-                Some('f') => out.push('\u{c}'),
-                Some('u') => {
-                    let hex: String = chars.by_ref().take(4).collect();
-                    match u32::from_str_radix(&hex, 16).ok().and_then(char::from_u32) {
-                        Some(u) => out.push(u),
-                        None => return None,
-                    }
-                }
-                Some(other) => out.push(other),
-                None => return None,
-            },
-            c => out.push(c),
-        }
-    }
-    None
+    // Issue 87, nixfred: this had its own copy of the escapes and called char::from_u32 on each four
+    // digit escape alone, so a surrogate half made the whole field answer None and its caller read
+    // that as absent. src/jsonstring.rs is the reader src/jsondoc.rs already uses, and it pairs them.
+    let mut at = 0;
+    crate::jsonstring::parse_string(rest.as_bytes(), &mut at).ok()
 }
 
 pub fn field_usize(line: &str, key: &str) -> Option<usize> {
@@ -196,6 +176,20 @@ mod tests {
             field_str(line, "path").as_deref(),
             Some("a\"b\\c/d\u{8}e\u{c}f\ng\rh\tiAj")
         );
+    }
+
+    // Issue 87, nixfred: an ASCII-safe serializer writes a folder emoji as a surrogate pair, and a
+    // half is not a scalar value, so the whole field used to answer None and its caller read absent.
+    #[test]
+    fn a_surrogate_pair_on_the_wire_names_its_character() {
+        let line = r#"{"c":"list","path":"/x/\ud83d\udcc1 Work","first":1}"#;
+        assert_eq!(field_str(line, "path").as_deref(), Some("/x/\u{1F4C1} Work"));
+        let paths = r#"{"c":"trash","paths":["/a","/x/\ud83d\udcc1.txt"]}"#;
+        assert_eq!(field_str_array(paths, "paths"), vec!["/a".to_string(), "/x/\u{1F4C1}.txt".to_string()],
+            "an element that would not decode used to be dropped, and the trash answered ok for it");
+        let lone = r#"{"c":"list","path":"/x/\ud83d","first":1}"#;
+        assert_eq!(field_str(lone, "path").as_deref(), Some("/x/\u{FFFD}"),
+            "a half with no partner is the replacement character, which is what src/jsondoc.rs answers");
     }
 
     #[test]

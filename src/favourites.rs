@@ -111,7 +111,10 @@ pub fn changed(state: &Json, operation: &Json) -> Result<Json, String> {
                     "favorite path must be absolute, ~/ relative, or a supported URI".into(),
                 );
             }
-            next.push(record.clone());
+            // Issue 138, AksharP5: one place is one row, so a place the list holds is kept once.
+            if !next.iter().any(|held| same_place(held, path)) {
+                next.push(record.clone());
+            }
         }
         Some(action @ ("remove" | "move" | "rename")) => {
             if operation.get("expected").and_then(Json::as_array) != Some(current) {
@@ -181,6 +184,30 @@ fn index(operation: &Json, key: &str, len: usize) -> Result<usize, String> {
     Ok(index)
 }
 
+// One directory however it is spelled, because the rail draws one row for it either way.
+fn same_place(held: &Json, path: &str) -> bool {
+    match held.get("path").and_then(Json::as_str) {
+        Some(saved) => resolved(saved) == resolved(path),
+        None => false,
+    }
+}
+
+fn resolved(path: &str) -> String {
+    let home = crate::userfile::home().ok();
+    resolved_under(home.as_ref().map(|h| h.to_string_lossy().to_string()).as_deref(), path)
+}
+
+// The rail's own spelling: with no home a tilde path stays as written rather than becoming another place.
+fn resolved_under(home: Option<&str>, path: &str) -> String {
+    let full = match (home, path.strip_prefix("~/")) {
+        (Some(home), Some(rest)) => format!("{}/{}", home, rest),
+        (Some(home), None) if path == "~" => home.to_string(),
+        _ => path.to_string(),
+    };
+    let trimmed = full.trim_end_matches('/');
+    if trimmed.is_empty() { full } else { trimmed.to_string() }
+}
+
 fn valid_path(path: &str) -> bool {
     if path.chars().any(char::is_control) {
         return false;
@@ -213,12 +240,17 @@ mod tests {
         let store = uistore::Store::at(&sandbox.dir("state"), &sandbox.dir("config"));
         std::thread::scope(|scope| {
             let mut jobs = Vec::new();
-            for _ in 0..4 {
-                jobs.push(scope.spawn(|| {
+            // Four different places, because one place is one row: this proves four writes land.
+            for name in ["a", "b", "c", "d"] {
+                let store = &store;
+                jobs.push(scope.spawn(move || {
                     store.transform(|state| {
                         changed(
                             state,
-                            &parse(r#"{"op":"add","record":{"label":"A","path":"/a"}}"#),
+                            &parse(&format!(
+                                r#"{{"op":"add","record":{{"label":"{0}","path":"/{0}"}}}}"#,
+                                name
+                            )),
                         )
                     })
                 }));
@@ -239,29 +271,94 @@ mod tests {
                 .len(),
             4
         );
+        // The same place from four threads that start together, so the writes really do race.
+        let gate = std::sync::Barrier::new(4);
+        std::thread::scope(|scope| {
+            let mut jobs = Vec::new();
+            for _ in 0..4 {
+                let store = &store;
+                let gate = &gate;
+                jobs.push(scope.spawn(move || {
+                    gate.wait();
+                    store.transform(|state| {
+                        changed(state, &parse(r#"{"op":"add","record":{"label":"E","path":"/e"}}"#))
+                    })
+                }));
+            }
+            for job in jobs {
+                job.join().unwrap().unwrap();
+            }
+        });
+        assert_eq!(
+            store.read().get("places").unwrap().get("favourites").unwrap().as_array().unwrap().len(),
+            5,
+            "four threads adding one place left more than the one row it is"
+        );
     }
 
+    // Issue 138: a place already held is kept once however it is spelled, and every other row stands.
     #[test]
-    fn append_preserves_duplicates_invalid_records_and_unrelated_state() {
+    fn a_place_already_saved_is_kept_once_and_the_rest_of_the_file_stands() {
+        // The tilde is the rail's own spelling of home, so the two forms are one place.
+        let home = crate::userfile::home().unwrap_or_default().to_string_lossy().to_string();
         let state = uistate::from_file(
             r#"{"hidden":true,"places":{"favourites":[{"label":"A","path":"/a"},17,{"label":"","path":"bad"}]}}"#,
         );
-        let next = changed(
-            &state,
-            &parse(r#"{"op":"add","record":{"label":"A","path":"/a"}}"#),
-        )
-        .unwrap();
-        let rows = next
+        let held = state
             .get("places")
             .unwrap()
             .get("favourites")
             .unwrap()
             .as_array()
-            .unwrap();
-        assert_eq!(rows.len(), 4);
-        assert_eq!(rows[0], rows[3]);
-        assert_eq!(rows[1], Json::Num("17".into()));
-        assert_eq!(next.get("hidden"), Some(&Json::Bool(true)));
+            .unwrap()
+            .to_vec();
+        for operation in [
+            r#"{"op":"add","record":{"label":"A","path":"/a"}}"#,
+            r#"{"op":"add","record":{"label":"Again","path":"/a/"}}"#,
+            r#"{"op":"add","record":{"label":"Again","path":"/a///"}}"#,
+        ] {
+            let next = changed(&state, &parse(operation)).unwrap();
+            let rows = next
+                .get("places")
+                .unwrap()
+                .get("favourites")
+                .unwrap()
+                .as_array()
+                .unwrap();
+            assert_eq!(rows, &held[..], "{} rewrote the list it should have left alone", operation);
+            assert_eq!(next.get("hidden"), Some(&Json::Bool(true)));
+        }
+        let tilde = uistate::from_file(&format!(
+            r#"{{"places":{{"favourites":[{{"label":"Work","path":"{}/Work"}}]}}}}"#,
+            home
+        ));
+        let again = changed(&tilde, &parse(r#"{"op":"add","record":{"label":"Work","path":"~/Work"}}"#)).unwrap();
+        assert_eq!(
+            again.get("places").unwrap().get("favourites").unwrap().as_array().unwrap(),
+            tilde.get("places").unwrap().get("favourites").unwrap().as_array().unwrap(),
+            "the tilde form of a place already held is the same place, and the stored row is its own"
+        );
+        let added = changed(
+            &state,
+            &parse(r#"{"op":"add","record":{"label":"B","path":"/b"}}"#),
+        )
+        .unwrap();
+        assert_eq!(
+            added.get("places").unwrap().get("favourites").unwrap().as_array().unwrap().len(),
+            4,
+            "a place the list does not hold is still added"
+        );
+    }
+
+    // Issue 138: the dedup reads a tilde against the home it has, and a box with no HOME has none.
+    #[test]
+    fn a_tilde_resolves_against_a_home_and_stays_as_written_without_one() {
+        assert_eq!(resolved_under(Some("/home/gm"), "~/Work"), "/home/gm/Work");
+        assert_eq!(resolved_under(Some("/home/gm"), "~"), "/home/gm");
+        assert_eq!(resolved_under(None, "~/Work"), "~/Work");
+        assert_eq!(resolved_under(None, "~"), "~");
+        assert_eq!(resolved_under(Some("/home/gm"), "/a///"), "/a");
+        assert_eq!(resolved_under(Some("/home/gm"), "/"), "/");
     }
 
     #[test]

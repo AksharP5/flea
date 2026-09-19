@@ -78,7 +78,12 @@ function openWithoutHistory(pane, newPath) {
     }
     pane.listInFlight = true
     pane.listedSeen = false
-    pane.path = newPath
+    // The path is not written here. A refused listing never answers a listed line, so leaving the
+    // pane's own path alone is what keeps a refused hop from moving the breadcrumb onto a directory
+    // nobody could read; ui/PaneWire.qml onListed takes it from the answer instead. The directory
+    // asked for is recorded, because a drop landing while the reply is out means that one and not
+    // the directory being left; ui/Pane.qml dropPath reads it and only while this listing is out.
+    pane.listingPath = newPath
     pane.total = 0
     pane.held = 0
     pane.rows = []
@@ -123,58 +128,6 @@ function refresh(pane, selectPath) {
     pane.openWithoutHistory(pane.path)
 }
 
-// A change another program made under the open listing, unlike refresh() above which follows Flea's
-// own write. The rows are read again and the cursor is put back on the file it was on by name,
-// because a create above it renumbers every row below and a listing that jumped back to the top
-// would move the user while they were reading it. Returns the anchor applyAnchor() resolves, or null.
-function refreshWatched(pane) {
-    if (pane.listInFlight) {
-        return null
-    }
-    var row = pane.rowFor(pane.cursorIndex)
-    // The path rides along because the anchor can outlive one rows reply: a navigation between the
-    // two below would otherwise put this directory's cursor row onto the next directory's listing.
-    var anchor = { name: row ? String(row.n) : "", index: pane.cursorIndex, start: pane.held, path: pane.path }
-    var query = pane.filterQuery
-    pane.openWithoutHistory(pane.path)
-    // A filter narrows the rows the pane holds rather than choosing which directory it holds, so it
-    // survives a re-read of the same directory; every other caller of openWithoutHistory drops it.
-    pane.filterQuery = query
-    // The re-read answers from row 0, so a cursor deep in a large directory needs its own window back
-    // before the anchor's name can be looked for anywhere near where it was.
-    if (anchor.start > 0) {
-        pane.backend.window(anchor.start, pane.windowSize)
-    }
-    return anchor
-}
-
-// Runs on each rows reply while an anchor stands. The name can arrive in the listing's own first
-// window or in the one asked for above, so a miss in the first is not yet a miss. A name that is
-// gone from both leaves the old index, which keeps the view where the user left it.
-function applyAnchor(pane, anchor) {
-    if (!anchor) {
-        return null
-    }
-    if (pane.path !== anchor.path) {
-        return null
-    }
-    for (var i = 0; i < pane.rows.length; i++) {
-        if (String(pane.rows[i].n) === anchor.name) {
-            pane.setCursor(pane.held + i)
-            return null
-        }
-    }
-    // Still the first window rather than the one asked for above, so keep waiting, but only while that
-    // window can still exist: a listing that shrank past the offset comes back clamped to row 0 instead.
-    if (anchor.start > 0 && pane.held === 0 && pane.total > anchor.start) {
-        return anchor
-    }
-    if (pane.total > 0) {
-        pane.setCursor(Math.min(anchor.index, pane.total - 1))
-    }
-    return null
-}
-
 // Only the first rows response looks for the target, then it is forgotten either way, so a later
 // directory change never re-reveals it. The target is a full path, which is what --select carries.
 function applyPendingSelect(pane) {
@@ -213,6 +166,10 @@ function openCursor(pane, opener) {
         pane.message("That row has not loaded yet.", false)
         return
     }
+    if (!Filter.cursorShown(pane)) {
+        pane.message("That row is hidden by the filter.", false)
+        return
+    }
     var path = pane.join(pane.path, row.n)
     if (row.d) {
         pane.open(path)
@@ -220,7 +177,7 @@ function openCursor(pane, opener) {
     }
     // Handing an archive on opens another file manager, and this is ui/Preview.qml's own classifier.
     if (Kinds.quickLookKind(row.i, path) === Kinds.ARCHIVE) {
-        pane.preview.open(path, row.i, row.s)
+        pane.preview.open(path, row.i, row.s, pane.kindNames[row.k] || "")
         return
     }
     opener.open(path)
@@ -238,39 +195,10 @@ function leafOf(path) {
     return cut < 0 || cut === text.length - 1 ? text : text.substring(cut + 1)
 }
 
-// Issue 45: the chrome's path as the pieces a click can land on. text is what is drawn, including
-// the separator that follows it, so the pieces concatenate to exactly the one line they replace;
-// path is the directory the piece names, which is what ui/ChromeBar.qml hands to pathEntered. The
-// home test is ui/js/Search.js scopeRoot's and not Format.tilde's, because Format.tilde writes
-// /home/gmx as "~x" and a crumb built on that would carry a click to /home/gm, another directory.
-function crumbs(path, home) {
-    var text = String(path)
-    var base = String(home)
-    var inHome = base.length > 0 && (text === base || text.indexOf(base + "/") === 0)
-    var display = inHome ? "~" + text.substring(base.length) : text
-    var parts = display.split("/")
-    var walked = inHome ? base : ""
-    // The leading "~" and the leading "/" are each a crumb of their own: one names home and the
-    // other names the root, and neither is a component the split hands back.
-    var out = [{ text: parts.length > 1 ? parts[0] + "/" : parts[0],
-                 path: walked.length > 0 ? walked : "/", last: false }]
-    for (var i = 1; i < parts.length; i++) {
-        if (parts[i].length === 0) {
-            continue
-        }
-        walked = walked + "/" + parts[i]
-        out.push({ text: parts[i] + "/", path: walked, last: false })
-    }
-    // Only a crumb with another after it carries a separator, so the last one gives its own back.
-    var end = out[out.length - 1]
-    if (out.length > 1) {
-        end.text = end.text.substring(0, end.text.length - 1)
-    }
-    end.last = true
-    return out
-}
-
-// Backspace and the chrome's up arrow: the root has no parent, so it is where climbing stops.
+// Backspace, h, and the chrome's up arrow. The root has no parent, so it is where climbing stops.
+// pendingSelect is the directory being left, so the parent listing puts the cursor on it rather than
+// on its first row; applyPendingSelect reads the window the listing answered with, so a child
+// sorted past that first screenful is not found and the cursor stays where a climb always left it.
 function parent(pane) {
     if (pane.listInFlight) {
         pane.message("A directory is already loading.", false)
@@ -279,6 +207,8 @@ function parent(pane) {
     if (pane.path === "/") {
         return
     }
-    var cut = pane.path.lastIndexOf("/")
-    pane.open(cut <= 0 ? "/" : pane.path.substring(0, cut))
+    var here = pane.path
+    var cut = here.lastIndexOf("/")
+    pane.pendingSelect = here
+    pane.open(cut <= 0 ? "/" : here.substring(0, cut))
 }

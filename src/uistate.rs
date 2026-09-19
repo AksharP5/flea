@@ -138,6 +138,12 @@ fn fits(rule: &Rule, value: &Json) -> bool {
             Some(items) => (items.is_empty() || items.len() == 2) && every_string(value, is_a_place),
             None => false,
         },
+        // An absolute path or a uri, or "" for one nothing has chosen or recorded. Nothing else:
+        // a relative path in ui.json would be resolved against whatever directory Flea was started in.
+        Rule::Place => match value.as_str() {
+            Some(text) => text.is_empty() || is_a_place(text),
+            None => false,
+        },
         Rule::Ids => every_string(value, is_action_id),
         Rule::Count(low, high) => match value.as_f64() {
             Some(n) => n.fract() == 0.0 && n >= *low && n <= *high,
@@ -403,5 +409,32 @@ mod tests {
             .get("columns").and_then(Json::as_array).expect("columns").iter().filter_map(Json::as_str).collect();
         assert_eq!(all, ["name", "mode", "size", "date", "kind"]);
         assert_eq!(text(&from_view_json("{oops")), text(&defaults()));
+    }
+
+    // Settings > View > Opening. A place or "", and nothing else: a relative path in ui.json would be
+    // resolved against whatever directory Flea happened to be started in.
+    #[test]
+    fn an_opening_folder_is_a_place_or_nothing() {
+        let kept = from_file(r#"{"startIn":"folder","startFolder":"/home/gm/Work","newTab":"home"}"#);
+        assert_eq!(kept.get("startIn").and_then(Json::as_str), Some("folder"));
+        assert_eq!(kept.get("startFolder").and_then(Json::as_str), Some("/home/gm/Work"));
+        assert_eq!(kept.get("newTab").and_then(Json::as_str), Some("home"));
+        let uri = from_file(r#"{"lastPath":"smb://example.com/isos"}"#);
+        assert_eq!(uri.get("lastPath").and_then(Json::as_str), Some("smb://example.com/isos"));
+        let empty = from_file(r#"{"startFolder":""}"#);
+        assert_eq!(empty.get("startFolder").and_then(Json::as_str), Some(""));
+        for bad in [
+            r#"{"startFolder":"Work"}"#,
+            r#"{"startFolder":"../Work"}"#,
+            r#"{"startFolder":7}"#,
+            r#"{"startFolder":null}"#,
+            r#"{"startFolder":["/home/gm"]}"#,
+        ] {
+            let refused = from_file(bad);
+            assert_eq!(refused.get("startFolder").and_then(Json::as_str), Some(""), "refused: {bad}");
+        }
+        let mode = from_file(r#"{"startIn":"fromANewerFlea","newTab":"elsewhere"}"#);
+        assert_eq!(mode.get("startIn").and_then(Json::as_str), Some("home"));
+        assert_eq!(mode.get("newTab").and_then(Json::as_str), Some("current"));
     }
 }

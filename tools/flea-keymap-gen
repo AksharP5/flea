@@ -31,8 +31,46 @@ def caps(mods, key):
     return prefix + name
 
 
+# ui/js/Keymap.js folds an armed chord onto the action it completes, and the sheet groups the pair
+# as one row, so the group table names the action rather than the arm.
+ARMS = {'copyArm': 'copy', 'cutArm': 'cut', 'pasteArm': 'paste', 'cursorFirstArm': 'cursorFirst',
+        'trashArm': 'trash'}
+
+
+# KeymapSheet.html rule 1: every action the listing binds gets a group, and one only. A missing row
+# would draw a heading nobody wrote; a duplicated one would draw the same key under two.
+# Every action a sheet group claims, which is also what the sheet's own extra table is built from.
+def claimed(data):
+    return {action for actions in data['sheetgroups'].values() for action in actions}
+
+
+def check_groups(data, rows):
+    seen = {}
+    for group, actions in data['sheetgroups'].items():
+        for action in actions:
+            if action in seen:
+                fail(f'{action} is in both the {seen[action]} and {group} sheet groups')
+            seen[action] = group
+    bound = set()
+    # A preview key is listed only when a group names it on purpose, which is how MediaMute's m
+    # reaches the sheet; the listing's own bindings all still have to be claimed.
+    elsewhere = set()
+    for row in rows:
+        if not row['action']:
+            continue
+        contexts = row['context'].split(',')
+        if 'listing' in contexts:
+            bound.add(ARMS.get(row['action'], row['action']))
+        else:
+            elsewhere.add(ARMS.get(row['action'], row['action']))
+    for action in sorted(bound - set(seen)):
+        fail(f'the sheet draws {action} and no group in keys.toml claims it')
+    for action in sorted(set(seen) - bound - elsewhere):
+        fail(f'the {seen[action]} sheet group names {action}, which nothing binds at all')
+
+
 def generate(data):
-    for required in ('preset', 'sheet', 'pointer', 'digits'):
+    for required in ('preset', 'sheet', 'pointer', 'digits', 'sheetgroups'):
         if not data.get(required):
             fail(f'the {required} table is missing or empty')
     bindings = []
@@ -85,7 +123,20 @@ def generate(data):
     table('SHARED_KEYS', shared)
     emit('POINTER', data['pointer'])
     emit('BASE_SHEET', data['sheet'])
+    emit('SHEET_GROUPS', data['sheetgroups'])
+    # A sheet group may name a binding the listing never sees, the way MediaMute's m is the media
+    # context's alone; the sheet takes those from here rather than filtering the tables again. A row
+    # whose action the listing binds anywhere is already in the sheet and must not arrive twice.
+    listing_actions = {ARMS.get(row['action'], row['action']) for row in bindings + shared
+                       if row['action'] and 'listing' in row['context'].split(',')}
+    emit('SHEET_EXTRA', [dict(preset=row['name'], mods=row['mods'], keys=row['keys'],
+                              action=row['action'], label=row['label'])
+                         for row in bindings + shared
+                         if row['action'] in claimed(data)
+                         and ARMS.get(row['action'], row['action']) not in listing_actions
+                         and 'listing' not in row['context'].split(',')])
     emit('DIGITS', data['digits'])
+    check_groups(data, bindings + shared)
     lines.append(r'''
 function applies(row, context, frontend) {
     return (row.context.split(",").indexOf(context) >= 0 || row.context === "all")
@@ -107,10 +158,6 @@ function presetMatch(name, key, text, modifiers, context, frontend) {
         }
     }
     return null
-}
-function lookupPreset(name, key, text, modifiers, context, frontend) {
-    var row = presetMatch(name, key, text, modifiers, context || "listing", frontend || "gui")
-    return row ? row.action : ""
 }
 function lookupFor(name, key, text, modifiers, context, frontend) {
     context = context || "listing"
@@ -164,7 +211,8 @@ function capRank(row, preset) {
 }
 
 function sheetFor(name, frontend, dual) {
-    var result = [], groups = {}, rows = bindingRows(name, frontend || "gui")
+    var result = [], groups = {}
+    var rows = bindingRows(name, frontend || "gui").concat(SHEET_EXTRA)
     for (var i = 0; i < rows.length; i++) {
         var row = rows[i], action = actionGroup(row.action)
         var group = groups[action]
@@ -172,7 +220,7 @@ function sheetFor(name, frontend, dual) {
             var label = row.label || spelledOut(action)
             for (var j = 0; j < BASE_SHEET.length; j++)
                 if (actionGroup(BASE_SHEET[j].action) === action) label = BASE_SHEET[j].label
-            group = { action: action, label: label, keys: "", context: "listing", spellings: [] }
+            group = { action: action, label: label, keys: "", context: row.context || "listing", spellings: [] }
             result.push(group)
             groups[action] = group
         }
@@ -216,8 +264,7 @@ function setPreset(name) {
         ranks[action] = rank
     }
 }
-var SHEET = []
-var HINTS = {}
+var SHEET = []; var HINTS = {}
 setPreset("default")
 ''')
     return '\n'.join(lines).rstrip()

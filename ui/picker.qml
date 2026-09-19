@@ -120,7 +120,7 @@ ShellRoot {
                 recents.refresh()
                 return
             }
-            win.requestListing({c: "list", path: next, first: win.windowSize, hidden: false})
+            win.requestListing(backend.listRequest(next, win.windowSize, list.showHidden))
         }
 
         function requestListing(request) {

@@ -305,6 +305,7 @@ mod tests {
     // only case that reaches this wording, which is why it went unnoticed for so long.
     #[test]
     fn a_silent_failure_names_the_operation_that_was_running() {
+        if crate::backend::sandboxprobe::skipped() { return; }
         let d = TestDir::new("archwho");
         let work = Work::new(d.path(), "who").expect("work directory");
         let quiet = vec!["/usr/bin/false".to_string()];

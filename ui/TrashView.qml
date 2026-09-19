@@ -330,7 +330,7 @@ FocusScope {
                     enabled: false
                 }
                 Text {
-                    width: Math.max(0, parent.width - 2 * Theme.hitMin - countLabel.width - 3 * parent.spacing)
+                    id: trashTitle
                     anchors.verticalCenter: parent.verticalCenter
                     text: "Trash"
                     textFormat: Text.PlainText
@@ -340,13 +340,23 @@ FocusScope {
                 }
                 Text {
                     id: countLabel
-                    width: Math.min(implicitWidth, parent.width / 2)
+                    // Both board cells put the count against the title and the action at the far edge, so this row's spare width rides here rather than under the title.
+                    width: Math.max(implicitWidth, parent.width - 2 * Theme.hitMin - trashTitle.width - emptyAction.width - 4 * parent.spacing)
                     anchors.verticalCenter: parent.verticalCenter
                     text: root.total + (root.total === 1 ? " item" : " items") + (root.bytesReady ? " · " + (root.bytesPartial ? "≥ " : "") + Format.size(root.totalBytes) : "")
                     textFormat: Text.PlainText
                     elide: Text.ElideRight
                     color: Theme.color.foreground
                     font { family: Theme.font.family; pixelSize: Theme.font.caption }
+                }
+                // Emptying the Trash was reachable only by right-clicking the rail row. It addresses the whole Trash, which is what the count beside it describes, so it belongs here. It opens the confirmation the menu row opens: the boundary is unchanged and no key is bound to it. Disabled exactly where ui/js/Menu.js disables the row.
+                Flea.ChromeAction {
+                    id: emptyAction
+                    anchors.verticalCenter: parent.verticalCenter
+                    label: "Empty Trash"
+                    role: "error"
+                    available: root.total > 0 && !root.busy
+                    onActivated: root.prepare(true)
                 }
             }
             Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: Theme.spacing.hairline; color: Theme.color.foreground; opacity: 0.12 }
@@ -368,7 +378,7 @@ FocusScope {
                 color: Theme.color.foreground
                 font { family: Theme.font.family; pixelSize: Theme.font.caption }
             }
-            // TrashSidebar's fixed columns are 210/110 at bodySmall 13, then clamp to preserve the name.
+            // The location column is 210 at bodySmall 13; Deleted takes its own body-measured token. Both clamp to preserve the name.
             Text {
                 id: locationTitle
                 width: Math.min(Math.round(210 * Theme.font.bodySmall / 13), root.width * 0.35)
@@ -382,7 +392,7 @@ FocusScope {
             }
             Text {
                 id: deletedTitle
-                width: Math.min(Math.round(110 * Theme.font.bodySmall / 13), root.width * 0.2)
+                width: Math.min(Theme.column.trashDate, root.width * 0.2)
                 anchors.verticalCenter: parent.verticalCenter
                 horizontalAlignment: Text.AlignRight
                 text: "Deleted"
@@ -418,7 +428,8 @@ FocusScope {
                 readonly property bool selected: item && root.isSelected(item.uri)
                 width: listing.width
                 height: Theme.fileRowHeight
-                color: selected ? Qt.alpha(Theme.color.accent, 0.14) : hover.hovered ? Style.hoverFill : "transparent"
+                // HANDOFF rule 7: a marked row takes the OEM's own selection rung, the one ui/Row.qml draws in every listing, rather than an accent wash this surface mixed for itself.
+                color: selected ? Style.selectionFill : hover.hovered ? Style.hoverFill : "transparent"
                 Rectangle { width: Theme.spacing.hairline * 2; height: parent.height; visible: itemRow.selected; color: Theme.color.accent }
                 Row {
                     anchors.fill: parent
@@ -428,7 +439,7 @@ FocusScope {
                     Flea.Glyph { width: Theme.markSize; height: parent.height; name: itemRow.item ? (itemRow.item.directory ? "folder" : Icons.glyphFor(itemRow.item.icon)) : "file"; color: Theme.color.foreground }
                     Text { width: Math.max(0, parent.width - Theme.markSize - original.width - deleted.width - 3 * parent.spacing); anchors.verticalCenter: parent.verticalCenter; text: itemRow.item ? itemRow.item.original.split("/").pop() : ""; textFormat: Text.PlainText; elide: Text.ElideRight; color: Theme.color.foreground; font { family: Theme.font.family; pixelSize: Theme.font.body } }
                     Text { id: original; width: locationTitle.width; anchors.verticalCenter: parent.verticalCenter; text: itemRow.item ? Trash.location(itemRow.item.original, root.home) : ""; textFormat: Text.PlainText; elide: Text.ElideLeft; horizontalAlignment: Text.AlignRight; color: Theme.color.foreground; font { family: Theme.font.family; pixelSize: Theme.font.body } }
-                    Text { id: deleted; width: deletedTitle.width; anchors.verticalCenter: parent.verticalCenter; text: itemRow.item ? Trash.deleted(itemRow.item.deleted, Date.now()) : ""; textFormat: Text.PlainText; elide: Text.ElideRight; horizontalAlignment: Text.AlignRight; color: Theme.color.foreground; font { family: Theme.font.family; pixelSize: Theme.font.body } }
+                    Text { id: deleted; width: deletedTitle.width; anchors.verticalCenter: parent.verticalCenter; text: itemRow.item ? Trash.deleted(itemRow.item.deleted) : ""; textFormat: Text.PlainText; elide: Text.ElideRight; horizontalAlignment: Text.AlignRight; color: Theme.color.foreground; font { family: Theme.font.family; pixelSize: Theme.font.body } }
                 }
                 HoverHandler { id: hover }
                 Accessible.role: Accessible.ListItem

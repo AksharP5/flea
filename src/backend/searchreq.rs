@@ -1,6 +1,6 @@
 // The wire side of a search: the loop hands it a slice of walking and it decides what to say, the way thumbreq answers thumb.
 use crate::backend::proto::{searched_line, searching_line};
-use crate::backend::run::since;
+use crate::backend::timing::since;
 use crate::backend::state::State;
 use std::io::{self, BufWriter, Write};
 use std::time::{Duration, Instant};

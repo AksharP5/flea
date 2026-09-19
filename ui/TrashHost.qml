@@ -1,6 +1,7 @@
 import QtQuick
 import "js/Focus.js" as Focus
 import "js/Menu.js" as Menu
+import "js/TrashDates.js" as TrashDates
 
 Loader {
     id: root
@@ -14,8 +15,88 @@ Loader {
     readonly property int total: item ? item.total : 0
     readonly property int selectedCount: item ? item.selectedCount : 0
 
+    // The 30 day sweep, GM's ruling of 2026-09-11. It runs the same three requests the window runs,
+    // in the same order, so prepare still reviews every item against the identity the listing
+    // reported and delete still refuses a token the trash has moved under. This host drives it
+    // because the backend keeps ONE Trash session: two clients listing into it would take each
+    // other's snapshot away, so the window and the sweep are never in flight together.
+    readonly property int sweepDays: 30
+    // One window of the listing, which is also the most the backend will answer with. A Trash holding
+    // more than this is swept over as many days as it takes, which is slower and never wrong.
+    readonly property int sweepWindow: 350
+    property int sweepId: 0
+    property string sweepStage: ""
+    property var sweepDoomed: []
+    readonly property bool sweeping: root.sweepStage.length > 0
+
+    function sweep() {
+        if (root.sweeping || root.active || !ViewState.trashAutoEmpty)
+            return
+        if (TrashDates.dayNumber(Date.now()) === ViewState.trashSweptOn)
+            return
+        root.sweepSend("list", {start: 0, count: root.sweepWindow, recover: false})
+    }
+
+    function sweepSend(op, fields) {
+        var message = fields || {}
+        message.c = "trashbrowse"
+        message.op = op
+        message.id = ++root.sweepId
+        root.sweepStage = op
+        root.pane.backend.send(message)
+    }
+
+    // The operator reaching for Trash outranks a sweep nobody asked to watch. Cancelling drops the
+    // prepared confirmation in the backend, so the window's own list starts from a clean session.
+    function sweepStop() {
+        if (!root.sweeping)
+            return
+        root.sweepStage = ""
+        root.sweepDoomed = []
+        root.pane.backend.send({c: "trashbrowse", op: "cancel", id: ++root.sweepId, clearSelection: true})
+    }
+
+    // Every reply while a sweep is in flight is the sweep's, because the window cannot be open then.
+    // A failure at any stage ends the sweep and records nothing, so the next launch tries again.
+    function sweepReceive(message) {
+        if (message.ok !== true) { root.sweepStage = ""; root.sweepDoomed = []; return }
+        if (message.op === "list") {
+            var rows = message.rows || []
+            var now = Date.now()
+            var doomed = []
+            for (var i = 0; i < rows.length; i++) {
+                if (TrashDates.expired(rows[i].deleted, now, root.sweepDays))
+                    doomed.push(rows[i])
+            }
+            if (doomed.length === 0) { root.sweepFinished(); return }
+            root.sweepDoomed = doomed
+            root.sweepSend("prepare", {all: false, emptyTrash: false,
+                uris: doomed.map(function (row) { return row.uri }),
+                identities: doomed.map(function (row) { return row.identity })})
+            return
+        }
+        if (message.op === "prepare") {
+            // A prepare that reviewed nothing has nothing to delete, and asking anyway would spend a
+            // token on an empty confirmation.
+            if (!message.count) { root.sweepFinished(); return }
+            root.sweepSend("delete", {token: message.token})
+            return
+        }
+        if (message.op === "delete") {
+            root.pane.sidebar.refreshTrash()
+            root.sweepFinished()
+        }
+    }
+
+    function sweepFinished() {
+        root.sweepStage = ""
+        root.sweepDoomed = []
+        ViewState.recordTrashSweep(TrashDates.dayNumber(Date.now()))
+    }
+
     function open(action) {
         if (confirming) return
+        root.sweepStop()
         if (opened) { root.action(action || "openTrash"); return }
         pane.preview.close()
         pane.shareBrowser.close()
@@ -64,7 +145,10 @@ Loader {
     }
     Connections {
         target: root.pane.backend
-        function onTrashResult(message) { if (root.item) root.item.receive(message) }
+        function onTrashResult(message) {
+            if (root.sweeping) { root.sweepReceive(message); return }
+            if (root.item) root.item.receive(message)
+        }
     }
     Connections {
         target: root.pane.sidebar

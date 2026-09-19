@@ -2,8 +2,10 @@ import QtQuick
 import "." as Flea
 import "js/DirSizes.js" as DirSizes
 import "js/Errors.js" as Errors
+import "js/Anchor.js" as Anchor
 import "js/Nav.js" as Nav
 import "js/Ops.js" as Ops
+import "js/Status.js" as Status
 import "js/Search.js" as Search
 import "js/Tabs.js" as Tabs
 import "js/Thumbs.js" as Thumbs
@@ -28,7 +30,7 @@ Item {
         enabled: root.pane !== null && !root.pane.trash.opened && root.pane.searchMode === ""
                  && (root.pane.viewMode === "list" || root.pane.viewMode === "grid")
         pane: root.pane
-        dest: root.pane ? root.pane.path : ""
+        dest: root.pane ? root.pane.dropPath : ""
         // Unknown until the listed reply lands, because dirDev is still the directory being left.
         destDev: root.pane && root.pane.backend && !root.pane.listInFlight ? root.pane.backend.dirDev : 0
     }
@@ -37,7 +39,7 @@ Item {
     property string renameOnArrival: ""
     // A watched change landed while one of the states below owned the rows, so the re-read is owed.
     property bool stale: false
-    // What the cursor sat on across a watched re-read, or null; ui/js/Nav.js owns both ends of it.
+    // What the cursor sat on across a re-read, or null; ui/js/Anchor.js owns both ends of it.
     property var anchor: null
     property int retryId: 0
     property var retryPaths: []
@@ -86,7 +88,7 @@ Item {
         if (root.watchBusy)
             return
         root.stale = false
-        root.anchor = Nav.refreshWatched(pane)
+        root.anchor = Anchor.watched(pane)
     }
 
     // The owed re-read goes through the timer rather than straight out of this handler: reading
@@ -145,7 +147,7 @@ Item {
     Connections {
         target: pane.backend
 
-        function onListed(total, readMs, sortMs) {
+        function onListed(total, readMs, sortMs, path) {
             if (!pane.dualMode && !pane.listInFlight && pane.searchMode.length === 0) {
                 ViewState.changeLeaf("sort", { key: pane.backend.sortBy === "mtime" ? "date" : pane.backend.sortBy,
                                              reverse: pane.backend.sortDesc })
@@ -161,10 +163,9 @@ Item {
                 pane.stateMessage = ""
                 return
             }
+            if (path.length > 0) pane.path = path  // the listing landed, so this is where the pane moves
             pane.listingState = total === 0 ? "empty" : "ready"
-            pane.stateMessage = total === 0
-                    ? "This directory is empty; add a file to see it here."
-                    : ""
+            pane.stateMessage = total === 0 ? "This directory is empty; add a file to see it here." : ""
             pane.opened(pane.path)
         }
 
@@ -178,7 +179,7 @@ Item {
             if (pane.rowsAt === 0 && pane.inputAt > 0 && pane.rowFor(pane.cursorIndex))
                 pane.rowsAt = Date.now()
             pane.applyPendingSelect()
-            root.anchor = Nav.applyAnchor(pane, root.anchor)
+            root.anchor = Anchor.apply(pane, root.anchor)
             Tabs.applyPending(pane)
             pane.listArea.restartSettle()
             if (pane.listInFlight) {
@@ -272,14 +273,14 @@ Item {
             pane.sticky(Ops.progressLine(pane.transfer))
         }
 
-        // Sample input: {"t":"transferprogress","id":12,"index":0,"name":"a.txt","bytes":40000000,"total":120000000}
-        function onTransferProgress(id, index, name, bytes, total) {
+        // Sample input: {"t":"transferprogress","id":12,"index":0,"name":"a.txt","bytes":40000000,"total":120000000,"scanned":8400000000}
+        function onTransferProgress(id, index, name, bytes, total, scanned) {
             if (id !== pane.transfer.id) {
                 return
             }
             // Reassigned rather than mutated in place: an in-place write re-evaluates no binding,
             // so the card would never see a sample. The bytes and the total ride along with it.
-            pane.transfer = Transfer.sampled(pane.transfer, index, name, bytes, total)
+            pane.transfer = Transfer.sampled(pane.transfer, index, name, bytes, total, scanned)
             pane.sticky(Ops.progressLine(pane.transfer))
         }
 
@@ -317,11 +318,14 @@ Item {
             } else pane.refresh("")
         }
 
+        // The listing is read again with the cursor left where the deleted rows were, and the row
+        // that took their place selected, so the next delete needs no mouse. The whole selection is
+        // gone from disk, so there is nothing to carry over but the position.
         function onTrashed(ok, failed) {
             pane.sticky("")
             pane.message(Ops.trashed(ok, failed), ok === 0)
             pane.clearSelection()
-            pane.refresh("")
+            root.anchor = Anchor.afterDelete(pane, ok > 0)
         }
 
         // The listing is re-read with the new name selected, so the row the operator was on stays
@@ -344,7 +348,7 @@ Item {
         }
 
         function onDuplicated(ok, path) {
-            pane.message("Duplicated to " + Ops.leaf(path) + Ops.UNDO_HINT, false)
+            pane.message("Duplicated to " + Ops.leaf(path) + Status.UNDO_HINT, false)
             pane.refresh(path)
         }
 
@@ -363,7 +367,7 @@ Item {
         function onRedone(op, ok) {
             pane.transfer = Ops.emptyTransfer()
             pane.sticky("")
-            pane.message("Redid the " + op + Ops.UNDO_HINT, false)
+            pane.message("Redid the " + op + Status.UNDO_HINT, false)
             pane.refresh("")
         }
 
@@ -385,10 +389,10 @@ Item {
             }
         }
 
-        // One statfs per directory, so the status bar's right half is refreshed by navigation alone.
-        function onFsInfo(fs, free) {
-            pane.fsName = fs
-            pane.fsFree = free
+        // The backend statfs's its own base, which only moves when a listing succeeds, and Nav.js moves pane.path before one does: a failed hop's figures are of the directory we never left, while a failed refresh's are still of what is on screen.
+        function onFsInfo(fs, free, path) {
+            var ours = path.length === 0 || path === pane.path
+            pane.fsName = ours ? fs : ""; pane.fsFree = ours ? free : 0
         }
 
         // The answer to Ops.clip's askPaths; nothing reaches the clipboard until this lands.
@@ -399,7 +403,8 @@ Item {
         function onFailed(where, input, message, mode) {
             // A listing that failed cannot seat the row a peeked right click asked for, so its menu intent dies here.
             pane.pendingMenu = false
-            var text = Errors.sentence(where, message)
+            if (pane.path.length === 0 && input.length > 0) pane.path = input
+            var text = Errors.sentence(where, message, input && input !== pane.path ? Ops.leaf(input) : "")
             var terminal = where === "backend" || where === "read"
             var request = pane.renameRequest
             var renamePath = request && (input === request.source || input === request.destination
@@ -452,10 +457,9 @@ Item {
             }
             if (terminal || where === "scan" || pane.listingState === "loading") {
                 pane.listingState = Errors.listingState(where, message)
-                pane.lockedMode = mode
-                pane.stateMessage = text
+                pane.lockedMode = mode; pane.stateMessage = text
             }
-            pane.message(text, true)
+            pane.message(text, true)  // GM's ruling: the centre lane carries the refusal, both StatusBar lanes
             // The copy is whole and only the name it came from is unknown, so re-read the listing and select nothing.
             if (where === "rename-kept")
                 pane.refresh("")

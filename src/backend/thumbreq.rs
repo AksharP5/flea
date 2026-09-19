@@ -1,5 +1,5 @@
 use crate::backend::proto::thumbed_line;
-use crate::backend::run::since;
+use crate::backend::timing::since;
 use crate::backend::state::{State, Tables};
 use crate::backend::thumbcache::{Cache, Hit};
 use crate::backend::thumbs::{trace, Done, Job, Outcome, Pool, Trace};

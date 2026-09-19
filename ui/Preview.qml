@@ -5,13 +5,11 @@ import "js/Facts.js" as Facts
 import "js/Kinds.js" as Kinds
 import "js/Motion.js" as Motion
 
-// The overlay lives inside the Flea window (Finder's Quick Look shape); a second window breaks
-// omarchy-drive focus flea and every test that narrows on it.
+// The overlay lives inside the Flea window, Finder's Quick Look shape: a second window breaks omarchy-drive focus flea and every test that narrows on it.
 Item {
     id: root
     anchors.fill: parent
-    // active flips instantly (open()/close() below), so previewOpen()'s IPC read never races the
-    // close fade; visible only stays true a little longer, until surface's own opacity finishes it.
+    // active flips instantly, so the IPC read never races the close fade; visible outlives it until surface's own opacity finishes.
     visible: root.active || surface.opacity > 0
     z: 1
 
@@ -20,6 +18,7 @@ Item {
     property var pane: null
     property string path: ""
     property string iconName: ""
+    property string kindName: ""
     property int size: 0
     property string kind: ""
     readonly property bool isMedia: root.kind === "audio" || root.kind === "video"
@@ -29,6 +28,9 @@ Item {
     // The backend's meta answer for the open archive, null until it lands; archiveRow is the row it was asked for.
     property var archiveMeta: null
     property int archiveRow: -1
+    // MediaPdf rule 6's fourth fact: Qt carries no sample-rate key at all (QMediaMetaData::Key, Qt 6.11), so the number is the backend probe's, asked the way an archive's is.
+    property int mediaRate: 0
+    property int mediaRow: -1
     readonly property bool archiveFailed: root.isArchive && root.archiveMeta !== null && root.archiveMeta.archiveFailed === true
     // For ui/Ipc.qml: the item drawing this kind's content, whether a player exists, and what the text and archive panes hold.
     function surfaceItem() {
@@ -43,12 +45,13 @@ Item {
     function textShown() { return textPane.shownText() }
     function archiveNames() { return root.archiveMeta && root.archiveMeta.names ? root.archiveMeta.names.map(function (e) { return e.n }).join("|") : "" }
     readonly property bool pdfExpanded: root.isPdf && pdfLoader.item !== null && pdfLoader.item.expanded
-    // The PDF surface itself, null when no document is loaded: ui/Ipc.qml's zoom and expand
-    // readers answer "" for that, so an unmeasured state can never read as a real value.
+    // The PDF surface, null with no document loaded: ui/Ipc.qml answers "" for that, so an unmeasured state never reads as a value.
     readonly property var pdfItem: pdfLoader.item
-    // What the strip actually draws, the same "not just the lookup" idiom Row.qml's iconUrl uses;
-    // shell.qml's IPC reads this instead of re-deriving the visible: expression a second time.
+    // What the strip actually draws: shell.qml's IPC reads this rather than re-deriving the visible: expression.
     readonly property alias stripVisible: mediaStrip.visible
+    // The strip's own mute mark and the flag it draws from, so a test reads and clicks what is there.
+    readonly property var muteMark: mediaStrip.muteItem
+    readonly property bool muted: Flea.MediaSound.muted
     // fleaWindow.itemRect needs the real Item, the same seam rowCentre already reads through pane.
     readonly property var seekSlider: mediaStrip.seekItem
     readonly property string status: {
@@ -63,22 +66,20 @@ Item {
 
     property string pendingPath: ""
     property string pendingIcon: ""
+    property string pendingKind: ""
     property int pendingSize: 0
     // The settle idiom Pane's own thumbnail request reuses: a held j/k costs zero reloads until the cursor rests.
     readonly property int followSettleMs: 120
     // The same dim ui/SettingsPanel.qml lays over the listing.
     readonly property real groundOpacity: 0.5
 
-    // Read through to PreviewMedia so this file never has to import QtMultimedia itself; 0 before
-    // the loader has produced an item, same shape root.status already uses.
+    // Read through to PreviewMedia so this file never imports QtMultimedia, and 0 before the loader has an item.
     readonly property int position: (root.isMedia && mediaLoader.item) ? mediaLoader.item.position : 0
     readonly property int duration: (root.isMedia && mediaLoader.item) ? mediaLoader.item.duration : 0
 
-    // Task 22: the strip is shown on open, hidden stripHideMs after the last reveal, video only
-    // (audio has nothing else to look at, so its strip never hides; see the strip's own visible:).
+    // Shown on open, hidden stripHideMs after the last reveal, video only: audio has nothing else to look at.
     property bool stripShown: true
-    // Matches StatusBar.messageMs, the OEM's own transient interval; Sidebar's unmount arm reuses
-    // the same number for the same reason, see AGENTS.md "Right click arms, it does not fire".
+    // StatusBar.messageMs, the OEM's own transient interval, which Sidebar's unmount arm reuses for the same reason.
     readonly property int stripHideMs: 4000
 
     function revealStrip() {
@@ -86,49 +87,37 @@ Item {
         stripHideTimer.restart()
     }
 
-    function togglePlay() {
-        if (root.isMedia && mediaLoader.item)
-            mediaLoader.item.togglePlay()
-    }
+    function togglePlay() { if (root.isMedia && mediaLoader.item) mediaLoader.item.togglePlay() }
+
+    // MediaMute rule 3: one session flag, so the column's strip and this one always agree.
+    function toggleMute() { if (root.isMedia) Flea.MediaSound.toggle() }
 
     // Absolute seek in ms, clamped by PreviewMedia's own seekTo; the slider's onReleased calls this directly.
-    function seekTo(ms) {
-        if (root.isMedia && mediaLoader.item)
-            mediaLoader.item.seekTo(ms)
-    }
+    function seekTo(ms) { if (root.isMedia && mediaLoader.item) mediaLoader.item.seekTo(ms) }
 
     // Relative seek in ms, Left/Right's own shape; seekTo does the clamping.
     function seek(deltaMs) {
         root.seekTo(root.position + deltaMs)
     }
 
-    // The PDF viewer's own three actions, reached the way the media transport's already are: through
-    // this file, so ui/js/Focus.js never has to know a Loader item is what answers.
-    function turnPage(delta) {
-        if (root.isPdf && pdfLoader.item)
-            pdfLoader.item.turn(delta)
-    }
+    // The PDF viewer's three actions come through this file, so ui/js/Focus.js never learns a Loader item answers them.
+    function turnPage(delta) { if (root.isPdf && pdfLoader.item) pdfLoader.item.turn(delta) }
 
-    function zoomBy(steps) {
-        if (root.isPdf && pdfLoader.item)
-            pdfLoader.item.zoomBy(steps)
-    }
+    function zoomBy(steps) { if (root.isPdf && pdfLoader.item) pdfLoader.item.zoomBy(steps) }
 
-    function toggleExpand() {
-        if (root.isPdf && pdfLoader.item)
-            pdfLoader.item.toggleExpand()
-    }
+    function toggleExpand() { if (root.isPdf && pdfLoader.item) pdfLoader.item.toggleExpand() }
 
     // Space opens on the cursor row; this is immediate, follow() below is the held-key j/k path.
-    function open(newPath, newIcon, newSize) {
+    function open(newPath, newIcon, newSize, newKind) {
         followSettle.stop()
-        root.load(newPath, newIcon, newSize)
+        root.load(newPath, newIcon, newSize, newKind)
     }
 
-    function follow(newPath, newIcon, newSize) {
+    function follow(newPath, newIcon, newSize, newKind) {
         root.pendingPath = newPath
         root.pendingIcon = newIcon
         root.pendingSize = newSize
+        root.pendingKind = newKind
         followSettle.restart()
     }
 
@@ -143,19 +132,24 @@ Item {
         imageLoader.source = ""
         root.archiveMeta = null
         root.archiveRow = -1
+        root.mediaRate = 0
+        root.mediaRow = -1
         if (root.pane) root.pane.listArea.forceActiveFocus()
     }
 
-    function load(newPath, newIcon, newSize) {
+    function load(newPath, newIcon, newSize, newKind) {
         root.path = newPath
         root.iconName = newIcon
         root.size = newSize
+        // MediaPdf rule 6: the overlay is the bigger surface, so it says at least what the column says, and the kind is the caller's because the backend named it for that row.
+        root.kindName = newKind || ""
         root.kind = Kinds.quickLookKind(newIcon, newPath)
         root.active = true
         mediaLoader.source = root.isMedia ? "PreviewMedia.qml" : ""
         pdfLoader.source = root.isPdf ? "PdfViewer.qml" : ""
         imageLoader.source = root.isImage ? "PreviewImage.qml" : ""
         root.askArchive()
+        root.askMedia()
         root.revealStrip()
     }
 
@@ -167,25 +161,38 @@ Item {
             root.pane.backend.askMeta(root.archiveRow, false, false, true)
     }
 
+    // The same one row, for the one fact the transport under the overlay cannot report.
+    function askMedia() {
+        root.mediaRate = 0
+        root.mediaRow = root.isMedia && root.pane ? root.pane.cursorIndex : -1
+        if (root.mediaRow >= 0)
+            root.pane.backend.askMeta(root.mediaRow, false, true, false)
+    }
+
     Connections {
         target: root.pane ? root.pane.backend : null
         function onMeta(row, w, h, durationMs, sampleRate, entries, unpacked, archiveFailed, names, lines, partial, linesFailed, target, targetDir, owner) {
             if (root.isArchive && row === root.archiveRow)
                 root.archiveMeta = { entries: entries, unpacked: unpacked, archiveFailed: archiveFailed, names: names }
+            if (root.isMedia && row === root.mediaRow)
+                root.mediaRate = sampleRate
         }
     }
 
     // A meta asked across a listing change is answered with silence, so the rows landing re-asks it, the way ui/ColumnsArea.qml does.
     Connections {
         target: root.pane
-        function onRowsChanged() { if (root.active && root.isArchive && root.archiveMeta === null) root.askArchive() }
+        function onRowsChanged() {
+            if (root.active && root.isArchive && root.archiveMeta === null) root.askArchive()
+            if (root.active && root.isMedia && root.mediaRate === 0) root.askMedia()
+        }
     }
 
     Timer {
         id: followSettle
         interval: root.followSettleMs
         repeat: false
-        onTriggered: root.load(root.pendingPath, root.pendingIcon, root.pendingSize)
+        onTriggered: root.load(root.pendingPath, root.pendingIcon, root.pendingSize, root.pendingKind)
     }
 
     Timer {
@@ -197,18 +204,20 @@ Item {
 
     MouseArea {
         anchors.fill: parent
-        // root.visible outlives root.active by the whole close fade, and a shield that outlives the
-        // overlay swallows the first click after it and freezes row hover for that window too.
+        // A shield that outlives the overlay swallows the first click after it and freezes row hover for the window.
         enabled: root.active
         acceptedButtons: Qt.LeftButton | Qt.RightButton
         hoverEnabled: true
-        // A click behind the overlay would otherwise silently move the cursor, or open the menu on it.
-        onClicked: {}
+        // A click behind the overlay would silently move the cursor or open the listing's menu on it.
+        // A left click outside the surface closes, GM's rule of 2026-09-11, and a right click is only swallowed.
+        onClicked: function (mouse) {
+            if (mouse.button === Qt.LeftButton && !surface.contains(surface.mapFromItem(root, mouse.x, mouse.y)))
+                root.close()
+        }
         onPositionChanged: root.revealStrip()
     }
 
-    // PdfViewer.html and MediaPlayer.html draw a pane with its own edge; on the surface colour alone the
-    // inset vanished into the listing behind it, whose rows and columns showed all round.
+    // PdfViewer.html and MediaPlayer.html draw a pane with its own edge: on the surface colour alone the inset vanished into the listing behind it.
     Rectangle {
         anchors.fill: parent
         color: Theme.color.background
@@ -224,8 +233,7 @@ Item {
         anchors.centerIn: parent
         border.width: Theme.spacing.hairline
         border.color: Theme.color.muted
-        // Open rises into place; close does not translate (enabled: root.active), only fades,
-        // faster than the open animation. root.active itself already flipped above, synchronously.
+        // Open rises into place and close only fades, faster, because the translation is enabled: root.active.
         anchors.verticalCenterOffset: root.active ? 0 : Motion.translateUpPx
         opacity: root.active ? 1 : 0
         // Expand drops the Quick Look inset, which is the whole of the canvas's "expand fills the window".
@@ -266,19 +274,19 @@ Item {
                 item.path = Qt.binding(function () { return root.path })
                 item.kind = Qt.binding(function () { return root.kind })
                 item.size = Qt.binding(function () { return root.size })
+                item.kindName = Qt.binding(function () { return root.kindName })
+                item.rate = Qt.binding(function () { return root.mediaRate })
             }
         }
 
-        // The image pane, source rather than sourceComponent like the two beside it, so the file is
-        // decoded only while an image is open and its texture goes with the item on close.
+        // source rather than sourceComponent, so a file is decoded only while an image is open and its texture goes with the item.
         Loader {
             id: imageLoader
             anchors.fill: parent
             onLoaded: item.path = Qt.binding(function () { return root.path })
         }
 
-        // The canvas's PdfViewer, which draws its own chrome. source, not sourceComponent, so
-        // QtQuick.Pdf loads on the first PDF opened and never for a folder without one.
+        // The canvas's PdfViewer, source not sourceComponent, so QtQuick.Pdf loads on the first PDF and never for a folder without one.
         Loader {
             id: pdfLoader
             anchors.fill: parent
@@ -364,8 +372,7 @@ Item {
             visible: (root.isMedia || root.isImage || root.isArchive) && root.status === "loading"
         }
 
-        // Task 22's transport strip, MediaStrip unframed: quiet over the video and permanent on
-        // audio (nothing else there to look at). The column draws the framed form of the same file.
+        // MediaStrip unframed: quiet over the video, permanent on audio, and the column draws the framed form of the same file.
         Flea.MediaStrip {
             id: mediaStrip
             visible: root.isMedia && (root.kind === "audio" || root.stripShown)

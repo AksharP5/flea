@@ -13,6 +13,7 @@ import "js/Nav.js" as Nav
 import "js/Ops.js" as Ops
 import "js/Renderer.js" as Renderer
 import "js/Search.js" as Search
+import "js/Startup.js" as Startup
 
 ShellRoot {
     FloatingWindow {
@@ -98,6 +99,12 @@ ShellRoot {
                 Qt.callLater(view.rememberDual)
             }
             function rememberPaths() {
+                // "Last folder" has to have a folder to return to, and the pair below is the dual
+                // view's own. The primary pane is the one a single-view window opens, so it is the
+                // one recorded; a write that lands the value already stored owes nothing, see
+                // ui/ViewState.qml "owe".
+                if (initialized && !dualMode && primaryPane.path)
+                    ViewState.rememberLastPath(primaryPane.path)
                 if (!initialized || !dualMode || !secondPane.item || !primaryPane.path || !secondPane.item.pane.path) return
                 Qt.callLater(view.rememberDual)
             }
@@ -286,8 +293,8 @@ ShellRoot {
                 anchors.bottom: parent.bottom
                 path: view.currentPane.trash.opened ? "Trash" : view.currentPane.path
                 total: view.currentPane.trash.opened ? view.currentPane.trash.total : view.currentPane.total
-                cursorIndex: view.currentPane.cursorIndex
                 listingState: view.currentPane.listingState
+                pane: view.currentPane.trash.opened ? null : view.currentPane
                 selectionCount: view.currentPane.trash.opened ? view.currentPane.trash.selectedCount : view.currentPane.selectionCount()
                 fsName: view.currentPane.fsName
                 fsFree: view.currentPane.fsFree
@@ -295,11 +302,8 @@ ShellRoot {
                 searchLine: view.currentPane.searchMode === "results"
                             ? Search.statusLine(view.currentPane.searchRunning, view.currentPane.total, view.currentPane.searchScanned, view.currentPane.searchMs)
                             : ""
-                searchKeys: Search.statusKeys(view.currentPane.searchRunning)
                 retryLine: view.currentPane.trash.opened ? "" : view.currentPane.retrySelectionText
-                onTransferCancelRequested: function (id) {
-                    bar.transferOwner.backend.transfercancel(id)
-                }
+                onTransferCancelRequested: function (id) { bar.transferOwner.backend.transfercancel(id) }
             }
 
             Flea.Preview { id: preview; pane: view.currentPane }
@@ -407,7 +411,7 @@ ShellRoot {
             Connections {
                 target: networkDialog.item
                 // FocusScope remembers its own last-focused child, list or rail, and restores it.
-                function onClosed() { view.currentPane.forceActiveFocus() }
+                function onClosed() { if (view.currentPane.sidebar) view.currentPane.sidebar.editingPlace = ""; view.currentPane.forceActiveFocus() }
                 function onMountRequested(requestId, uri, label, password) {
                     if (!networkDialog.origin) {
                         networkDialog.item.mountFinished(requestId, uri, false, "The requesting pane is no longer available.")
@@ -473,7 +477,7 @@ ShellRoot {
                 onTapped: {
                     if (view.currentPane.menuActions.opened || settingsPanel.opened || view.currentPane.trash.confirming || chrome.editing || convertDialog.opened || permissionsDialog.opened || keymapSheet.opened
                             || networkDialog.opened || (shareBrowser.active && shareBrowser.owner === view.currentPane) || preview.active
-                            || view.currentPane.renameEditor() !== null || view.currentPane.sidebar.renameEditor() !== null)
+                            || view.currentPane.renameEditor() !== null || (view.currentPane.sidebar && view.currentPane.sidebar.renameEditor() !== null))
                         return
                     if (view.currentPane.trash.opened) view.currentPane.trash.close()
                     else Nav.mouseBack(view.currentPane)
@@ -481,15 +485,28 @@ ShellRoot {
             }
 
             Component.onCompleted: {
-                var start = Quickshell.env("FLEA_PATH") || Quickshell.env("HOME")
+                var home = Quickshell.env("HOME")
+                var start = Startup.startPath(ViewState.state, home, Quickshell.env("FLEA_PATH"))
                 // Read once: Pane.applyPendingSelect() forgets it after the first rows response.
                 var paths = (ViewState.state.dual || {}).paths || []
                 primaryPane.pendingSelect = Quickshell.env("FLEA_SELECT") || ""
                 primaryPane.open(view.dualMode && paths.length === 2 ? paths[0] : start)
                 view.initialized = true
                 if (view.dualMode) view.focusPane(view.focusSide)
+                trashSweep.start()
             }
         }
+    }
+
+    // The 30 day sweep runs off the startup path, not on it: a Trash listing costs one gio call per
+    // item and first paint is measured. Late enough that the window is up and the backend is
+    // answering, long before anyone reaches the Trash rail row. ui/TrashHost.qml refuses it when the
+    // setting is off, when it has already run today, and when the Trash window exists at all.
+    Timer {
+        id: trashSweep
+        interval: 2000
+        repeat: false
+        onTriggered: primaryPane.trash.sweep()
     }
 
     // The seam the tests drive, see AGENTS.md "Testing". Every reader lives in ui/Ipc.qml.

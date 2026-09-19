@@ -4,8 +4,9 @@ import Quickshell.Io
 import qs.Commons
 import "js/Icons.js" as Icons
 import "js/Mounts.js" as Mounts
-import "js/Menu.js" as Menu
 import "js/Places.js" as Places
+import "js/PlaceMenu.js" as PlaceMenu
+import "js/RailMenu.js" as RailMenu
 
 // Places, Favorites, Network and Devices share one flat cursor in visual order.
 Item {
@@ -42,11 +43,15 @@ Item {
         : [{ label: "Trash", path: "trash:///", group: "trash", kind: "trash", glyph: "trash", count: root.trashCount }]
     signal trashRequested()
 
+    // The saved place an Edit is rewriting, "" when none is; ui/js/RailMenu.js editPlace sets it.
+    property string editingPlace: ""
+    // And the request that Edit's own attempt went out with, so no other mount answers for it.
+    property string editingRequest: ""
     readonly property var networkEntries: root.placesState.showNetwork === false ? [] : mounts.entries
-    // A changed rail is a changed row under any open editor, so the rename is void: the poll rebinds
-    // its delegates in place, and an editor left standing came up empty over a different share.
+    // The poll rebinds its delegates in place, so a rename left standing would edit a different share.
     onNetworkEntriesChanged: root.cancelRename()
-    readonly property var deviceEntries: root.placesState.showDevices === false ? [] : devices.entries
+    // Phones ride the DEVICES group behind the block devices: a plugged phone is a device to the person holding it, whatever transport gvfs reaches it over.
+    readonly property var deviceEntries: root.placesState.showDevices === false ? [] : devices.entries.concat(phones.entries)
     readonly property var entries: root.placesEntries.concat(root.networkEntries, root.deviceEntries)
 
     // Reconcile only the aggregate; evaluating entries from a group's change handler re-enters its binding.
@@ -70,9 +75,7 @@ Item {
     signal networkRetryRequested(string uri, string label, string password, string reason, bool failedConnect, var origin)
     signal networkCompleted(string requestId, string uri, bool success, string reason)
 
-    // The entry index mid-rename, or -1; Network only, see startRename below. ui/SidebarRow.qml
-    // reads this to swap its Text for the OEM TextField, and ui/Pane.qml reads it as its own
-    // key guard while the field owns the keyboard.
+    // The entry index mid-rename, or -1; ui/SidebarRow.qml swaps its Text for a field on it, and ui/Pane.qml holds its keys off while it stands.
     property int renamingIndex: -1
     // Fires once, on both commit and cancel, so ui/Pane.qml has one place to hand focus back.
     signal renameFinished()
@@ -109,16 +112,24 @@ Item {
         onLoadFailed: root.rebuild()
     }
 
-    // The context menu's own gate for the two Dropbox rows, read through here rather than reaching
-    // into the rail's internals from the pane.
+    // The context menu's gate for the two Dropbox rows, so the pane never reaches into the rail.
     readonly property bool dropboxReady: mounts.dropboxReady
     readonly property alias providerService: mounts
 
     DeviceMounts {
         id: devices
+        showUnmounted: root.placesState.showUnmounted === true
         onOpened: function (path) { root.opened(path) }
         onMessage: function (text, isError) { root.message(text, isError) }
         onForgetMessage: function (text) { root.forgetMessage(text) }
+    }
+
+    // Lists and unmounts only: activate() below routes a phone's mount-and-open through the same openShare leg a share rides.
+    PhoneMounts {
+        id: phones
+        listingText: mounts.mountListing
+        onMessage: function (text, isError) { root.message(text, isError) }
+        onReleased: mounts.pollMounts()
     }
 
     NetworkMounts {
@@ -132,15 +143,12 @@ Item {
         onRetryRequested: function (uri, label, password, reason, failedConnect, origin) {
             root.networkRetryRequested(uri, label, password, reason, failedConnect, origin)
         }
-        onCompleted: function (requestId, uri, success, reason) { root.networkCompleted(requestId, uri, success, reason) }
-        // The same race NetworkDialog.qml's own saved() exists for, see AGENTS.md "A FileView
-        // write can race a reload fired the moment setText() is called": mounts.rename() already
-        // blocked on waitForJob() before this fires, so the reload here reads the write it caused.
+        onCompleted: function (requestId, uri, success, reason) { RailMenu.placeSaved(root, mounts, requestId, uri, success); root.networkCompleted(requestId, uri, success, reason) }
+        // AGENTS.md "A FileView write can race a reload": mounts.rename() blocked on waitForJob() first, so this reload reads the write it caused.
         onRenamed: root.reloadBookmarks()
     }
 
-    // Home is always first and is not in either file, so it is prepended rather than parsed; the
-    // merge and its first-position-wins rule are Places.favorites', which tests/js/places.js checks.
+    // Home is in neither file, so it is prepended; the merge and its first-position-wins rule are Places.favorites'.
     onPlacesStateChanged: root.rebuild()
     Connections {
         target: Favourites
@@ -152,17 +160,14 @@ Item {
         root.homeEntries = root.placesState.showHome === false ? [] : Places.homeEntries(home, userDirsFile.text(), Icons.sidebarGlyphFor)
     }
 
-    // ui/NetworkDialog.qml writes this same file; a watch set up before its parent directory
-    // existed never fires, so its own saved() signal drives this explicit reload instead.
-    // It blocks, because ui/NetworkPlaces.qml "forget" derives its body from the text this reads:
-    // measured on this box, two rail edits in one turn over an asynchronous reload put the line the
-    // first one removed back, and the second read the pre-write text the first had already replaced.
+    // NetworkDialog's saved() drives this reload because a watch set up before its parent directory existed never fires, and it blocks because "forget" derives its body from this text: measured here, an asynchronous reload put a removed line back.
     function reloadBookmarks() {
         bookmarksFile.reload()
         bookmarksFile.waitForJob()
     }
 
     function saveNetwork(requestId, uri, label, password, origin) {
+        RailMenu.placeSubmitted(root, requestId)
         mounts.saveLocation(uri, label, password, requestId, origin)
     }
     function cancelNetwork(requestId) { mounts.cancelLocation(requestId) }
@@ -176,9 +181,7 @@ Item {
         mounts.openChildShare(uri, label, origin)
     }
 
-    // Right click raises the menu over the row, which is the whole affordance: an eject that can
-    // only be reached by right-clicking twice is one nobody can see. Which rows offer what lives in
-    // ui/js/Mounts.js "rowMenu", because a row with nothing to offer must open no menu at all.
+    // Right click is the whole affordance, and which rows offer what is ui/js/Mounts.js "rowMenu"'s: a row with nothing to offer opens no menu at all.
     function openRailMenu(index, scenePosition) {
         root.cancelRename()
         var entry = root.entries[index]
@@ -186,21 +189,10 @@ Item {
             return
         }
         root.cursorIndex = index
-        if (entry.kind === "trash") {
-            root.menu.openForRail("trash", Menu.trashEntries(root.trashCount, false), scenePosition)
-            return
-        }
-        if (entry.kind === "favourite") {
-            root.menu.openForRail("favourite:" + entry.favouriteIndex + ":" + JSON.stringify(entry.original),
-                [{ label: "Remove", action: "removeFavourite", glyph: "minus" }], scenePosition)
-            return
-        }
-        root.menu.openForRail(Mounts.railKey(entry), Mounts.rowMenu(entry), scenePosition)
+        RailMenu.railMenuFor(root, entry, scenePosition, ViewState.menuHidden)
     }
 
-    // The keyboard's own entrance to the same menu, opened under the row the rail cursor is on.
-    // Whether that row has anything to release is ui/js/Mounts.js "raiseMenu"'s question, already
-    // answered before this is called; this only turns the cursor into a point to open at.
+    // The keyboard's entrance to the same menu: ui/js/Mounts.js "raiseMenu" has already asked whether the row releases anything, so this only turns the cursor into a point.
     function openCursorMenu() {
         var row = root.railItemFor(root.cursorIndex)
         if (!row)
@@ -208,18 +200,15 @@ Item {
         root.openRailMenu(root.cursorIndex, row.mapToItem(null, Style.spacing.rowPaddingX, row.height))
     }
 
-    // A chosen menu row, arriving with the row's key rather than its position; which row that
-    // names is Mounts.release', so tests/js/network.js drives the resolution with no rail.
+    // A chosen row arrives with its key rather than its position, and RailMenu.release names the row.
     function releaseChosen(action, key) {
         if (key === "trash") return
-        if (action === "removeFavourite" && key.indexOf("favourite:") === 0) {
-            var end = key.indexOf(":", 10)
-            var index = Number(key.substring(10, end))
-            if (JSON.stringify(Favourites.records[index]) === key.substring(end + 1)) Favourites.remove(index)
-            else root.message("Favorites changed; reopen the menu before removing this row.", true)
+        // A place and a favourite are both a path, and ui/js/PlaceMenu.js owns what their rows do.
+        if (key.indexOf("place:") === 0 || key.indexOf("favourite:") === 0) {
+            PlaceMenu.perform(action, key, root, Favourites)
             return
         }
-        Mounts.release(action, key, devices, mounts, root)
+        RailMenu.release(action, key, devices, mounts, root)
     }
 
     Connections {
@@ -227,8 +216,7 @@ Item {
         function onRailChosen(action, key) { root.releaseChosen(action, key) }
     }
 
-    // A favourite's path is already real and opens directly; a network share or a removable volume
-    // may need mounting first, which is its own Service's job.
+    // A favourite's path is already real and opens directly; a share or a volume may need its Service.
     function openFavourite(index) {
         var entry = root.userFavouriteEntries[index]
         if (!entry) return
@@ -251,7 +239,17 @@ Item {
         if (entry.kind === "trash") { root.trashRequested(); return }
         var rest = index - root.placesEntries.length
         if (rest < root.networkEntries.length) mounts.activate(rest)
+        // A phone mounts, resolves and opens the way a share does, and its rows sit after the block devices, so the device Service's own indices are unmoved.
+        else if (entry.kind === "phone") mounts.openShare(entry.uri, entry.mounted, entry.label)
         else devices.activate(rest - root.networkEntries.length)
+    }
+
+    // RailMenu.release hands the phone action back here, because the phone Service is this rail's own child.
+    function releasePhone(key) { phones.release(key) }
+    // Its Mount and Open rows are the row's own activation, resolved by key because the poll renumbers.
+    function openPhone(key) {
+        var e = phones.entries[Mounts.rowByKey(phones.entries, key)]
+        if (e) mounts.openShare(e.uri, e.mounted, e.label)
     }
 
     // Network only: neither a favourite nor a device has a bookmark line of its own shape for
@@ -312,8 +310,7 @@ Item {
             scroller.contentY = p.y + row.height - scroller.height
     }
 
-    // The rail's rows live in a viewport, not the bare Column they were: a rail taller than its
-    // own height could not show its bottom rows by any means, wheel included.
+    // The rows live in a viewport: a rail taller than its own height could show no bottom row at all.
     Timer {
         id: availability
         interval: 120
@@ -369,6 +366,7 @@ Item {
                     cursor: index === root.cursorIndex
                     focused: root.focused
                     onActivated: function (idx) { root.activate(idx) }
+                    onMenuRequested: function(idx, pos) { root.openRailMenu(idx, pos) }
                 }
             }
             Repeater {
@@ -478,8 +476,7 @@ Item {
                 height: Style.spacing.panelGap
             }
 
-            // Self-hides with its list below on a box lsblk reports no disk for; there is no header
-            // over an empty group. Unlike NETWORK it carries no add mark: nothing here is bookmarked.
+            // Self-hides with its list where lsblk reports no disk, and carries no add mark: nothing here is bookmarked.
             Text {
                 id: devHeading
                 visible: root.deviceEntries.length > 0

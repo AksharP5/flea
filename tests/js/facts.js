@@ -4,10 +4,9 @@
 // Every expectation here is read off the canvas's Preview column board, label by label and in its
 // own order, so a drift in either one fails rather than passing quietly.
 function run(check) {
-    // 2026-08-31 12:00:00 UTC, so "Modified" renders against a fixed now rather than the clock.
-    var now = 1788177600000
+    // A fixed instant, 2026-08-31 12:00:00 UTC less a day, so "Modified" never reads the clock.
     var day = 86400
-    var mtime = 1788177600 / 1 - day   // yesterday
+    var mtime = 1788177600 - day
 
     function row(icon, size, mode) {
         return { n: "x", d: false, s: size, m: mtime, p: mode === undefined ? 33188 : mode, i: icon, k: 0 }
@@ -93,56 +92,65 @@ function run(check) {
           Kinds.isPreviewable({ d: true }) + "|" + Kinds.isPreviewable({ d: false }) + "|" + Kinds.isPreviewable(null),
           "false|true|false")
 
-    // The canvas's own four rows, in the canvas's own order, for each state it draws.
-    check("image states Kind, Size, Pixels, Modified",
-          labels(Facts.facts("image", row("image-x-generic", 2100000), { w: 2560, h: 1440 }, "PNG image", now)),
-          "Kind|Size|Pixels|Modified")
+    // Preview board rule 1: eight ordinary settled kinds open with Kind, Size, Modified, five add one
+    // kind fact and stop at four rows, and video, audio and code carry two.
+    check("image states Kind, Size, Modified, Pixels",
+          labels(Facts.facts("image", row("image-x-generic", 2100000), { w: 2560, h: 1440 }, "PNG image")),
+          "Kind|Size|Modified|Pixels")
     check("and its pixels read as the canvas writes them",
-          valueOf(Facts.facts("image", row("image-x-generic", 2100000), { w: 2560, h: 1440 }, "PNG image", now), "Pixels"),
+          valueOf(Facts.facts("image", row("image-x-generic", 2100000), { w: 2560, h: 1440 }, "PNG image"), "Pixels"),
           "2560 × 1440")
-    check("video states Kind, Duration, Pixels, Size",
-          labels(Facts.facts("video", row("video-x-generic", 48000000), { w: 1920, h: 1080 }, "MP4 video", now, { duration: "1:12" })),
-          "Kind|Duration|Pixels|Size")
-    check("audio states Kind, Duration, Rate, Size",
-          labels(Facts.facts("audio", row("audio-x-generic", 31000000), null, "FLAC audio", now, { duration: "4:05", rate: "44.1 kHz" })),
-          "Kind|Duration|Rate|Size")
-    check("pdf states Kind, Pages, Size, Modified",
-          labels(Facts.facts("pdf", row("application-pdf", 2300000), null, "PDF document", now, { pages: "51" })),
-          "Kind|Pages|Size|Modified")
-    check("text states Kind, Size, Lines, Modified",
-          labels(Facts.facts("text", row("text-x-generic", 18000), { lines: 214 }, "Markdown", now)),
-          "Kind|Size|Lines|Modified")
-    check("code states Kind, Size, Lines, Mode",
-          labels(Facts.facts("code", row("text-x-script", 4200), { lines: 132 }, "Rust source", now)),
-          "Kind|Size|Lines|Mode")
-    check("archive states Kind, Entries, Packed, Unpacked",
-          labels(Facts.facts("archive", row("package-x-generic", 1200000000), null, "Zstandard tar", now, { entries: "214", unpacked: "3.4 GB" })),
-          "Kind|Entries|Packed|Unpacked")
+    check("video states Kind, Size, Modified, Duration, Pixels",
+          labels(Facts.facts("video", row("video-x-generic", 48000000), { w: 1920, h: 1080 }, "MP4 video", { duration: "1:12" })),
+          "Kind|Size|Modified|Duration|Pixels")
+    check("audio states Kind, Size, Modified, Duration, Rate",
+          labels(Facts.facts("audio", row("audio-x-generic", 31000000), null, "FLAC audio", { duration: "4:05", rate: "44.1 kHz" })),
+          "Kind|Size|Modified|Duration|Rate")
+    check("pdf states Kind, Size, Modified, Pages",
+          labels(Facts.facts("pdf", row("application-pdf", 2300000), null, "PDF document", { pages: "51" })),
+          "Kind|Size|Modified|Pages")
+    check("text states Kind, Size, Modified, Lines",
+          labels(Facts.facts("text", row("text-x-generic", 18000), { lines: 214 }, "Markdown")),
+          "Kind|Size|Modified|Lines")
+    // Mode stays: columns view draws no permission column, so dropping it here removes it entirely.
+    check("code states Kind, Size, Modified, Lines, Mode",
+          labels(Facts.facts("code", row("text-x-script", 4200), { lines: 132 }, "Rust source")),
+          "Kind|Size|Modified|Lines|Mode")
+    check("archive states Kind, Size, Modified, Entries",
+          labels(Facts.facts("archive", row("package-x-generic", 1200000000), null, "Zstandard tar", { entries: "214", unpacked: "3.4 GB" })),
+          "Kind|Size|Modified|Entries")
+    // Size above already says what the archive weighs packed, so its one row carries both counts.
+    check("and the archive's one fact is the count and the unpacked total together",
+          valueOf(Facts.facts("archive", row("package-x-generic", 1200000000), null, "Zstandard tar", { entries: "214", unpacked: "3.4 GB" }), "Entries"),
+          "214, 3.4 GB out")
+    check("an archive nothing has measured unpacked still states its count",
+          valueOf(Facts.facts("archive", row("package-x-generic", 1200000000), null, "Zstandard tar", { entries: "214" }), "Entries"),
+          "214")
     check("symlink states Kind, Target, Points at, Mode",
-          labels(Facts.facts("symlink", row("folder", 18, 41471), { target: "/usr/share/omarchy", targetDir: true }, "Folder", now)),
+          labels(Facts.facts("symlink", row("folder", 18, 41471), { target: "/usr/share/omarchy", targetDir: true }, "Folder")),
           "Kind|Target|Points at|Mode")
     check("and says what it points at rather than repeating the path",
-          valueOf(Facts.facts("symlink", row("folder", 18, 41471), { target: "/usr/share/omarchy", targetDir: true }, "Folder", now), "Points at"),
+          valueOf(Facts.facts("symlink", row("folder", 18, 41471), { target: "/usr/share/omarchy", targetDir: true }, "Folder"), "Points at"),
           "Folder")
     check("a symlink to a file says so too",
-          valueOf(Facts.facts("symlink", row("file", 18, 41471), { target: "a.txt", targetDir: false }, "x", now), "Points at"),
+          valueOf(Facts.facts("symlink", row("file", 18, 41471), { target: "a.txt", targetDir: false }, "x"), "Points at"),
           "File")
     check("error states Kind, Size, Mode, Owner",
-          labels(Facts.facts("error", row("application-x-generic", 419, 33152), null, "Unknown", now, { owner: "root" })),
+          labels(Facts.facts("error", row("application-x-generic", 419, 33152), null, "Unknown", { owner: "root" })),
           "Kind|Size|Mode|Owner")
     check("loading states Kind, Size, State",
-          labels(Facts.facts("loading", row("video-x-generic", 48000000), null, "MP4 video", now)),
+          labels(Facts.facts("loading", row("video-x-generic", 48000000), null, "MP4 video")),
           "Kind|Size|State")
     check("unsupported states Kind, Size, Modified, Mode",
-          labels(Facts.facts("unsupported", row("application-x-generic", 212000000), null, "Data", now)),
+          labels(Facts.facts("unsupported", row("application-x-generic", 212000000), null, "Data")),
           "Kind|Size|Modified|Mode")
 
     // Duration and rate come off the meta answer rather than being assembled by a caller.
     check("a video reads its duration off the meta answer",
-          valueOf(Facts.facts("video", row("video-x-generic", 48000000), { w: 1920, h: 1080, durationMs: 72000 }, "MP4 video", now), "Duration"),
+          valueOf(Facts.facts("video", row("video-x-generic", 48000000), { w: 1920, h: 1080, durationMs: 72000 }, "MP4 video"), "Duration"),
           "1:12")
     check("an audio row reads its rate the way the canvas writes it",
-          valueOf(Facts.facts("audio", row("audio-x-generic", 31000000), { durationMs: 245000, sampleRate: 44100 }, "FLAC audio", now), "Rate"),
+          valueOf(Facts.facts("audio", row("audio-x-generic", 31000000), { durationMs: 245000, sampleRate: 44100 }, "FLAC audio"), "Rate"),
           "44.1 kHz")
     check("a whole number of kilohertz drops the decimal",
           Facts.mediaExtra({ sampleRate: 48000 }).rate, "48 kHz")
@@ -154,9 +162,8 @@ function run(check) {
 
     // Entries and the unpacked total come off the archive's own index, read without extracting it.
     check("an archive states its entries and what they weigh unpacked",
-          valueOf(Facts.facts("archive", row("package-x-generic", 1200000000), { entries: 214, unpacked: 3400000000 }, "Zstandard tar", now), "Entries")
-          + "|" + valueOf(Facts.facts("archive", row("package-x-generic", 1200000000), { entries: 214, unpacked: 3400000000 }, "Zstandard tar", now), "Unpacked"),
-          "214|3.4 GB")
+          valueOf(Facts.facts("archive", row("package-x-generic", 1200000000), { entries: 214, unpacked: 3400000000 }, "Zstandard tar"), "Entries"),
+          "214, 3.4 GB out")
     check("and an archive nothing has listed yet shows empty cells rather than zeroes",
           JSON.stringify(Facts.archiveExtra({ entries: 0, unpacked: 0 })), "{}")
 
@@ -164,12 +171,9 @@ function run(check) {
     // it sends, and the difference is the tile's own "+ N more" line.
     var big = { entries: 214, unpacked: 3400000000,
                 names: [{ n: "daemon", d: true }, { n: "ui", d: true }, { n: "Cargo.toml", d: false }] }
-    check("a long archive states an exact count, never a cap",
-          valueOf(Facts.facts("archive", row("package-x-generic", 1200000000), big, "Zstandard tar", now), "Entries"),
-          "214")
-    check("and an exact unpacked total beside it",
-          valueOf(Facts.facts("archive", row("package-x-generic", 1200000000), big, "Zstandard tar", now), "Unpacked"),
-          "3.4 GB")
+    check("a long archive states an exact count and an exact unpacked total, never a cap",
+          valueOf(Facts.facts("archive", row("package-x-generic", 1200000000), big, "Zstandard tar"), "Entries"),
+          "214, 3.4 GB out")
     check("the tile lists the names the wire carried",
           Facts.archiveEntries(big).map(function (e) { return e.n }).join("|"),
           "daemon|ui|Cargo.toml")
@@ -201,9 +205,17 @@ function run(check) {
           Facts.lineCount({ lines: 0, partial: false, linesFailed: true }), "")
     check("and a file that really is empty still states its zero",
           Facts.lineCount({ lines: 0, partial: false, linesFailed: false }), "0")
-    check("the Lines cell of an unreadable text file is the empty one",
-          valueOf(Facts.facts("text", row("text-x-generic", 18000),
-                              { lines: 0, partial: false, linesFailed: true }, "Markdown", now), "Lines"), "")
+    // HANDOFF rule 19: a label with no value is not drawn, so the row goes rather than the value.
+    check("an unreadable text file draws no Lines row at all",
+          labels(Facts.facts("text", row("text-x-generic", 18000),
+                             { lines: 0, partial: false, linesFailed: true }, "Markdown")), "Kind|Size|Modified")
+    check("and a raw image whose dimensions are unreadable draws no Pixels row",
+          labels(Facts.facts("image", row("image-x-generic", 2100000), null, "Raw image")), "Kind|Size|Modified")
+    check("an archive nothing has listed draws no Entries row either",
+          labels(Facts.facts("archive", row("package-x-generic", 1200000), null, "Zip archive")), "Kind|Size|Modified")
+    check("a video nothing has probed yet drops Duration and keeps the rest",
+          labels(Facts.facts("video", row("video-x-generic", 48000000), { w: 1920, h: 1080 }, "MP4 video")),
+          "Kind|Size|Modified|Pixels")
     check("pixels with nothing behind them are empty rather than 0 × 0",
           Facts.pixels(null) + "|" + Facts.pixels({ w: 0, h: 0 }), "|")
 
@@ -211,28 +223,28 @@ function run(check) {
     var many = [row("image-x-generic", 1000), row("image-x-generic", 2000),
                 row("video-x-generic", 4000), row("text-x-generic", 8000)]
     check("multi-select states Kinds, Combined, Newest, Oldest",
-          labels(Facts.multiFacts(many, now)), "Kinds|Combined|Newest|Oldest")
+          labels(Facts.multiFacts(many)), "Kinds|Combined|Newest|Oldest")
     check("and counts the kinds the way the canvas phrases them",
-          valueOf(Facts.multiFacts(many, now), "Kinds"), "2 images, 1 video, 1 text")
+          valueOf(Facts.multiFacts(many), "Kinds"), "2 images, 1 video, 1 text")
     check("the combined size is every selected row added up",
-          valueOf(Facts.multiFacts(many, now), "Combined"), "15.0 kB")
-    check("an empty selection summarises to nothing rather than throwing",
-          labels(Facts.multiFacts([], now)), "Kinds|Combined|Newest|Oldest")
+          valueOf(Facts.multiFacts(many), "Combined"), "15.0 kB")
+    check("an empty selection states only the row it can fill, rather than throwing",
+          labels(Facts.multiFacts([])), "Combined")
     check("a hole in the selection is skipped rather than counted",
-          valueOf(Facts.multiFacts([null, row("image-x-generic", 1000)], now), "Kinds"), "1 image")
+          valueOf(Facts.multiFacts([null, row("image-x-generic", 1000)]), "Kinds"), "1 image")
 
     // A selection wider than the held window cannot be summed without a metadata sweep, which this
     // codebase refuses, so every number it does produce is a floor and has to look like one.
     check("a selection wider than the held window states floors, not an undercount",
-          valueOf(Facts.multiFacts(many, now, 9), "Combined") + "|"
-          + valueOf(Facts.multiFacts(many, now, 9), "Kinds"),
+          valueOf(Facts.multiFacts(many, 9), "Combined") + "|"
+          + valueOf(Facts.multiFacts(many, 9), "Kinds"),
           "> 15.0 kB|> 2 images, > 1 video, > 1 text")
     check("and a selection entirely inside the window states plain totals",
-          valueOf(Facts.multiFacts(many, now, 4), "Combined") + "|"
-          + valueOf(Facts.multiFacts(many, now, 4), "Kinds"),
+          valueOf(Facts.multiFacts(many, 4), "Combined") + "|"
+          + valueOf(Facts.multiFacts(many, 4), "Kinds"),
           "15.0 kB|2 images, 1 video, 1 text")
     check("a hole inside the window is a floor too, because a row it could not read is a row it did not count",
-          valueOf(Facts.multiFacts([null, row("image-x-generic", 1000)], now, 2), "Combined"), "> 1.0 kB")
+          valueOf(Facts.multiFacts([null, row("image-x-generic", 1000)], 2), "Combined"), "> 1.0 kB")
 
     // The Quick Look classifies from the same icon and name the column does, so the two can never
     // disagree about what a row is; the overlay refused every image for as long as it kept its own list.

@@ -107,7 +107,7 @@ FocusScope {
                     width: Math.min(parent.width, cancelButton.implicitWidth + dangerButton.implicitWidth + spacing)
                     anchors.right: parent.right
                     spacing: Theme.spacing.gap
-                    Rectangle { width: cancelButton.width; height: cancelButton.height; color: root.destructiveFocus ? "transparent" : Qt.alpha(Theme.color.accent, 0.14); Flea.DialogButton { id: cancelButton; label: "Cancel"; primary: !root.destructiveFocus; onActivated: root.cancel() } }
+                    Flea.DialogButton { id: cancelButton; label: "Cancel"; primary: !root.destructiveFocus; onActivated: root.cancel() }
                     Item {
                         id: dangerButton
                         implicitWidth: dangerText.implicitWidth + 2 * Theme.spacing.gap

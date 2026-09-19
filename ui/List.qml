@@ -100,25 +100,14 @@ ListView {
         }
     }
 
-    // States.dc.html "Filter active" draws this under the rows: caption type, muted, and gone the
-    // moment there is nothing to account for. A footer scrolls with the rows, which is where it sits.
+
+    // The listing keeps one row of bare ground at its end. SearchFilter rule 1 took the filter's
+    // sentence off this slot, and the ground under it is not the sentence: it is where a band starts
+    // and where the background menu is raised, and a listing whose last row sits flush on the bottom
+    // edge offers neither once it is scrolled to the end.
     footer: Item {
         width: root.width
-        height: note.text.length > 0 ? Theme.chromeHeight : 0
-
-        Text {
-            id: note
-            anchors.fill: parent
-            anchors.leftMargin: Theme.spacing.rowPaddingX
-            anchors.rightMargin: Theme.spacing.rowPaddingX
-            verticalAlignment: Text.AlignVCenter
-            text: Filter.note(root.pane.shown, root.pane.rows.length, root.pane.filterQuery)
-            color: Theme.color.muted
-            font.family: Theme.font.family
-            font.pixelSize: Theme.font.caption
-            elide: Text.ElideRight
-            textFormat: Text.PlainText
-        }
+        height: Theme.chromeHeight
     }
 
     // Empty space under the last row belongs to the directory, not to a row, so it raises the

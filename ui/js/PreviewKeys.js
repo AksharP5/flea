@@ -36,12 +36,13 @@ function pdfAction(action, viewer) {
 function open(root) {
     var row = root.rowFor(root.cursorIndex)
     if (row && !row.d)
-        root.preview.open(root.join(root.path, row.n), row.i, row.s)
+        root.preview.open(root.join(root.path, row.n), row.i, row.s, root.kindNames[row.k] || "")
 }
 
-// Preview open: j/k move the cursor and the preview follows; escape always closes. Space closes
-// a text or unsupported preview as before, but toggles play/pause on a MEDIA one instead
-// (Task 22's operator ruling: "the idea is our preview is as good or better than Showtime").
+// Preview open: j/k move the cursor and the preview follows; escape always closes, and so does a
+// second space, on every kind including media (GM, 2026-09-11: "pressing space a second time should
+// close the preview, just like Finder does"). That reverses Task 22, which had space toggle
+// play/pause on a media preview; the strip's own play control still does that with the pointer.
 // Any key reveals the media strip, even one that does nothing else, matching "move the mouse or
 // press anything" from the same ruling.
 function act(action, root) {
@@ -49,9 +50,11 @@ function act(action, root) {
     switch (action) {
     case "cursorDown": Filter.moveCursor(root, 1); follow(root); return
     case "cursorUp": Filter.moveCursor(root, -1); follow(root); return
-    case "preview":
+    case "preview": root.preview.close(); return
+    // Space closes every kind now, so playback has its own key; it self-guards, because p reaches
+    // this only in the media context and a still image has nothing to play.
+    case "playPause":
         if (root.preview.isMedia) root.preview.togglePlay()
-        else root.preview.close()
         return
     case "escape": root.preview.close(); return
     case "seekBack":
@@ -69,6 +72,8 @@ function act(action, root) {
     case "zoomOut": root.preview.zoomBy(-1); return
     case "zoomIn": root.preview.zoomBy(1); return
     case "expand": root.preview.toggleExpand(); return
+    // MediaMute rule 5: the flag is the preview's to flip, and it silences without pausing.
+    case "mute": root.preview.toggleMute(); return
     }
 }
 
@@ -76,5 +81,5 @@ function act(action, root) {
 function follow(root) {
     var row = root.rowFor(root.cursorIndex)
     if (row && !row.d)
-        root.preview.follow(root.join(root.path, row.n), row.i, row.s)
+        root.preview.follow(root.join(root.path, row.n), row.i, row.s, root.kindNames[row.k] || "")
 }

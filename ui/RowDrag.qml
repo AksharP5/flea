@@ -38,7 +38,8 @@ Item {
                 return
             }
             root.session.dropIndex = root.listingIndex
-            root.session.enterTarget(marker, drag.urls, root.row.n, root.row.v)
+            root.session.enterTarget(marker, drag.urls, root.row.n, root.row.v,
+                                     drag.getDataAsString(DragOps.SHELF_MIME))
         }
         onPositionChanged: function (drag) {
             if (root.session.dropIndex === root.listingIndex)
@@ -57,7 +58,8 @@ Item {
             if (root.row && root.row.d === true) {
                 if (DragOps.hasPaths(drop.urls))
                     accepted = DragOps.dropInto(root.pane, marker, drop.urls,
-                        root.pane.join(root.pane.path, root.row.n), root.row.v)
+                        root.pane.join(root.pane.path, root.row.n), root.row.v,
+                        drop.getDataAsString(DragOps.SHELF_MIME))
                 else if (DragOps.canDropByIndex(marker, root.pane.path, root.session.dragRows, root.listingIndex))
                     accepted = DragOps.drop(root.pane, root.session.dragRows, root.listingIndex,
                         root.session.verbAt(marker, root.row) === "copy")

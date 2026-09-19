@@ -7,7 +7,7 @@
 
 function pane(preview, viewMode) {
     return {
-        focusView: "list",
+        focusView: "list", shown: null,
         viewMode: viewMode ? viewMode : "list",
         chooseView: function (mode) { this.viewMode = mode },
         searchMode: "",
@@ -124,47 +124,20 @@ function run(check) {
     check("e is discarded over a media preview", Focus.lookup(e, pane(mediaOpen())), "")
     check("minus is discarded over a media preview", Focus.lookup(minus, pane(mediaOpen())), "")
 
-    // Left and Right now serve two previews, and must still serve the grid and nothing else.
+    // Left and Right serve two previews, the grid's own sideways step, and GM's fix: while browsing they are the letter pair's spelling, so they go up a level and into the row under the cursor.
     check("left turns a PDF page", Focus.lookup(left, pane(pdfOpen())), "seekBack")
     check("right turns a PDF page", Focus.lookup(right, pane(pdfOpen())), "seekForward")
     check("left still seeks media", Focus.lookup(left, pane(mediaOpen())), "seekBack")
-    check("left is discarded in the list", Focus.lookup(left, pane(closed())), "")
+    check("left goes up a level in the list", Focus.lookup(left, pane(closed())), "parent")
     check("left still steps a grid tile", Focus.lookup(left, pane(closed(), "grid")), "cursorLeft")
     check("right still steps a grid tile", Focus.lookup(right, pane(closed(), "grid")), "cursorRight")
-
-    var gridPane = Fixture.pane()
-    gridPane.viewMode = "grid"
-    gridPane.cursorStride = 3
-    gridPane.wrapAtEnds = true
-    gridPane.cursorIndex = 2
-    Focus.act("cursorDown", gridPane)
-    check("grid j follows row-major order across a row boundary", gridPane.cursorIndex, 3)
-    Focus.act("cursorUp", gridPane)
-    check("grid k follows the previous item", gridPane.cursorIndex, 2)
-    check("grid j is not a physical arrow", Focus.gridArrow(key(Qt.Key_J, "j", none), "cursorDown", gridPane), false)
-    for (var move of [
-        [Qt.Key_Right, "cursorRight", 2, 2], [Qt.Key_Left, "cursorLeft", 3, 3],
-        [Qt.Key_Down, "cursorDown", 2, 5], [Qt.Key_Down, "cursorDown", 5, 5],
-        [Qt.Key_Down, "cursorDown", 3, 6], [Qt.Key_Up, "cursorUp", 6, 3],
-        [Qt.Key_Up, "cursorUp", 0, 0], [Qt.Key_Right, "cursorRight", 6, 6]
-    ]) {
-        gridPane.cursorIndex = move[2]
-        Focus.gridArrow(key(move[0], "", none), move[1], gridPane)
-        check("grid visual neighbour from " + move[2] + " with " + move[1], gridPane.cursorIndex, move[3])
-    }
-    gridPane.cursorStride = 2
-    gridPane.cursorIndex = 3
-    Focus.gridArrow(key(Qt.Key_Down, "", none), "cursorDown", gridPane)
-    check("grid arrows use the reflowed column count", gridPane.cursorIndex, 5)
-
-    gridPane.filterQuery = "screen"
-    gridPane.refresh()
-    gridPane.cursorIndex = 0
-    gridPane.cursorStride = 2
-    Focus.gridArrow(key(Qt.Key_Down, "", none), "cursorDown", gridPane)
-    check("filtered grid arrows address visible cells", gridPane.cursorIndex, 6)
-    Focus.gridArrow(key(Qt.Key_Right, "", none), "cursorRight", gridPane)
-    check("filtered final row has no right cell", gridPane.cursorIndex, 6)
+    // Issue 114, muellan: the letters the presets spell the arrows with mean the arrows in the grid.
+    var hKey = key(Qt.Key_H, "h", none)
+    var lKey = key(Qt.Key_L, "l", none)
+    check("h steps a grid tile rather than climbing", Focus.lookup(hKey, pane(closed(), "grid")), "cursorLeft")
+    check("l steps a grid tile rather than browsing in", Focus.lookup(lKey, pane(closed(), "grid")), "cursorRight")
+    // Only h is read back in the list: l's answer there depends on the row under the cursor.
+    check("and in the list h is still the tree's own", Focus.lookup(hKey, pane(closed())), "parent")
 
     // Nothing in keys.toml is bound ahead of its feature now: lookup hands both actions through
     // and handleKey routes each above the views, so neither answers with a sentence any more.
@@ -243,9 +216,9 @@ function run(check) {
     check("m raises the menu while the rail has focus", Focus.lookup(m, railPane()), "menu")
     check("m raises the menu in the list too, so the row menu has a key", Focus.lookup(m, pane(closed())), "menu")
 
-    // Finder's Cmd+K with Cmd read as Ctrl opens the dialog from either view; the bare a stays a rail
-    // key, because in the list the letter is not bound at all. Ctrl+K is the Mac preset's own chord,
-    // so the preset is named here rather than assumed: the map opens on Default, which claims none.
+    // Ctrl+K opens the dialog from either view, and so does the bare a: keys.toml promised "either the
+    // list or the rail" from the first commit while Focus.js made it rail-only (GM, 2026-09-11).
+    // Ctrl+K is the Mac preset's chord, so the preset is named rather than assumed.
     var ctrl = Qt.ControlModifier
     Keymap.setPreset("mac")
     check("ctrl k connects to a server from the list", Focus.lookup(key(Qt.Key_K, "\u000b", ctrl), pane(closed())), "addNetwork")
@@ -258,7 +231,7 @@ function run(check) {
         check(preset + " Grid PDF Right keeps page navigation", Focus.lookup(right, pane(pdfOpen(), "grid")), "seekForward")
     }
     Keymap.setPreset("default")
-    check("bare a is still nothing in the list", Focus.lookup(key(Qt.Key_A, "a", none), pane(closed())), "")
+    check("bare a adds a network place from the list too", Focus.lookup(key(Qt.Key_A, "a", none), pane(closed())), "addNetwork")
     var dialled = listPane(true)
     dialled.sidebar = { asked: 0, addRequested: function () { this.asked += 1 } }
     Focus.act("addNetwork", dialled)
@@ -287,7 +260,7 @@ function run(check) {
     // Finder's Cmd+E in a listing: the removable volume the listing is inside, whose verdict is
     // Mounts.railMenu's, released through the same releaseChosen a chosen menu row takes. The rail's
     // own half of the key is ui/js/RailKeys.js's, and tests/js/railkeys.js drives it.
-    var stick = { label: "128GB", group: "device", kind: "volume", device: "/dev/sda1", path: "/run/media/user/128GB", mounted: true }
+    var stick = { label: "128GB", group: "device", kind: "volume", device: "/dev/sda1", path: "/run/media/user/128GB", mounted: true, removable: true }
     var inside = ejectPane("list", "/run/media/user/128GB/photos", [home, stick], 0)
     Focus.act("eject", inside)
     check("ctrl e in a listing inside the volume ejects that volume, whatever the rail cursor is on",

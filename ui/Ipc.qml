@@ -45,7 +45,7 @@ QtObject {
         function selectedFill(): string { return String(Style.selectedFill) }
         function palette(): string {
             var c = Theme.color;
-            return [c.background, c.surface, c.foreground, c.muted, c.accent, c.error, c.symlink, c.executable].join(" ");
+            return [c.background, c.surface, c.foreground, c.muted, c.accent, c.error, c.symlink, c.executable, c.accentFrame].join(" ");
         }
         // The size running text really draws at, and a row name's own: the settings case pins both to the stop.
         function bodyPx(): int { return Theme.font.body }
@@ -88,6 +88,7 @@ QtObject {
         }
         function railCursor(): int { return root.pane.railCursor }
         function railCount(): int { return root.pane.railCount }
+        function railState(): string { return JSON.stringify({hidden: root.pane.railHidden, width: root.pane.sidebarWidth, inset: root.pane.railInset, pane: root.pane.width}) }
         function path(): string { return root.pane.path }
         function dualState(): string {
             return JSON.stringify({active: ViewState.state.view === "dual",
@@ -99,8 +100,8 @@ QtObject {
                 })})
         }
         function lastMessage(): string { return root.bar.transient_ }
-        function statusPrimary(): string { return root.bar.rightText() }
-        function statusColor(): string { return String(root.bar.rightColor()) }
+        function statusPrimary(): string { return root.bar.centreText() }
+        function statusColor(): string { return String(root.bar.centreColor()) }
         function statusSecondary(): string { return root.bar.secondaryText }
         function statusError(): bool { return root.bar.transientIsError }
         function statusDetail(): string { return root.bar.errorDetail }
@@ -112,21 +113,22 @@ QtObject {
                     cancelling: activity.cancelling, ownerPath: owner.path, ownerFocused: owner.paneFocused}
             }), errors: root.bar.errors.length, notice: root.bar.notice,
                 undoAvailable: root.bar.hasUndo,
-                transferCard: {visible: !!card && card.visible, cancelling: !!card && card.cancelling,
+                transferCard: {visible: !!card && card.visible, cancelling: !!card && card.cancelling, byteLine: card ? card.byteText : "",
                     rect: root.fleaWindow.rectOf(card), cancel: root.controlState("Cancel", card ? card.cancelItem : null)}})
         }
         function statusFooterState(): string {
+            // Every zone's x in the strip's own coordinates: the centre pair sits in a Row inside the middle slot, so its own x is relative to that Row and says nothing about zone order.
             function textState(item) {
-                return {text: item.text, visible: item.visible, x: item.x, width: item.width,
-                    implicitWidth: item.implicitWidth, truncated: item.truncated,
+                return {text: item.text, visible: item.visible, width: item.width, implicitWidth: item.implicitWidth,
+                    x: Math.round(item.mapToItem(root.bar.stripItem, 0, 0).x), truncated: item.truncated,
                     color: String(item.color), fontSize: item.font.pixelSize}
             }
             return JSON.stringify({path: root.bar.path, total: root.bar.total, selected: root.bar.selectionCount,
                 listingState: root.bar.listingState, filesystem: root.bar.fsText(), counts: root.bar.countText(),
                 frame: root.fleaWindow.rectOf(root.bar.stripItem), borderWidth: root.bar.stripItem.border.width,
-                slotWidth: root.bar.slotWidth, hintWidth: root.bar.hintWidth,
-                left: textState(root.bar.countsItem), right: textState(root.bar.primaryItem),
-                secondary: textState(root.bar.secondaryItem)})
+                zoneWidth: root.bar.zoneWidth, hintWidth: root.bar.hintWidth,
+                left: textState(root.bar.countsItem), centre: textState(root.bar.primaryItem),
+                secondary: textState(root.bar.secondaryItem), disk: textState(root.bar.diskItem), lane: {x: root.bar.centreItem.mapToItem(root.bar.stripItem, 0, 0).x, width: root.bar.centreItem.width}})
         }
         function selectionBandState(): string {
             var band = root.pane.selectionBand
@@ -303,8 +305,7 @@ QtObject {
             var row = root.settingsPanel ? root.settingsPanel.rowItemForId(id) : null
             if (!row || !row.isFavourite) return ""
             var item = part === "drag" ? row.favouriteItem.dragItem
-                     : part === "add" ? row.favouriteItem.actionItem(0)
-                     : part === "remove" ? row.favouriteItem.actionItem(1) : null
+                     : part === "remove" ? row.favouriteItem.removeItem : null
             return item && item.visible ? root.fleaWindow.centreOf(item) : ""
         }
         function uiSettings(): string { return JSON.stringify(ViewState.state) }
@@ -324,7 +325,7 @@ QtObject {
                 if (!row) return {index: index, missing: true}
                 var detail = row.detailItem
                 return {index: index, label: entry.label, kind: entry.kind, group: entry.group,
-                    size: entry.size, detail: detail.text, detailColor: String(detail.color),
+                    size: entry.size, detail: detail.text, detailColor: String(detail.color), labelWidth: Math.round(row.labelItem.width), labelNeeds: Math.round(row.labelItem.implicitWidth),
                     fontSize: detail.font.pixelSize, tabular: detail.font.features.tnum === 1,
                     rect: box(row), detailRect: box(detail),
                     indicatorRect: box(row.indicatorSlot), indicatorVisible: row.indicatorVisible}
@@ -395,10 +396,9 @@ QtObject {
         function previewOpen(): bool { return root.pane.preview.active }
         function previewKind(): string { return root.pane.preview.kind }
         function previewState(): string { return root.pane.preview.status }
-        function previewPosition(): int { return root.pane.preview.position }
-        function previewDuration(): int { return root.pane.preview.duration }
+        function previewPosition(): int { return root.pane.preview.position } function previewDuration(): int { return root.pane.preview.duration }
         // Fix round 1: what the strip actually draws, not a re-derived guess at its visible: expression.
-        function previewStripVisible(): bool { return root.pane.preview.stripVisible }
+        function previewStrip(): string { return JSON.stringify({ visible: root.pane.preview.stripVisible, muted: root.pane.preview.muted, mute: root.fleaWindow.centreOf(root.pane.preview.muteMark) }) }
         // A 0.25 zoom step and an expand flag are not legible off a screenshot, so the seam is the
         // only honest answer for either; "" means no PDF is loaded, which is not zoom 1 or false.
         function previewPdfPage(): int { var p = root.pane.preview.pdfItem; return p ? p.page : -1 }
@@ -652,7 +652,7 @@ QtObject {
         function pathCentre(): string { return root.fleaWindow.centreOf(root.chrome.pathArea) }
         // The elision marker, or "" while the whole path fits: the one spot the crumbs slide under.
         function elisionCentre(): string {
-            return root.chrome.elisionMarker.visible ? root.fleaWindow.centreOf(root.chrome.elisionMarker) : ""
+            return root.chrome.elisionMarker ? root.fleaWindow.centreOf(root.chrome.elisionMarker) : ""
         }
         // Issue 45's segments, reached the way tabCentre reaches a tab: a driven press on a real
         // crumb is the only thing that can tell a bound TapHandler from an unbound one.

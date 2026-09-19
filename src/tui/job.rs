@@ -104,7 +104,7 @@ mod tests {
 
     #[test]
     fn preview_worker_reads_held_source_in_readonly_sandbox() {
-        assert!(sandbox::available(), "preview worker test requires bwrap and prlimit");
+        if crate::backend::sandboxprobe::skipped() { return; }
         let root = TestDir::new("tui-preview-held");
         let path = root.file("source.txt", "held preview source\n");
         let job = Job::start(path.clone(), vec![
@@ -118,7 +118,7 @@ mod tests {
 
     #[test]
     fn missing_preview_source_reports_plain_worker_error() {
-        assert!(sandbox::available(), "preview worker test requires bwrap and prlimit");
+        if crate::backend::sandboxprobe::skipped() { return; }
         let root = TestDir::new("tui-preview-error");
         let job = Job::start(root.join("missing.pdf"), vec!["/usr/bin/pdfinfo".into(), "{input}".into()]);
         let result = job.result.recv_timeout(Duration::from_secs(5)).expect("preview worker did not finish");

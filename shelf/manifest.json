@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.thisisgm.flea-shelf",
+  "name": "Flea shelf",
+  "version": "0.3.0",
+  "author": "GM",
+  "license": "MIT",
+  "description": "A drop shelf on the Omarchy bar: files gathered from anywhere, held in one pile, taken out together.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "Flea shelf",
+    "description": "Hold files from anywhere in one pile and drag them out together.",
+    "category": "Files",
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "refreshIntervalSec": 5,
+      "fleaCommand": "flea"
+    },
+    "schema": [
+      {
+        "key": "refreshIntervalSec",
+        "type": "integer",
+        "label": "Re-read the pile every (seconds)",
+        "defaultValue": 5,
+        "min": 1,
+        "max": 120,
+        "step": 1
+      },
+      {
+        "key": "fleaCommand",
+        "type": "string",
+        "label": "The flea command that owns the pile",
+        "defaultValue": "flea"
+      }
+    ]
+  }
+}

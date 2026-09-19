@@ -32,6 +32,10 @@ pub mod owner;
 pub mod peek;
 pub mod proto;
 mod providers;
+// Directive 71: the LocalSend row's peers and its send, driven against localsend-cli on a pty.
+pub mod localsend;
+// The same CLI's own drawing, read back into rows and sentences.
+pub mod localsendtext;
 pub mod permissions;
 pub mod picker;
 pub mod menu_actions;
@@ -42,6 +46,8 @@ pub mod trashdelete;
 pub mod trashmanifest;
 pub mod rows;
 pub mod run;
+pub mod shelfdrop;
+pub mod timing;
 pub mod md5;
 pub mod thumbspec;
 pub mod thumbargv;
@@ -56,6 +62,7 @@ pub mod convert;
 pub mod copyfile;
 pub mod copynode;
 pub mod ops;
+pub mod opscancel;
 pub mod opsdispatch;
 pub mod opsreq;
 mod mountinfo;

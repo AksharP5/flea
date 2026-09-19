@@ -75,6 +75,18 @@ function pair(label, value) {
     return { label: label, value: value }
 }
 
+// HANDOFF rule 19: a label with no value is not drawn. Every surface here already refuses to invent
+// a value, so the row goes rather than printing a label with nothing after it.
+function filled(rows) {
+    var out = []
+    for (var i = 0; i < rows.length; i++) {
+        if (rows[i].value !== undefined && rows[i].value !== null && String(rows[i].value).length > 0) {
+            out.push(rows[i])
+        }
+    }
+    return out
+}
+
 // A count the backend had to stop early is a floor, marked the way a partial directory size is.
 function lineCount(meta) {
     // A file the backend could not open has no count at all, and its zero would print as "Lines: 0".
@@ -147,40 +159,39 @@ function archiveMore(meta, shown) {
 }
 
 // The rows the canvas draws for each state, in its own order, with the labels it uses verbatim.
-function facts(st, row, meta, kindName, nowMs, extra) {
+function facts(st, row, meta, kindName, extra) {
+    return filled(stateRows(st, row, meta, kindName, extra))
+}
+
+function stateRows(st, row, meta, kindName, extra) {
+    // A caller's own value wins; the probe fills only the two fields it did not supply.
     var e = extra || {}
     if (st === VIDEO || st === AUDIO) {
         var m = mediaExtra(meta)
-        e = { duration: e.duration || m.duration, rate: e.rate || m.rate,
-              pages: e.pages, entries: e.entries, unpacked: e.unpacked, owner: e.owner }
-    }
-    if (st === ARCHIVE) {
+        e = Object.assign({}, e, { duration: e.duration || m.duration, rate: e.rate || m.rate })
+    } else if (st === ARCHIVE) {
         var a = archiveExtra(meta)
-        e = { entries: e.entries || a.entries, unpacked: e.unpacked || a.unpacked,
-              duration: e.duration, rate: e.rate, pages: e.pages, owner: e.owner }
+        e = Object.assign({}, e, { entries: e.entries || a.entries, unpacked: e.unpacked || a.unpacked })
     }
+    // The three rows every ordinary settled kind opens with, so a second selection lands each answer on the line the first one used; Preview board rule 1.
+    var head = [pair("Kind", kindName), pair("Size", Format.size(row.s)),
+                pair("Modified", Format.date(row.m))]
     switch (st) {
     case IMAGE:
-        return [pair("Kind", kindName), pair("Size", Format.size(row.s)),
-                pair("Pixels", pixels(meta)), pair("Modified", Format.date(row.m, nowMs))]
+        return head.concat([pair("Pixels", pixels(meta))])
     case VIDEO:
-        return [pair("Kind", kindName), pair("Duration", e.duration || ""),
-                pair("Pixels", pixels(meta)), pair("Size", Format.size(row.s))]
+        return head.concat([pair("Duration", e.duration || ""), pair("Pixels", pixels(meta))])
     case AUDIO:
-        return [pair("Kind", kindName), pair("Duration", e.duration || ""),
-                pair("Rate", e.rate || ""), pair("Size", Format.size(row.s))]
+        return head.concat([pair("Duration", e.duration || ""), pair("Rate", e.rate || "")])
     case PDF:
-        return [pair("Kind", kindName), pair("Pages", e.pages || ""),
-                pair("Size", Format.size(row.s)), pair("Modified", Format.date(row.m, nowMs))]
+        return head.concat([pair("Pages", e.pages || "")])
     case TEXT:
-        return [pair("Kind", kindName), pair("Size", Format.size(row.s)),
-                pair("Lines", lineCount(meta)), pair("Modified", Format.date(row.m, nowMs))]
+        return head.concat([pair("Lines", lineCount(meta))])
+    // Mode stays: columns view has no permission column, so dropping it here would remove it.
     case CODE:
-        return [pair("Kind", kindName), pair("Size", Format.size(row.s)),
-                pair("Lines", lineCount(meta)), pair("Mode", Format.permissions(row.p))]
+        return head.concat([pair("Lines", lineCount(meta)), pair("Mode", Format.permissions(row.p))])
     case ARCHIVE:
-        return [pair("Kind", kindName), pair("Entries", e.entries || ""),
-                pair("Packed", Format.size(row.s)), pair("Unpacked", e.unpacked || "")]
+        return head.concat([pair("Entries", archiveFact(e))])
     case SYMLINK:
         return [pair("Kind", "Symbolic link"), pair("Target", meta ? meta.target : ""),
                 pair("Points at", meta && meta.targetDir ? "Folder" : "File"),
@@ -192,15 +203,20 @@ function facts(st, row, meta, kindName, nowMs, extra) {
                 pair("Mode", Format.permissions(row.p)), pair("Owner", e.owner || "")]
     }
     // Unsupported, which is also where a kind whose facts are a later plan lands until it arrives.
-    return [pair("Kind", kindName), pair("Size", Format.size(row.s)),
-            pair("Modified", Format.date(row.m, nowMs)), pair("Mode", Format.permissions(row.p))]
+    return head.concat([pair("Mode", Format.permissions(row.p))])
+}
+
+// The archive's one kind fact, the board's "3, 240.8 kB out": Size already says what it weighs packed.
+function archiveFact(e) {
+    if (!e.entries) return ""
+    return e.unpacked ? e.entries + ", " + e.unpacked + " out" : String(e.entries)
 }
 
 // The multi-selection summary, which is a summary and never a collage: counts and a combined size.
 // selectionCount is the true size of the selection; rows is only what the held window actually
 // carries. A selection wider than that window cannot be summed without a metadata sweep, which this
 // codebase refuses everywhere, so the numbers become floors and say so rather than undercounting.
-function multiFacts(rows, nowMs, selectionCount) {
+function multiFacts(rows, selectionCount) {
     var groups = kindGroups(rows)
     var bytes = 0
     var newest = 0
@@ -217,9 +233,9 @@ function multiFacts(rows, nowMs, selectionCount) {
         if (oldest === 0 || r.m < oldest) { oldest = r.m }
     }
     var floor = (selectionCount !== undefined && selectionCount > counted) ? "> " : ""
-    return [pair("Kinds", kindSummary(groups, floor)), pair("Combined", floor + Format.size(bytes)),
-            pair("Newest", newest > 0 ? floor + Format.date(newest, nowMs) : ""),
-            pair("Oldest", oldest > 0 ? floor + Format.date(oldest, nowMs) : "")]
+    return filled([pair("Kinds", kindSummary(groups, floor)), pair("Combined", floor + Format.size(bytes)),
+            pair("Newest", newest > 0 ? floor + Format.date(newest) : ""),
+            pair("Oldest", oldest > 0 ? floor + Format.date(oldest) : "")])
 }
 
 // The distinct kinds in a selection, in the order they were met, each carrying the mark its own

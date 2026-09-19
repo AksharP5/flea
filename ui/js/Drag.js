@@ -85,6 +85,20 @@ function pathsFromUrls(urls) {
 // while still looking like it worked.
 var ROWS_MIME = "application/x-flea-rows"
 
+// DragOut rule 4: Flea is the one named receiver of a shelf drag. The payload is the single-use
+// token the shelf minted and the intent it fixed at the lift, in that order, one per line. The token
+// is the authority: the backend reads the entries and the intent out of its own record, and this
+// second line is only so the receiver can say the right word before the drop lands.
+var SHELF_MIME = "application/x-flea-shelf"
+
+function shelfToken(payload) {
+    return String(payload || "").split("\n")[0]
+}
+
+function shelfCopying(payload) {
+    return String(payload || "").split("\n")[1] === "copy"
+}
+
 // A value unique to this running Flea. ROWS_MIME names the application, and two Flea windows are two
 // processes: a drag from the other one carries row indices that mean nothing in this listing, so the
 // instance has to be identifiable on its own or the receiver takes the internal path against a
@@ -208,9 +222,15 @@ function canDropInto(marker, urls, dest) {
 // The transfer for a drop that resolves by path. verbFor decides move against copy the same way a
 // row drop does, from the marker's own device against the destination's; a drop from anywhere but
 // this window copies, so no source deletes a file on the strength of a drop it did not deliver.
-function dropInto(pane, marker, urls, dest, destDev) {
+function dropInto(pane, marker, urls, dest, destDev, shelf) {
     if (!canDropInto(marker, urls, dest)) {
         return false
+    }
+    // Rule 4: a shelf drag is redeemed rather than re-read as a list of URIs, because a fallback to
+    // a URI copy after the shelf promised a move is exactly the silent wrong answer it forbids.
+    if (shelfToken(shelf).length > 0) {
+        pane.backend.send({ c: "transfer", op: "", paths: [], dest: dest, shelf: shelfToken(shelf) })
+        return true
     }
     var verb = verbFor(isOwnDrag(marker), markerCopying(marker), markerDev(marker), destDev)
     pane.backend.send({ c: "transfer", op: verb, paths: pathsFromUrls(urls), dest: dest })
@@ -248,17 +268,28 @@ function reachNote(canLeave) {
 }
 
 // Sample marker: "<instance>\n1,3\nmove\n/source\n42"; feedback never becomes destination row indices.
-function feedbackFor(marker, urls) {
+function feedbackFor(marker, urls, shelf) {
     var fields = String(marker).split("\n")
     var own = fields[0] === INSTANCE
     var paths = pathsFromUrls(urls)
+    // Rule 4: the shelf fixed its verb at the lift, so Flea says that word rather than deriving one
+    // from a marker the shelf never sent, which would read as a copy for every move.
+    if (shelfToken(shelf).length > 0) {
+        return { own: true, copy: shelfCopying(shelf), dev: 0, fixed: shelfCopying(shelf),
+                 count: paths.length, canLeave: paths.length > 0 }
+    }
     return { own: own, copy: fields[2] === "copy", dev: Number(fields[4]) || 0,
              count: own && fields[1] ? fields[1].split(",").length : paths.length,
              canLeave: paths.length > 0 }
 }
 
+function copyingFor(feedback, destDev) {
+    if (!feedback) return true
+    return feedback.fixed !== undefined ? feedback.fixed === true
+        : verbFor(feedback.own, feedback.copy, feedback.dev, destDev) === "copy"
+}
+
 function feedbackLine(feedback, name, destDev) {
     if (!feedback || feedback.count === 0) return ""
-    return line(feedback.count, name, verbFor(feedback.own, feedback.copy, feedback.dev, destDev) === "copy")
-        + reachNote(feedback.canLeave)
+    return line(feedback.count, name, copyingFor(feedback, destDev)) + reachNote(feedback.canLeave)
 }

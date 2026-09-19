@@ -49,7 +49,7 @@ function run(check) {
     check("a re-sort clears the selection, whose indices now name other files", reset.cleared, 1)
     check("a re-sort puts the cursor back on the first row", reset.cursor, 0)
 
-    // Size and Date Modified are orders the backend produces, so a click records them the way it
+    // Size and Modified are orders the backend produces, so a click records them the way it
     // records name: the mark, the caches, the selection and the cursor all move on the click.
     var size = pane("name", true)
     Sort.column(size, "size")
@@ -68,9 +68,9 @@ function run(check) {
 
     var date = pane("size", true)
     Sort.column(date, "mtime")
-    check("a click on Date Modified asks for mtime ascending, not the reverse it would inherit",
+    check("a click on Modified asks for mtime ascending, not the reverse it would inherit",
           date.sent.join(","), "sort mtime asc,window 0 200")
-    check("and the mark moves onto Date Modified", date.backend.sortBy + ":" + date.backend.sortDesc, "mtime:false")
+    check("and the mark moves onto Modified", date.backend.sortBy + ":" + date.backend.sortDesc, "mtime:false")
 
     // Mode is a label, not an order, so it cannot clear selection or send a request.
     var mode = pane("name", true)

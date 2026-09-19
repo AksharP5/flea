@@ -31,8 +31,13 @@ Item {
         ? (root.placesState.trashCount === true && root.modelData.count > 0 ? String(root.modelData.count) : "")
         : root.modelData.group === "device" && root.placesState.driveSize === true && root.modelData.size !== null
             ? Format.size(root.modelData.size) : ""
+    // PhoneMark: a phone is a volume, so its row carries the same mount-state square a removable
+    // disk and a share carry, in the same fixed slot.
     readonly property bool showsDot: (root.modelData.group === "network" && root.modelData.kind !== "dropbox")
-        || (root.modelData.group === "device" && root.modelData.kind === "volume")
+        || (root.modelData.group === "device"
+            && (root.modelData.kind === "volume" || root.modelData.kind === "phone"))
+    // The Trash row draws its count where every other row draws its indicator, and never both.
+    readonly property bool countIsIndicator: root.modelData.kind === "trash" && root.detail.length > 0
     // Small and fixed: a status dot is not part of the type or icon scale.
     readonly property int dotSize: 6
     // The canvas's own value for a bookmark nothing has mounted yet.
@@ -91,17 +96,24 @@ Item {
     }
 
     Text {
+        id: label
         visible: !root.renaming
         anchors.left: mark.right
         anchors.leftMargin: Style.spacing.rowGap
-        anchors.right: detailText.left
-        anchors.rightMargin: root.detail.length > 0 || dot.width > 0 ? Style.spacing.rowGap : 0
+        // The numbers column bounds a label only on a row that draws a number; a row with no detail
+        // runs its label to the 12 px slot itself, whose own 3 px of air either side of the dot is
+        // the gap. Measured: a phone's label needs 126 px and the numbers column left it 110.
+        anchors.right: root.detail.length > 0 ? detailText.left : dot.left
+        anchors.rightMargin: root.detail.length > 0 ? Style.spacing.rowGap : 0
         anchors.verticalCenter: parent.verticalCenter
         text: root.modelData.label
         color: root.modelData.error ? Theme.color.error : Theme.color.foreground
         font.family: Theme.font.family
         font.pixelSize: Theme.font.body
-        elide: Text.ElideRight
+        // SettingsRest rule 5: a share reads "minipc · nvme-share" and the tail is the half that names it, so a label too long for the rail loses its middle rather than the end that identifies it.
+        // Board rule 5: a rail label elides from the head, because the tail is the name that tells
+        // two places apart; the middle-elide this carried was the overseer's, and GM overruled it.
+        elide: Text.ElideLeft
         textFormat: Text.PlainText
     }
 
@@ -113,8 +125,8 @@ Item {
         visible: root.renaming
         anchors.left: mark.right
         anchors.leftMargin: Style.spacing.rowGap
-        anchors.right: detailText.left
-        anchors.rightMargin: root.detail.length > 0 || dot.width > 0 ? Style.spacing.rowGap : 0
+        anchors.right: root.detail.length > 0 ? detailText.left : dot.left
+        anchors.rightMargin: root.detail.length > 0 ? Style.spacing.rowGap : 0
         anchors.verticalCenter: parent.verticalCenter
         height: Theme.railRowHeight - 2 * Theme.spacing.rowPaddingY
         name: root.modelData.label
@@ -128,12 +140,13 @@ Item {
     // The rail's real trailing indicator slot, so ui/Ipc.qml measures this dot instead of recomputing it.
     readonly property Item indicatorSlot: dot
     readonly property Item detailItem: detailText
+    readonly property Item labelItem: label
     readonly property bool indicatorVisible: root.showsDot
 
     Text {
         id: detailText
         anchors.right: dot.left
-        anchors.rightMargin: root.detail.length > 0 && dot.width > 0 ? Style.spacing.rowGap : 0
+        anchors.rightMargin: dot.width > 0 ? Style.spacing.rowGap : 0
         anchors.verticalCenter: parent.verticalCenter
         text: root.detail
         color: Theme.color.muted
@@ -151,8 +164,11 @@ Item {
         anchors.right: parent.right
         anchors.rightMargin: Style.spacing.rowPaddingX
         anchors.verticalCenter: parent.verticalCenter
-        // Device capacities share one right edge even when the internal disk has no mount indicator.
-        width: root.showsDot || root.detail.length > 0 ? Theme.font.caption : 0
+        // RailDetails rules 1 and 3 with their 2026-09-14 amendment: a drive size is a number, so
+        // every device row ends its size on one x with this slot reserved after it, dot or no dot;
+        // the Trash count is an indicator rather than a size, so it sits in the slot itself, on the
+        // same edge as the mount dots and the NETWORK plus.
+        width: root.countIsIndicator ? 0 : (root.showsDot || root.detail.length > 0 ? Theme.font.caption : 0)
         height: Theme.font.caption
 
         // Green once gio mount -l lists it, muted at half strength while it is only a bookmark waiting

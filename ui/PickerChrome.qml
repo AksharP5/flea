@@ -24,8 +24,10 @@ Item {
 
     implicitHeight: ask.height + where.height
 
-    // The board's framed chrome control: a hairline square around a mark, or a hairline box around
-    // a word. Only the accent frame, the recessed ground and which of the two it holds ever differ.
+    // The picker's chrome control: a mark, or a word. GM's 2026-09-11 ruling moved its frame off the
+    // divider's ink, which ui/picker.qml's own comment says the board drew both in: a frame and a
+    // rule in one ink are one line, and the controls dissolved into the chrome as the scale dropped.
+    // The frame carries the role, muted or accent, and the wash inside it carries the state.
     component Framed: Item {
         id: control
 
@@ -33,7 +35,6 @@ Item {
         property string label: ""
         property string name: control.label
         property bool primary: false
-        property bool recessed: false
         property bool available: true
         enabled: available
         activeFocusOnTab: available
@@ -45,8 +46,7 @@ Item {
 
         signal pressed()
 
-        readonly property color ink: !control.available ? Theme.color.muted
-            : control.primary ? Theme.color.accent : Theme.color.foreground
+        readonly property color ink: control.available ? Theme.color.foreground : Theme.color.muted
 
         implicitWidth: control.glyph.length > 0 ? Theme.hitMin : caption.implicitWidth + 2 * Theme.spacing.gap
         implicitHeight: Theme.hitMin
@@ -61,11 +61,25 @@ Item {
             NumberAnimation { duration: 150; easing.type: Easing.OutQuad }
         }
 
+        // Muted is the resting frame of a neutral control, the role ThemeRoles.html gives an inactive
+        // one, and an unavailable control stays there: a frame may recede only when the control is
+        // inert. ui/DialogButton.qml has drawn its own frames this way all along.
+        readonly property color frame: control.available && control.primary
+            ? Theme.color.accentFrame : Theme.color.muted
+
+        // The primary control carries its wash at rest, because it is the one action the request is
+        // asking for; every other control earns one under the pointer or the keyboard.
+        readonly property real wash: !control.available ? 0
+            : (control.activeFocus || press.pressed || control.primary) ? Theme.washActive
+            : hover.hovered ? Theme.washHover : 0
+        // The wash carries the role now that the label does not, so only a primary's is accent.
+        readonly property color washInk: control.primary ? Theme.color.accent : Theme.color.foreground
+
         Rectangle {
             anchors.fill: parent
-            color: control.recessed ? Theme.color.surface : "transparent"
+            color: Qt.alpha(control.washInk, control.wash)
             border.width: Theme.spacing.hairline
-            border.color: control.available && (control.primary || control.activeFocus) ? Theme.color.accent : root.edge
+            border.color: control.frame
         }
 
         Flea.Glyph {
@@ -88,7 +102,10 @@ Item {
             textFormat: Text.PlainText
         }
 
-        HoverHandler { cursorShape: control.available ? Qt.PointingHandCursor : Qt.ArrowCursor }
+        HoverHandler {
+            id: hover
+            cursorShape: control.available ? Qt.PointingHandCursor : Qt.ArrowCursor
+        }
 
         TapHandler {
             id: press
@@ -265,8 +282,7 @@ Item {
                         primary: modelData.index === root.picker.filterIndex
                         available: !root.picker.backendUnavailable && !root.picker.submitting
                         onActiveFocusChanged: if (activeFocus) types.reveal(this)
-                        // The board sets the active chip on the recessed plane, so it reads as pressed in.
-                        recessed: modelData.index === root.picker.filterIndex
+                        // The chosen chip is the picker's own primary: a foreground label in an accent frame.
                         onPressed: root.chipChosen(modelData.index)
                     }
                 }

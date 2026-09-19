@@ -1,5 +1,6 @@
 .pragma library
 
+.import "Format.js" as Format
 .import "Match.js" as Match
 .import "Thumbs.js" as Thumbs
 
@@ -44,26 +45,25 @@ function viewOf(list, row) {
     return list === null ? row : list.indexOf(row)
 }
 
-// The canvas's own line under the last row it left standing, States.dc.html "Filter active".
-function note(list, loaded, query) {
+// Issue 92, nixfred: a query matching nothing leaves the cursor on a row the filter no longer draws.
+function cursorShown(pane) { return viewOf(pane.shown, pane.cursorIndex) >= 0 }
+
+// The strip's own sentence, SearchFilter rules 1 and 2: what the filter kept, out of the rows it
+// could test, and the directory those rows are a window on. The scope is the half that must not be
+// dropped, because zero matches among 350 loaded rows is not zero matches in a 104,812-file
+// directory; the tail goes when the window is the whole listing, which is nothing left to say.
+function summary(list, loaded, total) {
     if (list === null) {
         return ""
     }
-    if (list.length === 0) {
-        return "Nothing matches " + query
-    }
-    var dropped = loaded - list.length
-    if (dropped === 0) {
-        return ""
-    }
-    return dropped + (dropped === 1 ? " row" : " rows") + " hidden by the filter"
+    var head = list.length + " of " + loaded + " shown"
+    return total > loaded ? head + " · of " + Format.count(total) + " in this folder" : head
 }
 
-// The pane holds a window around the viewport, not the directory, so on a listing bigger than that
-// window the filter has only seen the rows it holds and the strip says which ones. Empty when the
-// window is the whole listing, which is the OEM rule of saying nothing when there is nothing to say.
-function scope(loaded, total) {
-    return total > loaded ? "in the " + loaded + " rows loaded" : ""
+// States' no-match tile: the pane names the query back and says how many rows it tested, because
+// the query is up in a strip the reader may have looked away from.
+function noMatch(total) {
+    return total === 1 ? "1 row here, and not it" : Format.count(total) + " rows here, none of them"
 }
 
 // The rows drawn between two ends, which is not the range between them: a plain index range would
@@ -227,54 +227,6 @@ function clampCursor(pane, first, last) {
     var to = Math.max(first, Math.min(last, was))
     if (to !== was) {
         pane.cursorIndex = at(pane.shown, to)
-    }
-}
-
-// Ctrl+A takes what is drawn, never what is listed: under a filter that is the matches alone.
-function selectAll(pane) {
-    if (pane.shown === null) {
-        pane.selection.all(pane.total)
-        return
-    }
-    pane.selection.clear()
-    for (var i = 0; i < pane.shown.length; i++) {
-        pane.selection.toggle(pane.shown[i])
-    }
-}
-
-// Shift+J and Shift+K, the whole gesture: the cursor moves through what is drawn and the selection
-// follows it. corner: the anchor only re-latches to the cursor once the selection is empty, so a
-// plain j/k move never has to special-case a shift+j/k chain already in progress.
-function extend(pane, delta) {
-    if (pane.selection.count() === 0) {
-        pane.selectionAnchor = pane.cursorIndex
-    }
-    moveCursor(pane, delta)
-    extendTo(pane, pane.selectionAnchor)
-    pane.selectionVersion += 1
-}
-
-// Shift+click, the absolute twin of extend() above: the cursor lands on the clicked row and the
-// selection covers the drawn rows between it and the anchor the gesture started from.
-function extendToRow(pane, index) {
-    if (pane.selection.count() === 0) {
-        pane.selectionAnchor = pane.cursorIndex
-    }
-    setCursor(pane, index)
-    extendTo(pane, pane.selectionAnchor)
-    pane.selectionVersion += 1
-}
-
-// The rows drawn between the cursor and the anchor, which extend() above is the only caller of.
-function extendTo(pane, anchor) {
-    if (pane.shown === null) {
-        pane.selection.extendTo(pane.cursorIndex, anchor)
-        return
-    }
-    pane.selection.clear()
-    var range = between(pane.shown, pane.cursorIndex, anchor)
-    for (var i = 0; i < range.length; i++) {
-        pane.selection.toggle(range[i])
     }
 }
 

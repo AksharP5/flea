@@ -23,9 +23,11 @@ Item {
     visible: root.up
     height: root.up ? implicitHeight : 0
 
+    // SearchFilter rule 4: the funnel sits on the pane's own ground, where the magnifier sits on the
+    // raised chrome, because a filter is about the listing under it and a search is not about here.
     Rectangle {
         anchors.fill: parent
-        color: Theme.color.surface
+        color: Theme.color.background
     }
 
     Rectangle {
@@ -65,6 +67,7 @@ Item {
     // The caret stands only while the query line has the keyboard: once enter hands it back to the
     // list, the filter is standing rather than being typed, and the strip has to read that way.
     Rectangle {
+        id: caret
         visible: root.pane.filterTyping
         anchors.left: queryText.right
         anchors.leftMargin: Theme.spacing.hairline
@@ -74,13 +77,29 @@ Item {
         color: Theme.color.accent
     }
 
-    // The pane holds a window around the viewport, not the directory, so on a listing bigger than
-    // that window this says which rows the filter actually saw. Empty otherwise, and it draws nothing.
+    // SearchFilter rule 1: the strip owns what it created, so the count and its scope read here and
+    // no sentence is left standing in the listing, where it would be a row that is not a file.
     Text {
+        id: summaryText
+        anchors.left: caret.right
+        anchors.leftMargin: Theme.spacing.gap
+        anchors.right: wayOut.left
+        anchors.rightMargin: Theme.spacing.gap
+        anchors.verticalCenter: parent.verticalCenter
+        elide: Text.ElideRight
+        text: Filter.summary(root.pane.shown, root.pane.rows.length, root.pane.total)
+        color: Theme.color.muted
+        font.family: Theme.font.family
+        font.pixelSize: Theme.font.caption
+        textFormat: Text.PlainText
+    }
+
+    Text {
+        id: wayOut
         anchors.right: parent.right
         anchors.rightMargin: Theme.spacing.rowPaddingX
         anchors.verticalCenter: parent.verticalCenter
-        text: Filter.scope(root.pane.rows.length, root.pane.total)
+        text: "esc clears"
         color: Theme.color.muted
         font.family: Theme.font.family
         font.pixelSize: Theme.font.caption

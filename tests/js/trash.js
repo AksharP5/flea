@@ -10,6 +10,8 @@ function pane() {
     var p = {
         trashArmedAt: 0,
         cursorIndex: 3,
+        // The filter's own list, null while nothing is filtered, which is what the pane always carries.
+        shown: null,
         trashedIdx: [],
         said: "",
         selectedIndices: function () { return [] }

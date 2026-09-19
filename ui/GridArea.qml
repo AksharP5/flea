@@ -128,22 +128,11 @@ GridView {
         }
     }
 
+    // One tile row of bare ground at the end, the same inset ui/List.qml keeps and for the same two
+    // reasons: a band has to start somewhere and the background menu has to be raisable at the end.
     footer: Item {
         width: root.width
-        height: note.text.length > 0 ? Theme.chromeHeight : 0
-        Text {
-            id: note
-            anchors.fill: parent
-            anchors.leftMargin: Theme.spacing.rowPaddingX
-            anchors.rightMargin: Theme.spacing.rowPaddingX
-            verticalAlignment: Text.AlignVCenter
-            text: Filter.note(root.pane.shown, root.pane.rows.length, root.pane.filterQuery)
-            color: Theme.color.muted
-            font.family: Theme.font.family
-            font.pixelSize: Theme.font.caption
-            elide: Text.ElideRight
-            textFormat: Text.PlainText
-        }
+        height: Theme.chromeHeight
     }
 
     // The space past the last tile is the directory's own, the same rule ui/List.qml carries: a

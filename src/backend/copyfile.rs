@@ -8,12 +8,16 @@ use std::sync::atomic::{AtomicBool, Ordering};
 const CHUNK: usize = 256 * 1024;
 // rename(2) sets EXDEV when the two paths are on different filesystems, which is the one failure that means "copy instead".
 const EXDEV: i32 = 18;
-use crate::oflags::O_NOFOLLOW;
+use crate::oflags::{O_DIRECTORY, O_NOFOLLOW};
+use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
+use std::os::unix::io::AsRawFd;
 
 // What a copy reports as it runs; a directory has no total without a sweep, so it reports 0 and renders indeterminate.
 pub struct Progress<'a> {
     pub cancel: &'a AtomicBool,
     pub on_bytes: &'a mut dyn FnMut(u64, u64),
+    // Some once the copy is inside a directory tree, holding the bytes its earlier files already copied, so a tree reports one running count and no total: the size of a tree is not known without a sweep.
+    pub tree: Option<u64>,
     // The destination a copy created and then failed to finish for a reason other than a cancel. It
     // stays on disk, because removing it would destroy data on a transient error, and the caller
     // journals it so undo removes it as one step. A cancel never sets it: the cancel path removes.
@@ -24,17 +28,40 @@ pub fn cancelled(p: &Progress) -> bool {
     p.cancel.load(Ordering::Relaxed)
 }
 
+// A path the filesystem is asked about, beside the path an error names. Inside a tree the first is a
+// held descriptor's own /proc entry, which is the one parent a rename cannot reach.
+#[derive(Clone, Copy)]
+pub struct At<'a> {
+    pub at: &'a Path,
+    pub named: &'a Path,
+}
+
+fn here(path: &Path) -> At<'_> {
+    At { at: path, named: path }
+}
+
 // Copies one regular file, creating the destination exclusively so an existing file is never destroyed.
+// Test only: copy_any routes the product's copies, and copynode's fifo test is the last caller by path.
+#[cfg(test)]
 pub fn copy_file(src: &Path, dst: &Path, total: u64, p: &mut Progress) -> Result<(), FleaError> {
+    copy_file_at(here(src), here(dst), total, p)
+}
+
+fn copy_file_at(src: At, dst: At, total: u64, p: &mut Progress) -> Result<(), FleaError> {
     // Anything reaching here that is not a regular file was swapped in after copy_any's stat:
     // O_NOFOLLOW refuses a symlink, and regfile's non-blocking open and fstat refuse every other kind.
-    let mut r = crate::backend::regfile::open_if_regular(src, O_NOFOLLOW)
-        .map_err(|e| from_io("copy", &src.to_string_lossy(), &e))?;
+    let mut r = crate::backend::regfile::open_if_regular(src.at, O_NOFOLLOW)
+        .map_err(|e| from_io("copy", &src.named.to_string_lossy(), &e))?;
+    // Issue 109: a create takes the umask, so a 0600 source landed 0644 and the copy published what
+    // the original kept private. The source's own bits are carried by the create itself, so there is
+    // no window where the bytes are on disk under a wider mode, narrowed by the umask and never widened.
+    let mode = r.metadata().map(|m| keep_mode(m.permissions().mode())).unwrap_or(0o600);
     let mut w = std::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
-        .open(dst)
-        .map_err(|e| from_io("copy", &dst.to_string_lossy(), &e))?;
+        .mode(mode)
+        .open(dst.at)
+        .map_err(|e| from_io("copy", &dst.named.to_string_lossy(), &e))?;
     // From here the destination exists, and every failure below leaves it for the caller to journal.
     let mut buf = vec![0u8; CHUNK];
     let mut done: u64 = 0;
@@ -42,26 +69,56 @@ pub fn copy_file(src: &Path, dst: &Path, total: u64, p: &mut Progress) -> Result
         if cancelled(p) {
             // The partial file goes with the cancel: a half-written destination is not a result anyone asked for.
             drop(w);
-            let _ = std::fs::remove_file(dst);
-            return Err(cancel_err(dst));
+            let _ = std::fs::remove_file(dst.at);
+            return Err(cancel_err(dst.named));
         }
         let n = match r.read(&mut buf) {
             Ok(n) => n,
-            Err(e) => return Err(left_partial(p, dst, from_io("copy", &src.to_string_lossy(), &e))),
+            Err(e) => return Err(left_partial(p, dst.named, from_io("copy", &src.named.to_string_lossy(), &e))),
         };
         if n == 0 {
             break;
         }
         if let Err(e) = w.write_all(&buf[..n]) {
-            return Err(left_partial(p, dst, from_io("copy", &dst.to_string_lossy(), &e)));
+            return Err(left_partial(p, dst.named, from_io("copy", &dst.named.to_string_lossy(), &e)));
         }
         done += n as u64;
-        (p.on_bytes)(done, total);
+        let (reported, against) = match p.tree {
+            Some(carried) => (carried + done, 0),
+            None => (done, total),
+        };
+        (p.on_bytes)(reported, against);
     }
     if let Err(e) = w.flush() {
-        return Err(left_partial(p, dst, from_io("copy", &dst.to_string_lossy(), &e)));
+        return Err(left_partial(p, dst.named, from_io("copy", &dst.named.to_string_lossy(), &e)));
+    }
+    if let Some(carried) = p.tree.as_mut() {
+        *carried += done;
     }
     Ok(())
+}
+
+// The permission bits a copy carries: the source's own, minus anything the umask withholds, and never
+// setuid, setgid or the sticky bit, which belong to the file somebody installed and not to its copy.
+pub fn keep_mode(mode: u32) -> u32 {
+    mode & 0o777 & !umask()
+}
+
+// Sample input, one line of /proc/self/status: "Umask:	0022". Read once, because a copy asks per file
+// and per directory and this process cannot change its own umask while one runs.
+fn umask() -> u32 {
+    static READ: std::sync::OnceLock<u32> = std::sync::OnceLock::new();
+    *READ.get_or_init(|| {
+        let status = std::fs::read_to_string("/proc/self/status").unwrap_or_default();
+        for line in status.lines() {
+            if let Some(value) = line.strip_prefix("Umask:") {
+                if let Ok(bits) = u32::from_str_radix(value.trim(), 8) {
+                    return bits & 0o777;
+                }
+            }
+        }
+        0o022
+    })
 }
 
 // A failure after the destination was created, and not a cancel: the partial stays, and is reported for the journal.
@@ -71,60 +128,146 @@ fn left_partial(p: &mut Progress, dst: &Path, e: FleaError) -> FleaError {
 }
 
 // A symlink is copied as a symlink and never followed, matching cp -a and every rival in the parity audit.
-pub fn copy_symlink(src: &Path, dst: &Path) -> Result<(), FleaError> {
-    let target = std::fs::read_link(src).map_err(|e| from_io("copy", &src.to_string_lossy(), &e))?;
-    std::os::unix::fs::symlink(&target, dst).map_err(|e| from_io("copy", &dst.to_string_lossy(), &e))
+fn copy_symlink_at(src: At, dst: At) -> Result<(), FleaError> {
+    let target = std::fs::read_link(src.at).map_err(|e| from_io("copy", &src.named.to_string_lossy(), &e))?;
+    std::os::unix::fs::symlink(&target, dst.at).map_err(|e| from_io("copy", &dst.named.to_string_lossy(), &e))
 }
 
 // Copies a file, a symlink, a whole directory tree, or any other node by recreating it. The
 // destination must not already exist.
 pub fn copy_any(src: &Path, dst: &Path, p: &mut Progress) -> Result<(), FleaError> {
+    copy_at(here(src), here(dst), p)
+}
+
+fn copy_at(src: At, dst: At, p: &mut Progress) -> Result<(), FleaError> {
     let meta = src
+        .at
         .symlink_metadata()
-        .map_err(|e| from_io("copy", &src.to_string_lossy(), &e))?;
+        .map_err(|e| from_io("copy", &src.named.to_string_lossy(), &e))?;
     if meta.file_type().is_symlink() {
-        return copy_symlink(src, dst);
+        return copy_symlink_at(src, dst);
     }
     if meta.is_dir() {
-        return copy_dir(src, dst, p);
+        return copy_dir_at(src, dst, p);
     }
     if meta.is_file() {
-        return copy_file(src, dst, meta.len(), p);
+        return copy_file_at(src, dst, meta.len(), p);
     }
     // A fifo, a socket and a device node are the rest, and none of them has contents copy_file could
     // stream: the fifo's open waits, the socket's fails, and the device's would never end.
-    crate::backend::copynode::copy_node(&meta, dst)
+    crate::backend::copynode::copy_node(&meta, dst.at)
 }
 
-fn copy_dir(src: &Path, dst: &Path, p: &mut Progress) -> Result<(), FleaError> {
-    std::fs::create_dir(dst).map_err(|e| from_io("copy", &dst.to_string_lossy(), &e))?;
-    let r = copy_dir_entries(src, dst, p);
+fn copy_dir_at(src: At, dst: At, p: &mut Progress) -> Result<(), FleaError> {
+    // Issue 110: both ends are held open and every child is reached through those descriptors, because
+    // resolving a child from its path again lets a parent renamed aside mid-copy redirect the rest of
+    // the tree through a symlink. corner: three descriptors a level, the two ends and the read_dir on
+    // the source, so a deep enough tree meets this process's open-file limit where it used to recurse.
+    let from = open_dir(src.at).map_err(|e| from_io("copy", &src.named.to_string_lossy(), &e))?;
+    // Issue 109 again, one level up: a 0700 directory landed 0755 and its contents were readable by
+    // anyone while the copy ran. It is created with nothing the source does not grant and with the
+    // owner's own three bits, which this run needs to write into it, and takes its exact mode at the end.
+    let keep = from.metadata().ok().map(|m| keep_mode(m.permissions().mode()));
+    std::fs::DirBuilder::new().mode(keep.unwrap_or(0o700) | 0o700).create(dst.at)
+        .map_err(|e| from_io("copy", &dst.named.to_string_lossy(), &e))?;
+    let into = open_dir(dst.at).map_err(|e| from_io("copy", &dst.named.to_string_lossy(), &e))?;
+    let (from_held, into_held) = (held_path(&from), held_path(&into));
+    // Set once at the top of the tree, so a directory inside it goes on counting rather than starting again.
+    if p.tree.is_none() {
+        p.tree = Some(0);
+    }
+    let r = copy_dir_entries(
+        At { at: &from_held, named: src.named },
+        At { at: &into_held, named: dst.named },
+        p,
+    );
     if r.is_err() {
         if cancelled(p) {
             // The tree goes with the cancel, the same rule copy_file already applies to a partial file: a
             // half-copied directory is not a result anyone asked for, and no journal step records one.
             // Gated on the flag rather than the message, because a nested copy_file returns its own cancel.
-            let _ = std::fs::remove_dir_all(dst);
-            p.partial = None;
+            p.partial = match remove_tree(dst.at, &into) {
+                Ok(()) => None,
+                // Still there, so the journal is told where it is rather than that nothing was left.
+                Err(()) => Some(dst.named.to_path_buf()),
+            };
         } else {
             // Any other failure leaves what was copied, since removing it would destroy data on a
             // transient error, and reports the whole tree as the one partial the journal records.
-            p.partial = Some(dst.to_path_buf());
+            p.partial = Some(dst.named.to_path_buf());
         }
+        return r;
+    }
+    // Last, so a directory this run still has to write into is not made unwritable halfway through.
+    // corner: a destination with no mode bits of its own refuses this and keeps the source's bits
+    // widened by the owner's three, because a copy that carried every byte is not a failure.
+    if let Some(mode) = keep {
+        let _ = std::fs::set_permissions(&into_held, std::fs::Permissions::from_mode(mode));
     }
     r
 }
 
-fn copy_dir_entries(src: &Path, dst: &Path, p: &mut Progress) -> Result<(), FleaError> {
-    let entries = std::fs::read_dir(src).map_err(|e| from_io("copy", &src.to_string_lossy(), &e))?;
+fn copy_dir_entries(src: At, dst: At, p: &mut Progress) -> Result<(), FleaError> {
+    let entries = std::fs::read_dir(src.at).map_err(|e| from_io("copy", &src.named.to_string_lossy(), &e))?;
     for entry in entries {
         if cancelled(p) {
-            return Err(cancel_err(dst));
+            return Err(cancel_err(dst.named));
         }
-        let entry = entry.map_err(|e| from_io("copy", &src.to_string_lossy(), &e))?;
-        copy_any(&entry.path(), &dst.join(entry.file_name()), p)?;
+        let entry = entry.map_err(|e| from_io("copy", &src.named.to_string_lossy(), &e))?;
+        let name = entry.file_name();
+        let (from_at, from_named) = (src.at.join(&name), src.named.join(&name));
+        let (into_at, into_named) = (dst.at.join(&name), dst.named.join(&name));
+        copy_at(
+            At { at: &from_at, named: &from_named },
+            At { at: &into_at, named: &into_named },
+            p,
+        )?;
     }
     Ok(())
+}
+
+// A copy of a 0500 source is itself 0500, and nothing can be removed from one. The owner's bits go
+// back on only after a removal has actually failed, so a tree without such a directory pays nothing.
+fn remove_tree(at: &Path, held: &std::fs::File) -> Result<(), ()> {
+    if std::fs::remove_dir_all(at).is_ok() {
+        return Ok(());
+    }
+    owner_can_write(held);
+    std::fs::remove_dir_all(at).map_err(|_| ())
+}
+
+// Issue 110's discipline again: every child is opened O_NOFOLLOW and reached through this process's
+// own descriptor, so a directory swapped for a symlink cannot take the owner's bits somewhere else.
+fn owner_can_write(dir: &std::fs::File) {
+    let held = held_path(dir);
+    let _ = std::fs::set_permissions(&held, std::fs::Permissions::from_mode(0o700));
+    let entries = match std::fs::read_dir(&held) {
+        Ok(entries) => entries,
+        Err(_) => return,
+    };
+    for entry in entries.flatten() {
+        if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+            continue;
+        }
+        if let Ok(child) = open_dir(&entry.path()) {
+            owner_can_write(&child);
+        }
+    }
+}
+
+// The path that reaches a held directory through this process's own descriptor table, so no rename of
+// the name it was opened under can put anything else behind it. Linux only, the one platform this ships on.
+fn held_path(dir: &std::fs::File) -> PathBuf {
+    PathBuf::from(format!("/proc/self/fd/{}", dir.as_raw_fd()))
+}
+
+// O_DIRECTORY refuses anything that is not a directory and O_NOFOLLOW refuses a symlink swapped in at
+// the name itself, so the descriptor is the directory this copy stat'd or the open fails.
+fn open_dir(path: &Path) -> std::io::Result<std::fs::File> {
+    std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(O_DIRECTORY | O_NOFOLLOW)
+        .open(path)
 }
 
 // Same filesystem is a rename; a different one is copy-then-remove, and the source only goes once the copy is complete.
@@ -160,231 +303,5 @@ fn cancel_err(path: &Path) -> FleaError {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::backend::testdir::TestDir;
-    use std::sync::atomic::AtomicBool;
-
-    fn quiet<'a>(flag: &'a AtomicBool, sink: &'a mut dyn FnMut(u64, u64)) -> Progress<'a> {
-        Progress { cancel: flag, on_bytes: sink, partial: None }
-    }
-
-    // copy_any sends a symlink to copy_symlink, so a symlink reaching copy_file was swapped in after
-    // that stat. Without O_NOFOLLOW this copies the target's bytes, which is the defect.
-    #[test]
-    fn a_source_swapped_to_a_symlink_after_the_stat_is_refused_rather_than_followed() {
-        let d = TestDir::new("nofollow");
-        let secret = d.file("secret.txt", "not yours");
-        let src = d.join("src.bin");
-        std::os::unix::fs::symlink(&secret, &src).expect("the swap the stat cannot see");
-        let flag = AtomicBool::new(false);
-        let mut sink = |_: u64, _: u64| {};
-        let e = copy_file(&src, &d.join("dst.bin"), 9, &mut quiet(&flag, &mut sink))
-            .expect_err("a symlinked source must not be followed");
-        assert_eq!(e.where_, "copy");
-        assert!(!d.join("dst.bin").exists(), "and nothing of the target reached the destination");
-    }
-
-    #[test]
-    fn a_file_copy_reproduces_the_bytes_and_reports_progress() {
-        let d = TestDir::new("copyfile");
-        let src = d.file("src.bin", "0123456789");
-        let flag = AtomicBool::new(false);
-        let mut seen: Vec<(u64, u64)> = Vec::new();
-        let mut sink = |done: u64, total: u64| seen.push((done, total));
-        copy_any(&src, &d.join("dst.bin"), &mut quiet(&flag, &mut sink)).expect("copy");
-        assert_eq!(std::fs::read_to_string(d.join("dst.bin")).unwrap(), "0123456789");
-        assert_eq!(seen.last().copied(), Some((10, 10)), "the last report is the whole file");
-    }
-
-    #[test]
-    fn a_copy_refuses_to_overwrite_an_existing_destination() {
-        let d = TestDir::new("copyclobber");
-        let src = d.file("src.txt", "new");
-        d.file("dst.txt", "already here");
-        let flag = AtomicBool::new(false);
-        let mut sink = |_: u64, _: u64| {};
-        let e = copy_any(&src, &d.join("dst.txt"), &mut quiet(&flag, &mut sink)).expect_err("must refuse");
-        assert_eq!(e.where_, "copy");
-        assert_eq!(std::fs::read_to_string(d.join("dst.txt")).unwrap(), "already here");
-    }
-
-    #[test]
-    fn a_symlink_is_copied_as_a_symlink_and_never_followed() {
-        let d = TestDir::new("copylink");
-        d.file("target.txt", "target body");
-        let link = d.join("link.txt");
-        std::os::unix::fs::symlink("target.txt", &link).unwrap();
-        let flag = AtomicBool::new(false);
-        let mut sink = |_: u64, _: u64| {};
-        copy_any(&link, &d.join("copied.txt"), &mut quiet(&flag, &mut sink)).expect("copy");
-        let meta = d.join("copied.txt").symlink_metadata().unwrap();
-        assert!(meta.file_type().is_symlink(), "following it would silently turn a link into a file");
-        assert_eq!(
-            std::fs::read_link(d.join("copied.txt")).unwrap(),
-            std::path::PathBuf::from("target.txt")
-        );
-    }
-
-    #[test]
-    fn a_directory_is_copied_with_its_tree_and_its_links() {
-        let d = TestDir::new("copytree");
-        let src = d.dir("tree");
-        std::fs::write(src.join("a.txt"), "a").unwrap();
-        std::fs::create_dir(src.join("sub")).unwrap();
-        std::fs::write(src.join("sub/b.txt"), "b").unwrap();
-        std::os::unix::fs::symlink("a.txt", src.join("link")).unwrap();
-        let flag = AtomicBool::new(false);
-        let mut sink = |_: u64, _: u64| {};
-        copy_any(&src, &d.join("clone"), &mut quiet(&flag, &mut sink)).expect("copy");
-        assert_eq!(std::fs::read_to_string(d.join("clone/a.txt")).unwrap(), "a");
-        assert_eq!(std::fs::read_to_string(d.join("clone/sub/b.txt")).unwrap(), "b");
-        assert!(d.join("clone/link").symlink_metadata().unwrap().file_type().is_symlink());
-    }
-
-    #[test]
-    fn a_cancelled_copy_leaves_no_partial_file_behind() {
-        let d = TestDir::new("copycancel");
-        let src = d.file("big.bin", &"x".repeat(CHUNK * 3));
-        let flag = AtomicBool::new(true);
-        let mut sink = |_: u64, _: u64| {};
-        d.assert_contains(&d.join("partial.bin"));
-        let e = copy_any(&src, &d.join("partial.bin"), &mut quiet(&flag, &mut sink)).expect_err("cancelled");
-        assert_eq!(e.msg, "cancelled");
-        assert!(!d.join("partial.bin").exists(), "a half-written destination is not a result");
-    }
-
-    #[test]
-    fn a_cancelled_directory_copy_removes_the_part_it_already_wrote() {
-        let d = TestDir::new("copydircancel");
-        let src = d.dir("tree");
-        std::fs::write(src.join("a.bin"), "x".repeat(8)).unwrap();
-        std::fs::write(src.join("b.bin"), "y".repeat(8)).unwrap();
-        let clone = d.join("clone");
-        let flag = AtomicBool::new(false);
-        // Cancels on the second file's first chunk, whichever file read_dir yields second, so one
-        // complete file is in the tree when it is cut. A cancel during the first file only tests an
-        // empty directory: copy_file removes its own partial first, and remove_dir would pass too.
-        let mut chunks = 0;
-        let mut names_at_cancel: Vec<String> = Vec::new();
-        let mut sink = |_done: u64, _total: u64| {
-            chunks += 1;
-            if chunks == 2 {
-                flag.store(true, Ordering::Relaxed);
-                names_at_cancel = std::fs::read_dir(&clone)
-                    .unwrap()
-                    .map(|e| e.unwrap().file_name().to_string_lossy().to_string())
-                    .collect();
-            }
-        };
-        d.assert_contains(&clone);
-        let e = copy_any(&src, &clone, &mut quiet(&flag, &mut sink)).expect_err("cancelled");
-        assert_eq!(e.msg, "cancelled");
-        assert_eq!(
-            names_at_cancel.len(),
-            2,
-            "the tree held one complete file and the one being cut when the cancel landed, got {:?}",
-            names_at_cancel
-        );
-        assert!(!clone.exists(), "a half-copied tree is not a result, and no journal step records one");
-    }
-
-    // The second entry's destination is taken from under it while the first is still streaming, so
-    // the failure is a create that collides and not a cancel, whichever order read_dir yields.
-    #[test]
-    fn a_directory_copy_that_fails_short_of_a_cancel_keeps_the_tree_and_reports_it() {
-        let d = TestDir::new("copydirfail");
-        let src = d.dir("tree");
-        std::fs::write(src.join("a.bin"), "x".repeat(8)).unwrap();
-        std::fs::write(src.join("b.bin"), "y".repeat(16)).unwrap();
-        let clone = d.join("clone");
-        let flag = AtomicBool::new(false);
-        let mut planted = false;
-        let mut sink = |_done: u64, total: u64| {
-            if planted {
-                return;
-            }
-            planted = true;
-            let other = if total == 8 { "b.bin" } else { "a.bin" };
-            std::fs::write(clone.join(other), "stray").unwrap();
-        };
-        let mut p = quiet(&flag, &mut sink);
-        let e = copy_any(&src, &clone, &mut p).expect_err("the second entry collides");
-        assert_ne!(e.msg, "cancelled");
-        assert_eq!(p.partial, Some(clone.clone()), "the tree is reported as the partial to journal");
-        let a = std::fs::read_to_string(clone.join("a.bin")).unwrap();
-        let b = std::fs::read_to_string(clone.join("b.bin")).unwrap();
-        assert!(
-            (a == "x".repeat(8) && b == "stray") || (b == "y".repeat(16) && a == "stray"),
-            "the file that landed before the failure is complete and still there, got a={:?} b={:?}",
-            a,
-            b
-        );
-    }
-
-    // /proc/self/mem is S_IFREG and opens fine, and its first read at offset 0 answers EIO, so the
-    // failure lands after the destination was created rather than before.
-    #[test]
-    fn a_file_copy_that_fails_after_creating_its_destination_reports_the_partial() {
-        let d = TestDir::new("copyfilefail");
-        let src = std::path::PathBuf::from("/proc/self/mem");
-        let dst = d.join("partial.bin");
-        let flag = AtomicBool::new(false);
-        let mut sink = |_: u64, _: u64| {};
-        let mut p = quiet(&flag, &mut sink);
-        let e = copy_file(&src, &dst, 0, &mut p).expect_err("offset 0 of a mem file is not mapped");
-        assert_ne!(e.msg, "cancelled");
-        assert!(dst.exists(), "the partial stays: removing it on an error is the cancel path's job only");
-        assert_eq!(p.partial, Some(dst));
-    }
-
-    // Nothing was created, so nothing is reported: a step here would let undo delete what the user had.
-    #[test]
-    fn a_copy_refused_because_the_destination_exists_reports_no_partial() {
-        let d = TestDir::new("copynopartial");
-        let src = d.file("src.txt", "new");
-        let taken_file = d.file("taken.txt", "already here");
-        let src_dir = d.dir("tree");
-        let taken_dir = d.dir("taken");
-        std::fs::write(taken_dir.join("keep.txt"), "keep").unwrap();
-        let flag = AtomicBool::new(false);
-        let mut sink = |_: u64, _: u64| {};
-        let mut p = quiet(&flag, &mut sink);
-        copy_any(&src, &taken_file, &mut p).expect_err("must refuse");
-        assert!(p.partial.is_none());
-        copy_any(&src_dir, &taken_dir, &mut p).expect_err("must refuse");
-        assert!(p.partial.is_none());
-        assert_eq!(std::fs::read_to_string(&taken_file).unwrap(), "already here");
-        assert_eq!(std::fs::read_to_string(taken_dir.join("keep.txt")).unwrap(), "keep");
-    }
-
-    #[test]
-    fn a_same_filesystem_move_leaves_nothing_at_the_source() {
-        let d = TestDir::new("movesame");
-        let src = d.file("moving.txt", "body");
-        let flag = AtomicBool::new(false);
-        let mut sink = |_: u64, _: u64| {};
-        d.assert_contains(&src);
-        d.assert_contains(&d.join("moved.txt"));
-        move_any(&src, &d.join("moved.txt"), &mut quiet(&flag, &mut sink)).expect("move");
-        assert!(!src.exists());
-        assert_eq!(std::fs::read_to_string(d.join("moved.txt")).unwrap(), "body");
-    }
-
-    #[test]
-    fn a_move_onto_an_existing_name_refuses_and_keeps_the_source() {
-        let d = TestDir::new("moveclobber");
-        let src = d.file("a.txt", "source");
-        d.file("b.txt", "destination");
-        let flag = AtomicBool::new(false);
-        let mut sink = |_: u64, _: u64| {};
-        d.assert_contains(&src);
-        d.assert_contains(&d.join("b.txt"));
-        let error = move_any(&src, &d.join("b.txt"), &mut quiet(&flag, &mut sink)).expect_err("must refuse");
-        assert_eq!(error.where_, "rename");
-        assert_eq!(error.path, d.join("b.txt").to_string_lossy());
-        assert_eq!(error.msg, "already exists");
-        assert!(src.exists(), "the source is untouched when the move is refused");
-        assert_eq!(std::fs::read_to_string(d.join("b.txt")).unwrap(), "destination");
-    }
-}
+#[path = "copyfile_tests.rs"]
+mod tests;

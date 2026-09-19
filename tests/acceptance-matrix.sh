@@ -67,14 +67,18 @@ import pathlib, sys
 rows = [line.split('|') for line in pathlib.Path(sys.argv[1]).read_text().splitlines()]
 assert all(len(row) == 4 for row in rows)
 assert len(rows) == len({(row[0], row[3]) for row in rows})
-assert len({row[0] for row in rows if row[3] != 'header'}) == 29
+# 31, derived by running the suite's own derive_menu_actions and counting the distinct non-header
+# ids in its output, not by counting declarations in Menu.js. It was 29, then 30 when 0.2.0 added
+# Move to, Copy to, Properties, Permissions, New file, Delete permanently and Add to Favorites, and
+# 31 with Add to shelf.
+assert len({row[0] for row in rows if row[3] != 'header'}) == 31
 assert ['delete', 'deletePermanently', 'Delete permanently', 'file'] in rows
 assert ['moveto', 'moveTo', 'Move to', 'file'] in rows
 assert ['openwith', 'openWith', 'Open with', 'file'] in rows
 assert {row[3] for row in rows if row[0] == 'open'} == {'file', 'trash'}
 assert {row[3] for row in rows if row[0] == 'paste'} == {'file', 'background'}
 assert {row[0] for row in rows if row[3] == 'header'} == {'col:mode', 'col:size', 'col:date', 'col:kind'}
-print('ACCEPTANCE_MENU ids=29 header=4 context_rows=' + str(len(rows)))
+print('ACCEPTANCE_MENU ids=30 header=4 context_rows=' + str(len(rows)))
 PY
 mkdir -p "$SB/broken-menu/ui/js"
 printf 'var INVENTORY = [["open","Open","folder","F","open"],["broken"]]\n' > "$SB/broken-menu/ui/js/Menu.js"

@@ -92,7 +92,7 @@ pub fn run() -> i32 {
     // The workers hold senders too, so no exit can come from a disconnect and every exit is an explicit event; see AGENTS.md "Thumbnail requests".
     spawn_forwarder(done, tx.clone());
     spawn_op_forwarder(op_rx, tx.clone());
-    spawn_reader(tx.clone());
+    spawn_reader(tx.clone(), Arc::clone(&ops.live));
     // Armed before the first request, so no listing is ever answered with nothing watching it.
     let mut watch = Watch::start(tx);
     loop {
@@ -168,6 +168,8 @@ fn handle_line(
                 resolve_rows(Vec::new(), &[index], &st.base, &st.listing).into_iter().next().unwrap_or_default());
             super::opsdispatch::request_menu_action(out, ops, line, paths, cursor);
         }
+        // Directive 71: a CLI run of a second or more, so it answers on its own thread.
+        Request::LocalSend { op, peer, paths, id } => super::localsend::request(op, peer, paths, id, ops.tx.clone()),
         Request::TrashBrowse { line } => {
             let replies = ops.tx.clone();
             ops.trashbrowser.get_or_insert_with(|| super::trashbrowse::TrashBrowser::new(replies)).request(line);
@@ -199,7 +201,7 @@ fn handle_line(
                     if watch.refused() {
                         eprintln!("flea: {} will not follow outside changes, inotify refused a watch on it", path);
                     }
-                    writeln!(out, "{}", listed_line(st.listing.len(), read_ms + pass_ms, sort_ms, dev_of(&st.base))).ok();
+                    writeln!(out, "{}", listed_line(st.listing.len(), read_ms + pass_ms, sort_ms, dev_of(&st.base), &st.base.to_string_lossy())).ok();
                     // Rides along unasked: asking costs a 60 ms round trip at first paint.
                     write_window(out, st, 0, first, tb);
                 }
@@ -232,7 +234,7 @@ fn handle_line(
             watch.stop();
             forget_rows(st, pool);
             // The client is told at once that its old rows are gone, then the count grows as matches arrive.
-            writeln!(out, "{}", listed_line(0, 0.0, 0.0, dev_of(&st.base))).ok();
+            writeln!(out, "{}", listed_line(0, 0.0, 0.0, dev_of(&st.base), &st.base.to_string_lossy())).ok();
             st.search = Some(Search::new(&path, &query, hidden));
             st.search_reported = Instant::now();
             out.flush().ok();
@@ -255,7 +257,7 @@ fn handle_line(
                 }
                 Ok((pass_ms, sort_ms)) => {
                     forget_rows(st, pool);
-                    writeln!(out, "{}", listed_line(st.listing.len(), pass_ms, sort_ms, dev_of(&st.base))).ok();
+                    writeln!(out, "{}", listed_line(st.listing.len(), pass_ms, sort_ms, dev_of(&st.base), &st.base.to_string_lossy())).ok();
                 }
             }
             out.flush().ok();
@@ -283,8 +285,10 @@ fn handle_line(
         Request::DirSizeCancel => {
             st.dirsize_queue.clear();
         }
-        Request::Transfer { op, paths, rows, dest, menu_id } => {
-            if menu_id != 0 {
+        Request::Transfer { op, paths, rows, dest, menu_id, shelf } => {
+            if !shelf.is_empty() {
+                crate::backend::shelfdrop::start(out, ops, &shelf, &dest)
+            } else if menu_id != 0 {
                 start_menu_transfer(out, ops, &op, menu_id, &dest)
             } else {
                 let named = resolve_rows(paths, &rows, &st.base, &st.listing);
@@ -319,7 +323,7 @@ fn handle_line(
             line.insert_str(line.len() - 1, &format!(r#", "id":{},"providers":{}"#, id, super::providers::facts()));
             say(out, &line);
         }
-        Request::FsInfo => say(out, &fsinfo_line(&read_fsinfo(&st.base))),
+        Request::FsInfo => say(out, &fsinfo_line(&read_fsinfo(&st.base), &st.base.to_string_lossy())),
         // One row, only when a client asked: the same no-sweep rule thumb and dirsize already follow.
         Request::Meta { row, text, media, archive, token } => {
             if row < st.listing.len() {
@@ -389,10 +393,10 @@ fn drain(
     let deadline = Instant::now() + DRAIN_LIMIT;
     // A clean shutdown cancels the operation rather than abandoning it: a cancelled copy removes its own
     // partial destination, a file by copy_file and a tree by copy_dir, so quitting leaves nothing behind.
-    if ops.running.is_some() {
-        ops.cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+    if let Some(id) = ops.live.running() {
+        ops.live.cancel(id);
     }
-    while st.outstanding > 0 || ops.running.is_some() {
+    while st.outstanding > 0 || ops.live.running().is_some() {
         match rx.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
             Ok(Event::Thumb(d)) => report_done(out, st, d),
             Ok(Event::Op(m)) => report_op(out, ops, m),
@@ -410,10 +414,6 @@ fn drain(
         writeln!(out, "{}", thumbed_line(row, "", 0.0)).ok();
     }
     out.flush().ok();
-}
-
-pub fn since(t: Instant) -> f64 {
-    t.elapsed().as_secs_f64() * 1000.0
 }
 
 pub fn write_window(out: &mut impl Write, st: &State, start: usize, count: usize, tb: &Tables) {

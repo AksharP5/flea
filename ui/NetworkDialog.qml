@@ -206,10 +206,10 @@ Item {
     function bodyScroll() { return Math.round(body.contentY) + "|" + Math.round(body.contentHeight) + "|" + Math.round(body.height) }
     function formMetricTargets() { return Style.space(16) + "|" + Style.space(12) }
 
+    // Dialogs rule 6: the title says what you are doing, so it survives a chip swap; the two entry
+    // points are two tasks, open() adding a place and openLocation() connecting to one already saved.
     function baseTitle() {
-        var titles = { SMB: "SMB share", SFTP: "SFTP host", FTPS: "FTPS",
-                       WebDAV: "WebDAV endpoint", NFS: "NFS export" }
-        return titles[form.protocol] || titles.SMB
+        return root.retrying ? "Connect to a network share" : "Add a network share"
     }
 
     function decoded(text) {
@@ -357,13 +357,9 @@ Item {
                 width: parent.width
                 spacing: Style.space(12)
 
-                Text {
+                Flea.DialogTitle {
+                    width: parent.width
                     text: root.dialogTitle
-                    color: Theme.color.foreground
-                    font.family: Theme.font.family
-                    font.pixelSize: Theme.font.body
-                    font.bold: true
-                    textFormat: Text.PlainText
                 }
 
                 NetworkForm {
@@ -425,21 +421,23 @@ Item {
                 }
             }
 
-            PanelSeparator {}
+            PanelSeparator { visible: !root.dropboxInstalled }
 
+            // Dialogs rule 4: the section is a live install route while Dropbox is absent, and it is
+            // held here until providers have a home of their own; installed, it has nothing to say
+            // and is not drawn, where it used to draw a button that could never be pressed.
             Column {
                 width: parent.width
+                visible: !root.dropboxInstalled
                 spacing: Style.space(10)
 
                 PanelSectionHeader {
                     text: "DROPBOX"
                 }
 
-                // Nothing left to install is an unavailable action, not a live control that answers
-                // nothing: the label states the fact and the ink says the press will not be taken.
                 Flea.DialogButton {
-                    label: root.dropboxInstalled ? "Dropbox is already installed" : "Install Dropbox"
-                    available: !root.dropboxInstalled && !root.busy
+                    label: "Install Dropbox"
+                    available: !root.busy
                     onActivated: root.installDropbox()
                 }
             }

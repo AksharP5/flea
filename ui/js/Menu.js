@@ -19,7 +19,10 @@ var OPEN_WITH_OTHER = "__another__"
 
 // SettingsMenus and SettingsPlaces share one order; F=file/folder, B=background, T=Trash rail.
 var INVENTORY = [
-    ["open", "Open", "folder-open", "FT", "open"],
+    ["open", "Open", "folder-open", "FTP", "open"],
+    // MenuAdditions rule 3: a Places or Favorites row opens this menu for its own path, so the rows
+    // it carries are the ones that take a path and not the clipboard, archive, send or destroy ones.
+    ["openTab", "Open in new tab", "app-window", "P", "open"],
     ["openwith", "Open with", "app-window", "F", "open", "openWith"],
     ["newFolder", "New Folder", "folder-plus", "B", "open"],
     ["newFile", "New File", "file-plus", "B", "open"],
@@ -32,18 +35,28 @@ var INVENTORY = [
     ["compress", "Compress", "archive", "F", "archive"],
     ["extract", "Extract", "archive-out", "F", "archive"],
     ["convert", "Convert", "sliders", "F", "archive"],
+    // The shelf leads the send group: it is Flea's own destination and the other two are somebody
+    // else's. Governed by the Enable shelf switch in Settings, Menus, so off is absent and not grey.
+    ["shelf", "Add to shelf", "file", "F", "share", "addToShelf"],
     ["taildrop", "Send with Taildrop", "tailscale", "F", "share"],
+    // MenuAdditions rule 1: between Taildrop and Dropbox, present only while a localsend binary is
+    // on PATH, and carrying its own reproduced mark rather than a cut glyph.
+    ["localsend", "Send with LocalSend", "localsend", "F", "share"],
     ["dropbox", "Move to Dropbox", "dropbox", "F", "share"],
     ["sharelink", "Copy Share Link", "network", "F", "share"],
     ["trash", "Move to Trash", "trash", "F", "trash"],
     ["delete", "Delete permanently", "trash", "F", "trash", "deletePermanently"],
-    ["openTerminal", "Open in terminal", "terminal", "FB", "inspect"],
+    ["openTerminal", "Open in terminal", "terminal", "FBP", "inspect"],
     ["moveto", "Move to", "folder-plus", "F", "inspect", "moveTo"],
     ["copyto", "Copy to", "copy", "F", "inspect", "copyTo"],
     ["properties", "Properties", "info", "F", "inspect"],
     ["permissions", "Permissions", "lock", "F", "inspect"],
-    ["copypath", "Copy path", "file-text", "F", "inspect"],
-    ["addFavourite", "Add to Favorites", "star", "FB", "inspect"],
+    ["copypath", "Copy path", "file-text", "FP", "inspect"],
+    // MenuAdditions rule 2: after Copy path, one row per executable in ~/.config/flea/scripts, and
+    // absent rather than greyed when that directory is missing or holds none.
+    ["runScript", "Run script", "terminal", "F", "inspect"],
+    ["addFavourite", "Add to Favorites", "star", "FBP", "inspect"],
+    ["removeFavourite", "Remove from Favorites", "minus", "P", "inspect"],
     ["sort", "Sort by", "sort", "B", "view"],
     ["toggleHidden", "Show hidden files", "eye", "FB", "view"],
     ["settings", "Settings", "sliders", "B", "settings"],
@@ -52,6 +65,8 @@ var INVENTORY = [
 ]
 
 function listingEntries(p) { return buildEntries(p.hasRow ? "F" : "B", p) }
+// The Places rail's own, behind its Extras toggle: off, the rail keeps the menu it has today.
+function placeEntries(p) { return isHidden(p.hiddenActions, "placeMenu") ? [] : buildEntries("P", p) }
 function backgroundEntries(p) { return buildEntries("B", p) }
 function trashEntries(total, busy) { return buildEntries("T", { trashTotal: total, busy: busy }) }
 
@@ -91,6 +106,10 @@ function buildEntries(kind, p) {
 
 function availableEntry(e, p, kind) {
     var count = p.selectionCount === undefined ? 1 : p.selectionCount
+    // Rule 3: the last row adds the favourite or removes it, and the duplicate case is absent rather
+    // than grey, which is what keeps issue 138's second row impossible from the rail as well.
+    if (kind === "P" && (e.id === "addFavourite" || e.id === "removeFavourite"))
+        return (e.id === "removeFavourite") === (p.placeFavourite === true)
     if (e.action === "addFavourite" && kind === "F")
         e.disabled = count !== 1 || ((Number(p.rowMode) || 0) & 0o170000) !== 0o040000
     if (e.action === "paste") e.disabled = p.clipboardAvailable !== true
@@ -101,10 +120,17 @@ function availableEntry(e, p, kind) {
         e.disabled = permission.disabled
         e.hint = permission.hint
     }
+    if (e.action === "runScript") {
+        if (!(p.scripts || []).length) return false
+        e.submenu = p.scripts.map(function (script) { return { id: script.id, label: script.label } })
+    }
     if (e.action === "compress") {
         if (!(p.archiveFormats || []).length) return false
         e.submenu = Archive.formatEntries(p.archiveFormats)
     }
+    // Issue 133: a mount with no trash directory never offers the row, rather than offering one that
+    // fails; ui/js/Mounts.js trashable is the one reader of what the path says about that.
+    if (e.action === "trash" && p.canTrash === false) return false
     if (e.action === "extract" && !(p.rowIsArchive && p.canExtract === true && count === 1)) return false
     if (e.action === "convert" && !(p.rowIsImage && p.canConvert && count === 1)) return false
     // OpenWith.html: the desktop's current default is first and carries the muted caption "default"
@@ -131,6 +157,18 @@ function availableEntry(e, p, kind) {
         // The row says it cannot answer by being red, not by carrying the reason: a sentence here
         // widened the menu past its own frame while the providers were still being read.
         if (e.disabled && p.providersRefreshing !== true) e.errored = true
+    }
+    if (e.action === "addToShelf") { e.mark = "flea"; delete e.glyph }
+    // Absent rather than greyed when nothing is installed, the Menu board's rule for a row whose
+    // whole destination is missing; the row is a plain send, so it has no submenu and no reason.
+    // Directive 71: the row is Taildrop's twin, so it opens the same flyout and reads the same way.
+    if (e.action === "localsend") {
+        if (!p.localSendInstalled) return false
+        e.mark = "localsend"
+        delete e.glyph
+        e.submenu = p.localSendPeers || []
+        e.disabled = p.localSendChecking === true || !e.submenu.length
+        if (e.disabled && p.localSendChecking !== true) e.errored = true
     }
     if (e.action === "dropbox" || e.action === "sharelink") {
         if (!p.dropboxInstalled || (e.action === "dropbox" ? p.rowInDropbox : !p.rowInDropbox)) return false
@@ -162,7 +200,7 @@ function permissionsEntry(mode, count) {
 
 // The Sort by flyout, built from ui/js/Sort.js's own ORDERS so it can only ever offer an order the
 // backend really produces; a fourth key would earn a refusal instead of a listing.
-var SORT_LABELS = { name: "Name", size: "Size", mtime: "Date Modified", kind: "Kind" }
+var SORT_LABELS = { name: "Name", size: "Size", mtime: "Modified", kind: "Kind" }
 
 function sortEntries() {
     var out = []
@@ -176,6 +214,8 @@ function sortEntries() {
 function submenuGlyph(action) {
     if (action === "taildrop")
         return "server"
+    if (action === "runScript")
+        return "terminal"
     if (action === "sort")
         return "sort"
     return "archive"
@@ -232,7 +272,7 @@ function headerEntries(hiddenCols, showHidden) {
     var hidden = {}
     for (var h = 0; h < hiddenCols.length; h++)
         hidden[hiddenCols[h]] = true
-    var columns = [["mode", "Mode"], ["size", "Size"], ["date", "Date Modified"], ["kind", "Kind"]]
+    var columns = [["mode", "Mode"], ["size", "Size"], ["date", "Modified"], ["kind", "Kind"]]
     var glyphs = { mode: "lock", size: "drive", date: "download", kind: "type" }
     for (var i = 0; i < columns.length; i++) {
         var key = columns[i][0]

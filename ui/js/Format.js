@@ -7,6 +7,18 @@ var UNITS = ["B", "kB", "MB", "GB", "TB"]
 var UNIT_SPACE = " "
 
 // Below one kilobyte a fraction is noise, so bytes print whole.
+// Counts reach six figures on a real directory, so they are grouped the way the canvas draws them.
+function count(n) {
+    var digits = String(n)
+    var out = ""
+    for (var i = 0; i < digits.length; i++) {
+        if (i > 0 && (digits.length - i) % 3 === 0)
+            out += ","
+        out += digits.charAt(i)
+    }
+    return out
+}
+
 function size(bytes) {
     if (bytes < BYTES_PER_UNIT) {
         return bytes + UNIT_SPACE + UNITS[0]
@@ -24,46 +36,23 @@ function pad(n) {
     return n < 10 ? "0" + n : "" + n
 }
 
-var MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-var SECONDS_PER_DAY = 86400
-var MILLISECONDS_PER_MINUTE = 60000
-
-// Each instant supplies its own offset so DST transitions keep the local day boundary.
-function localDay(d) {
-    return Math.floor((d.getTime() - d.getTimezoneOffset() * MILLISECONDS_PER_MINUTE) / (SECONDS_PER_DAY * 1000))
+// "2026-09-12 15:29", the one form every surface prints, in the machine's local wall clock.
+function stamp(d) {
+    return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate())
+        + " " + pad(d.getHours()) + ":" + pad(d.getMinutes())
 }
 
-// Never all-numeric; the stamp and Today/Yesterday boundary follow the machine's local wall clock.
-function date(mtime, nowMs) {
-    var d = new Date(mtime * 1000)
-    var now = new Date(nowMs)
-    var clock = pad(d.getHours()) + ":" + pad(d.getMinutes())
-    var day = localDay(d)
-    var today = localDay(now)
-    if (day === today) {
-        return "Today, " + clock
-    }
-    if (day === today - 1) {
-        return "Yesterday, " + clock
-    }
-    var stamp = d.getDate() + " " + MONTHS[d.getMonth()]
-    // The distant past omits the time, per Material's second table.
-    return d.getFullYear() === now.getFullYear()
-        ? stamp + ", " + clock
-        : stamp + " " + d.getFullYear()
+// One form, sortable and unambiguous, so no surface has to invent a relative word for a time.
+function date(mtime) {
+    return stamp(new Date(mtime * 1000))
 }
 
-// The send picker's column is SendPicker.html's 80 and not the window's 125, so its date drops the
-// prose: today is the clock alone and any earlier day is the bare stamp, as that board draws them.
-function compactDate(mtime, nowMs) {
+// The send picker's column is SendPicker.html's 80 and not the window's 125, which holds about ten
+// characters: the one place the full stamp does not fit. It drops the time and keeps the date, so it
+// is still sortable and still unambiguous. Preview board, "One function, four surfaces".
+function compactDate(mtime) {
     var d = new Date(mtime * 1000)
-    var now = new Date(nowMs)
-    if (localDay(d) === localDay(now)) {
-        return pad(d.getHours()) + ":" + pad(d.getMinutes())
-    }
-    var stamp = d.getDate() + " " + MONTHS[d.getMonth()]
-    // A bare "21 Aug" reads the same in every year, so an earlier one carries a two-digit year.
-    return d.getFullYear() === now.getFullYear() ? stamp : stamp + " '" + pad(d.getFullYear() % 100)
+    return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate())
 }
 
 // The low nine bits of st_mode, read three at a time.
@@ -112,11 +101,14 @@ function duration(ms) {
 
 // The scope reads as the user writes it, so the home prefix comes back as a tilde. Both the search
 // strip and the window chrome draw a path through this, so the rule has one definition.
+// Issue 95, nixfred: a bare prefix made /home/gmx into "~x", a sibling wearing home's name. The test
+// is home itself or home and a separator, the one ui/js/Nav.js crumbs and Search.scopeRoot both make.
 function tilde(path, home) {
-    if (home.length > 0 && String(path).indexOf(home) === 0) {
-        return "~" + String(path).substring(home.length)
+    var text = String(path)
+    if (home.length > 0 && (text === home || text.indexOf(home + "/") === 0)) {
+        return "~" + text.substring(home.length)
     }
-    return String(path)
+    return text
 }
 
 // A tab is named after the directory it is standing in, so the label is the path's last segment.
@@ -139,4 +131,13 @@ function sampleRate(hz) {
     var khz = n / 1000
     // A whole number of kilohertz reads without a decimal, so 48000 is "48 kHz" and not "48.0 kHz".
     return (khz === Math.round(khz) ? khz : khz.toFixed(1)) + " kHz"
+}
+
+// Issue 67, jesedv: a yanked path is quoted unless a shell reads every character of it as itself.
+function shellQuoted(path) {
+    var text = String(path)
+    if (/^[A-Za-z0-9_@%+=:,.\/-]+$/.test(text)) {
+        return text
+    }
+    return "'" + text.split("'").join("'\\''") + "'"
 }

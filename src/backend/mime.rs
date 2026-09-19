@@ -70,8 +70,14 @@ impl Db {
         Db { by_suffix_cs, by_suffix, by_name_cs, by_name }
     }
 
-    // Takes a file name, never a path: a directory component must not be read as an extension.
+    // Takes a name or a path, and answers on the last component: a directory's own dot is not a suffix.
     pub fn lookup(&self, name: &str) -> Option<&str> {
+        // Issue 89, nixfred: a search or listpaths row is a path relative to the base, and the by-name
+        // globs are keyed on bare names, so the component is taken here and every caller is covered.
+        let name = match name.rfind('/') {
+            Some(cut) => &name[cut + 1..],
+            None => name,
+        };
         let lower = name.to_lowercase();
         if let Some((_, mime)) = self.by_name_cs.get(name) {
             return Some(mime);
@@ -197,6 +203,20 @@ mod tests {
         let d = db();
         // "İ" lowercases to two code points, so the lowered copy is a byte longer than the name.
         assert_eq!(d.lookup("İ.txt"), Some("text/plain"));
+    }
+
+    // Issue 89, nixfred: a search row is a path relative to the base, and the by-name globs are keyed
+    // on bare names, so a nested Makefile read as Data while the same file listed directly did not.
+    #[test]
+    fn a_row_below_the_base_is_looked_up_by_its_own_name() {
+        let d = db();
+        assert_eq!(d.lookup("src/Makefile"), d.lookup("Makefile"), "the by-name glob is keyed on the name");
+        assert_eq!(d.lookup("src/notes.txt"), Some("text/plain"), "and a suffix below the base still resolves");
+        // A dot in a directory component is not this file's extension, and a leading dot below the
+        // base is a hidden file the same as one at the top, which an offset-zero test used to miss.
+        assert_eq!(d.lookup("v1.2/notes"), None, "a directory's own dot offers no suffix");
+        assert_eq!(d.lookup("src/.jpg"), None, "a hidden file below the base is still hidden");
+        assert_eq!(d.lookup("v1.2/holiday.jpg"), Some("image/jpeg"), "and the real suffix is still read");
     }
 
     #[test]

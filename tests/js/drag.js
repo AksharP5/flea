@@ -93,6 +93,20 @@ function run(check) {
     Drag.dropInto(pane(foreign, [], rows), "", urls, "/e", 42)
     check("a foreign drag copies whatever the devices say", foreign[0].op, "copy")
     var refused = []
+    // DragOut rule 4: a shelf drag is redeemed by its token and never re-read as a list of URIs, so
+    // what goes out is the token and the destination and nothing else. Its intent is the shelf's own.
+    var shelfSent = []
+    check("a shelf drag sends its token rather than the paths it is carrying",
+          Drag.dropInto(pane(shelfSent, [], rows), "", urls, "/e", 42, "tok-abc\nmove"), true)
+    check("and the request names the token, the destination and no paths at all",
+          JSON.stringify(shelfSent[0]), JSON.stringify({ c: "transfer", op: "", paths: [], dest: "/e", shelf: "tok-abc" }))
+    check("the intent rides beside the token for the word the receiver says",
+          String(Drag.shelfCopying("tok-abc\ncopy")) + String(Drag.shelfCopying("tok-abc\nmove")), "truefalse")
+    var noToken = []
+    check("a drag with no token of its own takes the path every other drag takes",
+          Drag.dropInto(pane(noToken, [], rows), "", urls, "/e", 0, ""), true)
+    check("and that one still names its paths", noToken[0].paths.length > 0, true)
+
     check("a refused drop sends nothing", Drag.dropInto(pane(refused, [], rows), wire[Drag.ROWS_MIME], urls, "/d", 42), false)
     check("and nothing reached the backend", refused.length, 0)
     var folded = []
@@ -266,4 +280,21 @@ function run(check) {
     check("a pathless foreign payload has no live feedback", Drag.feedbackLine(Drag.feedbackFor("", []), "folder", 56), "")
     check("ctrl survives the feedback handoff", Drag.feedbackLine(Drag.feedbackFor(
         Drag.markerPayload([1], true, "/source", 56), ["file:///source/a.txt"]), "folder", 56), "Copy 1 item to folder")
+
+  // DragOut rule 4: Flea is the shelf's one named receiver, so the word it says while a shelf drag
+  // hovers is the intent the lift fixed, not the one a missing rows marker would imply.
+  var moveDrag = "9f2c\nmove"
+  var copyDrag = "9f2c\ncopy"
+  check("a shelf drag's own verb is what the hover says",
+        Drag.feedbackLine(Drag.feedbackFor("", ["file:///p/one", "file:///p/two"], moveDrag), "drafts", 0),
+        "Move 2 items to drafts · ctrl at lift copies")
+  check("and a shelf drag lifted with ctrl says copy",
+        Drag.feedbackLine(Drag.feedbackFor("", ["file:///p/one"], copyDrag), "drafts", 0),
+        "Copy 1 item to drafts")
+  check("a drag with no shelf token is still read off its own marker",
+        Drag.copyingFor(Drag.feedbackFor("", ["file:///p/one"], ""), 0), true)
+  check("the token is the first line and the intent the second",
+        Drag.shelfToken(moveDrag) + "|" + Drag.shelfCopying(moveDrag) + "|" + Drag.shelfCopying(copyDrag),
+        "9f2c|false|true")
+  check("and a payload that carries nothing names no token", Drag.shelfToken(""), "")
 }

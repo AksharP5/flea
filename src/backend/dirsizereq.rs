@@ -1,7 +1,7 @@
 // The dirsize queue and its one-at-a-time walker, kept beside the loop rather than inside it.
 use crate::backend::dirsize;
 use crate::backend::proto::dirsized_line;
-use crate::backend::run::since;
+use crate::backend::timing::since;
 use crate::backend::state::State;
 use std::io::{self, BufWriter, Write};
 use std::time::Instant;

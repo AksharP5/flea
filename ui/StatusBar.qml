@@ -1,6 +1,7 @@
 import QtQuick
 import qs.Commons
 import "js/Format.js" as Format
+import "js/Filter.js" as Filter
 import "js/Ops.js" as Ops
 import "js/Status.js" as Status
 
@@ -9,8 +10,13 @@ Item {
 
     property string path: ""
     property int total: 0
-    property int cursorIndex: 0
     property string listingState: "loading"
+    // The pane whose listing this strip is counting, or null while the trash view owns the pane.
+    property var pane: null
+    readonly property int shownTotal: root.pane ? root.pane.shownTotal : root.total
+    // selectionVersion is read here so a selection mutated in place still re-runs this binding.
+    readonly property real selectionBytes: root.pane && root.pane.selectionVersion >= 0
+        ? Status.selectionBytes(root.pane) : -1
     property int selectionCount: 0
     property string fsName: ""
     property real fsFree: 0
@@ -18,41 +24,57 @@ Item {
     property var errors: []
     readonly property string transient_: root.errors.length ? root.errors[0].text : root.notice
     readonly property string errorDetail: root.errors.length ? root.errors[0].detail : ""
+    // Directive 48, GM's final: no centre lane at all. The transient sits beside the disk facts, one
+    // padding before the text those facts actually draw, which is not the left edge of their fixed
+    // zone box: a short filesystem line would otherwise leave the pair drifting apart by the slack.
+    readonly property real diskTextWidth: Math.min(disk.implicitWidth, disk.width)
+    // From the count's right edge, one padding on, to one padding before that text. A transient elides
+    // inside this rather than growing into the facts, which is rule 2: they keep their zone and never move.
+    readonly property real transientRoom: Math.max(0, strip.width - 2 * Theme.spacing.rowPaddingX - root.diskTextWidth
+        - (counts.x + counts.width + Theme.spacing.rowPaddingX))
     readonly property var stripItem: background
     readonly property var transferCard: cardLoader.item
     readonly property var countsItem: counts
     readonly property var primaryItem: primary
     readonly property var secondaryItem: secondary
+    readonly property var diskItem: disk
+    readonly property var centreItem: centre
     readonly property bool transientIsError: root.errors.length > 0
     property var activities: []
     property var dragFeedbackOwner: null
     readonly property var activity: root.activities.length ? root.activities[0] : null
-    readonly property string sticky: root.activity ? root.activity.text : ""
+    // StatusBar rule 8: the card owns a transfer's progress and it is up whenever one runs, so the
+    // strip draws nothing for it at all. A drag's own feedback is not a transfer and still reports.
+    readonly property string sticky: root.activity && !root.activity.transfer.running ? root.activity.text : ""
     readonly property var transfer: root.activity ? root.activity.transfer : Ops.emptyTransfer()
     readonly property var transferOwner: root.activity ? root.activity.owner : null
     readonly property bool stickyHere: root.sticky.length > 0
     property string searchLine: ""
-    property string searchKeys: ""
     property string retryLine: ""
     property bool searchRunning: false
     readonly property bool searching: root.searchLine.length > 0
-    readonly property int spiralSize: Style.font.body
     readonly property int messageMs: 4000
     readonly property real ruleOpacity: 0.12
-    readonly property bool hasUndo: !root.transientIsError && !root.stickyHere && !root.searching
-                                    && root.notice.indexOf(Ops.UNDO_HINT) >= 0
-    readonly property string keyHint: root.transientIsError ? "esc dismisses"
-        : root.transfer.running ? (root.activity.cancelling ? "cancelling" : "esc cancels")
-        : root.searchRunning ? "esc cancels" : root.searching ? root.searchKeys
-        : root.hasUndo ? "z undoes" : ""
+    // The hint a result carries: the primary drops it and the secondary draws it, so no sentence on
+    // this strip ends in advice. ui/js/Status.js owns the two of them.
+    readonly property string noticeHint: root.transientIsError || root.stickyHere || root.searching
+                                         ? "" : Status.hintOf(root.notice)
+    readonly property bool hasUndo: root.noticeHint === Status.UNDO_HINT
+    // Round two, StatusBar rule 4: a refusal is drawn alone. When the strip's error is the pane's own
+    // state sentence, the block under it is already saying so and the key is not information.
+    readonly property string keyHint: root.transientIsError
+        ? (root.pane && root.errors[0].text === root.pane.stateMessage ? "" : "esc dismisses")
+        : root.noticeHint.length > 0 ? Status.hintKey(root.noticeHint) : ""
     readonly property string secondaryText: [root.keyHint,
         root.transientIsError && root.stickyHere ? root.sticky : "",
         root.activities.slice(1).map(function (entry) { return entry.text }).join(" · "),
-        (root.transientIsError || root.stickyHere) && root.searching ? root.searchText() : "",
+        root.stickyHere && !root.transientIsError && root.searching ? root.searchLine : "",
         root.transientIsError ? "" : root.retryLine]
         .filter(function (s) { return s.length > 0 }).map(function (s) { return " · " + s }).join("")
-    readonly property real slotWidth: Math.max(0, root.width - Theme.spacing.rowPaddingX
-        - counts.x - counts.width - 3 * Theme.spacing.gap - root.spiralSize)
+    // Three zones that never trade places: the board fixes the outer two at a third of the strip
+    // each, so the centre stays put however long the count or the disk line gets.
+    readonly property real zoneSpan: Math.max(0, root.width - 2 * Theme.spacing.rowPaddingX)
+    readonly property real zoneWidth: Math.round(root.zoneSpan / 3)
     readonly property real hintWidth: hintMetrics.width
     signal transferCancelRequested(int id)
     implicitHeight: Theme.chromeHeight + detailView.height
@@ -100,7 +122,7 @@ Item {
     // A completion hidden by an error or live activity keeps its full display time after acknowledgement.
     function syncNoticeTimer() {
         if (root.notice && !root.transientIsError && !root.stickyHere && !root.searching
-                && root.notice.indexOf(Ops.UNDO_HINT) < 0)
+                && root.notice.indexOf(Status.UNDO_HINT) < 0)
             clear.restart()
         else clear.stop()
     }
@@ -115,29 +137,43 @@ Item {
         return root.total + (root.total === 1 ? " item" : " items")
     }
 
+    // The left zone answers the question the view raises: the selection if there is one, what the
+    // filter left standing if there is one, and otherwise the directory. StatusBar board rule 3.
     function countText() {
-        var base = root.itemText()
-        return root.listingState === "ready" && root.selectionCount > 0
-            ? base + " · " + root.selectionCount + " selected" : base
+        if (root.listingState !== "ready") {
+            return root.itemText()
+        }
+        if (root.selectionCount > 0) {
+            var head = root.selectionCount + " of " + root.total + " selected"
+            return root.selectionBytes >= 0 ? head + " · " + Format.size(root.selectionBytes) : head
+        }
+        // SearchFilter rule 2: the same sentence the strip carries, scope and all, because the count
+        // is of the rows the filter could see and those are a window on the directory, not all of it.
+        // The trash view and the picker both draw this strip with no pane behind it, so the filter's
+        // sentence is asked for only where there is a listing to have filtered.
+        if (root.pane && root.shownTotal !== root.total) {
+            return Filter.summary(root.pane.shown, root.pane.rows.length, root.total)
+        }
+        return root.itemText()
     }
 
+    // The one fact on this strip a result or an error may not evict, so a pane with no answer for
+    // it says unknown rather than describing the filesystem the pane just failed to leave.
     function fsText() {
-        return root.fsName.length ? root.fsName + " · " + Format.size(root.fsFree) + " free" : ""
+        return root.fsName.length ? root.fsName + " · " + Format.size(root.fsFree) + " free" : "unknown"
     }
-
-    function searchText() { return "Search: " + root.searchLine.replace(/^Searching, /, "") }
 
     function slot() {
         return { transient: root.transient_, transientIsError: root.transientIsError,
-                 searching: root.searching, searchKeys: root.searchText(),
-                 stickyHere: root.stickyHere, sticky: root.sticky, fsText: root.fsText() }
+                 searching: root.searching, searchLine: root.searchLine,
+                 stickyHere: root.stickyHere, sticky: root.sticky }
     }
 
-    function rightText() {
-        var text = Status.rightText(root.slot())
-        return root.hasUndo ? text.replace(Ops.UNDO_HINT, "") : text
+    function centreText() {
+        var text = Status.centreText(root.slot())
+        return root.noticeHint.length > 0 ? text.replace(root.noticeHint, "") : text
     }
-    function rightColor() { return Theme.color[Status.rightRole(root.slot())] }
+    function centreColor() { return Theme.color[Status.centreRole(root.slot())] }
 
     Timer { id: clear; interval: root.messageMs; onTriggered: root.notice = "" }
 
@@ -158,12 +194,13 @@ Item {
         opacity: root.ruleOpacity
     }
 
+    // Left: what is in front of you.
     Text {
         id: counts
         anchors.left: parent.left
         anchors.leftMargin: Theme.spacing.rowPaddingX
         anchors.verticalCenter: strip.verticalCenter
-        width: Math.min(implicitWidth, root.width / 4)
+        width: root.zoneWidth
         text: root.countText()
         color: Theme.color.foreground
         font.family: Theme.font.family
@@ -172,19 +209,54 @@ Item {
         textFormat: Text.PlainText
     }
 
+    // Right: the disk, which no result and no error may take the space of.
     Text {
-        id: secondary
+        id: disk
         anchors.right: parent.right
         anchors.rightMargin: Theme.spacing.rowPaddingX
         anchors.verticalCenter: strip.verticalCenter
-        width: Math.min(implicitWidth, Math.max(0, root.slotWidth
-            - Math.min(primary.implicitWidth, Math.max(0, root.slotWidth - hintMetrics.width))))
-        text: root.secondaryText
-        color: Theme.color.muted
+        width: root.zoneWidth
+        horizontalAlignment: Text.AlignRight
+        text: root.fsText()
+        color: Theme.color.foreground
         font.family: Theme.font.family
         font.pixelSize: Theme.font.caption
         elide: Text.ElideRight
         textFormat: Text.PlainText
+    }
+
+    // Right, before the disk facts: what just happened, ending one padding short of their own text.
+    Row {
+        id: centre
+        anchors.right: parent.right
+        anchors.rightMargin: 2 * Theme.spacing.rowPaddingX + root.diskTextWidth
+        anchors.verticalCenter: strip.verticalCenter
+        // Rule 2: the disk keeps its zone whatever the transient says, so the pair share this and elide
+        // inside it rather than growing into the facts beside them.
+        readonly property real room: root.transientRoom
+
+        Text {
+            id: primary
+            text: root.centreText()
+            color: root.centreColor()
+            width: Math.min(implicitWidth, Math.max(0, centre.room - secondary.width))
+            font.family: Theme.font.family
+            font.pixelSize: Theme.font.caption
+            elide: Text.ElideMiddle
+            textFormat: Text.PlainText
+        }
+
+        Text {
+            id: secondary
+            text: root.secondaryText
+            color: Theme.color.muted
+            width: Math.min(implicitWidth, Math.max(0, centre.room - Math.min(primary.implicitWidth,
+                Math.max(0, centre.room - hintMetrics.width))))
+            font.family: Theme.font.family
+            font.pixelSize: Theme.font.caption
+            elide: Text.ElideRight
+            textFormat: Text.PlainText
+        }
     }
 
     TextMetrics {
@@ -192,29 +264,6 @@ Item {
         font: secondary.font
         text: root.keyHint.length ? " · " + root.keyHint
             + (root.secondaryText !== " · " + root.keyHint ? " · …" : "") : ""
-    }
-
-    Text {
-        id: primary
-        anchors.right: secondary.left
-        anchors.verticalCenter: strip.verticalCenter
-        width: Math.min(implicitWidth, Math.max(0, root.slotWidth - secondary.width))
-        text: root.rightText()
-        color: root.rightColor()
-        font.family: Theme.font.family
-        font.pixelSize: Theme.font.caption
-        elide: Text.ElideMiddle
-        textFormat: Text.PlainText
-    }
-
-    Spinner {
-        visible: !root.transientIsError && (root.stickyHere || root.searchRunning)
-        anchors.right: primary.left
-        anchors.rightMargin: Theme.spacing.gap
-        anchors.verticalCenter: strip.verticalCenter
-        width: root.spiralSize
-        height: root.spiralSize
-        color: Theme.color.muted
     }
 
     Rectangle {

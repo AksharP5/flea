@@ -345,6 +345,38 @@ wait_for() {
   return 1
 }
 
+# ---------------------------------------------------------------- R0
+echo
+echo "== R0: with Settings up, no drag runs in the pane underneath it =="
+# Issue 120 (tgienger): a drag begun over the open panel moved files in the listing behind it,
+# because a row's DragHandler carries CanTakeOverFromItems and takes the grab from the panel's own
+# ground. PR 124 (tcraid0) is the fix, and the pane being disabled is the only thing that stops it.
+r0_before=$(ipc total)
+aaa_before_r0=$(ls -A "$HOMEDIR/aaa" | tr '\n' ' ')
+printf 's1 payload\n' > "$HOMEDIR/s1.txt"
+expect_ipc total $((r0_before + 1))
+set -- $(screen_centre s1.txt); s1x=$1; s1y=$2
+set -- $(screen_centre aaa);    a1x=$1; a1y=$2
+native_key -M ctrl -k comma -m ctrl
+expect_ipc settingsOpen true
+warp "$s1x" "$s1y"; sleep 0.4
+press; sleep 0.3
+glide_to "$a1x" "$a1y"; sleep 0.5
+release; sleep 0.8
+check "a drag through the open panel moves nothing" \
+      "$([ -e "$HOMEDIR/aaa/s1.txt" ] && echo moved || echo clean)" "clean"
+check "and the file the pointer began on is where it was" \
+      "$([ -e "$HOMEDIR/s1.txt" ] && echo still-there || echo gone)" "still-there"
+# The release lands on the panel's own ground, which is a click outside the card, so it closes on it.
+check "the gesture belonged to the panel, which closed on the release" "$(ipc settingsOpen)" "false"
+check "and the folder the drag crossed holds exactly what it held" \
+      "$(ls -A "$HOMEDIR/aaa" | tr '\n' ' ')" "$aaa_before_r0"
+# Both paths, because the case that fails is the one where the file is in the folder, and a fixture
+# left with a stray row in aaa is a fixture every case after this one counts wrongly.
+owned_path "$HOMEDIR/s1.txt"; rm -f "$HOMEDIR/s1.txt"
+owned_path "$HOMEDIR/aaa/s1.txt"; rm -f "$HOMEDIR/aaa/s1.txt"
+expect_ipc total "$r0_before"
+
 # ---------------------------------------------------------------- R2
 echo
 echo "== R2: the drop lands where the pointer is, not one frame stale =="
@@ -930,6 +962,88 @@ for direction in left right; do
   pair_result "$source" "$destination/folder" "$name" "$verb"
   expect_feedback "" ""
 done
+
+# ---------------------------------------------------------------- R11
+echo
+echo "== R11: a press that travels on the chrome strip moves the window =="
+# ui/shell.qml asks for no decorations, so the compositor never gave this window a title bar and the
+# strip is it. The window is floated and placed first: a tiled window has nowhere of its own to move
+# to, and a full-screen float puts the strip under the Omarchy bar, which owns those pixels.
+r11_geometry() {
+  hyprctl clients -j | jq -er --argjson pid "$MYPID" \
+    '[.[] | select(.pid == $pid)] | if length == 1 then .[0] else error("owned window missing or ambiguous") end
+     | "\(.at[0]) \(.at[1]) \(.size[0]) \(.size[1]) \(.floating)"'
+}
+hyprctl dispatch "hl.dsp.window.float()" >/dev/null || die "R11 could not float the window"
+sleep 0.5
+hyprctl dispatch "hl.dsp.window.resize({ x = 1200, y = 800 })" >/dev/null
+sleep 0.4
+hyprctl dispatch "hl.dsp.window.move({ x = 400, y = 300 })" >/dev/null
+sleep 0.8
+# Captured and checked before it is split, because a here-string always hands read one line.
+geometry=$(r11_geometry) || die "R11 window geometry unavailable"
+[ -n "$geometry" ] || die "R11 window geometry is empty"
+read -r wx wy ww wh floating <<< "$geometry"
+check "the window is floating where this case put it" "$floating $wx $wy" "true 400 300"
+point=$(ipc pathCentre) || die "R11 path area has no geometry"
+read -r cx cy <<< "$point"
+# Inside this window's own chrome, never the shell bar at the top of the screen: the press point is
+# the path area's centre mapped through the window's origin, and it is printed so the row can say so.
+check "the press lands inside the window" \
+      "$([ "$cy" -lt "$(ipc chromeHeight)" ] && [ "$((wy + cy))" -gt "$wy" ] && echo inside || echo "outside at $((wy + cy))")" "inside"
+note "press at $((wx + cx)),$((wy + cy)) with the window at $wx,$wy and its chrome $(ipc chromeHeight) tall"
+glide_to "$((wx + cx))" "$((wy + cy))"
+sleep 0.3
+press
+sleep 0.3
+for _ in $(seq 1 12); do move_rel 8 4; sleep 0.05; done
+sleep 0.4
+release
+sleep 1
+geometry=$(r11_geometry) || die "R11 window geometry unavailable after the drag"
+[ -n "$geometry" ] || die "R11 window geometry is empty after the drag"
+read -r ax ay _ _ _ <<< "$geometry"
+check "the window followed the pointer" "$([ "$ax" -gt "$wx" ] && [ "$ay" -gt "$wy" ] && echo moved || echo "stayed at $ax,$ay")" "moved"
+note "moved dx=$((ax - wx)) dy=$((ay - wy))"
+# The strip is still a strip: a click that does not travel reaches the control under it.
+geometry=$(r11_geometry) || die "R11 window geometry unavailable before the click"
+[ -n "$geometry" ] || die "R11 window geometry is empty before the click"
+read -r bx by _ _ _ <<< "$geometry"
+point=$(ipc chromeButtonCentre arrow-up) || die "R11 the up control has no geometry"
+read -r ux uy <<< "$point"
+here=$(ipc path)
+omarchy-drive click "$((bx + ux))" "$((by + uy))" left >/dev/null || die "R11 could not click the up control"
+sleep 0.8
+check "a click with no travel still reached the control under the strip" \
+      "$([ "$(ipc path)" != "$here" ] && echo climbed || echo "stayed at $(ipc path)")" "climbed"
+geometry=$(r11_geometry) || die "R11 window geometry unavailable after the click"
+[ -n "$geometry" ] || die "R11 window geometry is empty after the click"
+read -r cx2 cy2 _ _ _ <<< "$geometry"
+check "and that click moved nothing" "$cx2 $cy2" "$bx $by"
+
+# With the path editor up the same gesture is the editor's own, so the strip stops being a title bar.
+native_key -M ctrl -k l -m ctrl
+expect_ipc pathBarOpen true
+glide_to "$((cx2 + cx))" "$((cy2 + cy))"
+sleep 0.3
+press
+sleep 0.3
+for _ in $(seq 1 12); do move_rel 8 4; sleep 0.05; done
+sleep 0.4
+release
+sleep 1
+geometry=$(r11_geometry) || die "R11 window geometry unavailable after the editor drag"
+[ -n "$geometry" ] || die "R11 window geometry is empty after the editor drag"
+read -r ex ey _ _ _ <<< "$geometry"
+check "a drag while the path editor is up moves no window" "$ex $ey" "$cx2 $cy2"
+# And the editor is still up, so the press was ignored by the strip rather than dismissing it.
+expect_ipc pathBarOpen true
+native_key -k Escape
+expect_ipc pathBarOpen false
+
+hyprctl dispatch "hl.dsp.window.float()" >/dev/null
+sleep 0.5
+echo
 
 printf 'DRAG_SHARED routes=List-Grid,Grid-activeColumns,dual-left-right,dual-right-left real_relative_input=ok index_only=not_exercised transfer_preemption=not_exercised\n'
 echo "$((pass + fail)) checks, $fail failed"

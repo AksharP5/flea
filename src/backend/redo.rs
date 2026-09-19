@@ -130,10 +130,12 @@ fn apply(saved: &ReplayStep, id: usize, index: usize, cancel: &AtomicBool, tx: &
             let mut sink = |bytes, total| {
                 if last.elapsed() >= PROGRESS_EVERY {
                     last = Instant::now();
-                    let _ = tx.send(OpMsg::Progress { id, index, name: name.clone(), bytes, total });
+                    // corner: a redo runs no sweep of its own, so its card counts bytes without a total, which is
+                    // the same state a batch shows while it is still counting.
+                    let _ = tx.send(OpMsg::Progress { id, index, name: name.clone(), bytes, total, scanned: 0 });
                 }
             };
-            let mut progress = Progress { cancel, on_bytes: &mut sink, partial: None };
+            let mut progress = Progress { cancel, on_bytes: &mut sink, partial: None, tree: None };
             let moving = matches!(saved.step, Step::Moved { .. });
             let result = if moving { move_any(from, to, &mut progress) } else { copy_any(from, to, &mut progress) };
             if result.is_ok() {

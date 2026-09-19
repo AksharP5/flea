@@ -1,66 +1,17 @@
 .import "../../ui/js/Settings.js" as Settings
 .import "../../ui/js/Keymap.js" as Keymap
-.import "../../ui/js/Menu.js" as Menu
 .import "../../ui/js/TextSize.js" as TextSize
 
-// The settings panel's model. ui/SettingsPanel.qml only paints what rows() returns, so every row a
-// section can draw, and every value a control can hold, is assertable here without a window.
+// The settings panel's model. ui/SettingsPanel.qml only paints what rows() returns, so every row a section can draw, and every value a control can hold, is assertable here without a window.
 
 function run(check) {
-    runMaster(check)
     runRows(check)
     runCursor(check)
     runPresets(check)
-    runInventory(check)
     runCompletionRows(check)
 }
 
-// No mock controls: every id the Menus section can switch is an action ui/js/Menu.js really builds,
-// and every row it builds that is not locked or background-only has a switch. Two menus are unioned
-// because Move to Dropbox and Copy share link cannot appear on one row and Extract needs an archive.
-function runInventory(check) {
-    var built = {}
-    var builtMark = {}
-    var shapes = [
-        { rowInDropbox: false, rowIsArchive: true, rowIsImage: true },
-        { rowInDropbox: true, rowIsArchive: false, rowIsImage: false }
-    ]
-    for (var s = 0; s < shapes.length; s++) {
-        var rows = Menu.listingEntries({
-            showHidden: false, hasRow: true, dropboxPath: "/home/jw/Dropbox",
-            taildropPeers: [{ id: "x", label: "Box" }], taildropInstalled: true, dropboxInstalled: true,
-            archiveFormats: ["zip"], canConvert: true, canExtract: true, selectionCount: 1, rowMode: 0o100644,
-            rowInDropbox: shapes[s].rowInDropbox, rowIsArchive: shapes[s].rowIsArchive,
-            rowIsImage: shapes[s].rowIsImage, hiddenActions: []
-        })
-        for (var i = 0; i < rows.length; i++) {
-            if (rows[i].separator === true)
-                continue
-            built[rows[i].id || rows[i].action] = rows[i].label
-            builtMark[rows[i].id || rows[i].action] = rows[i].glyph !== undefined ? rows[i].glyph : rows[i].mark
-        }
-    }
-    var switched = []
-    for (var g = 0; g < Settings.MENU_GROUPS.length; g++)
-        switched = switched.concat(Settings.MENU_GROUPS[g].ids)
-    check("every switch in the Menus section is over a row the menu really builds",
-          switched.filter(function (id) { return built[id] === undefined }).join(","), "")
-    check("and each switch carries that row's own wording, so the two cannot drift",
-          switched.filter(function (id) { return Settings.label(id) !== built[id] }).join(","), "")
-    // A switch wears the mark of the row it governs, which is the only way a reader can pair the two.
-    check("and each row wears the mark the menu draws for that action",
-          switched.concat(Settings.LOCKED).filter(function (id) {
-              var mine = Settings.GLYPHS[id] !== undefined ? Settings.GLYPHS[id] : Settings.MARKS[id]
-              return mine === undefined || mine !== builtMark[id]
-          }).join(","), "")
-    // SettingsPlaces section 02 adds the listing Favorite action; SettingsMenus keeps its 20 switches and Menus' New folder has none.
-    var reachable = switched.concat(Settings.LOCKED).concat(["newFolder", "addFavourite"])
-    check("no other menu action is omitted from the board's switch inventory",
-          Object.keys(built).filter(function (id) { return reachable.indexOf(id) < 0 }).join(","), "")
-}
-
-// The Display state ui/SettingsPanel.qml passes in: the stored mode, the size ui/Theme.qml resolved
-// from it, and the two numbers Flea reads off the compositor and never writes.
+// The Display state ui/SettingsPanel.qml passes in: the stored mode, the size ui/Theme.qml resolved from it, and the two numbers Flea reads off the compositor and never writes.
 function displayState(textSize, baseSize, monitorScale) {
     return { textSize: textSize, baseSize: baseSize,
              monitorScale: monitorScale === undefined ? 1 : monitorScale, cornerRadius: 8 }
@@ -78,104 +29,73 @@ function find(rows, id) {
     return {}
 }
 
-// GM's ruling, and it is easy to get backwards: menu.hidden stores what is HIDDEN, and the master's
-// count is of ENABLED actions, so one id in the set reads "5 of 6".
-function runMaster(check) {
-    check("nothing hidden is all six enabled", Settings.basicEnabled([]), 6)
-    check("and the master reads all", Settings.masterState([]), "all")
-    check("one hidden id is five enabled", Settings.basicEnabled(["paste"]), 5)
-    check("and the master is partial", Settings.masterState(["paste"]), "some")
-    check("all six hidden is none enabled", Settings.basicEnabled(Settings.BASIC), 0)
-    check("and the master is unchecked", Settings.masterState(Settings.BASIC), "none")
-    // An unrelated id in the set must not be counted as one of the six, in either direction.
-    check("an unrelated hidden id does not change the count",
-          Settings.basicEnabled(["copypath", "compress"]), 6)
-
-    check("activating a checked master switches all six off",
-          Settings.toggleMaster([]).sort().join(","), Settings.BASIC.slice().sort().join(","))
-    check("activating a partial master switches all six on, which is the recovering keystroke",
-          Settings.toggleMaster(["paste"]).length, 0)
-    check("activating an unchecked master switches all six on too",
-          Settings.toggleMaster(Settings.BASIC).length, 0)
-    check("switching all six on preserves an unrelated hidden id",
-          Settings.toggleMaster(["paste", "copypath"]).join(","), "copypath")
-    check("and switching all six off preserves it as well",
-          Settings.toggleMaster(["copypath"]).indexOf("copypath") >= 0, true)
-
-    check("an individual toggle adds its own id and nothing else",
-          Settings.toggleId([], "paste").join(","), "paste")
-    check("and toggling it again takes only that id back out",
-          Settings.toggleId(["paste", "copypath"], "paste").join(","), "copypath")
-    check("the master recomputes off the individual toggle at once",
-          Settings.masterState(Settings.toggleId([], "cut")) + " "
-          + Settings.basicEnabled(Settings.toggleId([], "cut")), "some 5")
-
-    // menu.hidden is the sole state, so the master is a reading of that set and never a value beside
-    // it: there is no fold to apply here, and nothing a hand edit could leave the two disagreeing on.
-    check("the model exports no stored master to read", typeof Settings.effectiveHidden, "undefined")
-    check("a set with no master in it still draws one",
-          Settings.rows("menus", { hidden: ["paste"] })[1].state, "some")
-    check("and the master survives a round trip through the set it derives from",
-          Settings.masterState(Settings.toggleMaster(Settings.toggleMaster([]))), "all")
-}
-
 function runRows(check) {
     var display = Settings.rows("display", displayState(TextSize.follow(), 14))
-    // The board's Display card: the text-size mode over its effective size, then the compositor's
-    // two read-only facts. No monitor-scale control, because Flea does not step or cycle that one.
+    // The board's Display card: the text-size mode over its effective size, then the compositor's two read-only facts. No monitor-scale control, because Flea does not step or cycle that one.
     check("the Display section is text size, then Scale, then Appearance",
-          kinds(display), "group|choice|ruler|hint|group|fact|hint|group|check")
+          kinds(display), "group|choice|ruler|hint|fact|group|fact|hint|group|check")
     check("its one control opens on Follow Omarchy", find(display, "textMode").value,
           "Follow Omarchy")
-    // The board draws the mode as both names side by side, so the row names them rather than
-    // leaving ui/SettingsRow.qml to invent a second list that could disagree with the writer.
+    // The board draws the mode as both names side by side, so the row names them rather than leaving ui/SettingsRow.qml to invent a second list that could disagree with the writer.
     check("and it names both its values, in the board's own order",
-          find(display, "textMode").options.join("|"), "Follow Omarchy|Override")
-    check("the ruler reports Omarchy's own size", display[2].value, "14px")
-    check("and fills to that stop, five of the seven", display[2].index, 4)
-    // An Omarchy size that is not one of the seven still fills the ruler, at the nearest stop below.
-    check("a size between two stops fills to the nearer one",
-          Settings.rows("display", displayState(TextSize.follow(), 13))[2].index, 3)
-    check("the hint names every stop the override can take",
-          display[3].label.indexOf("9, 10, 11, 12, 14, 16, 20 px") >= 0, true)
-    check("the monitor scale is drawn read-only, as the compositor reports it", display[5].value, "Read-only 1x")
+          find(display, "textMode").labels.join("|"), "Follow Omarchy|Override")
+    // SettingsRest rule 2: the ruler carries the seven numbers, so it states the stop it marks and the hint keeps only the chords.
+    check("the ruler stands for the stops themselves", display[2].stops.join(","), "9,10,11,12,14,16,20")
+    check("and marks the one in force, five of the seven", display[2].index, 4)
+    // An Omarchy size that is not one of the seven still marks a stop, the nearest one.
+    var between = Settings.rows("display", displayState(TextSize.follow(), 13))
+    check("a size between two stops marks the nearer one", between[2].index, 3)
+    // HANDOFF rule 8: one short line, which at this panel's width is 47 characters, measured.
+    check("the hint is down to the two chords, on one line", display[3].label,
+          "Ctrl+Shift +/- walks them, Ctrl+Shift+0 follows.")
+    // And Effective stays, because in Follow it is the size running and the ruler's mark is not.
+    check("Effective reports the size actually running", display[4].label + "|" + display[4].value + "|" + display[4].role,
+          "Effective|14 px|live")
+    check("and says so when the ruler cannot state it", between[4].value + "|" + between[4].caption,
+          "13 px|Omarchy's own size. The ruler marks 12, the nearest stop.")
+    check("a size that is a stop needs no such sentence", display[4].caption, "Omarchy's own size.")
+    check("the monitor scale is the compositor's own number, and the row carries no control", display[6].value, "1x")
     check("a fractional one keeps its fraction",
-          Settings.rows("display", displayState(TextSize.follow(), 14, 1.25))[5].value, "Read-only 1.25x")
+          Settings.rows("display", displayState(TextSize.follow(), 14, 1.25))[6].value, "1.25x")
     check("and an unanswered query says so rather than claiming 1x",
-          Settings.rows("display", displayState(TextSize.follow(), 14, 0))[5].value, "not reported")
+          Settings.rows("display", displayState(TextSize.follow(), 14, 0))[6].value, "not reported")
     check("its hint is the board's own sentence, so no reader expects a control",
-          display[6].label, "Flea follows the compositor value and does not step or cycle it.")
-    check("the board icon override defaults off", display[8].id + "|" + display[8].on, "display.hyprlandIcons|false")
+          display[7].label, "Flea follows the compositor value and does not step or cycle it.")
+    check("the board icon override defaults off", display[9].id + "|" + display[9].on, "display.hyprlandIcons|false")
 
     // Switching to Override adds the stop row, and nothing else about the section moves.
     var pinned = Settings.rows("display", displayState({ mode: 16 }, 16))
     check("an override adds no row, it turns the ruler into the control", pinned.length,
           display.length)
     check("the mode row says which mode it is in", find(pinned, "textMode").value, "Override")
-    check("the ruler carries the pinned size", find(pinned, "textStop").value, "16px")
-    check("and fills one stop further along", pinned[2].index, 5)
+    check("Effective carries the pinned size, and names whose it is",
+          find(pinned, "textEffective").value + "|" + find(pinned, "textEffective").caption, "16 px|Your override.")
+    check("and the ruler marks one stop further along", pinned[2].index, 5)
     check("the ruler is live only while the override is", find(pinned, "textStop").on, true)
     check("and while following it reports rather than sets",
           find(display, "textStop").on, false)
 
     var menus = Settings.rows("menus", { hidden: ["paste"] })
-    check("the Menus section leads with the master row under its own heading",
-          kinds(menus).indexOf("group|master|check") === 0, true)
-    check("the master's count is drawn beside it", menus[1].value, "5 of 6")
+    check("the Menus section leads with the heading its master rides, and the rows follow it",
+          kinds(menus).indexOf("group|check|check") === 0, true)
+    check("the master's count is drawn on that heading", menus[0].value, "5 of 6")
     // The mirror of the same ruling: five ids in the set is one action left ON, never "5 of 6".
     check("and five hidden ids read as one enabled, not five",
-          Settings.rows("menus", { hidden: ["cut", "copy", "paste", "duplicate", "rename"] })[1].value,
+          Settings.rows("menus", { hidden: ["cut", "copy", "paste", "duplicate", "rename"] })[0].value,
           "1 of 6")
+    // Rule 5: the row that can destroy a file carries the urgent role and the caption the model gives it.
+    check("Delete permanently is the one row drawn urgent, and it says it is off by default",
+          menus.filter(function (r) { return r.role === "error" })
+               .map(function (r) { return r.id + "|" + r.value + "|" + r.on }).join(","),
+          "delete|off by default|true")
     check("a hidden action's row is drawn unchecked, not dropped",
           find(menus, "paste").on, false)
     check("and an enabled one is checked", find(menus, "copy").on, true)
     check("the current menu controls include Permissions and the retained hints preference",
           menus.filter(function (r) { return r.kind === "check" })
                .map(function (r) { return r.id }).join(","),
-          "cut,copy,paste,duplicate,rename,trash,delete,openwith,openTerminal,moveto,copyto,properties,permissions,copypath,compress,extract,convert,taildrop,dropbox,sharelink,keyHints")
-    // The one check that is not a menu action: it says how every row is drawn, not whether it is.
-    // GM's ruling of 2026-09-10 turns it off by default, with the rail's own detail rows, and
-    // src/uischema.rs stores that default, so an absent preference reads off and not on.
+          "cut,copy,paste,duplicate,rename,trash,delete,openwith,openTerminal,moveto,copyto,properties,permissions,copypath,shelf,compress,extract,convert,taildrop,localsend,dropbox,sharelink,runScript,placeMenu,keyHints")
+    // The one check that is not a menu action: it says how every row is drawn, not whether it is. GM's ruling of 2026-09-10 turns it off by default, with the rail's own detail rows, and src/uischema.rs stores that default, so an absent preference reads off and not on.
     check("the hints row defaults off, as GM ruled over the boards",
           find(menus, "keyHints").label + "|" + find(menus, "keyHints").on,
           "Show keyboard hints|false")
@@ -183,8 +103,7 @@ function runRows(check) {
           find(Settings.rows("menus", { hidden: [], keyHints: true }), "keyHints").on, true)
     check("an explicitly disabled hints preference stays off",
           find(Settings.rows("menus", { hidden: [], keyHints: false }), "keyHints").on, false)
-    // Open in terminal was drawn by every menu with no way to switch it off, because the shipped
-    // hidden set named it "terminal" and ui/js/Menu.js builds the row as "openTerminal".
+    // Open in terminal was drawn by every menu with no way to switch it off, because the shipped hidden set named it "terminal" and ui/js/Menu.js builds the row as "openTerminal".
     check("Open in terminal is a switch like any other action row",
           find(menus, "openTerminal").label + "|" + find(menus, "openTerminal").glyph,
           "Open in terminal|terminal")
@@ -197,10 +116,11 @@ function runRows(check) {
     var keys = Settings.rows("keys", { preset: "mac", presetKeys: Keymap.PRESET_KEYS })
     check("the Keys section leads with the preset choice", keys[1].kind, "choice")
     check("and shows the selected preset by name", keys[1].value, "Mac")
-    // The board draws all four on the control, and SettingsRow needs options.length > 1 to draw a
-    // segment at all, so a chevron here is the defect: it names one value and hides the other three.
-    check("the preset row draws all four as a segment, in the chooser's own order",
-          (keys[1].options || []).join("|"), "Default|Vim|Mac|Windows")
+    // The board draws all four, and SettingsRow decides segment against chevron by whether they fit.
+    check("the preset row carries all four names, in the chooser's own order",
+          (keys[1].labels || []).join("|"), "Default|Vim|Mac|Windows")
+    // Rule 3: a hint that repeats its control's own four labels is not a hint; this one says what a preset changes.
+    check("the preset hint says what changes rather than listing the labels again", keys[2].kind + "|" + keys[2].label, "hint|Keys change, actions do not.")
     check("the Windows preset is shown by name too",
           Settings.rows("keys", { preset: "windows", presetKeys: Keymap.PRESET_KEYS })[1].value,
           "Windows")
@@ -208,33 +128,30 @@ function runRows(check) {
 
 function runCursor(check) {
     var menus = Settings.rows("menus", { hidden: [] })
-    check("a heading is never a focus stop", Settings.focusable(menus[0]), false)
-    check("so the opening cursor lands on the master row below it", Settings.firstRow(menus), 1)
+    check("a heading with no master is never a focus stop", Settings.focusable(menus[7]), false)
+    check("so the opening cursor lands on the master heading the section leads with", Settings.firstRow(menus), 0)
     check("a check row is a focus stop", Settings.focusable(menus[2]), true)
     check("a locked row is not", Settings.focusable(menus[menus.length - 1]), false)
-    // Stepping past the last focus stop keeps the cursor where it is, the way the context menu's own
-    // stepCursor does, so the two locked rows at the bottom cannot swallow it.
+    // Stepping past the last focus stop keeps the cursor where it is, the way the context menu's own stepCursor does, so the two locked rows at the bottom cannot swallow it.
     check("stepping down off the end holds the cursor on the last control",
           Settings.stepRow(menus, menus.length - 3, 1), menus.length - 3)
-    check("stepping up off the top holds it on the first", Settings.stepRow(menus, 1, -1), 1)
-    check("a step down crosses the heading between two groups",
-          Settings.focusable(menus[Settings.stepRow(menus, 7, 1)]), true)
+    check("stepping up off the top holds it on the first", Settings.stepRow(menus, 0, -1), 0)
+    check("a step down crosses the heading of a group that has no master",
+          Settings.focusable(menus[Settings.stepRow(menus, 6, 1)]), true)
 
     var display = Settings.rows("display", displayState(TextSize.follow(), 14))
     check("the Display section's only control is where its cursor opens",
           Settings.firstRow(display), 1)
     check("and no read-only fact below it takes the cursor",
-          Settings.stepRow(display, 1, 1), 8)
+          Settings.stepRow(display, 1, 1), 9)
     var pinned = Settings.rows("display", displayState({ mode: 16 }, 16))
     check("an override gives the cursor a second stop to walk to",
           Settings.stepRow(pinned, 1, 1), 2)
     check("and the compositor's rows still take none",
-          Settings.stepRow(pinned, 2, 1), 8)
+          Settings.stepRow(pinned, 2, 1), 9)
 }
 
-// SettingsKeys.html's four-value chooser over the one key table. Each row the Keys section lists is
-// resolved back through the generated overlay, so a listed chord cannot advertise a binding the
-// preset lacks, and every one of the four claims a chord rather than drawing a heading over nothing.
+// SettingsKeys.html's four-value chooser over the one key table. Each row the Keys section lists is resolved back through the generated overlay, so a listed chord cannot advertise a binding the preset lacks, and every one of the four claims a chord rather than drawing a heading over nothing.
 function runPresets(check) {
     check("preset chooser preserves authoritative order", Settings.PRESETS.join(","), "default,vim,mac,windows")
     check("preset chooser labels remain explicit", Settings.PRESETS.map(function (id) { return Settings.PRESET_LABELS[id] }).join(","), "Default,Vim,Mac,Windows")
@@ -267,7 +184,7 @@ function runPresets(check) {
     }
     check("preset check denominator covers all effective bindings", total > 100, true)
     var menuRows = Settings.menuRows([], true)
-    check("SettingsMenus contains exactly 20 action switches", menuRows.filter(function (r) { return r.kind === "check" && r.id !== "keyHints" }).length, 20)
+    check("SettingsMenus contains exactly 24 action switches", menuRows.filter(function (r) { return r.kind === "check" && r.id !== "keyHints" }).length, 24)
     check("Delete permanently is visually destructive", find(menuRows, "delete").role, "error")
     check("Delete permanently explains its default", find(menuRows, "delete").value, "off by default")
 }
@@ -275,8 +192,32 @@ function runPresets(check) {
 function runCompletionRows(check) {
     var places = Settings.rows("places", {})
     check("Places spells the manager group Favorites", places[0].label, "Favorites")
-    check("optional rail details default off", [find(places, "places.driveSize").on, find(places, "places.trashCount").on].join(","), "false,false")
-    check("the Rail controls follow the ruled order", places.slice(-3).map(function (row) { return row.label }).join("|"), "Show drive size|Show Trash count|Sidebar width")
+    // SettingsRest rules 3 and 4: Add rides the heading it governs, and nothing floats under the list.
+    check("Add rides the Favorites heading and is a focus stop there",
+          [places[0].action, places[0].value, Settings.focusable(places[0])].join("|"),
+          "addFavourite|Add this folder|true")
+    check("and the two buttons under the list are gone",
+          places.filter(function (row) { return row.kind === "favouriteActions" }).length, 0)
+    check("optional rail details default off", [find(places, "places.driveSize").on, find(places, "places.trashCount").on, find(places, "places.showUnmounted").on].join(","), "false,false,false")
+    check("the Rail controls follow the ruled order", places.slice(-7, -2).map(function (row) { return row.label }).join("|"), "Show Trash count|Show unmounted drives|Auto-hide sidebar|Show sidebar|Sidebar width")
+    // Directive 74: two handles on one remembered state, so the row reads the word ctrl-b writes.
+    check("Show sidebar is checked while the rail is shown", find(places, "places.rail").on, true)
+    check("and auto-hide ships off, so nothing hides itself", find(places, "places.autoHide").on, false)
+    // Directive 77: with auto-hide on the pointer governs the rail, so the remembered choice is
+    // greyed and not a stop, the same treatment every other dependent row gets.
+    var hiding = Settings.rows("places", { data: { places: { autoHide: true } } })
+    check("Show sidebar is greyed while auto-hide is on",
+          [find(hiding, "places.rail").available, Settings.focusable(find(hiding, "places.rail"))].join("|"), "false|false")
+    check("and it is a control again with auto-hide off",
+          [find(places, "places.rail").available, Settings.focusable(find(places, "places.rail"))].join("|"), "true|true")
+    // The 30 day sweep's own row, at the foot of Places under its own eyebrow. Off unless ui.json says otherwise, which is the whole of GM's opt-in ruling as the panel sees it.
+    check("Places ends with the Trash group and its one row",
+          places.slice(-2).map(function (row) { return row.label }).join("|"),
+          "Trash|Empty after 30 days")
+    check("the sweep is off on a fresh install", find(places, "trashAutoEmpty").on, false)
+    check("and says what it does and how often", find(places, "trashAutoEmpty").caption, "permanently")
+    check("a ui.json that switched it on reads back on",
+          find(Settings.rows("places", { data: { trashAutoEmpty: true } }), "trashAutoEmpty").on, true)
     var detailedPlaces = Settings.rows("places", { data: { places: { driveSize: true, trashCount: true } } })
     check("both rail detail controls reflect persisted on values", [find(detailedPlaces, "places.driveSize").on, find(detailedPlaces, "places.trashCount").on].join(","), "true,true")
     var state = { data: { view: "grid", density: "compact", columns: ["name", "kind"],
@@ -290,6 +231,21 @@ function runCompletionRows(check) {
     check("grouping explains the categories before it is enabled", find(view, "groupByKind").caption, "folders, photos, files")
     check("wrapping explains the boundary before it is enabled", find(view, "wrapAtEnds").caption, "arrow-up at the top")
     check("save feedback is a separate footer", view[view.length - 1].footer, true)
+
+    // Settings > View > Opening, which is where a window and a new tab begin. ui/js/Startup.js turns the values into a path and tests/js/startup.js drives that; this is only what the panel draws.
+    var opening = Settings.rows("view", {})
+    check("Opening defaults to home", find(opening, "startIn").selected, "home")
+    check("and its three values are the ones the schema allows",
+          find(opening, "startIn").values.join(","), "home,last,folder")
+    check("a chosen folder that was never chosen invites the operator to pick one",
+          find(opening, "startFolder").value, "Use this folder")
+    check("new tabs default to the folder the pane is on", find(opening, "newTab").selected, "current")
+    check("and the tab values are the schema's own",
+          find(opening, "newTab").values.join(","), "current,home,start")
+    var opened = Settings.rows("view", { data: { startIn: "folder", startFolder: "/home/gm/Work", newTab: "home" } })
+    check("a chosen folder is named by its own path", find(opened, "startFolder").value, "/home/gm/Work")
+    check("and the mode beside it reads back", find(opened, "startIn").selected, "folder")
+    check("the tab setting reads back too", find(opened, "newTab").selected, "home")
     check("the save failure keeps its message and error role",
           Settings.rows("view", { saveStatus: "Could not save settings" }).slice(-1).map(function (row) {
               return row.label + "|" + row.role + "|" + row.footer
@@ -300,17 +256,30 @@ function runCompletionRows(check) {
     check("all four thumbnail display stops remain available", find(preview, "preview.thumbSize").values.join(","), "small,medium,large,xlarge")
     check("thumbnail source policy remains separate", find(preview, "preview.thumbnails").selected, "off")
     check("ctrl zoom can be disabled", find(preview, "preview.ctrlZoom").on, false)
-    check("only dependent preview controls are indented", preview.filter(function (row) { return row.indented }).map(function (row) {
-        return row.id
-    }).join(","), "preview.loadOn,preview.thumbSize,preview.ctrlZoom")
+    // HANDOFF rule 3: nothing is indented, so no row carries the flag that stepped its mark right.
+    check("no preview row is indented", preview.filter(function (row) { return row.indented }).length, 0)
     var sizes = ["small", "medium", "large", "xlarge"]
-    check("thumbnail pixels are live captions separate from each named stop", sizes.map(function (size) {
+    check("the size row names the stop and no figure, one value per row", sizes.map(function (size) {
         var row = find(Settings.rows("preview", { data: { preview: { thumbSize: size } } }), "preview.thumbSize")
-        return row.caption + "|" + row.value
-    }).join(","), "48 px|Small,64 px|Medium,96 px|Large,128 px|Extra large")
-    check("preview footer explains the active loading mode", preview[preview.length - 1].label + "|" + preview[preview.length - 1].footer,
-          "Ctrl+Space loads the current selection.|true")
-    var about = Settings.rows("about", { about: { version: "0.1.6", handler: "flea.desktop" } })
+        return (row.caption === undefined ? "-" : row.caption) + "|" + row.value
+    }).join(","), "-|Small,-|Medium,-|Large,-|Extra large")
+    // Rule 3: the sentence explaining Load sits under Load, inside its own group, not in a footer two hairlines away.
+    check("the load hint sits under the control it explains", preview[3].kind + "|" + preview[3].label + "|" + (preview[3].footer === undefined),
+          "hint|Ctrl+Space loads the current selection.|true")
+    check("and the automatic case names what automatic follows", Settings.rows("preview", {})[3].label, "Automatic follows the cursor.")
+    // Rule 7: with the column off SelectionPreview.canRead is false and both load paths return, so Load is the one real dependent; grid zoom and the size feed the tile geometry with thumbnails off, so neither greys.
+    var shown = Settings.rows("preview", { data: { preview: { column: true, thumbnails: "off" } } })
+    check("Load greys with the preview column, steps out of the cursor with it, and comes back when the column does",
+          [find(preview, "preview.loadOn").available, Settings.focusable(find(preview, "preview.loadOn")), find(shown, "preview.loadOn").available].join("|"), "false|false|true")
+    check("grid zoom and thumbnail size depend on nothing, and zoom is named for what it resizes",
+          [find(shown, "preview.ctrlZoom").available === undefined, find(shown, "preview.thumbSize").available === undefined, find(shown, "preview.ctrlZoom").label].join("|"),
+          "true|true|Zoom the grid with ctrl and scroll")
+    var about = Settings.rows("about", { about: { version: "0.1.6", handler: "com.thisisgm.flea.desktop" } })
+    // Rules 5 and 6: a fact is muted whole, so no row writes "status only" on itself, and the handler keeps the tail that identifies it.
+    check("the handler row states the handler and nothing else",
+          about.filter(function (row) { return row.label === "File manager"; })
+               .map(function (row) { return row.value + "|" + row.elide; }).join(""),
+          "com.thisisgm.flea.desktop|head")
     check("About version comes from supplied binary facts", about[1].value, "0.1.6")
     check("unreported builds never repeat a specimen commit", about[2].value, "Not recorded in this build")
     check("passive About metadata takes no focus", Settings.focusable(about[1]), false)

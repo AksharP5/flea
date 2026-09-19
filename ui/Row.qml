@@ -29,8 +29,7 @@ Item {
     property bool dropCopying: false
     // A directory's recursive size, resolved by index in List.qml the same way thumb already is; null until it arrives.
     property var dirSize: null
-    // The picker draws a check in front of every row, so its rows start one slot further in; the
-    // window's own rows leave this at zero and are laid out exactly as before.
+    // The picker's rows start one slot further in for its check; the window's own leave this at zero.
     property real leadingSlot: 0
     // The picker's second difference: SendPicker.html's narrow date column and its compact form.
     property bool compactDate: false
@@ -56,14 +55,11 @@ Item {
     readonly property var nameRun: Match.run(root.displayName, root.searchQuery)
     // A long name would otherwise hide the location entirely, and the location is what tells two matches apart.
     readonly property real nameShare: 0.66
-    // What the name and location share: the row minus its padding, the mark, the gap between the
-    // two of them, and the size column while it is still being drawn.
+    // What the name and location share: the row less its padding, the mark, their own gap, and the size column while it is drawn.
     readonly property real searchSlot: Math.max(0, root.width - 2 * Theme.spacing.rowPaddingX - root.markSlot - 2 * Theme.spacing.gap
                                                 - (root.sizeShown ? root.sizeWidth + Theme.spacing.gap : 0))
 
-    // The columns this row's width affords, and which of them this row is drawing. A column that
-    // is not drawn takes neither its width nor its gap, so the chain collapses onto the one to its
-    // right and the name takes back the whole of it.
+    // The columns this row's width affords. A column that is not drawn takes neither its width nor its gap, so the chain collapses onto its right neighbour.
     readonly property var cols: root.dualMode ? Theme.dualColumns(root.width, root.hiddenCols) : Theme.columns(root.width, root.hiddenCols, root.dateWidth)
     readonly property bool modeShown: !root.searching && root.cols.mode
     // The search column set keeps Size and drops the other three, so only this one ignores searching.
@@ -85,7 +81,7 @@ Item {
     Accessible.role: Accessible.ListItem
     Accessible.name: root.displayName
     // The compact form drops the clock, so the picker's rows carry the whole stamp here instead; this tree has no tooltip.
-    Accessible.description: root.compactDate && root.row && root.row.m !== null ? Format.date(root.row.m, Date.now()) : ""
+    Accessible.description: root.compactDate && root.row && root.row.m !== null ? Format.date(root.row.m) : ""
 
     Rectangle {
         anchors.fill: parent
@@ -352,7 +348,7 @@ Item {
         return (root.dirSize.partial ? ">" : "") + Format.size(root.dirSize.bytes)
     }
 
-    // The window's own four forms, or the picker's compact three; both are cell text and nothing more.
+    // The window's one stamp, or the picker's compact three; both are cell text and nothing more.
     function dateText() {
         if (!root.row) {
             return ""
@@ -361,7 +357,7 @@ Item {
         if (root.row.m === null) {
             return "--"
         }
-        return root.compactDate ? Format.compactDate(root.row.m, Date.now()) : Format.date(root.row.m, Date.now())
+        return root.compactDate ? Format.compactDate(root.row.m) : Format.date(root.row.m)
     }
 
     // row.k indexes root.kindNames; an index past its bounds (a row held over from an older listing) reads as empty, never a crash.

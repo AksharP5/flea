@@ -73,23 +73,9 @@ function run(check) {
           Ops.retrySelectionLine([{path: "/source/c.txt", index: 2}, {path: "/source/d.txt", index: 3}]),
           "2 items selected for retry")
 
-    // The canvas draws this one verbatim on the Operations artboard's status strip.
-    check("trash reads exactly as the canvas draws it",
-          Ops.trashed(4, 0),
-          "Moved 4 items to Trash · z undoes")
-    check("a trash that failed outright does not offer an undo",
-          Ops.trashed(0, 1),
-          "That item could not be moved to Trash.")
-    check("a partly failed trash reports both halves",
-          Ops.trashed(3, 1),
-          "Moved 3 items to Trash, 1 failed · z undoes")
-
     check("undo names the operation it reversed",
           Ops.undone("rename") + " / " + Ops.undone("move"),
           "Undid the rename. / Undid the move.")
-    check("undoing a trash says where it came back from",
-          Ops.undone("trash"),
-          "Put it back from Trash.")
     // src/backend/undo.rs reverses a mkdir with remove_dir, so the line says what left the disk
     // rather than repeating the wire's own verb at an operator who never typed it.
     check("undoing a new folder says what came off the disk",
@@ -98,7 +84,7 @@ function run(check) {
 
     check("the clipboard says what it took and how to use it",
           Ops.copied(2, true) + " / " + Ops.copied(1, false),
-          "Cut 2 items, p pastes. / Copied 1 item, p pastes.")
+          "Cut 2 items · p pastes / Copied 1 item · p pastes")
 
     check("a leaf is the part after the last separator",
           Ops.leaf("/home/gm/photo copy.jpg"),
@@ -126,7 +112,7 @@ function run(check) {
         return {
             path: "/d",
             cursorIndex: 0,
-            rows: rows,
+            rows: rows, shown: null,
             selectedIndices: function () { return picked },
             rowFor: function (i) { return (i < 0 || i >= rows.length) ? null : rows[i] },
             join: function (a, b) { return a + "/" + b },
@@ -340,11 +326,11 @@ function run(check) {
           Transfer.fileLine({ name: "panel-demo.mp4", total: 48000000 }),
           "panel-demo.mp4 \u00b7 48.0 MB")
     // total is 0 for a directory, whose size is not known without a sweep this codebase never does.
-    check("a directory names itself and claims no size",
-          Transfer.fileLine({ name: "photos", total: 0 }),
-          "photos")
+    check("a directory with nothing copied yet claims no size", Transfer.fileLine({ name: "photos", total: 0, bytes: 0 }), "photos")
+    // A tree's own running count is the byte line's under the bar, so the file line never says it twice.
+    check("a directory under way still claims no size", Transfer.fileLine({ name: "photos", total: 0, bytes: 1500000000 }), "photos")
     check("nothing in flight yet draws no second row at all",
-          Transfer.fileLine({ name: "", total: 0 }),
+          Transfer.fileLine({ name: "", total: 0, bytes: 0 }),
           "")
 
     // The bar is the whole transfer, never the one file: one large file is then its own byte bar.

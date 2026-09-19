@@ -11,6 +11,8 @@ Item {
     property bool playing: false
     property real position: 0
     property real duration: 0
+    // MediaMute rules 2 and 3: the state reads by glyph, off the one session flag both strips share.
+    readonly property bool muted: Flea.MediaSound.muted
 
     // A tile borders four sides, which is the PreviewColumn artboard. Flush against the bottom of
     // the Quick Look overlay that same border reads as a box, so there it is one top hairline.
@@ -57,6 +59,7 @@ Item {
     // the same seam for the track, which ui/shell.qml's previewSliderCentre reads through.
     readonly property var playItem: playSlot
     readonly property var seekItem: track
+    readonly property var muteItem: muteSlot
 
     Item {
         id: playSlot
@@ -154,9 +157,42 @@ Item {
         }
     }
 
+    // MediaMute rule 1: one mark at the strip's right end after the clock, in the chrome ink, drawn
+    // by the same Glyph as the play mark; the track gives up its width and nothing else moves.
+    Item {
+        id: muteSlot
+        anchors.right: parent.right
+        anchors.rightMargin: Theme.spacing.gap
+        anchors.verticalCenter: parent.verticalCenter
+        width: Math.max(Theme.hitMin, Theme.font.bodySmall)
+        height: Math.max(Theme.hitMin, Theme.font.bodySmall)
+
+        Accessible.role: Accessible.Button
+        Accessible.name: root.muted ? "Unmute" : "Mute"
+        Accessible.onPressAction: { root.touched(); Flea.MediaSound.toggle() }
+
+        Flea.Glyph {
+            anchors.centerIn: parent
+            width: Theme.font.bodySmall
+            height: Theme.font.bodySmall
+            // Rule 2: both states are foreground, because a muted player is a mode and not a
+            // control that cannot be pressed.
+            name: root.muted ? "volume-x" : "volume"
+            color: Theme.color.foreground
+        }
+
+        TapHandler {
+            acceptedButtons: Qt.LeftButton
+            onTapped: {
+                root.touched()
+                Flea.MediaSound.toggle()
+            }
+        }
+    }
+
     Text {
         id: clock
-        anchors.right: parent.right
+        anchors.right: muteSlot.left
         anchors.rightMargin: Theme.spacing.gap
         anchors.verticalCenter: parent.verticalCenter
         text: Format.duration(root.position) + " / " + Format.duration(root.duration)

@@ -10,6 +10,10 @@ Item {
     property string path: ""
     property string kind: "audio"
     property int size: 0
+    // What the backend called this row, which the column draws and the overlay is opened from.
+    property string kindName: ""
+    // The backend probe's sample rate in hertz, 0 until its answer lands or for a file with none.
+    property int rate: 0
     // The Quick Look starts playing on open, which is its whole job. The preview column does not:
     // arrowing down a folder of clips must not start any of them.
     property bool autoStart: true
@@ -34,16 +38,18 @@ Item {
             || player.mediaStatus === MediaPlayer.BufferedMedia
             || player.mediaStatus === MediaPlayer.EndOfMedia)
 
-    // The canvas's second line under an audio name is "31 MB · flac · 44.1 kHz". Qt carries no
-    // sample-rate key at all (QMediaMetaData::Key, Qt 6.11) and the backend probe's own rate is not
-    // routed to this overlay, so this states the size and the format and stops at two parts.
+    // MediaPdf rule 6, all four facts: the kind the backend named this row leads, the duration comes
+    // off the transport a few hundred pixels below, the rate is the backend probe's because Qt
+    // carries no sample-rate key at all (QMediaMetaData::Key, Qt 6.11), and the size ends the line.
     readonly property string facts: {
         var name = root.path.substring(root.path.lastIndexOf("/") + 1)
         var dot = name.lastIndexOf(".")
         var suffix = dot > 0 ? name.substring(dot + 1).toLowerCase() : ""
-        var bytes = root.size > 0 ? Format.size(root.size) : ""
-        if (bytes.length === 0) return suffix
-        return suffix.length === 0 ? bytes : bytes + " · " + suffix
+        var parts = [root.kindName.length > 0 ? root.kindName : suffix]
+        if (player.duration > 0) parts.push(Format.duration(player.duration))
+        parts.push(Format.sampleRate(root.rate))
+        if (root.size > 0) parts.push(Format.size(root.size))
+        return parts.filter(function (part) { return part.length > 0 }).join(" · ")
     }
 
     readonly property alias position: player.position
@@ -64,7 +70,8 @@ Item {
         id: player
         source: root.path === "" ? "" : Format.fileUri(root.path)
         autoPlay: root.autoStart
-        audioOutput: AudioOutput {}
+        // MediaMute rule 5: mute silences without pausing, so the clock and the handle keep moving.
+        audioOutput: AudioOutput { muted: Flea.MediaSound.muted }
         videoOutput: video
     }
 
@@ -84,8 +91,9 @@ Item {
 
     Flea.Glyph {
         anchors.centerIn: parent
-        width: Theme.markSize
-        height: Theme.markSize
+        maxSize: Theme.stateMarkSize
+        width: Theme.stateMarkSize
+        height: Theme.stateMarkSize
         visible: root.poster
         name: "play"
         color: Theme.color.muted
@@ -103,8 +111,9 @@ Item {
 
         Flea.Glyph {
             anchors.verticalCenter: parent.verticalCenter
-            width: Theme.markSize
-            height: Theme.markSize
+            maxSize: Theme.stateMarkSize
+            width: Theme.stateMarkSize
+            height: Theme.stateMarkSize
             name: "music"
             color: Theme.color.muted
             opacity: 0.7
@@ -115,7 +124,7 @@ Item {
             // Whatever the pane's own padding leaves beside the mark, so a long name elides here
             // instead of pushing the mark off the surface.
             width: Math.max(0, root.width - 2 * Theme.spacing.rowPaddingX
-                               - Theme.markSize - audioPane.spacing)
+                               - Theme.stateMarkSize - audioPane.spacing)
             spacing: 0
 
             // corner: a filename is arbitrary text, so PlainText, the same rule every name on this surface follows.
@@ -151,8 +160,9 @@ Item {
 
         Flea.Glyph {
             anchors.horizontalCenter: parent.horizontalCenter
-            width: Theme.markSize
-            height: Theme.markSize
+            maxSize: Theme.stateMarkSize
+            width: Theme.stateMarkSize
+            height: Theme.stateMarkSize
             name: "alert"
             color: Theme.color.error
         }

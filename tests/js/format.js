@@ -1,11 +1,21 @@
 .import "../../ui/js/Format.js" as Format
 
 function run(check) {
+    // One grouping rule for every count the product prints: the search's scan and the filter's scope.
+    check("a short count is not grouped", Format.count(653), "653")
+    check("a thousand takes one separator", Format.count(4120), "4,120")
+    check("a million takes two", Format.count(1234567), "1,234,567")
+
     // The home prefix reads as the user writes it; the window chrome and the search strip share this.
     check("a path under home comes back with a tilde",
           Format.tilde("/home/gm/Documents/claude", "/home/gm"), "~/Documents/claude")
     check("home itself is just the tilde",
           Format.tilde("/home/gm", "/home/gm"), "~")
+    // Issue 95, nixfred: a bare prefix test made a sibling directory wear home's name.
+    check("a sibling whose name starts with home's keeps its own",
+          Format.tilde("/home/gmx", "/home/gm"), "/home/gmx")
+    check("and so does everything under it",
+          Format.tilde("/home/gmx/Work", "/home/gm"), "/home/gmx/Work")
     check("a path outside home is left alone",
           Format.tilde("/usr/share/omarchy", "/home/gm"), "/usr/share/omarchy")
     check("an unknown home leaves every path alone",
@@ -28,62 +38,42 @@ function run(check) {
     check("a terabyte", Format.size(1000000000000), "1.0 TB")
 
     // Local constructors keep these wall-clock expectations valid in every non-UTC test zone.
-    var midnightNow = new Date(2026, 0, 1, 0, 15).getTime()
-    check("today follows the local midnight",
-          Format.date(new Date(2026, 0, 1, 0, 10).getTime() / 1000, midnightNow), "Today, 00:10")
-    check("yesterday crosses the local year boundary",
-          Format.date(new Date(2025, 11, 31, 23, 55).getTime() / 1000, midnightNow), "Yesterday, 23:55")
-    check("a past year carries it and drops the time",
-          Format.date(new Date(2025, 11, 30, 22, 0).getTime() / 1000, midnightNow), "30 Dec 2025")
+    check("the stamp is the local wall clock",
+          Format.date(new Date(2026, 0, 1, 0, 10).getTime() / 1000), "2026-01-01 00:10")
+    check("the minute before local midnight keeps its own day",
+          Format.date(new Date(2025, 11, 31, 23, 55).getTime() / 1000), "2025-12-31 23:55")
+    check("an older instant is the same form, never a shorter one",
+          Format.date(new Date(2025, 11, 30, 22, 0).getTime() / 1000), "2025-12-30 22:00")
+    check("this year is the same form too",
+          Format.date(new Date(2026, 6, 28, 0, 27).getTime() / 1000), "2026-07-28 00:27")
+    // Single-digit months and days pad, which is what makes the column sortable as text.
+    check("a single-digit month and day both pad",
+          Format.date(new Date(2026, 8, 5, 9, 4).getTime() / 1000), "2026-09-05 09:04")
+    // ui/Theme.qml sizes column.date at dateChars, so no instant may be wider than that.
+    check("the stamp is always the sixteen characters the column is cut for",
+          Format.date(new Date(2026, 8, 5, 9, 4).getTime() / 1000).length, 16)
 
-    var currentYearNow = new Date(2026, 7, 27, 12, 0).getTime()
-    check("this year omits the year",
-          Format.date(new Date(2026, 6, 28, 0, 27).getTime() / 1000, currentYearNow), "28 Jul, 00:27")
-
-    // The send picker's own column: SendPicker.html draws 11:32, 10:18, 21 Aug and 15 Aug, and the
-    // window's Format.date above is untouched. Fixed instants throughout, never Date.now().
-    check("today is the clock alone",
-          Format.compactDate(new Date(2026, 7, 21, 11, 32).getTime() / 1000,
-                             new Date(2026, 7, 21, 14, 0).getTime()), "11:32")
-    check("an earlier day this year is the bare stamp",
-          Format.compactDate(new Date(2026, 7, 21, 21, 5).getTime() / 1000,
-                             new Date(2026, 7, 27, 12, 0).getTime()), "21 Aug")
-
+    // The send picker's column holds about ten characters, so its date drops the time and keeps the
+    // date; Preview board, "One function, four surfaces". Fixed instants throughout, never Date.now().
+    check("the picker's date is the stamp without its clock",
+          Format.compactDate(new Date(2026, 7, 21, 11, 32).getTime() / 1000), "2026-08-21")
+    check("and two instants on the same day read the same",
+          Format.compactDate(new Date(2026, 7, 21, 23, 59).getTime() / 1000), "2026-08-21")
     // The local-day rollover: one minute either side of local midnight, which is where this breaks.
-    var justAfterMidnight = new Date(2026, 7, 22, 0, 1).getTime()
-    check("23:59 last night is no longer the clock",
-          Format.compactDate(new Date(2026, 7, 21, 23, 59).getTime() / 1000, justAfterMidnight), "21 Aug")
-    check("00:01 this morning is already the clock",
-          Format.compactDate(new Date(2026, 7, 22, 0, 1).getTime() / 1000, justAfterMidnight), "00:01")
-    check("23:59 tonight is still the clock at 23:59",
-          Format.compactDate(new Date(2026, 7, 21, 23, 59).getTime() / 1000,
-                             new Date(2026, 7, 21, 23, 59).getTime()), "23:59")
-
-    // The year boundary, which is the rollover and the disambiguation at once.
-    var justAfterNewYear = new Date(2026, 0, 1, 0, 1).getTime()
-    check("23:59 on new year's eve carries the year it belongs to",
-          Format.compactDate(new Date(2025, 11, 31, 23, 59).getTime() / 1000, justAfterNewYear), "31 Dec '25")
-    check("00:01 on new year's day is the clock",
-          Format.compactDate(new Date(2026, 0, 1, 0, 1).getTime() / 1000, justAfterNewYear), "00:01")
-    check("January this year drops the year again",
-          Format.compactDate(new Date(2026, 0, 1, 9, 0).getTime() / 1000,
-                             new Date(2026, 2, 1, 9, 0).getTime()), "1 Jan")
-
+    check("a minute after local midnight is already the next day",
+          Format.compactDate(new Date(2026, 7, 22, 0, 1).getTime() / 1000), "2026-08-22")
     // Two Augusts must not read as one string, which is the whole reason the year survives the trim.
-    var fromTwentySix = new Date(2026, 7, 27, 12, 0).getTime()
     check("last August carries its year",
-          Format.compactDate(new Date(2025, 7, 21, 10, 0).getTime() / 1000, fromTwentySix), "21 Aug '25")
-    check("the August before it carries a different one",
-          Format.compactDate(new Date(2024, 7, 21, 10, 0).getTime() / 1000, fromTwentySix), "21 Aug '24")
-    check("a single-digit year keeps both of its digits",
-          Format.compactDate(new Date(2005, 7, 21, 10, 0).getTime() / 1000, fromTwentySix), "21 Aug '05")
+          Format.compactDate(new Date(2025, 7, 21, 10, 0).getTime() / 1000), "2025-08-21")
+    check("and the August before it carries a different one",
+          Format.compactDate(new Date(2024, 7, 21, 10, 0).getTime() / 1000), "2024-08-21")
     // ui/Theme.qml sizes column.pickerDate at ten characters of this face, so nothing here may elide.
-    check("the widest compact form is the ten characters the column is cut for",
-          Format.compactDate(new Date(2025, 7, 21, 10, 0).getTime() / 1000, fromTwentySix).length, 10)
+    check("the compact form is always the ten characters the column is cut for",
+          Format.compactDate(new Date(2005, 7, 21, 10, 0).getTime() / 1000).length, 10)
 
-    // The window keeps its own form for the same instant; the picker column is the only thing that moved.
-    check("the window's date is untouched by the picker's",
-          Format.date(new Date(2025, 7, 21, 10, 0).getTime() / 1000, fromTwentySix), "21 Aug 2025")
+    // The window keeps its own form for the same instant; the picker column is the narrower one.
+    check("the window's stamp is not the picker's compact form",
+          Format.date(new Date(2025, 7, 21, 10, 0).getTime() / 1000), "2025-08-21 10:00")
 
     check("a regular file 644", Format.permissions(33188), "rw-r--r--")
     check("a directory 755", Format.permissions(16877), "rwxr-xr-x")
@@ -95,4 +85,21 @@ function run(check) {
     check("mode 755 is executable", Format.isExecutable(33261), true)
     check("mode 644 is not executable", Format.isExecutable(33188), false)
     check("a vanished row is not executable", Format.isExecutable(0), false)
+
+    // Issue 67, jesedv: the yanked path is quoted unless a shell reads every character as itself.
+    check("a path a shell reads as one word is handed over as it is",
+          Format.shellQuoted("/home/gm/Work-2.0_final"), "/home/gm/Work-2.0_final")
+    check("a tilde is not one of those characters, because a shell expands it",
+          Format.shellQuoted("~/Work"), "'~/Work'")
+    check("a path holding a space is quoted whole",
+          Format.shellQuoted("/home/gm/directory two"), "'/home/gm/directory two'")
+    check("a tab is quoted the same way", Format.shellQuoted("/home/gm/one\ttwo"), "'/home/gm/one\ttwo'")
+    // Every one byte for byte inside the quotes, because an ends-only check passes a dropped character.
+    for (var dangerous of ["$HOME", "`id`", "a;b", "a&b", "a|b", "a*b", "a?b", "a(b)", "a\nb", "a!b", 'a"b',
+                           "a b", "a\\b", "a<b", "a>b", "a#b", "a{b}", "a[b]", "a^b"]) {
+        check("a path holding " + JSON.stringify(dangerous) + " is quoted whole",
+              Format.shellQuoted("/home/gm/" + dangerous), "'/home/gm/" + dangerous + "'")
+    }
+    check("and a quote inside the path closes and reopens around itself",
+          Format.shellQuoted("/home/gm/a'b"), "'/home/gm/a'\\''b'")
 }

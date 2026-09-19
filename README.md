@@ -10,6 +10,10 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/tcballard/omarchy-badges"><img src="https://raw.githubusercontent.com/tcballard/omarchy-badges/85f859029e236e784e7b05ada6dbe73506d07a91/badges/v1/built-for-omarchy.svg" alt="Built for Omarchy"></a>
+</p>
+
+<p align="center">
   <a href="#install">Install</a> ·
   <a href="#views">Views</a> ·
   <a href="#performance">Performance</a> ·
@@ -18,7 +22,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/images/release-0.1.6-columns.png" alt="Flea 0.1.6 columns view playing an inline video, with file details and the hostname in the sidebar">
+  <img src="docs/images/release-0.3.0-themes.gif" alt="Flea 0.3.0 cycling through ten Omarchy themes, with the iPhone on the Devices rail and a photo in the preview column">
 </p>
 
 Flea combines a Rust backend with a Quickshell interface that follows your Omarchy theme.
@@ -28,8 +32,15 @@ Large directories stay responsive: the window loads rows and requests thumbnails
 - **Quick Look.** Press Space for images, PDFs, text, media and archive contents.
 - **File operations.** Copy, move, rename, trash, compress and extract, with an undo journal.
 - **Network and sharing.** SMB, SFTP, FTPS, WebDAV, NFS, Dropbox and Taildrop.
+- **Devices.** USB drives, phones and cameras over MTP, PTP and AFC, mounted from the rail.
 - **Desktop integration.** Default file manager, “Show in folder” and Open/Save dialogs.
 - **Your settings.** Omarchy text sizes, configurable menus and Default, Vim, Mac or Windows keys.
+
+An iPhone lists once it has been unlocked and trusted on this machine: AFC needs the pairing record
+that leaves behind, not an unlocked screen every time. Pairing also puts the phone on its tethering
+USB configuration, so iOS shows Personal Hotspot as active while it is plugged in, and Flea never
+uses it. If this machine should never route through the phone, tell NetworkManager so with a
+`conf.d` drop-in carrying `unmanaged-devices=driver:ipheth`; that is your call, not the package's.
 
 ## Install
 
@@ -84,13 +95,20 @@ If you previously pinned another directory handler, restore that handler explici
 
 <p align="center">
   <img src="docs/images/grid.png" width="49%" alt="Grid view with image and video thumbnails">
-  <img src="docs/images/list.png" width="49%" alt="List view with sortable file details">
+  <img src="docs/images/list.png" width="49%" alt="Columns view with the preview column, file details and the iPhone on the Devices rail">
 </p>
 
 **Space** opens Quick Look from any view. Page through a PDF, play media or inspect an archive.
 
 <p align="center">
   <img src="docs/images/pdf.png" alt="PDF preview with page navigation">
+</p>
+
+**The shelf** lives in the Omarchy bar: send files there from any menu, drag them out into any app, pin the ones you keep coming back to. **Phones** are Devices rows over MTP, AFC and PTP.
+
+<p align="center">
+  <img src="docs/images/shelf.png" width="49%" alt="The shelf card open over Flea, with thumbnails, pins and the last three screenshots">
+  <img src="docs/images/iphone.png" width="49%" alt="An iPhone camera roll browsed over AFC, with HEIC thumbnails and a preview">
 </p>
 
 ## Performance
@@ -184,6 +202,7 @@ or a package. [The test suites](tests/) cover file operations, previews, persist
 ## Support
 
 If this saved you an afternoon, you can
+[sponsor me on GitHub](https://github.com/sponsors/thisisgm) or
 [buy me a coffee](https://buymeacoffee.com/thisisgm).
 
 ## Licence

@@ -1,16 +1,24 @@
 .import "../../ui/js/Errors.js" as Errors
 
 function run(check) {
-    check("a permission denial names access rather than the path",
-          Errors.sentence("scan", "Permission denied (os error 13)"),
-          "Permission was denied; check access and try again.")
+    // StatusBar board rule 4, both refusal lanes: a refused hop names the directory that refused,
+    // and a refusal of the directory already on screen names nothing, because the breadcrumb does.
+    check("a refused hop names the directory that refused",
+          Errors.sentence("scan", "Permission denied (os error 13)", "inner"),
+          "Permission denied on inner")
+    check("and a refusal of the path on screen is the refusal and nothing else",
+          Errors.sentence("scan", "Permission denied (os error 13)", ""),
+          "Permission denied")
     // The backend's own wording is arbitrary, so the match is case folded before it is looked for.
     check("and it is found whatever case the backend used",
-          Errors.sentence("scan", "PERMISSION DENIED"),
-          "Permission was denied; check access and try again.")
-    check("any other scan failure is the generic directory sentence",
+          Errors.sentence("scan", "PERMISSION DENIED", "inner"),
+          "Permission denied on inner")
+    check("any other refused hop names its directory too",
+          Errors.sentence("scan", "No such file or directory", "gone"),
+          "That directory could not be read: gone")
+    check("and the bare sentence is what is left without one",
           Errors.sentence("scan", "No such file or directory"),
-          "That directory could not be read; check the path and try again.")
+          "That directory could not be read.")
     // Size and mtime are real orders now, so the one refusal left is a key the wire never defined.
     check("a column that is no sort key at all is refused in the operator's words",
           Errors.sentence("sort", "no such sort key; send name, size or mtime"),
@@ -35,7 +43,7 @@ function run(check) {
     // A non-string message must not throw, because the wire can carry a number or null.
     check("a message that is not a string is still one sentence",
           Errors.sentence("scan", null),
-          "That directory could not be read; check the path and try again.")
+          "That directory could not be read.")
 
     // The write operations, whose failures the operator is about to act on rather than just read.
     check("an empty journal reads back as the backend's own sentence",
@@ -130,19 +138,8 @@ function run(check) {
     check("and a mode that never arrived draws none either",
           Errors.lockedLine(undefined), "")
 
-    // The whole line the pane draws, which is where the mode string and the sentence meet. A denial
-    // whose directory the backend could not stat either has no mode string, and a surface that drew
-    // nothing at all there would be the blank-frame defect wearing a lock.
-    var deniedSentence = "Permission was denied; check access and try again."
-    check("a locked pane draws the mode string when there is one",
-          Errors.paneLine("locked", deniedSentence, 0o40750), "rwxr-x--- · not yours")
-    check("and falls back to the sentence when the stat failed too",
-          Errors.paneLine("locked", deniedSentence, 0), deniedSentence)
-    check("a mode never leaks into a state that is not locked",
-          Errors.paneLine("error", "That directory could not be read; check the path and try again.", 0o40750),
-          "That directory could not be read; check the path and try again.")
-    check("nothing to say stays nothing, so the surface hides rather than draws a bare mark",
-          Errors.paneLine("locked", null, 0), "")
+    // The pane block draws the sentence and the mode as two lines now, so the only thing left to
+    // decide is whether there is a mode to draw at all; States board rule 3.
 
     // The credentialed mount's own sentences, lifted out of ui/NetworkMounts.qml in the 0.1.4
     // composition: the two codes "timeout" and the shell own, then the two the server owns.

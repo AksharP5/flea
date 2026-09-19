@@ -65,8 +65,8 @@ Item {
 
     readonly property string previewState: Facts.state(root.row, root.selectionCount, root.busy, root.failure, root.kindName)
     readonly property var factRows: root.previewState === Facts.MULTI
-        ? Facts.multiFacts(root.selectedRows, Date.now(), root.selectionCount)
-        : (root.row ? Facts.facts(root.previewState, root.row, root.meta, root.kindName, Date.now(),
+        ? Facts.multiFacts(root.selectedRows, root.selectionCount)
+        : (root.row ? Facts.facts(root.previewState, root.row, root.meta, root.kindName,
                                   { pages: root.pdfPages > 0 ? String(root.pdfPages) : "",
                                     owner: root.meta && root.meta.owner ? root.meta.owner : "" }) : [])
 

@@ -14,11 +14,21 @@ pub const DEFAULTS: &str = r#"{
   "hidden": false,
   "wrapAtEnds": false,
   "keyHints": false,
+  "startIn": "home",
+  "startFolder": "",
+  "lastPath": "",
+  "newTab": "current",
+  "trashAutoEmpty": false,
+  "trashSweptOn": 0,
   "places": {
     "favourites": [],
     "showHome": true, "showNetwork": true,
     "showDevices": true, "showTrash": true,
-    "driveSize": false, "trashCount": false, "sidebarWidth": 192
+    "driveSize": false, "trashCount": false, "showUnmounted": false, "rail": "shown", "autoHide": false, "sidebarWidth": 192
+  },
+  "shelf": {
+    "enabled": false, "bar": true, "rail": "off",
+    "screenshots": true, "recordings": true, "recent": 3
   },
   "preview": {
     "column": true, "loadOn": "automatic",
@@ -27,7 +37,7 @@ pub const DEFAULTS: &str = r#"{
   },
   "keys": "default",
   "display": { "textSize": { "mode": "system" }, "hyprlandIcons": false },
-  "menu": { "hidden": ["delete", "openTerminal",
+  "menu": { "hidden": ["delete", "openTerminal", "placeMenu", "runScript",
             "moveto", "copyto", "properties", "permissions", "copypath"] }
 }"#;
 
@@ -46,6 +56,8 @@ pub enum Rule {
     // columns names what the list row SHOWS, so it holds each column key at most once and name always.
     Columns,
     Favourites,
+    // One place, or "" for a folder the operator has not chosen and a path nothing has recorded yet.
+    Place,
     SidebarWidth,
     // dual.paths is the pair handoff 5a specifies, or the empty array that means nothing remembered.
     Pair,
@@ -70,7 +82,21 @@ pub const PLACES: &[(&str, Rule)] = &[
     ("showTrash", Rule::Bool),
     ("driveSize", Rule::Bool),
     ("trashCount", Rule::Bool),
+    ("showUnmounted", Rule::Bool),
+    ("rail", Rule::Word(&["shown", "hidden"])),
+    ("autoHide", Rule::Bool),
     ("sidebarWidth", Rule::SidebarWidth),
+];
+
+// The shelf's own six. SettingsRest rule 3: the panel offers 1, 2, 3 or 5 and both kinds off is what
+// removes the group, so the range here is only what a hand-edited file may leave behind.
+pub const SHELF: &[(&str, Rule)] = &[
+    ("enabled", Rule::Bool),
+    ("bar", Rule::Bool),
+    ("rail", Rule::Word(&["off", "left", "right", "bottom"])),
+    ("screenshots", Rule::Bool),
+    ("recordings", Rule::Bool),
+    ("recent", Rule::Count(0.0, 6.0)),
 ];
 
 pub const PREVIEW: &[(&str, Rule)] = &[
@@ -106,7 +132,20 @@ pub const SCHEMA: &[(&str, Rule)] = &[
     // The Menus section's "Show keyboard hints" row: every menu's key column and the empty
     // directory's own tip, off until it is switched on.
     ("keyHints", Rule::Bool),
+    // Where a window opens, and where a new tab opens. "folder" reads startFolder, "last" reads
+    // lastPath, which ui/shell.qml writes as the pane moves and no panel control ever touches.
+    ("startIn", Rule::Word(&["home", "last", "folder"])),
+    ("startFolder", Rule::Place),
+    ("lastPath", Rule::Place),
+    ("newTab", Rule::Word(&["current", "home", "start"])),
+    // Settings > Places > Trash. The sweep is off until the operator switches it on, and the day it
+    // last ran is whole days since the epoch, which is what keeps it to once a day across launches.
+    ("trashAutoEmpty", Rule::Bool),
+    ("trashSweptOn", Rule::Count(0.0, 4000000.0)),
     ("places", Rule::Group(PLACES)),
+    // Settings > Shelf, which the bar plugin reads from this file and never writes; SettingsRest
+    // rules 1 to 4 and ledger directive 59.
+    ("shelf", Rule::Group(SHELF)),
     ("preview", Rule::Group(PREVIEW)),
     // SettingsKeys.html's four-value chooser over ui/js/Keymap.js's shared tables. A stored name
     // this build cannot honour falls back to default, which is also what a fresh ui.json holds.
@@ -164,7 +203,9 @@ mod tests {
             keys,
             [
                 "view", "density", "columns", "addressBar", "sort", "dual", "foldersFirst",
-                "groupByKind", "hidden", "wrapAtEnds", "keyHints", "places", "preview", "keys",
+                "groupByKind", "hidden", "wrapAtEnds", "keyHints", "startIn", "startFolder",
+                "lastPath", "newTab", "trashAutoEmpty", "trashSweptOn", "places", "shelf",
+                "preview", "keys",
                 "display", "menu"
             ]
         );
@@ -177,13 +218,29 @@ mod tests {
         assert_eq!(d.get("hidden").and_then(Json::as_bool), Some(false));
         assert_eq!(d.get("wrapAtEnds").and_then(Json::as_bool), Some(false));
         assert_eq!(d.get("keyHints").and_then(Json::as_bool), Some(false));
+        assert_eq!(d.get("startIn").and_then(Json::as_str), Some("home"));
+        assert_eq!(d.get("startFolder").and_then(Json::as_str), Some(""));
+        assert_eq!(d.get("lastPath").and_then(Json::as_str), Some(""));
+        assert_eq!(d.get("newTab").and_then(Json::as_str), Some("current"));
+        assert_eq!(d.get("trashAutoEmpty").and_then(Json::as_bool), Some(false));
+        assert_eq!(d.get("trashSweptOn").and_then(Json::as_f64), Some(0.0));
         let cols: Vec<&str> = d.get("columns").and_then(Json::as_array).expect("columns").iter().filter_map(Json::as_str).collect();
         assert_eq!(cols, ["name", "size", "date"]);
         assert_eq!(d.get("sort").and_then(|s| s.get("key")).and_then(Json::as_str), Some("name"));
         assert_eq!(d.get("sort").and_then(|s| s.get("reverse")).and_then(Json::as_bool), Some(false));
         assert_eq!(d.get("dual").and_then(|s| s.get("paths")).and_then(Json::as_array).map(<[Json]>::len), Some(0));
         assert_eq!(d.get("dual").and_then(|s| s.get("focus")).and_then(Json::as_f64), Some(0.0));
+        // Directive 38 and GM's B1 ruling: the shelf ships off, and its switch is what installs the plugin.
+        assert_eq!(d.get("shelf").and_then(|s| s.get("enabled")).and_then(Json::as_bool), Some(false));
+        assert_eq!(d.get("shelf").and_then(|s| s.get("bar")).and_then(Json::as_bool), Some(true));
+        assert_eq!(d.get("shelf").and_then(|s| s.get("rail")).and_then(Json::as_str), Some("off"));
+        assert_eq!(d.get("shelf").and_then(|s| s.get("recent")).and_then(Json::as_f64), Some(3.0));
+        assert_eq!(d.get("shelf").and_then(|s| s.get("screenshots")).and_then(Json::as_bool), Some(true));
+        assert_eq!(d.get("shelf").and_then(|s| s.get("recordings")).and_then(Json::as_bool), Some(true));
         assert_eq!(d.get("places").and_then(|p| p.get("sidebarWidth")).and_then(Json::as_f64), Some(192.0));
+        // RailAdditions rule 4: the rail is a remembered state, and a fresh home remembers it shown.
+        assert_eq!(d.get("places").and_then(|p| p.get("rail")).and_then(Json::as_str), Some("shown"));
+        assert_eq!(d.get("places").and_then(|p| p.get("autoHide")).and_then(Json::as_bool), Some(false));
         assert_eq!(d.get("places").and_then(|p| p.get("driveSize")).and_then(Json::as_bool), Some(false));
         assert_eq!(d.get("places").and_then(|p| p.get("trashCount")).and_then(Json::as_bool), Some(false));
         assert_eq!(d.get("preview").and_then(|p| p.get("loadOn")).and_then(Json::as_str), Some("automatic"));
@@ -198,7 +255,7 @@ mod tests {
 
     // menu.hidden stores what is hidden, so an action added later is visible without a migration.
     #[test]
-    fn menu_hidden_holds_the_eight_shipped_ids_and_nothing_else() {
+    fn menu_hidden_holds_the_shipped_ids_and_nothing_else() {
         let d = defaults();
         let hidden: Vec<&str> = d
             .get("menu")
@@ -210,7 +267,9 @@ mod tests {
             .collect();
         assert_eq!(
             hidden,
-            ["delete", "openTerminal", "moveto", "copyto", "properties", "permissions", "copypath"]
+            // Directive 38: every feature this release adds ships with its own id hidden, so a fresh
+            // ui.json behaves as 0.2.1 did. placeMenu is the Places rows' own menu.
+            ["delete", "openTerminal", "placeMenu", "runScript", "moveto", "copyto", "properties", "permissions", "copypath"]
         );
     }
 
@@ -224,7 +283,8 @@ mod tests {
                      r#"{"keys":"mac"}"#, r#"{"keys":"windows"}"#,
                      r#"{"places":{"favourites":[]}}"#,
                      r#"{"places":{"driveSize":true,"trashCount":true}}"#,
-                     r#"{"places":{"driveSize":false,"trashCount":false}}"#] {
+                     r#"{"places":{"driveSize":false,"trashCount":false}}"#,
+                     r#"{"places":{"rail":"hidden"}}"#, r#"{"places":{"rail":"shown"}}"#] {
             assert!(takes(good).is_ok(), "{} is a value its key takes", good);
         }
         for (bad, named) in [(r#"{"display":{"textSize":{"mode":13}}}"#, "display.textSize.mode"),
@@ -238,7 +298,9 @@ mod tests {
                              (r#"{"language":"en"}"#, "language"),
                              (r#"{"places":{"favourites":"/a"}}"#, "places.favourites"),
                              (r#"{"places":{"driveSize":1}}"#, "places.driveSize"),
-                             (r#"{"places":{"trashCount":"true"}}"#, "places.trashCount")] {
+                             (r#"{"places":{"trashCount":"true"}}"#, "places.trashCount"),
+                             (r#"{"places":{"rail":"off"}}"#, "places.rail"),
+                             (r#"{"places":{"rail":true}}"#, "places.rail")] {
             let message = takes(bad).expect_err("the patch must be refused");
             assert!(message.contains(named), "{} should name {}, got {}", bad, named, message);
         }

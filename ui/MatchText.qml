@@ -1,8 +1,10 @@
 import QtQuick
 
-// A name with the search or filter match run in the accent role. Three PlainText runs laid out
-// left to right, never StyledText: a filename is arbitrary text and StyledText would render any
-// markup found inside it.
+// A name with the search or filter match run marked by an accent wash. Three PlainText runs laid
+// out left to right, never StyledText: a filename is arbitrary text and StyledText would render any
+// markup found inside it. SearchFilter rule 3: the run keeps the foreground ink and the accent goes
+// behind it, because accent against foreground is under 1.5:1 on nine of the 22 installed palettes
+// and exactly 1.00 on kanagawa, where inked matches were the dimmest part of the name.
 Item {
     id: root
 
@@ -37,13 +39,19 @@ Item {
         maximumLineCount: 1
     }
 
+    Rectangle {
+        anchors.fill: runText
+        visible: root.marked && runText.width > 0
+        color: Qt.alpha(root.accent, Theme.washActive)
+    }
+
     Text {
         id: runText
         anchors.left: beforeText.right
         anchors.verticalCenter: parent.verticalCenter
         width: Math.min(implicitWidth, Math.max(0, root.width - beforeText.width))
         text: root.run
-        color: root.accent
+        color: root.color
         font.family: Theme.font.family
         font.pixelSize: root.pixelSize
         elide: Text.ElideRight

@@ -2,7 +2,9 @@
 
 .import "Archive.js" as Archive
 .import "Convert.js" as Convert
+.import "Filter.js" as Filter
 .import "Transfer.js" as Transfer
+.import "Status.js" as Status
 
 // The clipboard is entirely client-side: the backend knows about a transfer, never about a pending paste.
 function emptyClipboard() {
@@ -10,10 +12,10 @@ function emptyClipboard() {
 }
 
 // What the status bar and the card are tracking while a transfer runs; id is what a cancel names.
-// done, bytes and total are the card's bar: the items already finished, and the one in flight.
+// done, bytes and total are the card's bar, the items finished and the one in flight; moved is ui/js/Transfer.js's own sum of the finished ones, which the wire never carries.
 function emptyTransfer() {
     return { id: 0, moving: false, n: 0, index: 0, name: "", running: false,
-             done: 0, bytes: 0, total: 0 }
+             done: 0, bytes: 0, total: 0, moved: 0 }
 }
 
 // "1 item" or "4 items", so no caller builds a plural by hand.
@@ -21,12 +23,9 @@ function items(n) {
     return n + (n === 1 ? " item" : " items")
 }
 
-// A finished operation names its own reversal, which is why none of them needs a confirmation step.
-var UNDO_HINT = " · z undoes"
-
 function started(id, moving, n) {
     return { id: id, moving: moving, n: n, index: 0, name: "", running: true,
-             done: 0, bytes: 0, total: 0 }
+             done: 0, bytes: 0, total: 0, moved: 0 }
 }
 
 // The count comes from the card's headline so both surfaces name the same progress sample.
@@ -41,7 +40,7 @@ function transferDone(t, ok, failed, skipped, cancelled) {
     if (failed > 0) line += " · " + failed + " failed"
     if (skipped > 0) line += " · " + skipped + " skipped"
     if (cancelled) line += " · cancelled"
-    return line + (ok > 0 ? UNDO_HINT : "")
+    return line + (ok > 0 ? Status.UNDO_HINT : "")
 }
 
 function transferFailure(t, name, error) {
@@ -56,42 +55,45 @@ function retrySelectionLine(matches) {
 
 // The canvas draws this one verbatim: "Moved 4 items to Trash · z undoes".
 function trashed(ok, failed) {
-    if (ok === 0) {
+    if (ok === 0)
         return failed === 1 ? "That item could not be moved to Trash." : items(failed) + " could not be moved to Trash."
-    }
     var line = "Moved " + items(ok) + " to Trash"
-    if (failed > 0) {
+    if (failed > 0)
         line += ", " + failed + " failed"
-    }
-    return line + UNDO_HINT
+    return line + Status.UNDO_HINT
 }
 
 // The op an undone line carries is the backend's own word for the operation it reversed.
 function undone(op) {
-    if (op === "trash") {
+    if (op === "trash")
         return "Put it back from Trash."
-    }
     // src/backend/undo.rs reverses a mkdir with remove_dir, and "mkdir" is a wire word the operator
     // never typed, so this one says what left the disk instead.
-    if (op === "mkdir") {
+    if (op === "mkdir")
         return "Removed the new folder."
-    }
     return "Undid the " + op + "."
 }
 
 // The created folder's own line, carrying the same reversal hint the transfer and trash lines do.
 function made(path) {
-    return "Created " + leaf(path) + UNDO_HINT
+    return "Created " + leaf(path) + Status.UNDO_HINT
 }
 
 function copied(n, moving) {
-    return (moving ? "Cut " : "Copied ") + items(n) + ", p pastes."
+    return (moving ? "Cut " : "Copied ") + items(n) + Status.PASTE_HINT
 }
 
-// Which rows an operation acts on: the selection when there is one, the cursor row otherwise.
+// The three reasons a cursor is not a target, asked in the order ui/js/Nav.js asks them of Enter.
+function sayNoTarget(pane) {
+    if (pane.cursorIndex < 0) return pane.message("There is nothing to act on.", false)
+    if (!pane.rowFor(pane.cursorIndex)) return pane.message("That row has not loaded yet.", false)
+    pane.message("That row is hidden by the filter.", false)
+}
+
+// The cursor is a target only while the filter draws it, the rule prune already applies to a selection.
 function targetIndices(pane) {
     var picked = pane.selectedIndices()
-    return picked.length > 0 ? picked : [pane.cursorIndex]
+    return picked.length > 0 ? picked : (Filter.cursorShown(pane) ? [pane.cursorIndex] : [])
 }
 
 // Only rows inside the held window can be named as a path, so the caller sends indices instead and
@@ -134,15 +136,17 @@ function newFolder(pane) {
 function startRename(pane, menuId, index) {
     if (pane.renamePending) return
     // The row the request named, not wherever the cursor has reached by the time the reply lands.
-    var at = index !== undefined && index >= 0 ? index : pane.cursorIndex
+    var named = index !== undefined && index >= 0
+    var at = named ? index : pane.cursorIndex
     var row = pane.rowFor(at)
-    if (row) {
-        pane.setCursor(at)
-        pane.renameError = ""
-        pane.renameSource = pane.join(pane.path, row.n)
-        pane.renameMenuId = menuId || 0
-        pane.renamingIndex = at
-    }
+    if (!row) return
+    // A hidden row has no delegate to draw the editor in, so it would open on the filter clearing.
+    if (!named && !Filter.cursorShown(pane)) return sayNoTarget(pane)
+    pane.setCursor(at)
+    pane.renameError = ""
+    pane.renameSource = pane.join(pane.path, row.n)
+    pane.renameMenuId = menuId || 0
+    pane.renamingIndex = at
 }
 
 // Closing before acceptance loses the draft on a refused write; only success or Escape closes it.
@@ -167,9 +171,9 @@ function commitRename(pane, newName) {
 // Indices, not paths: trash acts on the listing that is up right now, so the backend resolves them.
 function trash(pane, menuId) {
     var idx = targetIndices(pane)
-    if (idx.length === 0) {
-        return
-    }
+    if (idx.length === 0) return sayNoTarget(pane)
+    // Sorted ascending, so this is the block's own first row and not wherever the cursor sat in it.
+    pane.trashedFirst = idx[0]
     pane.backend.trash(idx, menuId)
 }
 
@@ -182,9 +186,7 @@ function clip(pane, moving, paths) {
         return
     }
     var idx = targetIndices(pane)
-    if (idx.length === 0) {
-        return
-    }
+    if (idx.length === 0) return sayNoTarget(pane)
     pane.clipPending = moving
     pane.backend.askPaths(idx)
 }
@@ -254,9 +256,7 @@ function sendTaildrop(pane, taildrop, peerId, path) {
 // before the request goes out, and the backend refuses a destination that appeared meanwhile anyway.
 function compress(pane, format) {
     var idx = targetIndices(pane)
-    if (idx.length === 0) {
-        return
-    }
+    if (idx.length === 0) return sayNoTarget(pane)
     // The archive request names paths and has no rows form, so the indices are resolved first and the
     // request is built in compressResolved. Naming them here would drop every row outside the window.
     pane.pathsPending = { kind: "compress", format: format }
@@ -319,9 +319,8 @@ function convert(pane, source, format, strip, requestId) {
 // where "does this need to exist at all" answers no: no new wire, no new Rust.
 function moveToDropbox(pane, dropboxPath, menuId) {
     var idx = targetIndices(pane)
-    if (idx.length === 0 || dropboxPath.length === 0) {
-        return
-    }
+    if (dropboxPath.length === 0) return
+    if (idx.length === 0) return sayNoTarget(pane)
     // Deliberately does not touch pane.clipboard: this is its own move, and clobbering what the
     // operator cut or copied earlier would lose it with no way back.
     // Rows, not paths: a selection reaches past the window the client holds, and targetPaths drops

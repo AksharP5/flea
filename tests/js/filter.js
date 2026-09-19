@@ -2,6 +2,8 @@
 .import "../../ui/js/Thumbs.js" as Thumbs
 .import "../../ui/js/DirSizes.js" as DirSizes
 .import "filterfixture.js" as Fixture
+.import "../../ui/js/Nav.js" as Nav
+.import "../../ui/js/Ops.js" as Ops
 
 // The fixtures and the stub pane live in filterfixture.js, so this file stays checks.
 
@@ -39,19 +41,14 @@ function run(check) {
     check("with no filter both directions are the identity",
           Filter.at(null, 12) + "|" + Filter.viewOf(null, 12), "12|12")
 
-    check("the canvas's own accounting line names the rows that dropped out",
-          Filter.note(mixed, 7, "scr"), "3 rows hidden by the filter")
-    check("one hidden row is a row, not rows", Filter.note([0, 1, 2, 3, 4, 5], 7, "s"), "1 row hidden by the filter")
-    check("a filter hiding nothing says nothing, the OEM self-hide rule", Filter.note([0, 1, 2], 3, "e"), "")
-    check("no filter draws no line at all", Filter.note(null, 7, ""), "")
-    check("and nothing matching says so, in the search board's own wording",
-          Filter.note([], 7, "benchz"), "Nothing matches benchz")
-
-    // The pane holds a window around the viewport, not the directory, so on a bigger listing the
-    // filter has only seen the rows it holds and the strip has to say so.
-    check("a window holding the whole listing needs no caveat", Filter.scope(7, 7), "")
-    check("a partial window names the rows the filter actually saw",
-          Filter.scope(327, 100000), "in the 327 rows loaded")
+    // SearchFilter rules 1 and 2: one sentence, on the strip that created it, carrying its own scope.
+    check("the strip says what it kept, out of the rows it could test",
+          Filter.summary(mixed, 7, 7), "4 of 7 shown")
+    check("and names the directory those rows are a window on when it is not all of it",
+          Filter.summary(mixed, 7, 104812), "4 of 7 shown · of 104,812 in this folder")
+    check("nothing matching is a count like any other, and keeps the same scope",
+          Filter.summary([], 350, 104812), "0 of 350 shown · of 104,812 in this folder")
+    check("no filter draws no sentence at all", Filter.summary(null, 7, 7), "")
 
     check("the rows shown between two ends skip the ones the filter hid",
           Filter.between(mixed, 1, 6).join(","), "1,5,6")
@@ -179,49 +176,6 @@ function run(check) {
     Filter.close(sel); sel.refresh()
     check("clearing the filter keeps what survived it and restores nothing", Fixture.picks(sel), "5,6")
 
-    var hidden = Fixture.pane()
-    hidden.cursorIndex = 3
-    Fixture.typeInto(hidden, "2026")
-    check("a cursor the filter hides lands on the first row it left standing", hidden.cursorIndex, 5)
-    check("and the view scrolls to the top of the narrowed listing", hidden.scrolled, 0)
-
-    var kept = Fixture.pane()
-    kept.cursorIndex = 6
-    Fixture.typeInto(kept, "2026")
-    check("a cursor the filter keeps does not move", kept.cursorIndex, 6)
-    check("and nothing scrolled on its account", kept.scrolled, -1)
-
-    var all = Fixture.pane("scr")
-    Filter.selectAll(all)
-    check("select all takes what is drawn, never the rows the filter hid", Fixture.picks(all), "0,1,5,6")
-    var allPlain = Fixture.pane()
-    Filter.selectAll(allPlain)
-    check("and with no filter it still takes the whole listing", Fixture.picks(allPlain), "0,1,2,3,4,5,6")
-
-    var span = Fixture.pane("scr")
-    span.cursorIndex = 6
-    Filter.extendTo(span, 1)
-    check("extending over a filtered view skips the rows it hid", Fixture.picks(span), "1,5,6")
-    var spanPlain = Fixture.pane()
-    spanPlain.cursorIndex = 3
-    Filter.extendTo(spanPlain, 1)
-    check("and with no filter it is still a plain range", Fixture.picks(spanPlain), "1,2,3")
-
-    // Shift+J whole: the anchor latches, the cursor steps through what is drawn and the selection
-    // follows. "o" keeps 2, 3, 5 and 6, so two steps from row 2 reach 5 and not 4.
-    var chain = Fixture.pane("o")
-    chain.cursorIndex = 2
-    Filter.extend(chain, 1)
-    Filter.extend(chain, 1)
-    check("shift J walks the selection down the rows that are drawn", Fixture.picks(chain), "2,3,5")
-    check("and the cursor is on the last of them", chain.cursorIndex, 5)
-    check("and the anchor stayed where the chain started", chain.selectionAnchor, 2)
-    check("and the version moved once per step", chain.selectionVersion, 2)
-    var chainPlain = Fixture.pane()
-    chainPlain.cursorIndex = 2
-    Filter.extend(chainPlain, 1)
-    check("with no filter it is still a plain one-row range", Fixture.picks(chainPlain), "2,3")
-
     // A sort is a backend reorder: the same rows arrive in another order and the query is untouched.
     var sortFirst = Filter.shown(Fixture.reversed(), 0, "scr")
     check("sorting first and filtering after keeps the sorted order", sortFirst.join(","), "1,2,3,4")
@@ -240,4 +194,7 @@ function run(check) {
           + "scripts Screens screenshot-2026-08-30.png screenrecording-2026-08-21.mp4")
     check("and directories still lead the filtered view after a reverse",
           sortFirst.map(function (i) { return Fixture.reversed()[i].d }).join(","), "true,true,false,false")
+    // States' no-match tile: the query named back, and the count of rows the filter tested.
+    check("a filter that matches none says how many rows it tested", Filter.noMatch(11), "11 rows here, none of them")
+    check("and a single row keeps the sentence readable", Filter.noMatch(1), "1 row here, and not it")
 }

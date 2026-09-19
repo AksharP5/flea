@@ -19,6 +19,11 @@ function parseMounts(output) {
         // corner: a local device mount (file://) is Favorites territory, not Network; Places.js skips the inverse.
         if (uri.indexOf("file://") === 0)
             continue
+        // A phone is DEVICES territory the same way: its row is ui/js/Phones.js's, built from the
+        // volume block, and this line is gio's shadow GDaemonMount printed beside it. afc is the
+        // iPhone's own, whose root mount prints here rather than inside its volume block.
+        if (/^(mtp|gphoto2|afc):\/\//i.test(uri))
+            continue
         out.push({ label: Protocols.shareName(m[1], uri), uri: uri })
     }
     return out
@@ -36,6 +41,13 @@ function localPath(body) {
             return lines[i].substring("local path: ".length).trim()
     }
     return ""
+}
+
+// Issue 133 (mfilm77): gio trash refuses a location with no trash directory of its own, so Move to
+// Trash on a phone fails every time it is offered. The FUSE folder names the scheme that reached it,
+// which is what says so without a round trip; every other location keeps the row it always had.
+function trashable(path) {
+    return !/\/gvfs\/(mtp|gphoto2):/i.test(String(path || ""))
 }
 
 // Sample input: the operator's real bookmarks file, ui/js/Places.js "bookmarks" reads the same lines.
@@ -95,66 +107,6 @@ function railLabel(mount, marks) {
     return mount.label
 }
 
-// Sample lsblk --bytes --json row: {"name":"sda1","label":"128GB","mountpoint":"/run/media/gm/128GB","rm":true,"size":124656812032,"type":"part","model":null}.
-// Two row kinds come out: one "disk" row for the box's own internal disk, then one "volume" row
-// per removable partition, mounted or not. ui/DeviceMounts.qml turns these into rail entries.
-function parseDevices(body) {
-    var tree
-    try {
-        tree = JSON.parse(String(body || ""))
-    } catch (e) {
-        // A parse failure returns the empty shape rather than throwing, so the rail self-hides.
-        return []
-    }
-    var nodes = (tree && tree.blockdevices) || []
-    var out = []
-    var disk = internalDisk(nodes)
-    if (disk)
-        out.push(disk)
-    collectVolumes(nodes, "", out)
-    return out
-}
-
-// corner: one internal disk on this box, so the first non-removable disk is "the" disk and its row means "/".
-function internalDisk(nodes) {
-    for (var i = 0; i < nodes.length; i++) {
-        var n = nodes[i]
-        // lsblk on this box reports rm as a JSON boolean, measured 2026-09-02.
-        if (!n.name || n.type !== "disk" || n.rm)
-            continue
-        // zram and loop devices are type "disk" too, and neither is a disk anyone browses.
-        if (/^(zram|loop)/.test(String(n.name)))
-            continue
-        return { kind: "disk", label: String(n.name), device: "/dev/" + n.name, path: "/", mounted: true, size: deviceBytes(n.size) }
-    }
-    return null
-}
-
-// A removable row is a partition on a removable disk, or a removable disk nobody ever partitioned.
-function collectVolumes(nodes, model, out) {
-    for (var i = 0; i < nodes.length; i++) {
-        var n = nodes[i]
-        var kids = n.children || []
-        // Only the disk carries a product name, so it is passed down to its own partitions.
-        var own = n.model ? String(n.model) : model
-        if (n.name && n.rm && (n.type === "part" || (n.type === "disk" && kids.length === 0)))
-            out.push(volumeRow(n, own))
-        collectVolumes(kids, own, out)
-    }
-}
-
-// The label ladder is the filesystem label, then the drive's product name, then the kernel name.
-function volumeRow(n, model) {
-    var path = n.mountpoint ? String(n.mountpoint) : ""
-    var label = n.label ? String(n.label) : (model.length > 0 ? model : String(n.name))
-    return { kind: "volume", label: label, device: "/dev/" + n.name, path: path, mounted: path.length > 0, size: deviceBytes(n.size) }
-}
-
-// An unavailable or malformed capacity stays absent; only the delegate formats valid byte counts.
-function deviceBytes(value) {
-    return Number.isSafeInteger(value) && value >= 0 ? value : null
-}
-
 // Sample input: two arrays of rail entries as ui/NetworkMounts.qml and ui/DeviceMounts.qml build
 // them, [{path:"", label:"NAS", group:"network", kind:"share", uri:"smb://example.com/data",
 // mounted:false, glyph:"server"}]. A poll that found no change must not assign a fresh array: the
@@ -173,32 +125,67 @@ function sameEntries(a, b) {
 // The two shapes differ only in uri against device, and an absent field is undefined on both sides.
 function sameEntry(x, y) {
     return x.path === y.path && x.label === y.label && x.group === y.group && x.kind === y.kind
-        && x.uri === y.uri && x.device === y.device && x.mounted === y.mounted && x.glyph === y.glyph && x.size === y.size && x.editable === y.editable
+        && x.uri === y.uri && x.device === y.device && x.mounted === y.mounted && x.glyph === y.glyph
+        && x.size === y.size && x.editable === y.editable && x.removable === y.removable
+        && x.volumeMenu === y.volumeMenu
 }
 
 // Sample input: one rail entry as ui/DeviceMounts.qml and ui/NetworkMounts.qml build them,
-// {label:"128GB", group:"device", kind:"volume", device:"/dev/sda1", mounted:true}.
+// {label:"128GB", group:"device", kind:"volume", device:"/dev/sda1", mounted:true, removable:true}.
 // A removable volume ejects and a mounted network share unmounts; every other rail row offers
 // neither and opens no menu. The kind is read here, never re-derived: the internal disk reads as
 // mounted too, the Dropbox row is a local folder the stock service owns, and a favourite is not a
 // mount. gio's -f is offered nowhere: forcing an unmount over an open write is how data is lost.
+// An internal drive is a volume row as well now, and it is the removable flag that keeps Eject off
+// it: a fixed disk is somewhere to browse, not something to pull out.
 function railMenu(entry) {
-    if (!entry || !entry.mounted)
+    if (!entry)
         return []
-    if (entry.group === "device" && entry.kind === "volume")
+    // RailAdditions rule 2, which PhoneMark's own menu specimen draws: an unmounted volume offers the
+    // mount the row's own activation does, and a mounted one offers the open beside its release.
+    if (entry.group === "device" && entry.kind === "phone")
+        return entry.mounted
+            ? [{ label: "Open", action: "openPhone", glyph: "folder" },
+               { label: "Unmount", action: "unmountPhone", glyph: "eject" }]
+            : [{ label: "Mount", action: "mountPhone", glyph: "drive" }]
+    // RailAdditions rule 2: Mount is what an unmounted volume offers, a mounted one offers the open
+    // its own activation does beside the release, and Eject stays where it stands today, on a volume
+    // somebody can pull out. Only a row built under rule 1's switch carries any of it.
+    if (entry.group === "device" && entry.kind === "volume" && entry.volumeMenu === true) {
+        if (!entry.mounted)
+            return [{ label: "Mount", action: "mountVolume", glyph: "drive" }]
+        var rows = [{ label: "Open", action: "openVolume", glyph: "folder" },
+                    { label: "Unmount", action: "unmountVolume", glyph: "eject" }]
+        if (entry.removable === true)
+            rows.push({ label: "Eject", action: "eject", glyph: "eject" })
+        return rows
+    }
+    if (!entry.mounted)
+        return []
+    if (entry.group === "device" && entry.kind === "volume" && entry.removable === true)
         return [{ label: "Eject", action: "eject", glyph: "eject" }]
     if (entry.group === "network" && entry.kind === "share")
         return [{ label: "Unmount", action: "unmount", glyph: "eject" }]
     return []
 }
 
-// What the rail's own right click opens: the release row above, then the two rows a saved place owns
-// whether or not anything mounted it, marked as a removal because forgetting a place trashes
-// nothing. ui/js/Eject.js reads railMenu and never this, so Ctrl+E still refuses an unmounted row.
+// A root-only remote mount covers its saved addressable paths; SMB shares remain path-specific.
+function addressMountCovers(liveUri, savedUri) {
+    var live = normalize(liveUri)
+    var saved = normalize(savedUri)
+    return /^(sftp|ftp|ftps|dav|davs):\/\/[^\/]+\/$/i.test(live)
+        && saved.length > live.length && saved.indexOf(live) === 0
+}
+
+// What the rail's own right click opens: the release row above, then the three rows a saved place
+// owns whether or not anything mounted it, the last marked as a removal because forgetting a place
+// trashes nothing. ui/js/Eject.js reads railMenu and never this, so Ctrl+E still refuses an unmounted row.
 function rowMenu(entry) {
     if (entry && entry.kind === "favourite") return [{ label: "Remove", action: "removeFavourite", glyph: "minus" }]
     var rows = railMenu(entry)
     if (entry && entry.group === "network" && entry.kind === "share" && entry.editable !== false) {
+        // Edit is the address, Rename is the label: a place gio cannot mount is fixed by the first.
+        rows.push({ label: "Edit", action: "editPlace", glyph: "sliders" })
         rows.push({ label: "Rename", action: "rename", glyph: "rename" })
         rows.push({ label: "Remove", action: "remove", glyph: "minus" })
     }
@@ -213,6 +200,8 @@ function railKey(entry) {
         return ""
     if (entry.group === "device" && entry.kind === "volume")
         return String(entry.device || "")
+    if (entry.group === "device" && entry.kind === "phone")
+        return String(entry.uri || "")
     if (entry.group === "network" && entry.kind === "share")
         return String(entry.uri || "")
     return ""
@@ -257,29 +246,6 @@ function raiseMenu(pane, sidebar) {
         sidebar.openCursorMenu()
     else
         pane.message(entry.label + " has nothing to eject or unmount.", false)
-}
-
-// The rail menu's chosen row, handed the row's key rather than its position: the rail rebuilds on
-// a five second poll, so the index the menu opened over can name a different row by now. A key
-// that no longer names a row does nothing, because the row it named has left the rail already.
-// Both Services re-check the kind themselves; this only resolves which row was meant, and the rail
-// itself owns the two rows that need no mount at all.
-function release(action, key, devices, mounts, sidebar) {
-    if (action === "eject") {
-        var volume = rowByKey(sidebar.deviceEntries, key)
-        if (volume >= 0)
-            devices.eject(volume)
-        return
-    }
-    var share = rowByKey(sidebar.networkEntries, key)
-    if (share < 0)
-        return
-    if (action === "unmount")
-        mounts.unmount(share)
-    else if (action === "rename")
-        sidebar.startRename(sidebar.placesEntries.length + share)
-    else if (action === "remove")
-        mounts.forget(sidebar.networkEntries[share].uri)
 }
 
 // Sample input: the operator's own bookmarks file, favourites and network places in one list.

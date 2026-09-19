@@ -33,6 +33,7 @@ function nameSlot(width, s, t) {
 }
 
 function run(check) {
+
     var dual = {rowPaddingX: 14, gap: 9, iconSize: 13 * 1.45, nameMin: 180, size: 70, date: 125}
     check("dual date fits the board's 431px floor", Columns.names(Columns.dualSet(431, dual, [])), "name,size,date")
     check("dual date drops below its name floor", Columns.names(Columns.dualSet(430, dual, [])), "name,size")

@@ -1,6 +1,7 @@
 .import "../../ui/js/Marquee.js" as Marquee
 .import "../../ui/js/Selection.js" as Selection
 .import "../../ui/js/Filter.js" as Filter
+.import "../../ui/js/Marks.js" as Marks
 .import "../../ui/js/Tap.js" as Tap
 .import "../../ui/js/Focus.js" as Focus
 .import "../../ui/js/Keymap.js" as Keymap
@@ -14,7 +15,7 @@ function pane() {
         commitOpenRename: function () {},
         selectOnly: function (index) { this.selection.only(index); this.cursorIndex = index; this.selectionAnchor = index },
         toggleSelectAt: function (index) { this.selection.toggle(index); this.cursorIndex = index; this.selectionAnchor = index },
-        extendSelectionTo: function (index) { Filter.extendToRow(this, index) }
+        extendSelectionTo: function (index) { Marks.extendToRow(this, index) }
     }
 }
 

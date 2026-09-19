@@ -1,5 +1,7 @@
 // Hard rule 9's sandbox, in code: every destructive test writes inside one of these and nowhere else.
 use std::io::Write;
+use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -100,15 +102,86 @@ pub fn removable(path: &Path) -> bool {
 
 impl Drop for TestDir {
     fn drop(&mut self) {
-        if removable(&self.path) {
-            let _ = std::fs::remove_dir_all(&self.path);
+        if !removable(&self.path) {
+            return;
+        }
+        if std::fs::remove_dir_all(&self.path).is_err() {
+            owner_can_write(&self.path);
+            // Loud: a sandbox outliving its test is the state that left eleven roots on this box.
+            if let Err(e) = std::fs::remove_dir_all(&self.path) {
+                eprintln!("flea test sandbox left behind: {}: {}", self.path.display(), e);
+            }
         }
     }
+}
+
+// A test is allowed to leave a directory its own owner cannot write into, and nothing can be unlinked
+// from one of those, so the bits go back on rather than the sandbox outliving the test that made it.
+fn owner_can_write(root: &Path) {
+    // Opened rather than chmodded by name, because set_permissions and read_dir both follow a symlink
+    // and one planted at a name this walk is about to take would carry it out of the sandbox entirely.
+    let Ok(dir) = open_dir(root) else { return };
+    let held = PathBuf::from(format!("/proc/self/fd/{}", dir.as_raw_fd()));
+    let _ = std::fs::set_permissions(&held, std::fs::Permissions::from_mode(0o700));
+    let Ok(entries) = std::fs::read_dir(&held) else { return };
+    for entry in entries.flatten() {
+        if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+            continue;
+        }
+        let child = entry.path();
+        // A test may leave a directory with no read bit at all, and one of those cannot be opened to
+        // be repaired; the name is under a parent this frame holds open, so the bits go back by name.
+        if open_dir(&child).is_err() {
+            let _ = std::fs::set_permissions(&child, std::fs::Permissions::from_mode(0o700));
+        }
+        owner_can_write(&child);
+    }
+}
+
+// O_NOFOLLOW is what makes the walk above refuse a symlink outright rather than chmod its target.
+fn open_dir(path: &Path) -> std::io::Result<std::fs::File> {
+    std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(crate::oflags::O_DIRECTORY | crate::oflags::O_NOFOLLOW)
+        .open(path)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // The repair for eleven leaked roots: without it this drop cannot unlink held.txt and the whole
+    // sandbox stays on disk. Reverting the retry in Drop reddens exactly this assertion.
+    #[test]
+    fn a_sandbox_holding_a_directory_the_owner_cannot_write_is_still_removed() {
+        let kept = {
+            let d = TestDir::new("dropreadonly");
+            let sub = d.dir("locked");
+            std::fs::write(sub.join("held.txt"), "x").unwrap();
+            // 0500 cannot be written into and 0000 cannot even be opened, and a test may leave either.
+            let shut = d.dir("shut");
+            std::fs::write(shut.join("inside.txt"), "x").unwrap();
+            std::fs::set_permissions(&shut, std::fs::Permissions::from_mode(0o000)).unwrap();
+            std::fs::set_permissions(&sub, std::fs::Permissions::from_mode(0o500)).unwrap();
+            d.path().to_path_buf()
+        };
+        assert!(!kept.exists(), "the sandbox goes with the test that made it: {}", kept.display());
+    }
+
+    // The walk is handed a name that is a symlink, which is the shape a planted /tmp entry takes, and
+    // has to change nothing at the other end rather than chmodding its way down somebody else's tree.
+    #[test]
+    fn the_repair_walk_changes_nothing_through_a_symlink_it_is_handed() {
+        let d = TestDir::new("dropsymlink");
+        let target = d.dir("elsewhere");
+        std::fs::write(target.join("inside.txt"), "x").unwrap();
+        std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o500)).unwrap();
+        let planted = d.join("planted");
+        std::os::unix::fs::symlink(&target, &planted).unwrap();
+        owner_can_write(&planted);
+        let mode = target.symlink_metadata().unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o500, "a symlink is not the directory to repair, and its target is untouched");
+    }
 
     #[test]
     fn temporary_roots_never_include_home_or_its_descendants() {

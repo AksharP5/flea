@@ -8,6 +8,7 @@ Item {
     id: root
 
     property var pane: null
+    enabled: root.pane !== null && root.pane.enabled
 
     // pane.tabs is a replaced JS object, so these bindings have to read it directly; a helper
     // call alone would not re-run when t opens a second tab.
@@ -84,7 +85,10 @@ Item {
                     anchors.fill: parent
                     pane: root.pane
                     switchesOnHover: true
-                    dest: Tabs.pathAt(root.tabs, root.currentIndex, tab.index, root.path)
+                    // The pane's drop path, not its drawn one: a tab selected by the hover switch is
+                    // current before its listing lands, and until then pane.path is the tab left behind.
+                    dest: Tabs.pathAt(root.tabs, root.currentIndex, tab.index,
+                                      root.pane ? root.pane.dropPath : root.path)
                     // Unknown while the listed reply is still out, because dirDev is then the directory a hover switch just left; unknown makes verbFor copy, never a move that turns into a cross-device delete.
                     destDev: Tabs.devAt(root.tabs, root.currentIndex, tab.index,
                                         root.pane && root.pane.backend && !root.pane.listInFlight ? root.pane.backend.dirDev : 0)
@@ -105,11 +109,13 @@ Item {
                     color: tab.current ? Theme.color.background : "transparent"
                 }
 
+                // Flush on the strip's own bottom edge, replacing it rather than sitting inside the
+                // plate: rendered in Quickshell on a low-chroma theme, an inset edge vanishes.
                 Rectangle {
                     anchors.bottom: parent.bottom
                     anchors.left: parent.left
                     anchors.right: parent.right
-                    height: Theme.spacing.hairline * 2
+                    height: Theme.accentEdge
                     color: Theme.color.accent
                     visible: tab.current
                 }
@@ -145,13 +151,17 @@ Item {
                     width: Theme.hitMin
                     height: parent.height
 
+                    // The mark never moves and its target never shrinks; only the ink answers, so a
+                    // crowded strip is no harder to hit than a tidy one.
                     Flea.Glyph {
                         anchors.centerIn: parent
                         width: Theme.chromeMarkSize
                         height: Theme.chromeMarkSize
                         name: "x"
-                        color: Theme.color.muted
+                        color: tab.current || closeHover.hovered ? Theme.color.foreground : Theme.color.muted
                     }
+
+                    HoverHandler { id: closeHover }
                 }
 
                 TapHandler {

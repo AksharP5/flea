@@ -114,6 +114,20 @@ check "undo names trash as what it reversed" "1" "$(seen '"t":"undone","op":"tra
 check "the file is back with its bytes" "trash me" "$(cat "$D/doomed.txt" 2>/dev/null)"
 stop_backend
 
+# Issue 88, nixfred: a path a stale listing still names is already gone, and counting it as trashed
+# journaled a step with no trash entry, which is where the undo of the whole batch stopped.
+echo "--- a path already gone is a failure, and the real one still undoes ---"
+start_backend
+printf 'still here' > "$D/present.txt"
+send "{\"c\":\"trash\",\"paths\":[\"$D/present.txt\",\"$D/never-existed.txt\"]}"
+await '"t":"trashed"' || fail=1
+check "the missing path is a failure and the real one is not" "1" "$(seen '"t":"trashed","ok":1,"failed":1')"
+send '{"c":"undo"}'
+await '"t":"undone"' || fail=1
+check "undo reverses the batch rather than stopping on a step it cannot restore" "1" "$(seen '"t":"undone","op":"trash","ok":true')"
+check "the real file is back with its bytes" "still here" "$(cat "$D/present.txt" 2>/dev/null)"
+stop_backend
+
 echo "--- copy transfer, and undo removes what it created ---"
 start_backend
 printf 'one' > "$D/c1.txt"; printf 'two' > "$D/c2.txt"; mkdir -p "$D/dest"

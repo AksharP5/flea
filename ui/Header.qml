@@ -13,7 +13,7 @@ Item {
     readonly property real dateWidth: root.dualMode ? Theme.dualColumn.date : Theme.column.date
 
     // The click ui/js/Sort.js answers. The header owns no sort state, so it only says which column
-    // was hit; the key is the protocol's own, which is why Date Modified sends "mtime".
+    // was hit; the key is the protocol's own, which is why Modified sends "mtime".
     signal sortRequested(string key)
 
     // A right click over the titles opens the pane's one ContextMenu with the column toggles and
@@ -29,6 +29,7 @@ Item {
     property string searchQuery: ""
     property string searchScope: ""
     property string searchNote: ""
+    property string searchWayOut: ""
 
     // A search takes the header's slot whole, but the strip's ground is a plain Rectangle and
     // accepts no input, so the titles under it stay hittable unless the handlers go down with them.
@@ -49,6 +50,7 @@ Item {
         query: root.searchQuery
         scope: root.searchScope
         note: root.searchNote
+        wayOut: root.searchWayOut
         // The canvas draws the caret on both its search boards, so it stays up as long as the strip is.
         typing: true
     }
@@ -102,7 +104,7 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         visible: root.cols.date
         width: root.cols.date ? root.dateWidth : 0
-        text: root.title("Date Modified", "mtime")
+        text: root.title("Modified", "mtime")
         horizontalAlignment: Text.AlignRight
         elide: Text.ElideRight
 
@@ -148,7 +150,7 @@ Item {
 
     // What the header case reads, built from the same values the header renders.
     function titles() {
-        return "Name|Mode|Size|Date Modified|Kind"
+        return "Name|Mode|Size|Modified|Kind"
     }
 
     // What the header is drawing right now, for the seam that reads it beside a row's.

@@ -186,12 +186,9 @@ FocusScope {
             Column {
                 width: body.width
                 spacing: Theme.spacing.gap
-                Text {
+                Flea.DialogTitle {
                     width: parent.width
                     text: root.title
-                    textFormat: Text.PlainText
-                    color: Theme.color.foreground
-                    font { family: Theme.font.family; pixelSize: Theme.font.body; bold: true }
                 }
                 Rectangle { width: parent.width; height: Theme.spacing.hairline; color: Theme.color.muted; opacity: 0.4 }
                 Text {
@@ -233,7 +230,7 @@ FocusScope {
                         ["Path", root.facts.path],
                         ["Type", root.facts.kind],
                         ["Size", Format.size(root.facts.bytes) + " (" + root.facts.bytes + " bytes)"],
-                        ["Modified", Format.date(root.facts.modified, Date.now())],
+                        ["Modified", Format.date(root.facts.modified)],
                         ["Permissions", root.facts.mode],
                         ["Owner", (root.facts.owner || "Unknown") + " (uid " + root.facts.uid + ")"],
                         ["Group", "gid " + root.facts.gid]

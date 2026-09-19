@@ -18,6 +18,17 @@ mod thp;
 mod uischema;
 mod uistate;
 mod favourites;
+mod captures;
+mod shelf;
+mod shelfcli;
+mod shelfdrag;
+mod shelfops;
+mod shelfplaces;
+mod shelfplugin;
+mod shelfthumb;
+mod shelfundo;
+mod shelfzip;
+mod summon;
 mod uistore;
 mod userfile;
 mod vulkan;
@@ -96,8 +107,10 @@ fn ui_state(args: &[String]) -> i32 {
     if args.len() > 3 {
         usage("--ui-state takes nothing, or one JSON object");
     }
+    let before = store.read();
+    let was = shelf_enabled(&before);
     let state = match args.get(2) {
-        None => store.read(),
+        None => before,
         Some(patch) => {
             let merged = jsondoc::parse(patch)
                 .map_err(|e| format!("the ui.json patch is not JSON ({})", e))
@@ -111,8 +124,21 @@ fn ui_state(args: &[String]) -> i32 {
             }
         }
     };
+    // B1: the Settings switch is the only thing that installs the shelf plugin, and every front end
+    // reaches it through this one path, so the bar follows the switch without a second act.
+    let now = shelf_enabled(&state);
+    if now != was {
+        if let Err(e) = shelfplugin::sync(now) {
+            eprintln!("flea: the shelf plugin was not {} ({})", if now { "enabled" } else { "disabled" }, e);
+        }
+    }
     print!("{}", jsondoc::render(&state));
     0
+}
+
+// Directive 38: the shelf ships off, so anything but a stored true is off.
+fn shelf_enabled(state: &jsondoc::Json) -> bool {
+    state.get("shelf").and_then(|s| s.get("enabled")).and_then(|v| v.as_bool()) == Some(true)
 }
 
 fn main() {
@@ -218,6 +244,11 @@ fn main() {
         exit(favourites::command(&args));
     }
 
+    // flea shelf <verb>: the drop shelf's own state, minted for a plugin that is another process.
+    if args.get(1).map(String::as_str) == Some("shelf") {
+        exit(shelfcli::command(&args));
+    }
+
     let mut want_tui = false;
     let mut want_gui = false;
     let mut print_target = false;
@@ -283,6 +314,13 @@ fn main() {
             match uistore::Store::user().and_then(|store| store.settle()) {
                 Ok(()) => {}
                 Err(e) => eprintln!("flea: the view state was not settled ({})", e),
+            }
+            // An upgrade ships a new plugin under a switch that is already on, and the copy in the
+            // user's own plugin directory is the one the bar reads.
+            if let Ok(store) = uistore::Store::user() {
+                if let Err(e) = shelfplugin::refresh(shelf_enabled(&store.read())) {
+                    eprintln!("flea: the shelf plugin was not refreshed ({})", e);
+                }
             }
             exit(gui::exec_qs(&ui, open_path.as_deref(), select_path.as_deref()))
         }
