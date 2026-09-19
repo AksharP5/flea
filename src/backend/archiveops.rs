@@ -3,7 +3,8 @@
 // archivereq.rs's job, the staging and the jail are archivework.rs's, and reading an index is
 // archivelist.rs's.
 use crate::backend::archive::Formats;
-use crate::backend::archivework::{archive_produced_count, is_empty_dir, run_boxed, run_boxed_cancellable, Work};
+use crate::backend::archivework::{archive_produced_count_cancellable, is_empty_dir,
+                                  run_boxed, run_boxed_cancellable, Work};
 use crate::backend::convert;
 use crate::backend::ops::rename_noreplace;
 use crate::backend::opsreq::op_err;
@@ -72,7 +73,7 @@ pub fn extract(formats: &Formats, archive: &Path, dest: &Path, cancel: &AtomicBo
     // directories. Counting entries missed the root; counting files missed nested directories.
     let mut verified = true;
     if is_empty_dir(&staged) {
-        match archive_produced_count(formats, archive) {
+        match archive_produced_count_cancellable(formats, archive, cancel)? {
             // The index named something and nothing arrived: the tool exited 0 having written nothing.
             Some(n) if n > 0 => {
                 return Err(op_err("archive", &archive.to_string_lossy(), "the archive tool wrote nothing"));
@@ -135,6 +136,7 @@ pub fn split_paths(paths: &[String]) -> Option<(PathBuf, Vec<String>)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::backend::archivework::archive_produced_count;
     use crate::backend::testdir::TestDir;
 
     // Archive operations run concurrently by design, so two extracts into the same directory ask for

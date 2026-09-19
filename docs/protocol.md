@@ -396,8 +396,9 @@ drives that same card, so a second concurrent operation would have nowhere to re
 `mkdir` never take that slot, and an archive `compress` and a `convert` are keyed by their own `id` and
 run alongside by design, so the cap was never one write of any kind.
 
-The answer is a `transferstarted` line, then per top-level item a bounded stream of `transferprogress`
-lines and exactly one `transferitem`, then one `transferdone`.
+The answer is a `transferstarted` line for a file transfer, then per top-level item a bounded stream of
+`transferprogress` lines and exactly one `transferitem`, then one `transferdone`. An archive `extract`
+uses `extractstarted` for its activity card and `archivedone` for its terminal line.
 
 **Semantics that are decided here rather than left to the caller.** A same-filesystem move is a
 `rename(2)`; a cross-filesystem move is a copy followed by removing the source, and the source is only
@@ -828,12 +829,14 @@ exactly `"move"` copies. It is on the wire because the client cannot derive it: 
 clipboard before this line arrives, and a move to Dropbox never touches the clipboard at all, so a
 client reading its own clipboard reports a move as a copy.
 
-An archive `extract` sends this line with `n` of 1, `moving` false and `"extract":true` present:
-`{"t":"transferstarted","id":12,"n":1,"moving":false,"extract":true}`. The field rides only on that
-extract, so a client that does not know it reads an ordinary transfer's line exactly as before; it
-exists so the client's transfer card says Extracting instead of Copying. The archive's own name arrives
-on one zero-byte `transferprogress` line, and an extract's terminal line is `archivedone`, never
-`transferdone`.
+### extractstarted
+
+`{"t":"extractstarted","id":<uint>}`
+
+An archive `extract` sends this line before its one zero-byte `transferprogress` line. A current client
+routes it into the existing transfer card as `n` 1, `moving` false and `extract` true, so the card says
+Extracting without inventing bytes, a rate or an ETA. Older clients ignore this new type, while the
+existing `archivedone` terminal line remains unchanged for archive clients.
 
 ### meta
 

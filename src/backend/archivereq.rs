@@ -64,9 +64,9 @@ pub fn formats_line(formats: &Formats, can_convert: bool) -> String {
         names.join(","), can_convert, formats.offers("tar"), formats.offers("7z"), formats.zip_readable())
 }
 
-// The extract's start line: the transfer shape the card reads, with the verb on the wire.
+// The extract gets its own start type so an older client never owns a card it cannot finish.
 fn extractstarted_line(id: usize) -> String {
-    format!(r#"{{"t":"transferstarted","id":{},"n":1,"moving":false,"extract":true}}"#, id)
+    format!(r#"{{"t":"extractstarted","id":{}}}"#, id)
 }
 
 pub(crate) fn run_archive(id: usize, compressing: bool, paths: Vec<String>, format: String,
@@ -193,6 +193,7 @@ mod tests {
                    r#"{"t":"archivedone","id":13,"ok":true,"verified":true,"err":""}"#);
         assert_eq!(archivedone_line(13, true, false, ""),
                    r#"{"t":"archivedone","id":13,"ok":true,"verified":false,"err":""}"#);
+        assert_eq!(extractstarted_line(13), r#"{"t":"extractstarted","id":13}"#);
         assert_eq!(convertstarted_line(15, 7, "/home/gm/photo.png"),
             r#"{"t":"convertstarted","id":15,"requestId":7,"source":"/home/gm/photo.png"}"#);
         assert_eq!(

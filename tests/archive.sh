@@ -124,8 +124,8 @@ send "{\"c\":\"archive\",\"op\":\"extract\",\"path\":\"$D/slow/slow.zip\",\"dest
 send "{\"c\":\"transfer\",\"op\":\"copy\",\"paths\":[\"$D/src/a.txt\"],\"dest\":\"$D/slow/copy\"}"
 send '{"c":"transfercancel","id":1}'
 await '"t":"archivedone","id":1' || fail=1
-check "an extract starts the copy card's own start line" "1" \
-  "$(seen '"t":"transferstarted","id":1,"n":1,"moving":false,"extract":true')"
+check "an extract has its distinct card start line" "1" \
+  "$(seen '"t":"extractstarted","id":1')"
 check "and the card is told the archive's name with no fabricated bytes" "1" \
   "$(seen '"t":"transferprogress","id":1,"index":0,"name":"slow.zip","bytes":0,"total":0,"scanned":0')"
 check "a second extract while it runs is refused busy" "1" \

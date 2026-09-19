@@ -1,5 +1,6 @@
 .import "../../ui/js/Archive.js" as Archive
 .import "../../ui/js/Convert.js" as Convert
+.import "../../ui/js/Messages.js" as Messages
 
 function run(check) {
     check("the longest extension is matched first, so tar.gz is not read as gz",
@@ -40,9 +41,22 @@ function run(check) {
     check("a box with neither reads nothing",
           Archive.canExtract("x.zip", neither) + "|" + Archive.canExtract("x.tar", neither), "false|false")
     check("a missing capability object is not a capability", Archive.canExtract("x.zip", undefined), false)
+    check("the zip capability accepts the exact .zip boundary", Archive.canExtract(".zip", {zip: true}), true)
+    check("the zip capability accepts the exact .rar boundary", Archive.canExtract(".rar", {zip: true}), true)
+    check("the 7z capability accepts the exact .7z boundary", Archive.canExtract(".7z", {sevenZip: true}), true)
     check("the disabled row's reason names the missing program",
           Archive.extractHint(["7z"]) + "|" + Archive.extractHint(["zip", "tar", "tar.gz"]) + "|" + Archive.extractHint([]),
           "bsdtar is not installed|7-Zip is not installed|No archive tool is installed")
+
+    var transferCalls = []
+    var messageRoot = {transferStarted: function (id, n, moving, extract) {
+        transferCalls.push([id, n, moving, extract].join("|"))
+    }}
+    Messages.route(messageRoot, {t: "transferstarted", id: 4, n: 2, moving: true})
+    check("ordinary transferstarted keeps its three-field schema", transferCalls.join(","), "4|2|true|false")
+    transferCalls = []
+    Messages.route(messageRoot, {t: "extractstarted", id: 5})
+    check("the new extract start reaches the existing card as an extract", transferCalls.join(","), "5|1|false|true")
 
     check("one row compresses under its own name",
           Archive.archiveStem(["notes.txt"], "claude"), "notes")

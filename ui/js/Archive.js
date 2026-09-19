@@ -83,5 +83,5 @@ function extractEntry(entry, p, count) {
 }
 
 function hasSuffix(lower, suffix) {
-    return lower.length > suffix.length && lower.indexOf(suffix, lower.length - suffix.length) !== -1
+    return lower.length >= suffix.length && lower.indexOf(suffix, lower.length - suffix.length) !== -1
 }
