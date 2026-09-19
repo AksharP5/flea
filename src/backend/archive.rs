@@ -10,6 +10,18 @@ const SEVENZIP: &str = "7z";
 const TAR_FORMATS: &[&str] = &["zip", "tar", "tar.gz", "tar.bz2", "tar.xz", "tar.zst"];
 const SEVENZIP_FORMAT: &str = "7z";
 
+// Either tool reads a .zip and a .rar, which is what a 7z-only box can still extract.
+const ZIP_SUFFIXES: &[&str] = &[".zip", ".rar"];
+// Tar stays on bsdtar: `7z x` on a .tar.gz writes the inner .tar, not the files.
+const TAR_SUFFIXES: &[&str] = &[".tar.zst", ".tar.bz2", ".tar.gz", ".tar.xz", ".tgz", ".tar"];
+
+// Which program reads one archive, decided from the name's own extension and what this box has.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum Reader {
+    Bsdtar,
+    SevenZip,
+}
+
 pub struct Formats {
     names: Vec<String>,
     have_bsdtar: bool,
@@ -84,64 +96,68 @@ impl Formats {
         Some(a)
     }
 
+    // The one reader choice, shared by extract_argv and list_argv; None when no tool reads it.
+    pub fn reader_for(&self, archive: &Path) -> Option<Reader> {
+        let name = archive.to_string_lossy().to_lowercase();
+        if name.ends_with(".7z") {
+            return self.have_7z.then_some(Reader::SevenZip);
+        }
+        if ZIP_SUFFIXES.iter().any(|suffix| name.ends_with(*suffix)) {
+            if self.have_bsdtar {
+                // A rar prefers 7z's reference reader; a zip stays with libarchive where it was.
+                return Some(if name.ends_with(".rar") && self.have_7z { Reader::SevenZip } else { Reader::Bsdtar });
+            }
+            return self.have_7z.then_some(Reader::SevenZip);
+        }
+        if TAR_SUFFIXES.iter().any(|suffix| name.ends_with(*suffix)) {
+            return self.have_bsdtar.then_some(Reader::Bsdtar);
+        }
+        // An unrecognised name keeps the libarchive attempt; the client only asks about the classes above.
+        self.have_bsdtar.then_some(Reader::Bsdtar)
+    }
+
+    // The zip-class bit the client's Extract row reads; see formats_line in archivereq.rs.
+    pub fn zip_readable(&self) -> bool {
+        self.have_bsdtar || self.have_7z
+    }
+
     // Extraction is chosen by what the archive is, not by what the caller says it is.
     pub fn extract_argv(&self, archive: &Path, dest: &Path) -> Option<Vec<String>> {
-        let name = archive.to_string_lossy().to_lowercase();
-        // A rar is read by 7z where it is installed, whose rar and rar5 readers are the reference
-        // ones, and by libarchive otherwise; neither needs the nonfree tool that writes them.
-        if name.ends_with(".7z") || (name.ends_with(".rar") && self.have_7z) {
-            if !self.have_7z {
-                return None;
-            }
-            return Some(vec![
+        match self.reader_for(archive)? {
+            Reader::SevenZip => Some(vec![
                 SEVENZIP.to_string(),
                 "x".to_string(),
                 "-bd".to_string(),
                 "-y".to_string(),
                 archive.to_string_lossy().to_string(),
                 format!("-o{}", dest.to_string_lossy()),
-            ]);
+            ]),
+            // bsdtar's secure-extraction default is exercised by the native archive tests.
+            Reader::Bsdtar => Some(vec![
+                BSDTAR.to_string(),
+                "-x".to_string(),
+                "-f".to_string(),
+                archive.to_string_lossy().to_string(),
+                "-C".to_string(),
+                dest.to_string_lossy().to_string(),
+            ]),
         }
-        if !self.have_bsdtar {
-            return None;
-        }
-        // bsdtar's own secure-extraction default refuses .. components and absolute paths; the live
-        // battery proves that on this build rather than trusting it.
-        Some(vec![
-            BSDTAR.to_string(),
-            "-x".to_string(),
-            "-f".to_string(),
-            archive.to_string_lossy().to_string(),
-            "-C".to_string(),
-            dest.to_string_lossy().to_string(),
-        ])
     }
-}
 
-impl Formats {
     // The argv that lists an archive without extracting a byte of it.
     pub fn list_argv(&self, archive: &Path) -> Option<(Vec<String>, ListSpec)> {
-        let name = archive.to_string_lossy().to_lowercase();
-        // The same choice extract_argv makes, so an index and the extract that follows it are read
-        // by one tool and a name in the preview is a name the extract will actually write.
-        if name.ends_with(".7z") || (name.ends_with(".rar") && self.have_7z) {
-            if !self.have_7z {
-                return None;
-            }
-            return Some((
+        match self.reader_for(archive)? {
+            Reader::SevenZip => Some((
                 vec![SEVENZIP.to_string(), "l".to_string(), "-ba".to_string(),
                      archive.to_string_lossy().to_string()],
                 seven_spec(),
-            ));
+            )),
+            Reader::Bsdtar => Some((
+                vec![BSDTAR.to_string(), "-t".to_string(), "-v".to_string(), "-f".to_string(),
+                     archive.to_string_lossy().to_string()],
+                tar_spec(),
+            )),
         }
-        if !self.have_bsdtar {
-            return None;
-        }
-        Some((
-            vec![BSDTAR.to_string(), "-t".to_string(), "-v".to_string(), "-f".to_string(),
-                 archive.to_string_lossy().to_string()],
-            tar_spec(),
-        ))
     }
 }
 
@@ -174,6 +190,16 @@ mod tests {
         assert_eq!(fallback[0], "bsdtar");
         let (fallback_list, _) = tar_only.list_argv(Path::new("/x/holiday.rar")).unwrap();
         assert_eq!(fallback_list[0], "bsdtar");
+        // #165: a box with only 7z reads the zip class too; a tar stays unreadable there.
+        let seven_only = Formats::from_tools(false, true);
+        let zip_7z = seven_only.extract_argv(Path::new("/x/holiday.zip"), Path::new("/dest")).unwrap();
+        assert_eq!(zip_7z[0], "7z");
+        let (zip_list, spec) = seven_only.list_argv(Path::new("/x/holiday.zip")).unwrap();
+        assert_eq!(zip_list[0], "7z", "the index agrees with the extract about the tool");
+        assert!(spec.name_after_double_space);
+        assert_eq!(seven_only.extract_argv(Path::new("/x/holiday.rar"), Path::new("/dest")).unwrap()[0], "7z");
+        assert!(seven_only.extract_argv(Path::new("/x/holiday.tar.gz"), Path::new("/dest")).is_none());
+        assert!(seven_only.extract_argv(Path::new("/x/holiday.7z"), Path::new("/dest")).is_some());
         // Upper case reaches the same reader: the name is lowercased before it is matched.
         assert_eq!(both.extract_argv(Path::new("/x/HOLIDAY.RAR"), Path::new("/d")).unwrap()[0], "7z");
         // No tool at all reads nothing, rather than building an argv for a program that is absent.
@@ -262,6 +288,19 @@ mod tests {
         // A .7z on a box with no 7zip cannot be extracted, and says so by building nothing.
         let no_seven = Formats::from_tools(true, false);
         assert!(no_seven.extract_argv(Path::new("/x/a.7z"), Path::new("/out")).is_none());
+    }
+
+    // #165: each wire class bit and the argv it gates are asserted together, tool by tool.
+    #[test]
+    fn the_extract_capability_bits_agree_with_the_argv_they_gate() {
+        let readable = |f: &Formats, name: &str| f.extract_argv(Path::new(name), Path::new("/out")).is_some();
+        for (have_bsdtar, have_7z) in [(true, true), (true, false), (false, true), (false, false)] {
+            let f = Formats::from_tools(have_bsdtar, have_7z);
+            assert_eq!(f.zip_readable(), readable(&f, "/x/a.zip"), "zip bit vs argv: {} {}", have_bsdtar, have_7z);
+            assert_eq!(f.zip_readable(), readable(&f, "/x/a.rar"), "rar follows the zip class: {} {}", have_bsdtar, have_7z);
+            assert_eq!(f.offers("tar"), readable(&f, "/x/a.tar.zst"), "tar bit vs argv: {} {}", have_bsdtar, have_7z);
+            assert_eq!(f.offers("7z"), readable(&f, "/x/a.7z"), "7z bit vs argv: {} {}", have_bsdtar, have_7z);
+        }
     }
 
 }

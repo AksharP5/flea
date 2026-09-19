@@ -34,7 +34,7 @@ for package in "${required_packages[@]}"; do
 done
 
 helper_path=usr/lib/flea/flea-gio-auth
-helper_sha=b8b519d96e2a219ee28588732807083b6556a88f705992d6847fdd645c9b2113
+helper_sha=f4c75e616dd1381b285219415841a2deb9bc9a861998a52aa03a2ace8522d3c8
 package_file=${FLEA_PACKAGE_FILE:-}
 if [ -z "$package_file" ] && command -v makepkg >/dev/null 2>&1; then
     mapfile -t package_files < <(makepkg --packagelist)

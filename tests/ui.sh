@@ -3075,9 +3075,21 @@ case_operations() {
     printf 'body\n' > "$dir/notes.txt"
     magick -size 48x32 xc:navy "$dir/shot.png"
     bsdtar -a -c -f "$dir/bundle.tar.zst" -C "$dir" notes.txt
+    # #165: the card case needs an extraction still running when the harness looks.
+    python3 - "$dir/slowpayload" <<'PY' || fail "operations: the slow extraction fixture could not be populated"
+from pathlib import Path
+import sys
+
+root = Path(sys.argv[1])
+root.mkdir()
+for index in range(100000):
+    (root / f"member_{index}").touch()
+PY
+    bsdtar -a -c -f "$dir/slow.zip" -C "$dir/slowpayload" . \
+        || fail "operations: the slow extraction archive could not be built"
 
     launch "$dir"
-    wait_listing 3
+    wait_listing 5
 
     # The submenu is exactly the table the backend probed, never a fixed list.
     [[ "$(ipc archiveFormats)" == *"tar.zst"* ]] || fail "operations: the probed formats are $(ipc archiveFormats)"
@@ -3145,6 +3157,47 @@ case_operations() {
     [[ "$(magick identify -format '%m' "$dir/shot.png")" == "PNG" ]] \
         || fail "operations: the source was written over"
     printf 'OPERATIONS converted=%s\n' "$(ipc lastMessage)"
+
+    # #165: Extract drives the copy card, and its Escape cancel must leave no destination.
+    echo "-- extract in the copy card, cancelled with the transfer's own key --"
+    local state deadline
+    seek_row_named "slow.zip"
+    click_row "$(ipc cursor)" right
+    settle
+    menu_seek "Extract"
+    key -k Return >/dev/null
+    deadline=$((SECONDS + 20))
+    state=""
+    while (( SECONDS < deadline )); do
+        state=$(ipc statusActivityState) || fail "operations: extract-card observation failed"
+        jq -e '.transferCard.visible and (.transferCard.byteLine == "") and (.transferCard.cancel.visible and .transferCard.cancel.enabled) and (.activities[0].text | startswith("Extracting · slow.zip"))' <<< "$state" >/dev/null && break
+        sleep 0.05
+    done
+    jq -e '.transferCard.visible and (.transferCard.byteLine == "") and (.transferCard.cancel.visible and .transferCard.cancel.enabled) and (.activities[0].text | startswith("Extracting · slow.zip"))' <<< "$state" >/dev/null \
+        || fail "operations: no live no-byte Extracting card before the deadline: $state"
+    printf 'OPERATIONS extract-card=%s\n' "$state"
+    shot operations-extracting
+    key -k Escape >/dev/null
+    deadline=$((SECONDS + 20))
+    while (( SECONDS < deadline )); do
+        state=$(ipc statusActivityState) || fail "operations: extract-cancel observation failed"
+        jq -e '(.transferCard.visible | not) and (.activities | length) == 0' <<< "$state" >/dev/null && break
+        sleep 0.05
+    done
+    jq -e '(.transferCard.visible | not) and (.activities | length) == 0' <<< "$state" >/dev/null \
+        || fail "operations: a cancelled extraction never reached a terminal state: $state"
+    [[ ! -e "$dir/slow" ]] || fail "operations: a cancelled extract published $dir/slow"
+    printf 'OPERATIONS extract-cancelled=%s\n' "$state"
+
+    echo "-- a completed extract writes the tree beside the archive --"
+    seek_row_named "bundle.tar.zst"
+    click_row "$(ipc cursor)" right
+    settle
+    menu_seek "Extract"
+    key -k Return >/dev/null
+    for _ in $(seq 1 80); do [[ -f "$dir/bundle/notes.txt" ]] && break; sleep 0.25; done
+    [[ -f "$dir/bundle/notes.txt" ]] || fail "operations: extract wrote nothing, bar says $(ipc lastMessage)"
+    printf 'OPERATIONS extracted=%s\n' "$(ipc lastMessage)"
     kill_flea
 }
 
@@ -3266,6 +3319,18 @@ case_grid() {
     (( $(ipc cursor) == right - (down - start) )) || fail "grid: Up did not undo the row Down moved"
     printf 'GRID columns=%s cursorAfterDown=%s afterRight=%s\n' "$((down - start))" "$down" "$right"
 
+    # Issue 162: j moves the row of tiles Down moved, and k undoes it; a [[text]] chord goes bare.
+    local jfrom jdown
+    jfrom=$(ipc cursor)
+    key j >/dev/null
+    settle
+    jdown=$(ipc cursor)
+    (( jdown == jfrom + (down - start) )) \
+        || fail "grid: j moved $((jdown - jfrom)) from $jfrom, not the row of tiles Down moved"
+    key k >/dev/null
+    settle
+    (( $(ipc cursor) == jfrom )) || fail "grid: k did not undo the row j moved"
+
     click_chrome list
     settle
     [[ "$(ipc viewMode)" == "list" ]] || fail "grid: the list button did not switch back"
@@ -3275,6 +3340,13 @@ case_grid() {
     settle
     (( $(ipc cursor) == start + 1 )) \
         || fail "grid: after switching back the list did not take one step, so focus stayed with the grid"
+    # Issue 162 is the grid's only: the same letter is one row in the list.
+    local lstart lnext
+    lstart=$(ipc cursor)
+    key j >/dev/null
+    settle
+    lnext=$(ipc cursor)
+    (( lnext == lstart + 1 )) || fail "grid: in the list j moved $((lnext - lstart)), not one item"
     kill_flea
 }
 
@@ -3365,6 +3437,15 @@ grid_chrome_controls() {
     printf 'GRID_CHROME preset=%s filter_focus=ok sort_cycle=ok search_refusal=ok view_inventory=ok\n' "$preset"
 }
 
+# Move through measured rows and columns to the exact fixture tile.
+grid_move_to() {
+    local target="$1" columns="$2" i
+    key -k Home >/dev/null
+    for ((i = 0; i < target / columns; i++)); do key -k Down >/dev/null; done
+    for ((i = 0; i < target % columns; i++)); do key -k Right >/dev/null; done
+    cardsize_expect cursor "$target"
+}
+
 case_gridnavigation() {
     local dir="$fixture_root/grid-navigation" preset i columns next_columns edge selected_name
     local start_x start_y target_x target_y caption
@@ -3393,12 +3474,12 @@ case_gridnavigation() {
         [[ "$columns" =~ ^[0-9]+$ ]] && (( columns > 1 && columns < 30 )) || fail "grid: invalid measured column count $columns"
         click_row "$((columns - 1))" left
         key j >/dev/null
-        cardsize_expect cursor "$columns"
+        cardsize_expect cursor "$((2 * columns - 1))"
         key k >/dev/null
         cardsize_expect cursor "$((columns - 1))"
         key -k Right >/dev/null
         cardsize_expect cursor "$((columns - 1))"
-        key j -k Left >/dev/null
+        key -k Home -k Down -k Left >/dev/null
         cardsize_expect cursor "$columns"
         read -r start_x start_y <<< "$(ipc rowCentre "$columns")"
         key -k Down >/dev/null
@@ -3418,16 +3499,12 @@ case_gridnavigation() {
         # Prime fixture count guarantees an incomplete row at every admitted column count.
         (( 61 % columns != 0 )) || fail "grid: fixture did not produce an incomplete row"
         edge=$((61 - columns))
-        key -k Home >/dev/null
-        for ((i = 0; i < edge; i++)); do key j >/dev/null; done
-        cardsize_expect cursor "$edge"
+        grid_move_to "$edge" "$columns"
         key -k Down >/dev/null
         cardsize_expect cursor "$edge"
         key -k Escape >/dev/null
         cardsize_expect selectionCount 0
-        key -k Home >/dev/null
-        for i in 1 2 3 4 5 6; do key j >/dev/null; done
-        cardsize_expect cursor 6
+        grid_move_to 6 "$columns"
         key v >/dev/null
         cardsize_expect selectedIndices 6
         selected_name=$(ipc visibleRowName 6)
@@ -3580,8 +3657,10 @@ case_thumbs() {
     local before_large
     kill_flea
     before_large=$(ls -A "$cache_large" | wc -l)
+    seed_ui_state "$fixture_root/thumbs-state" '{"view":"list"}'
     launch "$thumb_fixture"
     wait_listing "$thumb_rows"
+    [[ "$(ipc viewMode)" == list ]] || fail "thumbs: fixture did not open its list view"
     # Read before any thumbnail lands, so the slot is compared against its pre-thumbnail row.
     local row_height
     row_height=$(ipc metrics | cut -d' ' -f4)
@@ -4623,14 +4702,16 @@ EOS
     [[ -z "$(ipc networkEntries)" ]] || fail "network: the group is not empty with no bookmarks, gio mounts or Dropbox"
     shot network-empty
 
-    # "a" is the rail's add-dialog binding and nothing in the list; ui/js/Focus.js "lookup" scopes it.
-    # Since v0.1.3 there is no type-ahead, so the cursor must not move either.
+    # The current keymap binds "a" to add network from both listing and rail contexts.
     [[ "$(ipc focusView)" == "list" ]] || fail "network: did not start on the list"
     [[ "$(ipc cursor)" == "0" ]] || fail "network: did not start on row 0"
     key a >/dev/null
     settle
-    [[ "$(ipc dialogOpen)" == "false" ]] || fail "network: a opened the dialog from the list, where it is not bound"
-    [[ "$(ipc cursor)" == "0" ]] || fail "network: a moved the cursor, so something still type-aheads: $(ipc cursor)"
+    [[ "$(ipc dialogOpen)" == "true" ]] || fail "network: a from the list did not open the add-location dialog"
+    key -k Escape >/dev/null
+    settle
+    [[ "$(ipc dialogOpen)" == "false" ]] || fail "network: list add-location dialog did not close"
+    [[ "$(ipc cursor)" == "0" ]] || fail "network: list a changed the cursor to $(ipc cursor)"
 
     # The real submit path: Tab to the rail, "a" opens the dialog there, type a location, Enter submits.
     key -k Tab >/dev/null
@@ -7949,6 +8030,7 @@ case_settingsrefused() {
     printf '{"view":"list"}\n' > "$stored"
     printf 'a\n' > "$dir/a.txt"
     printf 'b\n' > "$dir/b.txt"
+    printf 'c\n' > "$dir/c.txt"
     export XDG_STATE_HOME="$state"
     settings_read_refused "$stored" "$dir"
     if [[ -n "$old_state" ]]; then export XDG_STATE_HOME="$old_state"; else unset XDG_STATE_HOME; fi

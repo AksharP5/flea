@@ -80,7 +80,7 @@ function lookup(event, root) {
 // Takes the Pane root because every case is a method call or a property read on it.
 function act(action, root, menuId, paths) {
     switch (action) {
-    // Letter bindings follow item order; the grid's own arrows take ui/js/Grid.js's visual cells.
+    // List steps follow item order; in the grid ui/js/Grid.js takes j/k and the arrows as visual cells.
     case "cursorDown": step(root, 1); return
     case "cursorUp": step(root, -1); return
     case "cursorLeft": step(root, -1); return

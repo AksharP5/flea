@@ -2003,7 +2003,7 @@ def array(name):
     start = source.index('var ' + name + ' = ') + len('var ' + name + ' = ')
     return json.JSONDecoder().raw_decode(source[start:].lstrip())[0]
 seen, output = set(), []
-contexts = {'F': 'file', 'B': 'background', 'T': 'trash'}
+contexts = {'F': 'file', 'B': 'background', 'P': 'places', 'T': 'trash'}
 for row in array('INVENTORY'):
     if len(row) not in (5, 6) or row[0] in seen or not row[3]:
         raise SystemExit('invalid or duplicate Menu.INVENTORY row: ' + repr(row))
@@ -2213,7 +2213,7 @@ drive_menu_action() {
   local id action label rc row=$1
   IFS='|' read -r id action label DRIVE_MENU_CONTEXT <<< "$row"
   local name="$id/$DRIVE_MENU_CONTEXT/$action"
-  if [[ "$DRIVE_MENU_CONTEXT" == trash || "$DRIVE_MENU_CONTEXT" == header ]]; then
+  if [[ "$DRIVE_MENU_CONTEXT" == trash || "$DRIVE_MENU_CONTEXT" == header || "$DRIVE_MENU_CONTEXT" == places ]]; then
     skip menu "$name" "derived $label needs its own $DRIVE_MENU_CONTEXT native fixture and eligibility assertion"
     return
   fi
