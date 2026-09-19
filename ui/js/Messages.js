@@ -24,7 +24,8 @@ function route(root, message) {
     } else if (message.t === "searched") {
         root.searched(message.n, message.scanned, message.ms, message.cancelled)
     } else if (message.t === "transferstarted") {
-        root.transferStarted(message.id, message.n, message.moving)
+        // extract rides only on an extract's start line; an ordinary copy has no such field.
+        root.transferStarted(message.id, message.n, message.moving, message.extract === true)
     } else if (message.t === "transferprogress") {
         root.transferProgress(message.id, message.index, message.name, message.bytes, message.total, message.scanned || 0)
     } else if (message.t === "transferitem") {

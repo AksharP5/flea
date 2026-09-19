@@ -26,6 +26,8 @@ pub enum OpMsg {
     Duplicated { ok: bool, path: String, err: String, entry: Entry },
     RedoDone { journal: super::undo::Journal, result: Result<String, FleaError> },
     MenuDeleteDone { line: String },
+    // A terminal line for a slot-holding operation: written like Meta, and it releases the slot.
+    SlotDone { line: String },
     // Not an operation: meta rides this channel because a media probe is a subprocess and the loop
     // must not wait on one. Nothing about it claims the one-at-a-time slot.
     Meta { line: String },

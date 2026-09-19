@@ -3075,9 +3075,21 @@ case_operations() {
     printf 'body\n' > "$dir/notes.txt"
     magick -size 48x32 xc:navy "$dir/shot.png"
     bsdtar -a -c -f "$dir/bundle.tar.zst" -C "$dir" notes.txt
+    # #165: the card case needs an extraction still running when the harness looks.
+    python3 - "$dir/slowpayload" <<'PY' || fail "operations: the slow extraction fixture could not be populated"
+from pathlib import Path
+import sys
+
+root = Path(sys.argv[1])
+root.mkdir()
+for index in range(100000):
+    (root / f"member_{index}").touch()
+PY
+    bsdtar -a -c -f "$dir/slow.zip" -C "$dir/slowpayload" . \
+        || fail "operations: the slow extraction archive could not be built"
 
     launch "$dir"
-    wait_listing 3
+    wait_listing 5
 
     # The submenu is exactly the table the backend probed, never a fixed list.
     [[ "$(ipc archiveFormats)" == *"tar.zst"* ]] || fail "operations: the probed formats are $(ipc archiveFormats)"
@@ -3145,6 +3157,47 @@ case_operations() {
     [[ "$(magick identify -format '%m' "$dir/shot.png")" == "PNG" ]] \
         || fail "operations: the source was written over"
     printf 'OPERATIONS converted=%s\n' "$(ipc lastMessage)"
+
+    # #165: Extract drives the copy card, and its Escape cancel must leave no destination.
+    echo "-- extract in the copy card, cancelled with the transfer's own key --"
+    local state deadline
+    seek_row_named "slow.zip"
+    click_row "$(ipc cursor)" right
+    settle
+    menu_seek "Extract"
+    key -k Return >/dev/null
+    deadline=$((SECONDS + 20))
+    state=""
+    while (( SECONDS < deadline )); do
+        state=$(ipc statusActivityState) || fail "operations: extract-card observation failed"
+        jq -e '.transferCard.visible and (.transferCard.byteLine == "") and (.transferCard.cancel.visible and .transferCard.cancel.enabled) and (.activities[0].text | startswith("Extracting · slow.zip"))' <<< "$state" >/dev/null && break
+        sleep 0.05
+    done
+    jq -e '.transferCard.visible and (.transferCard.byteLine == "") and (.transferCard.cancel.visible and .transferCard.cancel.enabled) and (.activities[0].text | startswith("Extracting · slow.zip"))' <<< "$state" >/dev/null \
+        || fail "operations: no live no-byte Extracting card before the deadline: $state"
+    printf 'OPERATIONS extract-card=%s\n' "$state"
+    shot operations-extracting
+    key -k Escape >/dev/null
+    deadline=$((SECONDS + 20))
+    while (( SECONDS < deadline )); do
+        state=$(ipc statusActivityState) || fail "operations: extract-cancel observation failed"
+        jq -e '(.transferCard.visible | not) and (.activities | length) == 0' <<< "$state" >/dev/null && break
+        sleep 0.05
+    done
+    jq -e '(.transferCard.visible | not) and (.activities | length) == 0' <<< "$state" >/dev/null \
+        || fail "operations: a cancelled extraction never reached a terminal state: $state"
+    [[ ! -e "$dir/slow" ]] || fail "operations: a cancelled extract published $dir/slow"
+    printf 'OPERATIONS extract-cancelled=%s\n' "$state"
+
+    echo "-- a completed extract writes the tree beside the archive --"
+    seek_row_named "bundle.tar.zst"
+    click_row "$(ipc cursor)" right
+    settle
+    menu_seek "Extract"
+    key -k Return >/dev/null
+    for _ in $(seq 1 80); do [[ -f "$dir/bundle/notes.txt" ]] && break; sleep 0.25; done
+    [[ -f "$dir/bundle/notes.txt" ]] || fail "operations: extract wrote nothing, bar says $(ipc lastMessage)"
+    printf 'OPERATIONS extracted=%s\n' "$(ipc lastMessage)"
     kill_flea
 }
 
