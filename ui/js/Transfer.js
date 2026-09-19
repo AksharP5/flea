@@ -64,6 +64,9 @@ function word(text) {
 // The card's headline, the count with no name in it: the card gives the name a row of its own, and
 // ui/js/Ops.js builds the status bar's one-line form from this same string.
 function head(t) {
+    // An extract has no items to count, so it names its verb alone.
+    if (t.extract)
+        return "Extracting"
     return (t.redo ? "Redoing " + t.redo + " " : t.moving ? "Moving " : "Copying ") + (t.index + 1) + " of " + t.n
 }
 

@@ -5,11 +5,16 @@ use crate::backend::archive::Formats;
 use crate::backend::archivelist::parse_reader;
 use crate::backend::opsreq::op_err;
 use crate::error::{from_io, FleaError};
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 
 // A private directory beside the destination, so the rename that follows never crosses a filesystem.
-const WORK_PREFIX: &str = ".flea-work-";
+pub(crate) const WORK_PREFIX: &str = ".flea-work-";
+// A cancel is observed within this; a killed child is reaped on the next round.
+const CANCEL_STEP: Duration = Duration::from_millis(50);
 
 pub struct Work {
     pub dir: PathBuf,
@@ -83,6 +88,57 @@ pub fn run_boxed(what: &str, inner: Vec<String>, read_only: &Path, writable: &Pa
 }
 
 
+// run_boxed, watched for a cancel: kill and reap here, so nothing is renamed and stderr is drained.
+pub fn run_boxed_cancellable(what: &str, inner: Vec<String>, read_only: &Path, writable: &Path,
+                             cancel: &AtomicBool) -> Result<(), FleaError> {
+    if !sandbox::available() {
+        let tool = inner.first().map_or("", |s| s.as_str());
+        return Err(op_err(what, tool, "the sandbox is unavailable: bwrap or prlimit is not on PATH"));
+    }
+    let full = sandbox::wrap(&inner, read_only, writable);
+    let mut child = Command::new(&full[0])
+        .args(&full[1..])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| from_io(what, &full[0], &e))?;
+    let stderr = child.stderr.take();
+    let reader = std::thread::spawn(move || {
+        let mut text = String::new();
+        if let Some(mut pipe) = stderr {
+            pipe.read_to_string(&mut text).ok();
+        }
+        text
+    });
+    loop {
+        if cancel.load(Ordering::Relaxed) {
+            // --die-with-parent takes the decoder; the wait here is what reaps the launcher.
+            child.kill().ok();
+            child.wait().ok();
+            reader.join().ok();
+            return Err(op_err(what, "", "cancelled"));
+        }
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                let text = reader.join().unwrap_or_default();
+                if status.success() {
+                    return Ok(());
+                }
+                let fallback = format!("the {} tool failed", what);
+                return Err(op_err(what, "", text.lines().last().unwrap_or(&fallback)));
+            }
+            Ok(None) => std::thread::sleep(CANCEL_STEP),
+            Err(e) => {
+                child.kill().ok();
+                child.wait().ok();
+                reader.join().ok();
+                return Err(from_io(what, &full[0], &e));
+            }
+        }
+    }
+}
+
 pub fn is_empty_dir(dir: &Path) -> bool {
     std::fs::read_dir(dir).map(|mut e| e.next().is_none()).unwrap_or(true)
 }
@@ -140,6 +196,31 @@ mod tests {
             assert_eq!(kept.parent().unwrap(), d.path());
         }
         assert!(!kept.exists(), "the work directory goes with the job that made it");
+    }
+
+    // Cancel kills and reaps; the pid-named duration keeps the /proc gate off other suites' sleeps.
+    #[test]
+    fn a_cancelled_child_is_killed_and_reaped_rather_than_left_running() {
+        if crate::backend::sandboxprobe::skipped() { return; }
+        let d = TestDir::new("archworkcancel");
+        let work = Work::new(d.path(), "ext").expect("work");
+        let cancel = std::sync::Arc::new(AtomicBool::new(false));
+        let flag = std::sync::Arc::clone(&cancel);
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(200));
+            flag.store(true, Ordering::Relaxed);
+        });
+        let seconds = format!("30.{}", std::process::id());
+        let started = std::time::Instant::now();
+        let e = run_boxed_cancellable("archive", vec!["/usr/bin/sleep".to_string(), seconds.clone()],
+                                      d.path(), &work.dir, &cancel).unwrap_err();
+        assert_eq!(e.msg, "cancelled");
+        assert!(started.elapsed() < Duration::from_secs(10), "a cancelled child was waited out");
+        assert!(work.dir.is_dir(), "the runner must not remove the caller's staging directory");
+        std::thread::sleep(Duration::from_millis(200));
+        let want = format!("/usr/bin/sleep\0{}\0", seconds);
+        let alive = std::fs::read_dir("/proc").map(|p| p.flatten().any(|e| std::fs::read(e.path().join("cmdline")).map(|c| c == want.as_bytes()).unwrap_or(false))).unwrap_or(false);
+        assert!(!alive, "the sandboxed child outlived its cancel");
     }
 
     #[test]
