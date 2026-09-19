@@ -919,6 +919,30 @@ wait_network_entry_state() {
     fail "network row never became mounted=$want (last: ${seen:-unavailable})"
 }
 
+# A successful IPC must show the exact live row gone; an error is not an empty network group.
+wait_network_entry_absent() {
+    local row="$1" mount_uri="$2" timeout_s="${3:-20}" seen="" status line present
+    local deadline=$(( $(date +%s%3N) + timeout_s * 1000 ))
+    while (( $(date +%s%3N) < deadline )); do
+        if seen=$(timeout 1 omarchy-drive ipc -p "$flea_ui" flea networkEntries 2>/dev/null); then
+            present=false
+            # networkEntries row: SFTP|network|share|true
+            while IFS= read -r line; do
+                if [[ "${line%|*}" == "${row%|*}" ]]; then
+                    present=true
+                    break
+                fi
+            done <<< "$seen"
+            [[ "$present" == false ]] && return 0
+        else
+            status=$?
+            fail "network row disappearance IPC failed for $mount_uri (status $status)"
+        fi
+        sleep 0.1
+    done
+    fail "network row $row for $mount_uri survived unmount (last: ${seen:-empty})"
+}
+
 # A stub that hangs on purpose is the only thing that can say when it started hanging, so a case
 # waits for its marker rather than sleeping and hoping the guard it is testing has closed.
 wait_marker() {
@@ -5974,7 +5998,7 @@ case_networklive() {
     key -k Return >/dev/null
     wait_message "Unmounted $label."
     wait_network_result unmounted 25
-    wait_network_entry_state false 25
+    wait_network_entry_absent "$entries" "$mount_uri" 25
     ! gio mount -l 2>/dev/null | grep -Fq -- "-> $mount_uri" || fail "networklive: GIO mount survived"
 
     printf 'NETWORKLIVE protocol=%s cold-mount=ok rail=ok browse=ok preview=ok unmount=ok saved=false\n' "$protocol"
