@@ -134,11 +134,7 @@ The shelf ships inside Flea, so there is nothing to clone. Install Flea, open it
 on **Enable shelf**: Flea copies the plugin into `~/.config/omarchy/plugins/` and enables it, and the
 mark appears on the bar. Turning the switch off disables it again and leaves the pile where it is.
 
-Installing it by hand, for a shelf without Flea's Settings in front of you:
-
-```bash
-omarchy plugin add https://github.com/thisisgm/flea-shelf.git --enable --yes
-```
+The shelf is bundled with Flea; enable it through Flea’s Settings. It is not a separate marketplace package.
 
 ## Uninstall
 

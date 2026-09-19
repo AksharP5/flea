@@ -23,8 +23,9 @@ function items(n) {
     return n + (n === 1 ? " item" : " items")
 }
 
-function started(id, moving, n) {
-    return { id: id, moving: moving, n: n, index: 0, name: "", running: true,
+// extract is the one verb not derived from moving: an extract drives this same card and its Cancel.
+function started(id, moving, n, extract) {
+    return { id: id, moving: moving, n: n, index: 0, name: "", running: true, extract: extract === true,
              done: 0, bytes: 0, total: 0, moved: 0 }
 }
 
@@ -289,7 +290,7 @@ function pathsResolved(pane, list) {
     clipResolved(pane, list)
 }
 
-// Extract unpacks beside the archive, into a directory named after it.
+// Extract unpacks beside the archive; its sticky and card come off the wire's own start line.
 function extract(pane, menuId) {
     var row = pane.rowFor(pane.cursorIndex)
     if (!row) {
@@ -297,7 +298,6 @@ function extract(pane, menuId) {
     }
     var path = pane.join(pane.path, row.n)
     pane.backend.extract(path, pane.join(pane.path, Archive.extractDir(row.n)), menuId)
-    pane.sticky("Extracting " + row.n)
 }
 
 // A directory has nothing to convert, so the popup never opens on one.

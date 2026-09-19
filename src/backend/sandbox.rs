@@ -15,6 +15,10 @@ const BWRAP_FLAGS: &[&str] = &[
     "--die-with-parent",
     "--new-session",
     "--clearenv",
+    // #156: C.UTF-8, so bsdtar passes UTF-8 member names through; after --clearenv or it is wiped.
+    "--setenv",
+    "LC_ALL",
+    "C.UTF-8",
     // Issue #17, CoreyH's second report: glibc gives each thread that mallocs its own arena and
     // reserves 64 MiB of address space for it whatever it uses, up to eight per core. The tools in
     // here thread on the core count, so a 32-core box reserves the whole 2 GiB cap in arenas alone
@@ -215,6 +219,18 @@ print("over=" + reserve(OVER_MIB))
         assert!(joined.contains("--ro-bind /usr /usr"));
         assert!(joined.contains("--proc /proc"));
         assert!(joined.contains("--dev /dev"));
+    }
+
+    // #156: the pin is present and survives --clearenv, in both wrappers.
+    #[test]
+    fn the_jail_pins_a_utf8_locale_after_clearing_the_environment() {
+        let got = wrap(&inner(), Path::new("/in/a.mp4"), Path::new("/out"));
+        let cleared = got.iter().position(|a| a == "--clearenv").expect("--clearenv");
+        let locale = got.iter().position(|a| a == "LC_ALL").expect("LC_ALL");
+        assert_eq!(got[locale + 1], "C.UTF-8");
+        assert!(cleared < locale, "--clearenv must precede the locale or it clears it too");
+        let readonly = wrap_readonly(&inner(), Path::new("/in/a.mp4"));
+        assert!(readonly.windows(2).any(|w| w[0] == "LC_ALL" && w[1] == "C.UTF-8"));
     }
 
     // Runs the production argv for real, so the number below is the one the kernel enforced and not the one the argv asked for; bwrap and prlimit are hard runtime dependencies here.

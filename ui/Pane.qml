@@ -592,8 +592,8 @@ FocusScope {
         taildropReason: root.cursorRow && root.cursorRow.d ? "Taildrop sends files only" : wire.taildrop.reason
         archiveFormats: root.backend.archiveFormats
         canConvert: root.backend.canConvert
-        canExtract: root.cursorRow && /\.7z$/i.test(root.cursorRow.n)
-            ? root.backend.extraction.sevenZip : root.backend.extraction.archive
+        canExtract: root.cursorRow !== null
+            && Archive.canExtract(root.cursorRow.n, root.backend.extraction)
         rowMode: root.permissionSelection() ? root.permissionSelection().p : 0
         selectionCount: Ops.targetIndices(root).length
         openWithApps: menuActions.openWithApps

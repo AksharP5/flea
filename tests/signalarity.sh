@@ -1,10 +1,9 @@
 #!/bin/bash
-# Every signal ui/Backend.qml declares against every emit of it in the same file. A QML signal drops
-# an argument past its own parameter list without a word, which is how the transfer card spent a
-# release reading an undefined byte total off a wire that carried the number: see V7 in the ledger.
+# Check Backend.qml signals against decoder and Messages.js emits; QML silently drops excess arguments.
 set -uo pipefail
 repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 file="$repo/ui/Backend.qml"
+router="$repo/ui/js/Messages.js"
 checks=0
 failed=0
 
@@ -43,11 +42,12 @@ while IFS= read -r line; do
         elif [[ "$passed" != "$declared" ]]; then
             fail "$name declares $declared parameter(s) and is emitted with $passed: $emit"
         fi
-    done < <(tr '\n' '\r' < "$file" | sed 's/,\r */, /g' | tr '\r' '\n' | grep -E "root\.$name\(")
+    # Each source is joined on its own, so a line pair never crosses from one file into the other.
+    done < <(for source in "$file" "$router"; do tr '\n' '\r' < "$source" | sed 's/,\r */, /g' | tr '\r' '\n'; done | grep -E "root\.$name\(")
 done < <(grep -E '^[[:space:]]*signal [A-Za-z_][A-Za-z0-9_]*\(' "$file")
 
 # A suite that checked nothing is the shape this whole class hides in, so the floors are its own
-# first check: ui/Backend.qml is the file the wire is decoded in and it has never held fewer than
+# first check: the decoder declares these signals and it plus the router has never held fewer than
 # twenty signals or thirty emits of them.
 [[ "$declarations" -ge 20 ]] || fail "only $declarations signal declaration(s) found in $file, so this suite read the wrong file or the wrong shape"
 [[ "$checks" -ge 30 ]] || fail "only $checks emit(s) found for $declarations signal(s), so the emits are not being matched"

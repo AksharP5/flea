@@ -24,6 +24,26 @@ function run(check) {
     check("a name with no archive extension is its own directory name",
           Archive.extractDir("plain"), "plain")
 
+    // #165: Extract is per extension class; ui/Pane.qml feeds these bits from the formats line.
+    var both = {archive: true, sevenZip: true, zip: true}
+    var seven_only = {archive: false, sevenZip: true, zip: true}
+    var tar_only = {archive: true, sevenZip: false, zip: true}
+    var neither = {archive: false, sevenZip: false, zip: false}
+    check("a box with both tools reads every class", [".zip", ".7z", ".tar.gz", ".rar", ".tgz"].map(function (e) {
+        return Archive.canExtract("x" + e, both)
+    }).join(","), "true,true,true,true,true")
+    check("a box with only 7z reads its own class and the zip class, and no tar",
+          Archive.canExtract("x.zip", seven_only) + "|" + Archive.canExtract("x.rar", seven_only)
+          + "|" + Archive.canExtract("x.tar.zst", seven_only), "true|true|false")
+    check("a box with only bsdtar reads everything but the 7z class",
+          Archive.canExtract("x.zip", tar_only) + "|" + Archive.canExtract("x.7z", tar_only), "true|false")
+    check("a box with neither reads nothing",
+          Archive.canExtract("x.zip", neither) + "|" + Archive.canExtract("x.tar", neither), "false|false")
+    check("a missing capability object is not a capability", Archive.canExtract("x.zip", undefined), false)
+    check("the disabled row's reason names the missing program",
+          Archive.extractHint(["7z"]) + "|" + Archive.extractHint(["zip", "tar", "tar.gz"]) + "|" + Archive.extractHint([]),
+          "bsdtar is not installed|7-Zip is not installed|No archive tool is installed")
+
     check("one row compresses under its own name",
           Archive.archiveStem(["notes.txt"], "claude"), "notes")
     check("several compress under the directory holding them",

@@ -81,6 +81,7 @@ providers_release() {
     [[ -p "$menu_box/$provider-release" && ! -L "$menu_box/$provider-release" ]] || fail "providers: release is not an owned FIFO"
     if [[ "$provider" == tailscale ]]; then printf 'release\n' >&"$taildrop_fd" || fail 'providers: Tailscale gate write failed'
     elif [[ "$provider" == dropbox-cli ]]; then printf 'release\n' >&"$dropbox_fd" || fail 'providers: Dropbox gate write failed'
+    elif [[ "$provider" == localsend ]]; then printf 'release\n' >&"$localsend_fd" || fail 'providers: LocalSend gate write failed'
     else fail "providers: unknown release $provider"; fi
 }
 
@@ -145,12 +146,13 @@ providers_fixture() {
         providers_write "$target" "$target original"
     done
     providers_write calls.jsonl ''
-    for name in tailscale dropbox-cli; do
+    for name in tailscale dropbox-cli localsend; do
         menus_guard "$menu_box/$name-release"
         mkfifo "$menu_box/$name-release" || fail "providers: cannot make $name gate"
     done
     exec {taildrop_fd}<>"$menu_box/tailscale-release" || fail 'providers: cannot open Tailscale gate'
     exec {dropbox_fd}<>"$menu_box/dropbox-cli-release" || fail 'providers: cannot open Dropbox gate'
+    exec {localsend_fd}<>"$menu_box/localsend-release" || fail 'providers: cannot open LocalSend gate'
     # Excluding every real provider prevents removal of a double from falling through to GM's account.
     IFS=: read -r -a parts <<< "$PATH"
     for part in "${parts[@]}"; do
@@ -194,11 +196,8 @@ case "$name:$#:${1:-}:${2:-}" in
         ;;
     wl-copy:1:https://fixture.invalid/share:) response=wl-copy ;;
     localsend-cli:*)
-        # Directive 71: the real CLI is a full-screen program that draws what it discovered and takes
-        # Enter, so the double draws one device and answers the same key. Its arguments are the port
-        # Flea gives every run and one -f per path, each of which has to be a file inside this box.
-        [[ "${1:-}" == --port && -n "${2:-}" ]] || exit 95
-        shift 2
+        # Directive 71: no arguments is discovery and repeated -f pairs are a send, the product's own argv since --port was removed; this arm records its call before validation shifts the argv away.
+        jq -cn --arg helper "$name" --args '{helper:$helper,args:$ARGS.positional}' -- "$@" >> "$box/calls.jsonl"
         while [[ $# -gt 0 ]]; do
             [[ "$1" == -f && -n "${2:-}" ]] || exit 95
             guard "$2"
@@ -206,10 +205,18 @@ case "$name:$#:${1:-}:${2:-}" in
             shift 2
         done
         printf '┌Devices──────────┐\r\n│Paired│\r\n│  (none)│\r\n│Discovered│\r\n│  [1] Fixture Phone (10.0.0.9)│\r\n└─────────────────┘\r\n'
-        # Enter is the send, and the real CLI ends its own run when the transfer does.
-        IFS= read -r -n 1 -s key || exit 97
-        [[ "$key" == "" || "$key" == $'\r' ]] || exit 98
-        printf 'sent\r\n'
+        # Enter is the send; a discovery run ends when Flea stops this process, and the pty's ICRNL turns the carriage return into a newline.
+        while IFS= read -r -n 1 -s key; do
+            [[ "$key" == "" || "$key" == $'\n' || "$key" == $'\r' ]] || continue
+            # The fixture gate holds completion here until the dispatch notice has been asserted.
+            if [[ -p "$box/localsend-release" ]]; then
+                guard "$box/localsend-release"
+                read -r release < "$box/localsend-release" || exit 93
+                [[ "$release" == release ]] || exit 93
+            fi
+            printf 'S Fixture Phone: Sent 1 file (61 B, took 0s)\r\n'
+            exit 0
+        done
         exit 0
         ;;
     *) printf 'REFUSED: provider fixture received unexpected arguments: %s\n' "$name" >&2; exit 95 ;;
@@ -272,6 +279,7 @@ providers_cleanup() {
     kill_flea || return 1
     exec {taildrop_fd}>&-
     exec {dropbox_fd}>&-
+    exec {localsend_fd}>&-
 }
 
 providers_selection() {
@@ -299,9 +307,12 @@ providers_selection() {
 providers_choose() {
     local action="$1"
     providers_seek "$action"
-    if [[ "$action" == taildrop ]]; then
+    if [[ "$action" == taildrop || "$action" == localsend ]]; then
+        local peer=fixture-peer
+        [[ "$action" == localsend ]] && peer='Fixture Phone'
         key -k Right >/dev/null || fail 'providers: submenu key failed'
-        menus_expect menuState '.submenu and .submenuEntries[.submenuCursor].id == "fixture-peer"' 'Taildrop submenu retains the selected peer identity'
+        menus_expect menuState ".submenu and .submenuEntries[.submenuCursor].id == \"$peer\"" "$action submenu retains the selected peer identity"
+        [[ "$action" == localsend ]] && providers_localsend_diag flyout-ready
     fi
     key -k Return >/dev/null || fail 'providers: activation key failed'
 }
@@ -414,14 +425,43 @@ providers_dropbox_move_checks() {
     menus_shot providers-dropbox-undone
 }
 
+# Bounded local evidence for a LocalSend failure: calls, status and menu, to tell wrong dispatch from fast completion.
+providers_localsend_diag() {
+    local phase="$1"
+    printf 'LOCALSEND_DIAG %s calls=%s\n' "$phase" "$(jq -sc --arg h localsend-cli '[.[] | select(.helper == $h)]' "$menu_box/calls.jsonl")"
+    printf 'LOCALSEND_DIAG %s status=%q error=%s\n' "$phase" "$(ipc statusPrimary)" "$(ipc statusError)"
+    printf 'LOCALSEND_DIAG %s menu=%s\n' "$phase" "$(ipc menuState | jq -c '{opened, hasRow, submenu, submenuCursor, cursor, action: (.entries[.cursor].action // null)}')"
+}
+
+# The fixture's completion gate holds a send until its dispatch notice is asserted, in either case.
+providers_localsend_release() {
+    providers_release localsend
+}
+
 # Directive 71 (PR 82, zicochaos): the row is the Taildrop row's twin. It is present only while
 # localsend-cli is on PATH, it opens a flyout of the devices that CLI discovered, and choosing one
 # hands the CLI the paths and the Enter that sends them. Nothing here ever opens the LocalSend app.
 providers_localsend_checks() {
-    local before marked cursor first_before second_before
+    local before marked cursor first_before second_before cursor_before
     providers_install localsend-cli yes
     menus_visit "$menu_dir" 2
     menus_expect listInFlight '. == false' 'LocalSend listing settles before selection'
+    # Cursor-only: clear prior marks, then the first menu must gain its peer from zero-argument discovery.
+    key -k Escape -k Home >/dev/null
+    key m >/dev/null
+    menus_expect menuState '.opened and .snapshotReady' 'the cursor-only menu opens its own snapshot'
+    providers_expect '(.selected | length) == 0 and .cursorPath == "'"$menu_dir"'/a-marked.txt"' 'the cursor-only case holds no selection'
+    menus_expect menuState 'any(.entries[]; .action == "localsend" and (.disabled | not) and (.submenu | map(.label)) == ["Fixture Phone"])' 'the first cursor-only menu enables LocalSend after discovery'
+    providers_call localsend-cli '[]' 0
+    cursor_before=$(cat "$menu_dir/a-marked.txt")
+    providers_choose localsend
+    providers_localsend_diag cursor-only
+    menus_message 'Sending a-marked.txt to Fixture Phone with LocalSend.' 'a cursor-only send names the single cursor file'
+    providers_localsend_release
+    providers_call localsend-cli "$(jq -cn --arg p "$menu_dir/a-marked.txt" '["-f", $p]')" 1
+    menus_message 'LocalSend finished the transfer.' 'and the verdict follows it'
+    menus_equal 'a cursor-only LocalSend reads rather than moves its source' "$cursor_before" "$(cat "$menu_dir/a-marked.txt")"
+    menus_acknowledge
     marked=$(row_index_of a-marked.txt)
     cursor=$(row_index_of b-cursor.txt)
     click_row "$marked" left
@@ -440,7 +480,11 @@ providers_localsend_checks() {
     first_before=$(cat "$menu_dir/a-marked.txt")
     second_before=$(cat "$menu_dir/b-cursor.txt")
     providers_choose localsend
+    providers_localsend_diag two-selected
     menus_message 'Sending 2 items to Fixture Phone with LocalSend.' 'the dispatch names the device the flyout chose'
+    providers_localsend_release
+    # The send run names both selected sources as one -f pair each, in the selection's own order.
+    providers_call localsend-cli "$(jq -cn --arg a "$menu_dir/a-marked.txt" --arg b "$menu_dir/b-cursor.txt" '["-f", $a, "-f", $b]')" "$before"
     menus_message 'LocalSend finished the transfer.' 'and the verdict the CLI came back with follows it'
     menus_equal 'LocalSend reads rather than moves its first source' "$first_before" "$(cat "$menu_dir/a-marked.txt")"
     menus_equal 'LocalSend reads rather than moves its second source' "$second_before" "$(cat "$menu_dir/b-cursor.txt")"
@@ -458,7 +502,7 @@ providers_localsend_checks() {
 
 case_providers() (
     local menu_box="$fixture_root/providers" menu_dir="$fixture_root/providers/list" menus_checks=0
-    local taildrop_fd dropbox_fd name before action record reason path saved
+    local taildrop_fd dropbox_fd localsend_fd name before action record reason path saved
     local provider_ready='{"BackendState":"Running","Self":{"UserID":"fixture-owner","Capabilities":["https://tailscale.com/cap/file-sharing"]},"Peer":{"fixture-peer":{"HostName":"Fixture","DNSName":"fixture.invalid.","Online":true,"TaildropTarget":1,"UserID":"fixture-owner"}}}'
     providers_fixture
     trap 'providers_cleanup || exit 1' EXIT
@@ -689,4 +733,20 @@ case_providersinstalled() (
     menus_equal 'cancelled provider menus preserve the internal clipboard' "$clipboard_before" "$(ipc keyDeliveryState | jq -c .clipboard)"
     menus_equal 'cancelled provider menus preserve fixture bytes' 'provider observation only' "$(cat "$menu_dir/provider.txt")"
     printf 'PROVIDERS_INSTALLED checks=%s eligible_peers=%s input=menu,flyout,Escape no_send_move_sharelink_activation=true visual_inspection=pending\n' "$menus_checks" "$peer_count"
+)
+
+# Focused LocalSend proof: the providers fixture and doubles with a completion gate, leaving the full providers case unchanged.
+case_localsend() (
+    local menu_box="$fixture_root/localsend" menu_dir="$fixture_root/localsend/list" menus_checks=0
+    local taildrop_fd dropbox_fd localsend_fd
+    local provider_ready='{"BackendState":"Running","Self":{"UserID":"fixture-owner","Capabilities":["https://tailscale.com/cap/file-sharing"]},"Peer":{"fixture-peer":{"HostName":"Fixture","DNSName":"fixture.invalid.","Online":true,"TaildropTarget":1,"UserID":"fixture-owner"}}}'
+    providers_fixture
+    trap 'providers_cleanup || exit 1' EXIT
+    export HOME="$menu_box/home" XDG_STATE_HOME="$menu_box/state" XDG_CONFIG_HOME="$menu_box/config"
+    export XDG_CACHE_HOME="$menu_box/cache" XDG_DATA_HOME="$menu_box/data" PATH="$menu_box/bin" FLEA_PROVIDERS_BOX="$menu_box"
+    "$flea_bin" --ui-state '{"view":"list","keys":"default","menu":{"hidden":[]}}' >/dev/null || fail 'localsend: private settings seed failed'
+    launch "$menu_dir"
+    wait_listing 2
+    menus_expect listInFlight '. == false' 'localsend fixture initial listing settles'
+    providers_localsend_checks
 )
