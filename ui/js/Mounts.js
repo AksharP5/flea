@@ -103,14 +103,7 @@ function credentialed(uri) {
     return /^(smb|sftp|ftp|ftps|dav|davs):\/\/[^\/]*@/i.test(String(uri || ""))
 }
 
-// SFTP is the one of those whose credential can live somewhere other than a password: gvfs's sftp
-// backend runs the ssh binary itself, measured on this box as gvfsd-sftp execing
-// `ssh -oForwardX11 no ... -l <user> -s <host> sftp`, so a key in ~/.ssh, an agent and ssh_config's
-// User and IdentityFile all answer it with no prompt at all. An sftp place is therefore mounted once
-// with no secret before any credential is demanded, and 0.2.1's refusal to do that is why no public
-// key could open one. The failed attempt is cheap: measured against a real host wanting a password,
-// "gio mount" answers in 171 ms with exit 2 rather than waiting on a stdin nobody is reading. See
-// AGENTS.md "A public key mounts sftp, and a password is asked only after a mount has failed".
+// Try sftp keys before asking for a password.
 function keyless(uri) {
     return /^sftp:\/\//i.test(String(uri || ""))
 }

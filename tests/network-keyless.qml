@@ -12,6 +12,8 @@ ShellRoot {
 
     property bool finished: false
     property int phase: 0
+    property bool authenticatedCompleted: false
+    readonly property string authRequestId: "network-keyless-auth"
 
     function finish(message) {
         if (root.finished)
@@ -25,10 +27,18 @@ ShellRoot {
         id: network
 
         onOpened: function (path) {
-            // Phase 1 is a key opening a place with no password at all; phase 4 is a key opening
-            // one that has a remembered password, which the helper leg used to claim first.
-            if (path !== "/key-should-open"
-                    || (root.phase !== 1 && root.phase !== 4)) {
+            if (root.phase === 5) {
+                if (path !== "/password-should-open" || !root.authenticatedCompleted) {
+                    root.finish("NETWORK_KEYLESS FAIL authenticated-open=" + path
+                                + " completed=" + root.authenticatedCompleted)
+                    return
+                }
+                root.phase = 6
+                network.openShare("smb://nas.test/", false, "Nas root")
+                return
+            }
+            // Phases 1 and 4 must try the key before any remembered password.
+            if (path !== "/key-should-open" || (root.phase !== 1 && root.phase !== 4)) {
                 root.finish("NETWORK_KEYLESS FAIL opened=" + path + " phase=" + root.phase)
                 return
             }
@@ -40,6 +50,16 @@ ShellRoot {
             root.phase = 5
             network.remember("sftp://pw@slot.test/home", "fixture-secret")
             network.openShare("sftp://pw@slot.test/home", false, "Pw slot")
+        }
+
+        onCompleted: function (requestId, uri, success, reason) {
+            if (root.phase !== 5 || requestId !== root.authRequestId
+                    || uri !== "sftp://pw@slot.test/home" || !success || reason !== "") {
+                root.finish("NETWORK_KEYLESS FAIL completed=" + requestId + " uri=" + uri
+                            + " success=" + success + " reason=" + reason + " phase=" + root.phase)
+                return
+            }
+            root.authenticatedCompleted = true
         }
 
         // Phase 6: an SMB server root whose info fails but whose list enumerates must still be listed.
@@ -59,12 +79,14 @@ ShellRoot {
             // bare-root listing used to claim before the prompt could reach it; phase 5 is a refused
             // place whose password this session already remembered, and it must come back with it;
             // phase 6 is the SMB root and must never reach this signal at all.
-            if (root.phase === 2 && asked && password === "" && uri === "sftp://ask@slot.test/home") {
+            if (root.phase === 2 && asked && password === "" && label === "Ask slot"
+                    && uri === "sftp://ask@slot.test/home") {
                 root.phase = 3
                 network.openShare("sftp://ask@slot.test/", false, "Ask root")
                 return
             }
-            if (root.phase === 3 && asked && password === "" && uri === "sftp://ask@slot.test/") {
+            if (root.phase === 3 && asked && password === "" && label === "Ask root"
+                    && uri === "sftp://ask@slot.test/") {
                 root.phase = 4
                 // A key opens this one even though a password is remembered for it, which is the
                 // whole point: the remembered secret is a fallback, not a first resort.
@@ -72,10 +94,14 @@ ShellRoot {
                 network.openShare("sftp://key@slot.test/home", false, "Key slot")
                 return
             }
-            if (root.phase === 5 && asked && password === "fixture-secret"
+            if (root.phase === 5 && asked && password === "fixture-secret" && label === "Pw slot"
                     && uri === "sftp://pw@slot.test/home") {
-                root.phase = 6
-                network.openShare("smb://nas.test/", false, "Nas root")
+                if (root.authenticatedCompleted) {
+                    root.finish("NETWORK_KEYLESS FAIL authenticated-retry repeated")
+                    return
+                }
+                // This is the submitted-password route used by the picker and network dialog.
+                network.saveLocation(uri, label, password, root.authRequestId)
                 return
             }
             root.finish("NETWORK_KEYLESS FAIL retry=" + uri + " reason=" + reason
