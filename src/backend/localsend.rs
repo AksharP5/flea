@@ -28,6 +28,10 @@ const POLL: Duration = Duration::from_millis(100);
 // Linux ioctl numbers. TIOCSWINSZ gives the pty its size, TIOCSCTTY makes it the child's terminal.
 const TIOCSWINSZ: usize = 0x5414;
 const TIOCSCTTY: usize = 0x540E;
+// prctl(2) PR_SET_PDEATHSIG ends the CLI when the thread that started it dies, SIGKILL included.
+const PR_SET_PDEATHSIG: i32 = 1;
+const SIGKILL: std::os::raw::c_ulong = 9;
+const ESRCH: i32 = 3; // Linux errno.h, for a parent that died before PDEATHSIG could be armed.
 
 #[repr(C)]
 struct WinSize {
@@ -45,12 +49,14 @@ extern "C" {
     fn ptsname_r(fd: i32, buf: *mut u8, len: usize) -> i32;
     fn ioctl(fd: i32, request: usize, ...) -> i32;
     fn setsid() -> i32;
+    fn getppid() -> i32;
+    fn prctl(option: i32, arg2: std::os::raw::c_ulong, arg3: std::os::raw::c_ulong, arg4: std::os::raw::c_ulong, arg5: std::os::raw::c_ulong) -> i32;
 }
 
 fn open_pty() -> Result<(OwnedFd, std::fs::File), String> {
-    // O_RDWR | O_NOCTTY: this side is Flea's, and the terminal belongs to the child.
-    const O_RDWR_NOCTTY: i32 = 0o2 | 0o400;
-    let raw = unsafe { posix_openpt(O_RDWR_NOCTTY) };
+    // O_RDWR | O_NOCTTY | O_CLOEXEC: the terminal belongs to the child, and the master must not ride into it.
+    const O_RDWR_NOCTTY_CLOEXEC: i32 = 0o2 | 0o400 | 0o2000000;
+    let raw = unsafe { posix_openpt(O_RDWR_NOCTTY_CLOEXEC) };
     if raw < 0 { return Err("LocalSend could not open a terminal for its own CLI.".into()) }
     let master = unsafe { OwnedFd::from_raw_fd(raw) };
     if unsafe { grantpt(raw) } < 0 || unsafe { unlockpt(raw) } < 0 {
@@ -74,27 +80,32 @@ fn open_pty() -> Result<(OwnedFd, std::fs::File), String> {
 // No --port: measured on the box, a run on any other port hears nothing at all, because LocalSend
 // announces to the multicast group on 53317 and a CLI bound elsewhere never receives those
 // announcements. A box already running its own LocalSend is told so instead, by refusal() below.
-fn spawn(args: &[String], slave: &std::fs::File) -> Result<Child, String> {
+// The program parameter is a test seam; every production caller names COMMAND.
+fn spawn(program: &str, args: &[String], slave: &std::fs::File) -> Result<Child, String> {
     let stdin = slave.try_clone().map_err(|e| format!("LocalSend terminal setup failed: {}.", crate::error::io_message(&e)))?;
     let stdout = slave.try_clone().map_err(|e| format!("LocalSend terminal setup failed: {}.", crate::error::io_message(&e)))?;
     let stderr = slave.try_clone().map_err(|e| format!("LocalSend terminal setup failed: {}.", crate::error::io_message(&e)))?;
-    let mut command = Command::new(COMMAND);
+    let mut command = Command::new(program);
     // A pty is not a terminal until something says which one: the backend inherits no TERM, and
     // without one the CLI draws its frame and never refreshes the device list inside it.
     command.args(args).env("TERM", "xterm-256color")
         .stdin(Stdio::from(stdin)).stdout(Stdio::from(stdout)).stderr(Stdio::from(stderr));
+    // Read before the fork, because a backend that died in between could never deliver the signal.
+    let parent = std::process::id();
     unsafe {
         // A session of its own, then this pty as its controlling terminal: without one the CLI reads
         // no keys at all, and with Flea's own session it would take Flea's.
-        command.pre_exec(|| {
+        command.pre_exec(move || {
+            if prctl(PR_SET_PDEATHSIG, SIGKILL, 0, 0, 0) < 0 { return Err(std::io::Error::last_os_error()) }
+            if getppid() != parent as i32 { return Err(std::io::Error::from_raw_os_error(ESRCH)) }
             if setsid() < 0 { return Err(std::io::Error::last_os_error()) }
             if ioctl(0, TIOCSCTTY, 0) < 0 { return Err(std::io::Error::last_os_error()) }
             Ok(())
         });
     }
     command.spawn().map_err(|e| match e.kind() {
-        std::io::ErrorKind::NotFound => format!("{} is not installed.", COMMAND),
-        _ => format!("{} could not start: {}.", COMMAND, crate::error::io_message(&e)),
+        std::io::ErrorKind::NotFound => format!("{} is not installed.", program),
+        _ => format!("{} could not start: {}.", program, crate::error::io_message(&e)),
     })
 }
 
@@ -156,7 +167,7 @@ fn stop(child: &mut Child) {
 // panel is asked for by its own D and the run ends as soon as the answer is in.
 pub fn peers(limit: Duration) -> Result<Vec<Peer>, String> {
     let (master, slave) = open_pty()?;
-    let mut child = spawn(&[], &slave)?;
+    let mut child = spawn(COMMAND, &[], &slave)?;
     let keys = master.try_clone()
         .map_err(|e| format!("LocalSend could not hold its own terminal: {}.", crate::error::io_message(&e)))?;
     let seen = read_into(master);
@@ -195,7 +206,7 @@ pub fn send(name: &str, paths: &[String], limit: Duration) -> Result<(), String>
         args.push(path.clone());
     }
     let (master, slave) = open_pty()?;
-    let mut child = spawn(&args, &slave)?;
+    let mut child = spawn(COMMAND, &args, &slave)?;
     let keys = master.try_clone()
         .map_err(|e| format!("LocalSend could not hold its own terminal: {}.", crate::error::io_message(&e)))?;
     let seen = read_into(master);
@@ -302,5 +313,87 @@ mod tests {
     #[test]
     fn nothing_to_send_is_refused_before_a_terminal_is_opened() {
         assert!(send("Clean Lemon", &[], Duration::from_millis(1)).is_err());
+    }
+
+    // A child that inherited the pty master kept the terminal alive after the backend died.
+    #[test]
+    fn the_cli_does_not_inherit_the_terminal_master() {
+        let (master, slave) = open_pty().expect("a pty");
+        let mut child = spawn("/usr/bin/sleep", &["600".to_string()], &slave).expect("a stand-in CLI");
+        // O_CLOEXEC closes the descriptor at exec, so the scan waits until the stand-in is itself.
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while std::fs::read_to_string(format!("/proc/{}/comm", child.id())).map(|c| c.trim() != "sleep").unwrap_or(true) {
+            assert!(Instant::now() < deadline, "the stand-in CLI never exec'd");
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(child.try_wait().expect("try_wait").is_none(), "the stand-in CLI exited before the scan");
+        let mut inherited = Vec::new();
+        for fd in std::fs::read_dir(format!("/proc/{}/fd", child.id())).expect("the child's descriptor table") {
+            let fd = fd.expect("a descriptor entry");
+            let target = std::fs::read_link(fd.path()).expect("a descriptor target");
+            if target.to_string_lossy().contains("ptmx") { inherited.push(fd.path()) }
+        }
+        stop(&mut child);
+        drop(master);
+        assert!(inherited.is_empty(), "the CLI holds the terminal master at {:?}", inherited);
+    }
+    const LIFECYCLE_MARKER: &str = "FLEA_LOCALSEND_LIFECYCLE_PROBE";
+    const LIFECYCLE_TOKEN: &str = "FLEA_LOCALSEND_LIFECYCLE_TOKEN";
+    const LIFECYCLE_TEST: &str = "backend::localsend::tests::a_child_cli_does_not_outlive_its_parent";
+
+    // A zombie is a killed process waiting to be reaped, which is not a CLI that survived.
+    fn running(pid: i32) -> bool {
+        std::fs::read_to_string(format!("/proc/{pid}/stat")).map(|stat| {
+            stat.rsplit(')').next().and_then(|tail| tail.split_whitespace().next()) != Some("Z")
+        }).unwrap_or(false)
+    }
+
+    // The probe ends with a stand-in behind, like a killed backend; only PDEATHSIG can end the HUP-ignoring child.
+    #[test]
+    fn a_child_cli_does_not_outlive_its_parent() {
+        if let Some(marker) = std::env::var_os(LIFECYCLE_MARKER) {
+            let marker = std::path::PathBuf::from(marker);
+            let ready = marker.with_extension("ready");
+            let (_master, slave) = open_pty().expect("a pty");
+            let child = spawn("/bin/sh", &["-c".to_string(), "trap '' HUP; : > \"$1\"; exec sleep 600".to_string(),
+                "localsend-life".to_string(), ready.to_string_lossy().into_owned()], &slave)
+                .expect("the probe starts a stand-in CLI");
+            let deadline = Instant::now() + Duration::from_secs(5);
+            while !ready.exists() {
+                assert!(Instant::now() < deadline, "the stand-in never armed its HUP ignore");
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            std::fs::write(&marker, child.id().to_string()).expect("the probe writes its child's pid");
+            return;
+        }
+        let dir = crate::backend::testdir::TestDir::new("localsend-life");
+        let marker = dir.path().join("child.pid");
+        let token = format!("{}={}", LIFECYCLE_TOKEN, marker.display());
+        let out = std::process::Command::new(std::env::current_exe().expect("a test binary knows its own path"))
+            .args(["--exact", "--test-threads=1", "--nocapture", LIFECYCLE_TEST])
+            .env(LIFECYCLE_MARKER, &marker)
+            .env(LIFECYCLE_TOKEN, &marker)
+            .output()
+            .expect("the test binary re-executes");
+        let report = format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
+        assert!(out.status.success(), "the probe child failed: {}", report);
+        // Renaming the test would filter the child to nothing and exit 0, so it has to say it ran one.
+        assert!(report.contains("1 passed"), "the probe child ran no test: {}", report);
+        let pid: i32 = std::fs::read_to_string(&marker).expect("the probe wrote its child's pid")
+            .trim().parse().expect("a pid");
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while running(pid) && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        if running(pid) {
+            let environ = std::fs::read(format!("/proc/{pid}/environ")).unwrap_or_default();
+            assert!(environ.split(|b| *b == 0).any(|v| v == token.as_bytes()), "refusing to kill a pid without this fixture's marker");
+            let _ = std::process::Command::new("kill").arg("-9").arg(pid.to_string()).status();
+            let killed = Instant::now() + Duration::from_secs(5);
+            while running(pid) && Instant::now() < killed {
+                std::thread::sleep(Duration::from_millis(25));
+            }
+            panic!("a CLI survived the backend's death: pid {pid}");
+        }
     }
 }

@@ -21,7 +21,10 @@ Loader {
 
     Connections {
         target: root.pane.backend
-        function onLocalSendPeers(peers, reason) { localSend.answered(peers, reason) }
+        function onLocalSendPeers(peers, reason) {
+            localSend.answered(peers, reason)
+            root.pane.contextMenu().refreshProviderRows()
+        }
         function onLocalSendSent(ok, reason) { root.pane.message(LocalSendJs.verdict(ok, reason), !ok) }
     }
 
@@ -276,6 +279,7 @@ Loader {
             root.dropboxRefreshWaiting = root.refreshingDropbox && root.pane.dropboxService
                 ? !root.pane.dropboxService.refreshDropbox(root.providerFacts) : false
             root.providerQueriesStarted = true
+            root.localSend.refresh((root.providerFacts.localsend || {}).installed === true)
             root.finishProviders()
         }
         function onChanged(path) { if (path === root.folder && root.item) root.item.sourceChanged() }
