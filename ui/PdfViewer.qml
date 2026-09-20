@@ -18,10 +18,13 @@ Item {
     // Containers Tier A: a keyboard walk says where it is by brightness, so the control it is on keeps the foreground and the rest of the strip dims.
     readonly property color controlRest: root.activeFocus && root.pdfControlIndex >= 0
         ? Theme.color.muted : Theme.color.foreground
-    onActiveFocusChanged: if (root.activeFocus && root.pageCount > 0 && root.pdfControlIndex < 0)
-        PreviewKeys.pdfAction("focusNext", root)
-    onPageCountChanged: if (root.activeFocus && root.pageCount > 0 && root.pdfControlIndex < 0)
-        PreviewKeys.pdfAction("focusNext", root)
+    // The page count signal arrives before the control bindings settle.
+    function focusInitialControl() {
+        if (root.activeFocus && root.pageCount > 0 && root.pdfControlIndex < 0)
+            PreviewKeys.pdfAction("focusNext", root)
+    }
+    onActiveFocusChanged: Qt.callLater(root.focusInitialControl)
+    onPageCountChanged: Qt.callLater(root.focusInitialControl)
     Keys.onPressed: function(event) {
         var action = Keymap.lookup(event.key, event.text, event.modifiers, "pdf")
         if (action === "escape" || action === "focusPreview") root.closed()
