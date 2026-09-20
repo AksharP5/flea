@@ -458,6 +458,7 @@ ran="$D/ran.log"
   printf 'printf "NARGS %%s\\n" "$#"\n'
   printf 'printf "ICD %%s\\n" "${VK_ICD_FILENAMES-unset}"\n'
   printf 'printf "DRIVER_FILES %%s\\n" "${VK_DRIVER_FILES-unset}"\n'
+  printf 'printf "PIN %%s\\n" "${FLEA_VK_PIN-unset}"\n'
   printf 'printf "ARGV %%s\\n" "$*"\n'
   printf 'P=$(cut -d" " -f5 /proc/self/stat)\n'
   printf '[ "$$" = "$P" ] && printf "PGID MATCH pid=%%s pgid=%%s\\n" "$$" "$P" || printf "PGID MISMATCH pid=%%s pgid=%%s\\n" "$$" "$P"\n'
@@ -492,6 +493,7 @@ wait_for_line "$ran" '^THP_enabled'
 out=$(cat "$ran")
 check "a marked pin is dropped from a terminal" "1" "$(echo "$out" | grep -c '^ICD unset$')"
 check "and its driver file list goes with it" "1" "$(echo "$out" | grep -c '^DRIVER_FILES unset$')"
+check "and the marker does not leak into the terminal" "1" "$(echo "$out" | grep -c '^PIN unset$')"
 
 : > "$ran"
 # An operator's own list carries no marker, so it must survive into the terminal they open.
@@ -500,6 +502,7 @@ VK_ICD_FILENAMES=/tmp/flea-operator-icd.json VK_DRIVER_FILES=/tmp/flea-operator-
 wait_for_line "$ran" '^THP_enabled'
 out=$(cat "$ran")
 check "an operator's own ICD list reaches the terminal" "1" "$(echo "$out" | grep -c '^ICD /tmp/flea-operator-icd.json$')"
+check "and so does their own driver file list" "1" "$(echo "$out" | grep -c '^DRIVER_FILES /tmp/flea-operator-driver.json$')"
 
 : > "$ran"
 PATH="$D/bin:/usr/bin:/bin" $BIN --terminal "$D/linkdir" >/dev/null 2>&1

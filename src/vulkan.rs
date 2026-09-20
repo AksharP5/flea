@@ -189,9 +189,14 @@ fn pci_id(handle: *mut c_void, get: GetPhysicalDeviceProperties) -> (u32, u32) {
 // The launcher marks its own pin, so a program Flea starts can tell it from the operator's own list.
 pub const PIN_MARKER: &str = "FLEA_VK_PIN";
 
+// Empty is absent, the same rule QSG_RHI_BACKEND and the loader variables already follow.
+fn pin_is_marked(marker: Option<&OsStr>) -> bool {
+    marker.is_some_and(|value| !value.is_empty())
+}
+
 // Undo this launcher's pin for a child, leaving an operator's own VK_DRIVER_FILES untouched.
 pub fn drop_display_pin(command: &mut Command) {
-    if std::env::var_os(PIN_MARKER).is_none() {
+    if !pin_is_marked(std::env::var_os(PIN_MARKER).as_deref()) {
         return;
     }
     command.env_remove("VK_DRIVER_FILES");
@@ -536,6 +541,13 @@ mod tests {
             _ => panic!("a hybrid tree must pin the display GPU"),
         }
         assert!(matches!(alone, DisplayPin::NotNeeded));
+    }
+
+    #[test]
+    fn an_exported_but_empty_pin_marker_is_absent_not_a_pin() {
+        assert!(!pin_is_marked(None));
+        assert!(!pin_is_marked(Some(OsStr::new(""))));
+        assert!(pin_is_marked(Some(OsStr::new("1"))));
     }
 
     #[test]
