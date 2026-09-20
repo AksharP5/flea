@@ -353,6 +353,15 @@ check "an operator's own ICD list reaches the opened program" "1" "$(echo "$out"
 check "and so does their own driver file list" "1" "$(echo "$out" | grep -c '^DRIVER_FILES /tmp/flea-operator-driver.json$')"
 
 : > "$opened"
+# An exported but empty marker is absent, so it must not turn an operator's own list into a pin.
+VK_ICD_FILENAMES=/tmp/flea-operator-icd.json VK_DRIVER_FILES=/tmp/flea-operator-driver.json FLEA_VK_PIN= \
+  PATH="$D/bin:/usr/bin:/bin" $BIN --open "$D/file.txt" 2>&1 | cat >/dev/null
+wait_for_line "$opened" '^THP_enabled'
+out=$(cat "$opened")
+check "an empty marker leaves an operator's ICD list alone" "1" "$(echo "$out" | grep -c '^ICD /tmp/flea-operator-icd.json$')"
+check "and leaves their driver file list alone" "1" "$(echo "$out" | grep -c '^DRIVER_FILES /tmp/flea-operator-driver.json$')"
+
+: > "$opened"
 PATH="$D/bin:/usr/bin:/bin" $BIN --open "$D/linkfile" >/dev/null 2>&1
 wait_for_line "$opened" '^THP_enabled'
 check "a symlink to a file is resolved to its target" "1" "$(grep -c "^ARGV open $D/file.txt$" "$opened")"
