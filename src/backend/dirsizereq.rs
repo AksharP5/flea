@@ -35,6 +35,17 @@ pub fn start_next(st: &mut State) {
     st.dirsize_worker.start(rows);
 }
 
+// corner: a folder the sort budget cut off seeds nothing, so the worker still walks it properly.
+pub fn seed_answered(st: &mut State, sized: &[Option<crate::backend::dirsize::DirSize>]) {
+    for (row, size) in sized.iter().enumerate() {
+        if let Some(size) = size {
+            if !size.partial {
+                st.dirsizes.insert(row, (size.bytes, size.partial));
+            }
+        }
+    }
+}
+
 pub fn report_done(out: &mut impl Write, st: &mut State, done: Done) {
     if !st.dirsize_worker.accept(&done) { return; }
     let result = done.result;
@@ -68,6 +79,26 @@ mod tests {
             search: None,
             search_reported: Instant::now(),
         }
+    }
+
+    #[test]
+    fn a_floor_is_not_seeded_so_the_worker_still_walks_that_folder() {
+        use crate::backend::dirsize::DirSize;
+        let sandbox = TestDir::new("dirsize-seed");
+        sandbox.dir("a");
+        sandbox.dir("b");
+        let (events, _rx) = channel();
+        let mut st = state(sandbox.path().to_path_buf(), events);
+        let sized = vec![
+            Some(DirSize { bytes: 40, partial: false }),
+            Some(DirSize { bytes: 9, partial: true }),
+            None,
+        ];
+        seed_answered(&mut st, &sized);
+        assert_eq!(st.dirsizes.get(&0), Some(&(40, false)), "a completed walk answers from the cache");
+        assert_eq!(st.dirsizes.get(&1), None, "a floor seeds nothing, so the worker walks that row");
+        assert_eq!(st.dirsizes.get(&2), None, "a file row seeds nothing");
+        assert_eq!(st.dirsizes.len(), 1);
     }
 
     #[test]

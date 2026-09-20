@@ -209,10 +209,10 @@ done
 
 # Size and mtime go through the metadata pass and must keep the grouping. Each key is made to
 # disagree with the others: 2 is the larger file and the oldest entry, 3 the smaller and the
-# newest, 11 is older than 1, and 1 holds a file so its st_size is not 0. A build ordering
-# directories by st_size would answer "11 1 3 2" for size ascending; one that lost the grouping
-# would answer "2 11 1 3" for mtime ascending.
-: > "$GR/1/x"
+# newest, 11 is older than 1, and 1 holds 20 bytes so its walked size is above 11's whatever
+# the two directory entries measure. A build ordering folders by name would answer "1 11 3 2"
+# for size ascending; one that lost the grouping would answer "2 11 1 3" for mtime ascending.
+printf '%020d' 0 > "$GR/1/x"
 printf '%05d' 0 > "$GR/2"
 printf '0' > "$GR/3"
 touch -d '2020-01-01 00:00:00' "$GR/2"
@@ -221,10 +221,10 @@ touch -d '2020-01-01 00:00:02' "$GR/1"
 touch -d '2020-01-01 00:00:03' "$GR/3"
 check "name ascending still groups the directories with the two files in place" \
   "1 11 2 3" "$(grouping_order name false)"
-check "size ascending orders the files by size and the directories by name" \
-  "1 11 3 2" "$(grouping_order size false)"
-check "size descending keeps the directories first and reverses inside each group" \
-  "11 1 2 3" "$(grouping_order size true)"
+check "size ascending orders the files by size and the folders by walked size" \
+  "11 1 3 2" "$(grouping_order size false)"
+check "size descending keeps the folders first and reverses inside each group" \
+  "1 11 2 3" "$(grouping_order size true)"
 check "mtime ascending orders both groups by time, directories still first" \
   "11 1 2 3" "$(grouping_order mtime false)"
 check "mtime descending keeps the directories first and reverses inside each group" \

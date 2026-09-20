@@ -153,7 +153,9 @@ Re-sorts the current listing by `by` and answers a `listed` line. The four order
 
 - `"name"` works on phase-1 data alone: `read` is `0.0` and `sort` is the sort.
 - `"size"` and `"mtime"` pay the metadata pass first, one `lstat` per row of the whole
-  listing split across the cores, then sort. `read` is that pass in milliseconds and `sort`
+  listing split across the cores, then sort. A size sort also walks every folder's subtree
+  under one shared 250 ms budget for the whole sort, and that walk is part of the pass,
+  so its time lands in `read` too. `read` is that pass in milliseconds and `sort`
   is the sort, so the two costs stay readable apart on the wire.
 - `"kind"` compares MIME type strings obtained from filenames, with
   `application/octet-stream` for an unknown name and `inode/directory` for a folder.
@@ -169,13 +171,33 @@ MIME lookup, not content probing.
 Inside each group, or across the whole listing when ungrouped, the key decides and
 the name order breaks ties, so two equal sizes list the same way every run, and
 `desc` is the exact reverse of ascending inside the group,
-tie-break included. A size order lists directories by name, because a directory's `st_size`
-is not a size anyone means; an mtime order lists them by time like everything else. The stat
+tie-break included. A size order walks each folder's subtree and orders folders by that
+recursive size, the same number the `dirsized` line reports, so the order agrees with the
+size column the way it already did for files; an mtime order lists them by time like
+everything else. A folder that hit the shared budget orders by the floor it counted.
+A size sort seeds the answered-row cache only with the folders it finished walking, so a
+later `dirsize` for one of them is answered from the cache rather than walked twice. A folder
+the budget cut off seeds nothing, and is walked again by the worker at its own per-row
+deadline when the client asks, because a floor must not stand in for a size.
+
+**A size order is best effort on a directory large enough to exhaust the 250 ms budget.** A
+folder cut off by it is placed on the floor that was counted, and that floor is used for the
+order alone: it is never sent, so nothing on the wire says the order was built from one. The
+size the column shows for that folder arrives later, from a separate walk at the two second
+per-row deadline, and the two walks carry no ordering relation to each other, so that number
+can be larger or smaller than the floor the row was placed on. Its `dirsized` line carries
+`partial` true only when that second walk ran out as well. On such a directory the column can
+therefore disagree with the order it was sorted into, and a re-sort can still place two
+folders by their floors. A client holding both the order and the later sizes can see that
+disagreement; what it cannot tell from the wire is whether a floor or a changed tree caused
+it. The budget is what keeps the whole pass short while it runs on the event loop, and this is the cost of that
+choice.
+The stat
 is the same `lstat` that `rows` reports `s` and `m` from, so the order always agrees with the
 column, symlinks included, and a row that vanished between the listing and the pass sorts as
 the zeroes `rows` would send for it.
 
-**Sort metadata is not retained between requests.** Reversing a size order stats the directory again,
+**Sort metadata is not retained between requests.** Reversing a size order stats the directory again and walks the folders again, bounded by the same budget each time,
 because a listing in name order must not carry metadata it is not using. The stats
 live for one request. Historical measurements from 2026-09-02, using the default
 name ordering and directory grouping: on the 100,000 file fixture the backend's PSS

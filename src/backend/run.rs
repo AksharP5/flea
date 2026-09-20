@@ -10,7 +10,7 @@ use crate::backend::metareq::spawn as spawn_meta;
 use crate::backend::opsdispatch::{cancel_transfer, do_mkdir, do_newfile, do_rename, do_undo, report_op, resolve_rows, start_duplicate, start_trash, start_transfer, start_menu_transfer, start_redo, Ops};
 use crate::backend::opsreq::OpMsg;
 use crate::backend::mime::Db;
-use crate::backend::dirsizereq::{queue_dirsizes, start_next, report_done as report_dirsize};
+use crate::backend::dirsizereq::{queue_dirsizes, seed_answered, start_next, report_done as report_dirsize};
 use crate::backend::events::{spawn_forwarder, spawn_op_forwarder, spawn_reader, Event};
 use crate::backend::fsinfo::{fsinfo_line, read as read_fsinfo};
 use crate::backend::fsinfo::dev_of;
@@ -186,7 +186,7 @@ fn handle_line(
             match scan(&path, hidden) {
                 Ok((mut l, read_ms)) => {
                     super::picker::filter_listing(&mut l, &tb.mime, line);
-                    let (pass_ms, sort_ms) = match ordering::request(&mut l, Path::new(&path), &tb.mime, line) {
+                    let (pass_ms, sort_ms, sized) = match ordering::request(&mut l, Path::new(&path), &tb.mime, line) {
                         Ok(timing) => timing,
                         Err(msg) => {
                             watch.abandon();
@@ -199,6 +199,8 @@ fn handle_line(
                     st.listing = l;
                     watch.commit();
                     forget_rows(st, pool);
+                    // After forget_rows, which clears the very map this seeds.
+                    seed_answered(st, &sized);
                     // Said once per listing, because a folder nobody can watch goes stale in silence.
                     if watch.refused() {
                         eprintln!("flea: {} will not follow outside changes, inotify refused a watch on it", path);
@@ -257,8 +259,10 @@ fn handle_line(
                     let e = FleaError { where_: "sort".to_string(), path: by.clone(), msg: msg.to_string() };
                     writeln!(out, "{}", error_line(&e)).ok();
                 }
-                Ok((pass_ms, sort_ms)) => {
+                Ok((pass_ms, sort_ms, sized)) => {
                     forget_rows(st, pool);
+                    // After forget_rows, which clears the very map this seeds.
+                    seed_answered(st, &sized);
                     writeln!(out, "{}", listed_line(st.listing.len(), pass_ms, sort_ms, dev_of(&st.base), &st.base.to_string_lossy())).ok();
                 }
             }

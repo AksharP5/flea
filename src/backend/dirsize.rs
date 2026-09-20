@@ -1,3 +1,4 @@
+use crate::backend::listing::Listing;
 use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 use std::time::Instant;
@@ -5,10 +6,40 @@ use std::time::Duration;
 
 // A directory over this deadline answers with what it saw, marked partial: a floor, not a wrong exact number.
 pub(super) const DEADLINE_MS: u64 = 2000;
+// corner: a size sort blocks the loop for this long at worst, so folders past it sort by their floor.
+pub const SORT_BUDGET_MS: u64 = 250;
 
+#[derive(Clone, Copy, Debug)]
 pub struct DirSize {
     pub bytes: u64,
     pub partial: bool,
+}
+
+// A partial walk is a floor and sorts as one, with no special case in the comparison.
+pub fn walked_bytes(walked: &[Option<DirSize>], row: usize) -> u64 {
+    walked.get(row).and_then(|w| *w).map(|w| w.bytes).unwrap_or(0)
+}
+
+// One shared deadline bounds the whole folder pass; non-directory rows stay None.
+pub fn walk_all(base: &Path, l: &Listing, deadline: Instant) -> Vec<Option<DirSize>> {
+    let n = l.len();
+    let mut out = vec![None; n];
+    let workers = std::thread::available_parallelism().map(|w| w.get()).unwrap_or(1);
+    // Ceiling division, so every row lands in exactly one chunk; max(1) keeps chunks_mut off zero.
+    let per_worker = n.div_ceil(workers).max(1);
+    std::thread::scope(|s| {
+        for (k, slots) in out.chunks_mut(per_worker).enumerate() {
+            let first = k * per_worker;
+            s.spawn(move || {
+                for (j, slot) in slots.iter_mut().enumerate() {
+                    if l.is_dir(first + j) {
+                        *slot = Some(walk_until(&base.join(l.name(first + j)), deadline));
+                    }
+                }
+            });
+        }
+    });
+    out
 }
 
 // walk_until is the testable core: a test passes an already-past deadline to force partial without waiting 2000 ms.

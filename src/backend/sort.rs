@@ -1,3 +1,4 @@
+use crate::backend::dirsize::DirSize;
 use crate::backend::listing::Listing;
 use crate::backend::metasort::sort_by_stat;
 use std::cmp::Ordering;
@@ -25,9 +26,9 @@ pub fn parse_sort_by(s: &str) -> Result<SortBy, &'static str> {
 
 // The one entry the loop calls: name works on phase-1 data alone, size and date pay the metadata
 // pass first. Answers (pass ms, sort ms), which the listed line carries as read and sort.
-pub fn sort_listing(l: &mut Listing, base: &Path, by: SortBy, desc: bool) -> (f64, f64) {
+pub fn sort_listing(l: &mut Listing, base: &Path, by: SortBy, desc: bool) -> (f64, f64, Vec<Option<DirSize>>) {
     match by {
-        SortBy::Name => (0.0, sort_by_name(l, desc)),
+        SortBy::Name => (0.0, sort_by_name(l, desc), Vec::new()),
         SortBy::Size | SortBy::Mtime => sort_by_stat(l, base, by, desc),
     }
 }
@@ -185,7 +186,7 @@ mod tests {
     fn sort_listing_routes_name_to_the_phase_one_order_and_never_stats() {
         let mut l = sample();
         // A base that does not exist: name order never looks at it, so nothing here can fail.
-        let (pass, _) = sort_listing(&mut l, Path::new("/definitely/not/here"), SortBy::Name, true);
+        let (pass, _, _) = sort_listing(&mut l, Path::new("/definitely/not/here"), SortBy::Name, true);
         assert_eq!(pass, 0.0, "name pays no metadata pass");
         assert_eq!(l.name(0), "zzz-dir");
         assert_eq!(l.name(3), "alpha.txt");
