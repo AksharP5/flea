@@ -442,16 +442,19 @@ def test_failure():
         before = lost.state()
         children = Path(f"/proc/{lost.pid}/task/{lost.pid}/children").read_text().split()
         backends = [int(pid) for pid in children if Path(f"/proc/{pid}/exe").resolve() == BIN]
-        check("backend failure targets only owned candidate child", len(backends) == 1, backends)
-        # Stop only this backend to make the UI's outstanding check observable before killing it.
-        os.kill(backends[0], signal.SIGSTOP)
+        # Owned candidate children only, and the chooser runs two: identity checks and the listing worker.
+        check("backend failure targets only owned candidate children", bool(backends), backends)
+        # Stop them to make the UI's outstanding check observable before killing them.
+        for backend in backends:
+            os.kill(backend, signal.SIGSTOP)
         try:
             lost.click("Save" if mode == "save" else "Open")
             lost.until("acceptance waits on the real stopped backend", lambda state: state["submitting"])
             lost.until("submission keeps enabled Cancel focused", lambda state: any(
                 control["name"] == "Cancel" and control["focused"] and control["enabled"] for control in state["controls"]))
         finally:
-            os.kill(backends[0], signal.SIGKILL)
+            for backend in backends:
+                os.kill(backend, signal.SIGKILL)
         after = lost.until("lost backend clears checks and disables acceptance", lambda state: state["backendUnavailable"] and not state["submitting"] and not state["marksBusy"] and not state["saveBusy"] and not state["canAccept"] and state["messageError"])
         check("backend loss retains selected identities and draft", after["marks"] == before["marks"] and after["saveName"] == before["saveName"])
         check("backend loss advertises only cancellation", after["hints"] == "Esc cancel", after["hints"])
