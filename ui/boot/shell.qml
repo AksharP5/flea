@@ -106,6 +106,9 @@ ShellRoot {
         Loader {
             id: bodyLoader
             anchors.fill: parent
+            // A Loader is a focus scope, so without this the pane inside never takes active focus
+            // and every key press lands nowhere; driven with j against a live window.
+            focus: true
             // An empty window forever is what this catches; the engine prints the reason above it.
             onStatusChanged: {
                 if (status === Loader.Error) {
