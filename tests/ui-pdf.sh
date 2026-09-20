@@ -71,7 +71,7 @@ pdf_controls() {
 }
 
 case_pdffocus() {
-    local dir="$fixture_root/pdffocus" state="$fixture_root/pdffocus-state" preset mode cx cy wx wy ww wh addr
+    local dir="$fixture_root/pdffocus" state="$fixture_root/pdffocus-state" preset mode last_row selected_row cx cy wx wy ww wh addr
     sandbox_scratch "$dir"
     sandbox_scratch "$state"
     mkdir -p "$state/flea"
@@ -128,7 +128,21 @@ case_pdffocus() {
         jq -n --arg mode "$mode" '{view:$mode,keys:"default",preview:{column:true,loadOn:"automatic"}}' > "$state/flea/ui.json"
         launch "$dir"
         wait_listing 2
-        open_row manual.pdf
+        if [[ "$mode" == grid ]]; then
+            [[ "$(ipc viewMode)" == grid ]] || fail "PDF grid entry started in $(ipc viewMode), not grid"
+            last_row=$(( $(ipc total) - 1 ))
+            [[ "$last_row" -ge 1 && "$(ipc rowAt "$last_row")" == manual.pdf\|* ]] \
+                || fail "PDF grid fixture order put $(ipc rowAt "$last_row") last, not manual.pdf"
+            key -k End >/dev/null
+            settle
+            selected_row=$(ipc rowAt "$(ipc cursor)")
+            [[ "$(ipc cursor)" == "$last_row" && "$selected_row" == manual.pdf\|* ]] \
+                || fail "PDF grid End selected row $(ipc cursor): $selected_row, not manual.pdf at $last_row"
+            key -k space >/dev/null
+            settle
+        else
+            open_row manual.pdf
+        fi
         pdf_expect true '.focused and .pages == 3' "$mode Quick Look entry"
         key e >/dev/null
         [[ "$(ipc previewExpanded)" == true ]] || fail "PDF e did not expand in $mode"
