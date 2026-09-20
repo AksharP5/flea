@@ -164,6 +164,15 @@ if [ "$card_count" = 1 ]; then
   check "a single-GPU box leaves the loader's ICD list alone" "1" "$(echo "$out" | grep -c '^ICD unset$')"
   check "a single-GPU box leaves the driver file list alone" "1" "$(echo "$out" | grep -c '^DRIVER_FILES unset$')"
   check "a single-GPU box announces no display-GPU pin" "0" "$(echo "$out" | grep -c 'GPU with no display')"
+else
+  # corner: a multi-card box cannot be judged from here, so only the pin and the variables are held to agree.
+  if echo "$out" | grep -q 'GPU with no display'; then
+    check "an announced pin names an ICD file" "1" "$(echo "$out" | grep -c '^ICD /.*\.json')"
+    check "and an announced pin names a driver file" "1" "$(echo "$out" | grep -c '^DRIVER_FILES /.*\.json')"
+  else
+    check "an unannounced pin leaves the loader's ICD list alone" "1" "$(echo "$out" | grep -c '^ICD unset$')"
+    check "and leaves the driver file list alone" "1" "$(echo "$out" | grep -c '^DRIVER_FILES unset$')"
+  fi
 fi
 out=$(env VK_ICD_FILENAMES=/tmp/flea-operator-icd.json WAYLAND_DISPLAY=flea-modes-test-display PATH="$D:/usr/bin:/bin" $BIN --gui 2>&1 </dev/null)
 check "an explicit ICD list is preserved" "1" "$(echo "$out" | grep -c '^ICD /tmp/flea-operator-icd.json$')"
@@ -273,6 +282,7 @@ last_arg="$D/last-arg"
   printf 'printf "NARGS %%s\\n" "$#"\n'
   printf 'printf "ICD %%s\\n" "${VK_ICD_FILENAMES-unset}"\n'
   printf 'printf "DRIVER_FILES %%s\\n" "${VK_DRIVER_FILES-unset}"\n'
+  printf 'printf "PIN %%s\\n" "${FLEA_VK_PIN-unset}"\n'
   printf 'printf "ARGV %%s\\n" "$*"\n'
   printf 'shift $(($# - 1)); printf "%%s" "$1" > %q\n' "$last_arg"
   printf 'P=$(cut -d" " -f5 /proc/self/stat)\n'
@@ -309,15 +319,6 @@ launcher_pid=$(echo "$out" | sed -n 's/^PID //p' | head -1)
 check "the launcher reported a pid at all" "1" "$([ -n "$launcher_pid" ] && echo 1 || echo 0)"
 check "and --open left no launcher behind" "1" "$(kill -0 "$launcher_pid" 2>/dev/null && echo 0 || echo 1)"
 
-: > "$opened"
-# The display-GPU pin is Qt's alone, so a program Flea opens must get the loader's own list back.
-VK_ICD_FILENAMES=/tmp/flea-operator-icd.json VK_DRIVER_FILES=/tmp/flea-operator-driver.json \
-  PATH="$D/bin:/usr/bin:/bin" $BIN --open "$D/file.txt" 2>&1 | cat >/dev/null
-wait_for_line "$opened" '^THP_enabled'
-out=$(cat "$opened")
-check "an opened program does not inherit the ICD list" "1" "$(echo "$out" | grep -c '^ICD unset$')"
-check "an opened program does not inherit the driver file list" "1" "$(echo "$out" | grep -c '^DRIVER_FILES unset$')"
-
 # That pair cannot go red on its own: the wait above is for the stub's LAST write, so the stub is
 # exiting whatever --open did. gio open really does outlive its own last write while a DBusActivatable
 # handler starts, measured at 0.32 to 0.75 s on this box, and this stub is that case in miniature.
@@ -331,6 +332,25 @@ lingering_pid=$(sed -n 's/^PID //p' "$lingered" | head -1)
 check "the lingering launcher reported a pid at all" "1" "$([ -n "$lingering_pid" ] && echo 1 || echo 0)"
 check "and --open waited for a launcher that outlived its own last write" "1" \
   "$([ -n "$lingering_pid" ] && ! kill -0 "$lingering_pid" 2>/dev/null && echo 1 || echo 0)"
+
+: > "$opened"
+# Flea's own pin carries a marker, and only a marked pin is taken back off a program Flea opens.
+VK_ICD_FILENAMES=/tmp/flea-pin-icd.json VK_DRIVER_FILES=/tmp/flea-pin-driver.json FLEA_VK_PIN=1 \
+  PATH="$D/bin:/usr/bin:/bin" $BIN --open "$D/file.txt" 2>&1 | cat >/dev/null
+wait_for_line "$opened" '^THP_enabled'
+out=$(cat "$opened")
+check "a marked pin is dropped from an opened program" "1" "$(echo "$out" | grep -c '^ICD unset$')"
+check "and its driver file list goes with it" "1" "$(echo "$out" | grep -c '^DRIVER_FILES unset$')"
+check "and the marker itself does not leak onward" "1" "$(echo "$out" | grep -c '^PIN unset$')"
+
+: > "$opened"
+# An operator's own list carries no marker, so it must survive into the program they open.
+VK_ICD_FILENAMES=/tmp/flea-operator-icd.json VK_DRIVER_FILES=/tmp/flea-operator-driver.json \
+  PATH="$D/bin:/usr/bin:/bin" $BIN --open "$D/file.txt" 2>&1 | cat >/dev/null
+wait_for_line "$opened" '^THP_enabled'
+out=$(cat "$opened")
+check "an operator's own ICD list reaches the opened program" "1" "$(echo "$out" | grep -c '^ICD /tmp/flea-operator-icd.json$')"
+check "and so does their own driver file list" "1" "$(echo "$out" | grep -c '^DRIVER_FILES /tmp/flea-operator-driver.json$')"
 
 : > "$opened"
 PATH="$D/bin:/usr/bin:/bin" $BIN --open "$D/linkfile" >/dev/null 2>&1
@@ -465,13 +485,21 @@ check "a plain --terminal leaves huge pages on" "1" "$(echo "$out" | grep -c '^T
 check "and the stub reported its THP state at all" "1" "$(echo "$out" | grep -c 'THP_enabled')"
 
 : > "$ran"
-# The display-GPU pin is Qt's alone, so a terminal Flea opens must get the loader's own list back.
+# Flea's own pin carries a marker, and only a marked pin is taken back off a terminal Flea opens.
+VK_ICD_FILENAMES=/tmp/flea-pin-icd.json VK_DRIVER_FILES=/tmp/flea-pin-driver.json FLEA_VK_PIN=1 \
+  PATH="$D/bin:/usr/bin:/bin" $BIN --terminal "$D/dir" 2>&1 | cat >/dev/null
+wait_for_line "$ran" '^THP_enabled'
+out=$(cat "$ran")
+check "a marked pin is dropped from a terminal" "1" "$(echo "$out" | grep -c '^ICD unset$')"
+check "and its driver file list goes with it" "1" "$(echo "$out" | grep -c '^DRIVER_FILES unset$')"
+
+: > "$ran"
+# An operator's own list carries no marker, so it must survive into the terminal they open.
 VK_ICD_FILENAMES=/tmp/flea-operator-icd.json VK_DRIVER_FILES=/tmp/flea-operator-driver.json \
   PATH="$D/bin:/usr/bin:/bin" $BIN --terminal "$D/dir" 2>&1 | cat >/dev/null
 wait_for_line "$ran" '^THP_enabled'
 out=$(cat "$ran")
-check "a terminal does not inherit the ICD list" "1" "$(echo "$out" | grep -c '^ICD unset$')"
-check "a terminal does not inherit the driver file list" "1" "$(echo "$out" | grep -c '^DRIVER_FILES unset$')"
+check "an operator's own ICD list reaches the terminal" "1" "$(echo "$out" | grep -c '^ICD /tmp/flea-operator-icd.json$')"
 
 : > "$ran"
 PATH="$D/bin:/usr/bin:/bin" $BIN --terminal "$D/linkdir" >/dev/null 2>&1

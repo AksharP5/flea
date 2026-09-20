@@ -1,4 +1,5 @@
 use crate::thp;
+use crate::vulkan;
 use std::ffi::OsString;
 use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
@@ -33,10 +34,10 @@ pub fn open_terminal(path: &str) -> i32 {
     let mut dir = OsString::from("--dir=");
     dir.push(&target);
     // corner: spawn and not exec, because the terminal outlives us; see AGENTS.md "Opening a file".
-    let started = Command::new("xdg-terminal-exec")
-        // The display-GPU pin is Qt's, so a program Flea starts gets the loader's own ICD list back.
-        .env_remove("VK_DRIVER_FILES")
-        .env_remove("VK_ICD_FILENAMES")
+    let mut terminal = Command::new("xdg-terminal-exec");
+    // The display-GPU pin is Qt's alone, and only this launcher's own pin is dropped.
+    vulkan::drop_display_pin(&mut terminal);
+    let started = terminal
         .arg(&dir)
         // The terminal outlives us, so an inherited pipe would kill it on its first write; see AGENTS.md "Opening a file".
         .stdin(Stdio::null())

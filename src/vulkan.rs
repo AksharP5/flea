@@ -2,6 +2,7 @@
 use std::ffi::{c_void, CStr, OsStr};
 use std::os::raw::{c_char, c_int};
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::ptr::{null, null_mut};
 
 // dlopen(3) RTLD_NOW, so a loader missing an entry point fails here and never at the first call.
@@ -185,6 +186,19 @@ fn pci_id(handle: *mut c_void, get: GetPhysicalDeviceProperties) -> (u32, u32) {
     )
 }
 
+// The launcher marks its own pin, so a program Flea starts can tell it from the operator's own list.
+pub const PIN_MARKER: &str = "FLEA_VK_PIN";
+
+// Undo this launcher's pin for a child, leaving an operator's own VK_DRIVER_FILES untouched.
+pub fn drop_display_pin(command: &mut Command) {
+    if std::env::var_os(PIN_MARKER).is_none() {
+        return;
+    }
+    command.env_remove("VK_DRIVER_FILES");
+    command.env_remove("VK_ICD_FILENAMES");
+    command.env_remove(PIN_MARKER);
+}
+
 // The display GPU's ICD list; AGENTS.md rule 5 says why an index pin cannot do this job.
 pub fn display_pin(devices: &[(u32, u32)]) -> DisplayPin {
     display_pin_in(devices, Path::new("/sys/class/drm"), &icd_search_dirs())
@@ -192,7 +206,7 @@ pub fn display_pin(devices: &[(u32, u32)]) -> DisplayPin {
 
 // Split from display_pin so a test can drive the whole chain against a fake sysfs and icd dir.
 fn display_pin_in(devices: &[(u32, u32)], drm: &Path, icd_dirs: &[PathBuf]) -> DisplayPin {
-    icd_for_displays(devices, &display_pci_ids(drm), icd_dirs)
+    icd_for_displays(devices, &display_pci_ids(drm), &card_pci_ids(drm), icd_dirs)
 }
 
 // What the launcher should do about this box's GPUs, so src/gui.rs can say it in one sentence.
@@ -216,20 +230,22 @@ fn icd_search_dirs() -> Vec<PathBuf> {
 }
 
 // Sample input: devices [(0x8086, 0xa788), (0x10de, 0x27e0)] and displays [(0x10de, 0x27e0)].
-fn needs_icd_pin(devices: &[(u32, u32)], displays: &[(u32, u32)]) -> bool {
+fn needs_icd_pin(devices: &[(u32, u32)], displays: &[(u32, u32)], cards: &[(u32, u32)]) -> bool {
     if displays.is_empty() || devices.is_empty() {
         return false;
     }
     let has_display = devices.iter().any(|id| displays.contains(id));
-    // An ICD list is vendor granular, so a rival sharing the display vendor cannot be excluded by one.
-    let excludable = devices
-        .iter()
-        .any(|id| !displays.contains(id) && !displays.iter().any(|(vendor, _)| *vendor == id.0));
+    // A rival must be a real card and a different vendor: a software ICD owns no card, and an ICD list is vendor granular.
+    let excludable = devices.iter().any(|id| {
+        !displays.contains(id)
+            && cards.contains(id)
+            && !displays.iter().any(|(vendor, _)| *vendor == id.0)
+    });
     has_display && excludable
 }
 
-fn icd_for_displays(devices: &[(u32, u32)], displays: &[(u32, u32)], icd_dirs: &[PathBuf]) -> DisplayPin {
-    if !needs_icd_pin(devices, displays) {
+fn icd_for_displays(devices: &[(u32, u32)], displays: &[(u32, u32)], cards: &[(u32, u32)], icd_dirs: &[PathBuf]) -> DisplayPin {
+    if !needs_icd_pin(devices, displays, cards) {
         return DisplayPin::NotNeeded;
     }
     let Some(gpu) = devices.iter().copied().find(|id| displays.contains(id)) else {
@@ -280,7 +296,7 @@ fn vendor_of_library(lib: &str) -> Option<u32> {
     if lib.contains("hasvk") {
         return None;
     }
-    if lib.contains("nvidia") {
+    if lib.contains("nvidia") || lib.contains("nouveau") {
         Some(PCI_VENDOR_NVIDIA)
     } else if lib.contains("intel") {
         Some(PCI_VENDOR_INTEL)
@@ -290,6 +306,38 @@ fn vendor_of_library(lib: &str) -> Option<u32> {
         Some(PCI_VENDOR_VIRTIO)
     } else {
         None
+    }
+}
+
+// Sample input: a sysfs drm class where card0 and card1 are cards and card1-DP-1 is a connector.
+fn card_pci_ids(drm: &Path) -> Vec<(u32, u32)> {
+    let Ok(entries) = std::fs::read_dir(drm) else {
+        return Vec::new();
+    };
+    let mut ids = Vec::new();
+    for entry in entries {
+        let Ok(entry) = entry else { continue };
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if !is_card(&name) {
+            continue;
+        }
+        let device = entry.path().join("device");
+        let vendor = parse_hex_id(&std::fs::read_to_string(device.join("vendor")).unwrap_or_default());
+        let id = parse_hex_id(&std::fs::read_to_string(device.join("device")).unwrap_or_default());
+        let Some(pair) = vendor.zip(id) else { continue };
+        if !ids.contains(&pair) {
+            ids.push(pair);
+        }
+    }
+    ids
+}
+
+// Sample input: "card1" is a card, "card1-DP-1" is one of its connectors, "renderD128" is a render node.
+fn is_card(name: &str) -> bool {
+    match name.strip_prefix("card") {
+        Some(digits) => !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit()),
+        None => false,
     }
 }
 
@@ -415,6 +463,7 @@ mod tests {
     fn vendor_of_library_skips_hasvk_and_names_the_rest() {
         assert_eq!(vendor_of_library("libGLX_nvidia.so.0"), Some(PCI_VENDOR_NVIDIA));
         assert_eq!(vendor_of_library("libvulkan_intel.so"), Some(PCI_VENDOR_INTEL));
+        assert_eq!(vendor_of_library("libvulkan_nouveau.so"), Some(PCI_VENDOR_NVIDIA));
         assert_eq!(vendor_of_library("libvulkan_intel_hasvk.so"), None);
         assert_eq!(vendor_of_library("libvulkan_radeon.so"), Some(PCI_VENDOR_AMD));
     }
@@ -424,11 +473,12 @@ mod tests {
     fn a_gpu_with_no_display_needs_the_display_icd() {
         let intel = (PCI_VENDOR_INTEL, 0xa788);
         let nvidia = (PCI_VENDOR_NVIDIA, 0x27e0);
-        assert!(needs_icd_pin(&[intel, nvidia], &[nvidia]));
-        assert!(needs_icd_pin(&[intel, nvidia], &[intel]));
-        assert!(!needs_icd_pin(&[intel, nvidia], &[intel, nvidia]));
-        assert!(!needs_icd_pin(&[nvidia], &[nvidia]));
-        assert!(!needs_icd_pin(&[intel, nvidia], &[]));
+        let cards = [intel, nvidia];
+        assert!(needs_icd_pin(&[intel, nvidia], &[nvidia], &cards));
+        assert!(needs_icd_pin(&[intel, nvidia], &[intel], &cards));
+        assert!(!needs_icd_pin(&[intel, nvidia], &[intel, nvidia], &cards));
+        assert!(!needs_icd_pin(&[nvidia], &[nvidia], &cards));
+        assert!(!needs_icd_pin(&[intel, nvidia], &[], &cards));
     }
 
     #[test]
@@ -439,7 +489,7 @@ mod tests {
         std::fs::write(root.join("intel_hasvk_icd.json"), "{\"ICD\":{\"library_path\":\"libvulkan_intel_hasvk.so\"}}\n").unwrap();
         let intel = (PCI_VENDOR_INTEL, 0xa788);
         let nvidia = (PCI_VENDOR_NVIDIA, 0x27e0);
-        let picked = icd_for_displays(&[intel, nvidia], &[nvidia], &[root.clone()]);
+        let picked = icd_for_displays(&[intel, nvidia], &[nvidia], &[intel, nvidia], &[root.clone()]);
         let _ = std::fs::remove_dir_all(&root);
         match picked {
             DisplayPin::Pin { icd, .. } => {
@@ -489,19 +539,27 @@ mod tests {
     }
 
     #[test]
+    fn a_vulkan_device_that_owns_no_drm_card_is_not_a_rival_gpu() {
+        let intel = (PCI_VENDOR_INTEL, 0x3e92);
+        let lavapipe = (0x10005, 0x0);
+        assert!(!needs_icd_pin(&[intel, lavapipe], &[intel], &[intel]));
+    }
+
+    #[test]
     fn a_same_vendor_rival_cannot_be_excluded_by_an_icd_list() {
         let igpu = (PCI_VENDOR_AMD, 0x164e);
         let dgpu = (PCI_VENDOR_AMD, 0x744c);
-        assert!(!needs_icd_pin(&[igpu, dgpu], &[igpu]));
+        assert!(!needs_icd_pin(&[igpu, dgpu], &[igpu], &[igpu, dgpu]));
     }
 
     #[test]
     fn a_display_gpu_with_no_known_icd_is_reported_rather_than_pinned() {
         let icd = fixture_root("icd-unknown");
-        std::fs::write(icd.join("nouveau_icd.json"), "{\"ICD\":{\"library_path\":\"libvulkan_nouveau.so\"}}\n").unwrap();
+        std::fs::write(icd.join("mystery_icd.json"), "{\"ICD\":{\"library_path\":\"libvulkan_mystery.so\"}}\n").unwrap();
         let answer = icd_for_displays(
             &[(PCI_VENDOR_INTEL, 0xa788), (PCI_VENDOR_NVIDIA, 0x27e0)],
             &[(PCI_VENDOR_NVIDIA, 0x27e0)],
+            &[(PCI_VENDOR_INTEL, 0xa788), (PCI_VENDOR_NVIDIA, 0x27e0)],
             &[icd.clone()],
         );
         let _ = std::fs::remove_dir_all(&icd);

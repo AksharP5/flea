@@ -60,7 +60,13 @@ this tree yet: `flea --tui` says so and exits 2.
    says that instead and pins nothing. A connected connector is only a proxy for the compositor's
    render device, so a lid-closed box whose one connected panel hangs off the other GPU is a shape
    this heuristic can get wrong; the operator's own `VK_DRIVER_FILES` is the escape, and this box is
-   single-GPU so neither the heuristic nor its limit can be validated here. A box whose
+   single-GPU so neither the heuristic nor its limit can be validated here. The pin belongs to Qt and
+   to nothing else Flea starts, so it carries a marker, `FLEA_VK_PIN`, and `src/open.rs` and
+   `src/terminal.rs` drop the pair and the marker together when it is set. Without the marker they
+   drop nothing, because an operator who exported a list of their own must keep it in the program
+   they opened. A rival GPU must also own a DRM card: a software ICD such as lavapipe is a Vulkan
+   device owning no connector, and without that condition it would make a plain single-GPU box pin.
+   A box whose
    every Vulkan device owns a connected connector, or that has no DRM connectors at all, leaves
    the loader's default and says nothing. A loader that cannot
    deliver one is given `opengl` before `qs` starts at all, because Quickshell hands

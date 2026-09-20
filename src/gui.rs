@@ -84,9 +84,10 @@ fn qs_command(target: PathBuf) -> Command {
 
 // `already` carries the automatic arm's probe result, so a hybrid launch does not pay for Vulkan twice.
 fn pin_display_icd(cmd: &mut Command, already: Option<&[(u32, u32)]>) {
-    if std::env::var_os("VK_DRIVER_FILES").is_some_and(|value| !value.is_empty())
-        || std::env::var_os("VK_ICD_FILENAMES").is_some_and(|value| !value.is_empty())
-    {
+    if operator_chose_icd(
+        std::env::var_os("VK_DRIVER_FILES").as_deref(),
+        std::env::var_os("VK_ICD_FILENAMES").as_deref(),
+    ) {
         return;
     }
     let owned;
@@ -103,6 +104,11 @@ fn pin_display_icd(cmd: &mut Command, already: Option<&[(u32, u32)]>) {
     apply_display_pin(cmd, vulkan::display_pin(devices));
 }
 
+// Split from pin_display_icd so a test can drive the guard without touching this process's environment.
+fn operator_chose_icd(driver: Option<&OsStr>, icd: Option<&OsStr>) -> bool {
+    driver.is_some_and(|value| !value.is_empty()) || icd.is_some_and(|value| !value.is_empty())
+}
+
 // Split from pin_display_icd so a test can drive the answer a single-GPU box can never produce.
 fn apply_display_pin(cmd: &mut Command, pin: vulkan::DisplayPin) {
     match pin {
@@ -114,6 +120,7 @@ fn apply_display_pin(cmd: &mut Command, pin: vulkan::DisplayPin) {
             eprintln!("flea: Vulkan sees a GPU with no display, so the shell starts on {:#06x}:{:#06x} through {icd}", gpu.0, gpu.1);
             cmd.env("VK_DRIVER_FILES", &icd);
             cmd.env("VK_ICD_FILENAMES", &icd);
+            cmd.env(vulkan::PIN_MARKER, "1");
         }
     }
 }
@@ -149,11 +156,27 @@ mod tests {
     }
 
     #[test]
+    fn a_pin_marks_itself_so_a_child_can_tell_it_from_the_operators_own_list() {
+        let mut cmd = Command::new("true");
+        apply_display_pin(&mut cmd, vulkan::DisplayPin::Pin { icd: String::from("/x.json"), gpu: (0x10de, 0x27e0) });
+        assert_eq!(override_of(&cmd, vulkan::PIN_MARKER).as_deref(), Some("1"));
+    }
+
+    #[test]
+    fn an_exported_but_empty_loader_variable_is_absent_not_a_choice() {
+        assert!(!operator_chose_icd(None, None));
+        assert!(!operator_chose_icd(Some(OsStr::new("")), Some(OsStr::new(""))));
+        assert!(operator_chose_icd(Some(OsStr::new("/a.json")), None));
+        assert!(operator_chose_icd(None, Some(OsStr::new("/b.json"))));
+    }
+
+    #[test]
     fn a_box_needing_no_pin_sets_no_loader_variable() {
         let mut cmd = Command::new("true");
         apply_display_pin(&mut cmd, vulkan::DisplayPin::NotNeeded);
         assert_eq!(override_of(&cmd, "VK_DRIVER_FILES"), None);
         assert_eq!(override_of(&cmd, "VK_ICD_FILENAMES"), None);
+        assert_eq!(override_of(&cmd, vulkan::PIN_MARKER), None);
     }
 
     #[test]
