@@ -1390,6 +1390,12 @@ had gone stale by a whole plan and were re-derived from `wc -l` in Plan 5 Task 5
 touch a file here, re-derive its count from the artefact rather than adjusting the nearest
 number.
 
+`src/vulkan.rs` is 0.3.2's own exception, recorded rather than split. PR119's display-GPU pin took
+it from 472 to 604 lines, the growth being `icd_for_displays`, `display_pin` and the tests that
+drive a hybrid tree this box cannot produce. The file has one subject, which is what Vulkan can be
+asked for on this machine, and splitting the fake-tree tests away from the function they pin would
+make the seam the test harness rather than the subject.
+
 `src/backend/ops.rs` split to `src/backend/renamecompat.rs` at 455: composing PR 35's safe rclone
 rename into the release tree put the rename exception over the 400-line hard cap, so the exception
 and its tests moved to the module that already owned classifying which rename failures need it.

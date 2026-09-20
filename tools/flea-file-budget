@@ -17,7 +17,7 @@ src/backend/metareq.rs 404
 src/backend/opsdispatch.rs 536
 src/backend/opsreq/tests.rs 424
 src/backend/proto.rs 466
-src/backend/run.rs 425
+src/backend/run.rs 429
 src/backend/thumbs.rs 432
 src/backend/trashbrowse.rs 698
 src/backend/trashdelete.rs 895
@@ -27,6 +27,7 @@ src/tui/model.rs 1174
 src/tui/render.rs 807
 src/uistate.rs 440
 src/uistore.rs 483
+src/vulkan.rs 604
 tests/js/focus.js 374
 tests/js/mounts.js 383
 tests/js/ops.js 384
@@ -49,7 +50,7 @@ ui/SettingsPanel.qml 542
 ui/SettingsRow.qml 409
 ui/Sidebar.qml 535
 ui/TrashView.qml 466
-ui/WindowBody.qml 480
+ui/WindowBody.qml 481
 ui/js/Filter.js 301
 ui/js/Focus.js 341
 ui/js/Keymap.js 310
