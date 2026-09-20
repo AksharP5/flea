@@ -131,6 +131,7 @@ printf 'FLEA_BIN %s\n' "$FLEA_BIN"
 printf 'RENDERER %s\n' "$QSG_RHI_BACKEND"
 printf 'AUTOMATIC %s\n' "${FLEA_RENDERER_AUTOMATIC-unset}"
 printf 'ICD %s\n' "${VK_ICD_FILENAMES-unset}"
+printf 'DRIVER_FILES %s\n' "${VK_DRIVER_FILES-unset}"
 printf 'ARGV %s\n' "$*"
 printf 'FLEA_PATH %s\n' "${FLEA_PATH-unset}"
 printf 'FLEA_SELECT %s\n' "${FLEA_SELECT-unset}"
@@ -150,16 +151,26 @@ check "the automatic renderer starts with Vulkan" "1" "$(echo "$out" | grep -c '
 check "the automatic renderer permits one fallback" "1" "$(echo "$out" | grep -c '^AUTOMATIC 1$')"
 # The downgrade below says why, so its silence here is what proves this arm took the probe's other branch.
 check "a loader that can deliver Vulkan says nothing" "0" "$(echo "$out" | grep -c 'Vulkan is unusable')"
-# Hybrid: Vulkan lists a GPU with no connector. A pin is a sentence plus an ICD path; single-GPU boxes set neither.
-if echo "$out" | grep -q 'GPU with no display'; then
-  check "a display-GPU pin names an ICD" "1" "$(echo "$out" | grep -c '^ICD /.*\.json')"
-  check "and does not leave the ICD list unset" "0" "$(echo "$out" | grep -c '^ICD unset$')"
-else
-  check "a box whose every Vulkan device can present leaves the loader's ICD list" "1" "$(echo "$out" | grep -c '^ICD unset$')"
+# A DRM card directory has no dash in its name; card1-DP-1 is one of its connectors.
+card_count=0
+for card in /sys/class/drm/card[0-9]*; do
+  # An unmatched glob arrives as its own literal, which is not a card and must not be counted.
+  [ -e "$card" ] || continue
+  case "${card##*/}" in *-*) continue ;; esac
+  card_count=$((card_count + 1))
+done
+# corner: a box with one DRM card cannot be hybrid, so the pin must stay silent on it.
+if [ "$card_count" = 1 ]; then
+  check "a single-GPU box leaves the loader's ICD list alone" "1" "$(echo "$out" | grep -c '^ICD unset$')"
+  check "a single-GPU box leaves the driver file list alone" "1" "$(echo "$out" | grep -c '^DRIVER_FILES unset$')"
+  check "a single-GPU box announces no display-GPU pin" "0" "$(echo "$out" | grep -c 'GPU with no display')"
 fi
 out=$(env VK_ICD_FILENAMES=/tmp/flea-operator-icd.json WAYLAND_DISPLAY=flea-modes-test-display PATH="$D:/usr/bin:/bin" $BIN --gui 2>&1 </dev/null)
 check "an explicit ICD list is preserved" "1" "$(echo "$out" | grep -c '^ICD /tmp/flea-operator-icd.json$')"
 check "and an explicit ICD list is not announced as a pin" "0" "$(echo "$out" | grep -c 'GPU with no display')"
+out=$(env VK_DRIVER_FILES=/tmp/flea-operator-driver.json WAYLAND_DISPLAY=flea-modes-test-display PATH="$D:/usr/bin:/bin" $BIN --gui 2>&1 </dev/null)
+check "an explicit driver file list is preserved" "1" "$(echo "$out" | grep -c '^DRIVER_FILES /tmp/flea-operator-driver.json$')"
+check "and an explicit driver file list is not announced as a pin" "0" "$(echo "$out" | grep -c 'GPU with no display')"
 out=$(env QSG_RHI_BACKEND=opengl FLEA_RENDERER_AUTOMATIC=stale WAYLAND_DISPLAY=flea-modes-test-display PATH="$D:/usr/bin:/bin" $BIN --gui 2>&1 </dev/null)
 check "an explicit renderer is preserved" "1" "$(echo "$out" | grep -c '^RENDERER opengl$')"
 check "an explicit renderer cannot trigger fallback" "1" "$(echo "$out" | grep -c '^AUTOMATIC unset$')"
@@ -260,6 +271,8 @@ last_arg="$D/last-arg"
   printf 'exec >> %q 2>&1\n' "$opened"
   printf 'printf "PID %%s\\n" "$$"\n'
   printf 'printf "NARGS %%s\\n" "$#"\n'
+  printf 'printf "ICD %%s\\n" "${VK_ICD_FILENAMES-unset}"\n'
+  printf 'printf "DRIVER_FILES %%s\\n" "${VK_DRIVER_FILES-unset}"\n'
   printf 'printf "ARGV %%s\\n" "$*"\n'
   printf 'shift $(($# - 1)); printf "%%s" "$1" > %q\n' "$last_arg"
   printf 'P=$(cut -d" " -f5 /proc/self/stat)\n'
@@ -289,11 +302,21 @@ check "and the stub reported its process group at all" "1" "$(echo "$out" | grep
 # Nothing disabled huge pages in this process, so 1 is the untouched state and a stray disable would show.
 check "a plain --open leaves huge pages on" "1" "$(echo "$out" | grep -c '^THP_enabled:[[:space:]]*1')"
 check "and the stub reported its THP state at all" "1" "$(echo "$out" | grep -c 'THP_enabled')"
+
 # --open waits for the launcher, so by the time it returns the launcher has been reaped; a pid that
 # is still signalable is a gio left running for the life of the application it started.
 launcher_pid=$(echo "$out" | sed -n 's/^PID //p' | head -1)
 check "the launcher reported a pid at all" "1" "$([ -n "$launcher_pid" ] && echo 1 || echo 0)"
 check "and --open left no launcher behind" "1" "$(kill -0 "$launcher_pid" 2>/dev/null && echo 0 || echo 1)"
+
+: > "$opened"
+# The display-GPU pin is Qt's alone, so a program Flea opens must get the loader's own list back.
+VK_ICD_FILENAMES=/tmp/flea-operator-icd.json VK_DRIVER_FILES=/tmp/flea-operator-driver.json \
+  PATH="$D/bin:/usr/bin:/bin" $BIN --open "$D/file.txt" 2>&1 | cat >/dev/null
+wait_for_line "$opened" '^THP_enabled'
+out=$(cat "$opened")
+check "an opened program does not inherit the ICD list" "1" "$(echo "$out" | grep -c '^ICD unset$')"
+check "an opened program does not inherit the driver file list" "1" "$(echo "$out" | grep -c '^DRIVER_FILES unset$')"
 
 # That pair cannot go red on its own: the wait above is for the stub's LAST write, so the stub is
 # exiting whatever --open did. gio open really does outlive its own last write while a DBusActivatable
@@ -413,6 +436,8 @@ ran="$D/ran.log"
   printf 'printf "FD1 %%s\\n" "$(readlink /proc/$$/fd/1)" >> %q\n' "$ran"
   printf 'exec >> %q 2>&1\n' "$ran"
   printf 'printf "NARGS %%s\\n" "$#"\n'
+  printf 'printf "ICD %%s\\n" "${VK_ICD_FILENAMES-unset}"\n'
+  printf 'printf "DRIVER_FILES %%s\\n" "${VK_DRIVER_FILES-unset}"\n'
   printf 'printf "ARGV %%s\\n" "$*"\n'
   printf 'P=$(cut -d" " -f5 /proc/self/stat)\n'
   printf '[ "$$" = "$P" ] && printf "PGID MATCH pid=%%s pgid=%%s\\n" "$$" "$P" || printf "PGID MISMATCH pid=%%s pgid=%%s\\n" "$$" "$P"\n'
@@ -438,6 +463,15 @@ check "and the stub reported its process group at all" "1" "$(echo "$out" | grep
 # Nothing disabled huge pages in this process, so 1 is the untouched state and a stray disable would show.
 check "a plain --terminal leaves huge pages on" "1" "$(echo "$out" | grep -c '^THP_enabled:[[:space:]]*1')"
 check "and the stub reported its THP state at all" "1" "$(echo "$out" | grep -c 'THP_enabled')"
+
+: > "$ran"
+# The display-GPU pin is Qt's alone, so a terminal Flea opens must get the loader's own list back.
+VK_ICD_FILENAMES=/tmp/flea-operator-icd.json VK_DRIVER_FILES=/tmp/flea-operator-driver.json \
+  PATH="$D/bin:/usr/bin:/bin" $BIN --terminal "$D/dir" 2>&1 | cat >/dev/null
+wait_for_line "$ran" '^THP_enabled'
+out=$(cat "$ran")
+check "a terminal does not inherit the ICD list" "1" "$(echo "$out" | grep -c '^ICD unset$')"
+check "a terminal does not inherit the driver file list" "1" "$(echo "$out" | grep -c '^DRIVER_FILES unset$')"
 
 : > "$ran"
 PATH="$D/bin:/usr/bin:/bin" $BIN --terminal "$D/linkdir" >/dev/null 2>&1

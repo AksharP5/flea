@@ -34,6 +34,9 @@ pub fn open_terminal(path: &str) -> i32 {
     dir.push(&target);
     // corner: spawn and not exec, because the terminal outlives us; see AGENTS.md "Opening a file".
     let started = Command::new("xdg-terminal-exec")
+        // The display-GPU pin is Qt's, so a program Flea starts gets the loader's own ICD list back.
+        .env_remove("VK_DRIVER_FILES")
+        .env_remove("VK_ICD_FILENAMES")
         .arg(&dir)
         // The terminal outlives us, so an inherited pipe would kill it on its first write; see AGENTS.md "Opening a file".
         .stdin(Stdio::null())

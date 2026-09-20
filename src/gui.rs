@@ -82,9 +82,7 @@ fn qs_command(target: PathBuf) -> Command {
     cmd
 }
 
-// VK_DRIVER_FILES / VK_ICD_FILENAMES are the loader's; an explicit value is the operator's.
-// Empty is absent, the same rule QSG_RHI_BACKEND follows. The probe is reused when the automatic
-// arm already ran it, so a hybrid launch does not pay for Vulkan twice.
+// `already` carries the automatic arm's probe result, so a hybrid launch does not pay for Vulkan twice.
 fn pin_display_icd(cmd: &mut Command, already: Option<&[(u32, u32)]>) {
     if std::env::var_os("VK_DRIVER_FILES").is_some_and(|value| !value.is_empty())
         || std::env::var_os("VK_ICD_FILENAMES").is_some_and(|value| !value.is_empty())
@@ -102,10 +100,21 @@ fn pin_display_icd(cmd: &mut Command, already: Option<&[(u32, u32)]>) {
             Err(_) => return,
         },
     };
-    if let Some(icd) = vulkan::display_icd(devices) {
-        eprintln!("flea: Vulkan sees a GPU with no display, so the shell starts on the display GPU");
-        cmd.env("VK_DRIVER_FILES", &icd);
-        cmd.env("VK_ICD_FILENAMES", &icd);
+    apply_display_pin(cmd, vulkan::display_pin(devices));
+}
+
+// Split from pin_display_icd so a test can drive the answer a single-GPU box can never produce.
+fn apply_display_pin(cmd: &mut Command, pin: vulkan::DisplayPin) {
+    match pin {
+        vulkan::DisplayPin::NotNeeded => {}
+        vulkan::DisplayPin::Unmatched { vendor } => {
+            eprintln!("flea: Vulkan sees a GPU with no display, but no ICD file names vendor {vendor:#06x}, so the loader's own list stands");
+        }
+        vulkan::DisplayPin::Pin { icd, gpu } => {
+            eprintln!("flea: Vulkan sees a GPU with no display, so the shell starts on {:#06x}:{:#06x} through {icd}", gpu.0, gpu.1);
+            cmd.env("VK_DRIVER_FILES", &icd);
+            cmd.env("VK_ICD_FILENAMES", &icd);
+        }
     }
 }
 
@@ -116,4 +125,42 @@ fn exec(mut cmd: Command) -> i32 {
     let _ = cmd.exec();
     eprintln!("flea: could not start the shell, qs is not on PATH or failed to run");
     1
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Command keeps its overrides rather than a rendered environment, so this reads back what was set.
+    fn override_of(cmd: &Command, key: &str) -> Option<String> {
+        cmd.get_envs()
+            .find(|(name, _)| *name == OsStr::new(key))
+            .and_then(|(_, value)| value)
+            .map(|value| value.to_string_lossy().into_owned())
+    }
+
+    #[test]
+    fn a_display_gpu_pin_sets_both_loader_variables() {
+        let icd = String::from("/usr/share/vulkan/icd.d/nvidia_icd.json");
+        let mut cmd = Command::new("true");
+        apply_display_pin(&mut cmd, vulkan::DisplayPin::Pin { icd: icd.clone(), gpu: (0x10de, 0x27e0) });
+        assert_eq!(override_of(&cmd, "VK_DRIVER_FILES").as_deref(), Some(icd.as_str()));
+        assert_eq!(override_of(&cmd, "VK_ICD_FILENAMES").as_deref(), Some(icd.as_str()));
+    }
+
+    #[test]
+    fn a_box_needing_no_pin_sets_no_loader_variable() {
+        let mut cmd = Command::new("true");
+        apply_display_pin(&mut cmd, vulkan::DisplayPin::NotNeeded);
+        assert_eq!(override_of(&cmd, "VK_DRIVER_FILES"), None);
+        assert_eq!(override_of(&cmd, "VK_ICD_FILENAMES"), None);
+    }
+
+    #[test]
+    fn a_display_gpu_with_no_icd_file_sets_no_loader_variable() {
+        let mut cmd = Command::new("true");
+        apply_display_pin(&mut cmd, vulkan::DisplayPin::Unmatched { vendor: 0x10de });
+        assert_eq!(override_of(&cmd, "VK_DRIVER_FILES"), None);
+        assert_eq!(override_of(&cmd, "VK_ICD_FILENAMES"), None);
+    }
 }

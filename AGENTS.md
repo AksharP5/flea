@@ -38,17 +38,29 @@ this tree yet: `flea --tui` says so and exits 2.
    created a throwaway instance and seen a device, which costs 2.4x less memory than the OpenGL
    default and initialises 35 ms faster, with identical frame timing. The same probe now reads
    each device's PCI id and matches it against `/sys/class/drm` connectors whose `status` is
-   `connected`. When Vulkan lists both a display GPU and one that owns no connector, Flea sets
-   `VK_DRIVER_FILES` and `VK_ICD_FILENAMES` to the ICD whose `library_path` belongs to the
-   display GPU. That is the hybrid-GPU blank window: Hyprland compositing on NVIDIA while Qt
+   `connected`. Flea sets `VK_DRIVER_FILES` and `VK_ICD_FILENAMES` to the ICD whose `library_path`
+   belongs to the display GPU when Vulkan lists a display GPU beside one that owns no connector and
+   that other GPU's PCI vendor differs. The vendor condition is load bearing: an ICD list is vendor
+   granular, so two cards from one vendor, an AMD APU beside a Radeon or an Intel iGPU beside an Arc,
+   cannot be separated by one, and a pin there would claim a restriction it did not make.
+   That is the hybrid-GPU blank window: Hyprland compositing on NVIDIA while Qt
    opens Intel, which presents a mapped window with no buffer. An index pin (`QT_VK_PHYSICAL_DEVICE_INDEX`)
    cannot be used: this box enumerates NVIDIA then Intel to `vkEnumeratePhysicalDevices` and
    Intel then NVIDIA to QRhi, so the index Flea would hand Qt is the other GPU. Restricting the
    ICD list does not care about order. Forcing the NVIDIA ICD on every NVIDIA laptop would blank
    classic Optimus, where the compositor sits on Intel and the connected connector is Intel's.
+   An explicit `QSG_RHI_BACKEND=vulkan` now runs the full probe too, where before this merge an
+   explicit renderer skipped it entirely: measured on a quiet box, 25 interleaved pairs of the whole
+   launch to a stub `qs`, the explicit Vulkan arm takes 10.0 to 10.6 ms against 1.9 to 2.0 ms for the
+   explicit OpenGL arm, so it pays the same roughly 8 ms the automatic arm already paid.
    An explicit `VK_DRIVER_FILES` or `VK_ICD_FILENAMES` is the operator's, and an exported-but-empty
-   one is absent, the same rule `QSG_RHI_BACKEND` follows. The pin is said once on stderr, because
-   a silent device change is the defect the OpenGL downgrade already refused to hide. A box whose
+   one is absent, the same rule `QSG_RHI_BACKEND` follows. The pin is said once on stderr and names
+   the chosen GPU's PCI pair and the ICD path, because a silent device change is the defect the
+   OpenGL downgrade already refused to hide, and a hybrid box whose display GPU matches no ICD file
+   says that instead and pins nothing. A connected connector is only a proxy for the compositor's
+   render device, so a lid-closed box whose one connected panel hangs off the other GPU is a shape
+   this heuristic can get wrong; the operator's own `VK_DRIVER_FILES` is the escape, and this box is
+   single-GPU so neither the heuristic nor its limit can be validated here. A box whose
    every Vulkan device owns a connected connector, or that has no DRM connectors at all, leaves
    the loader's default and says nothing. A loader that cannot
    deliver one is given `opengl` before `qs` starts at all, because Quickshell hands

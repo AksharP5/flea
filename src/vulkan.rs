@@ -42,11 +42,16 @@ type EnumeratePhysicalDevices = unsafe extern "C" fn(*mut c_void, *mut u32, *mut
 type GetPhysicalDeviceProperties = unsafe extern "C" fn(*mut c_void, *mut u8);
 type DestroyInstance = unsafe extern "C" fn(*mut c_void, *const c_void);
 
-// vendorID and deviceID sit at these offsets in VkPhysicalDeviceProperties; the rest of the struct
-// is written into a buffer large enough that the write cannot run off the end.
+// vendorID and deviceID sit at these offsets in VkPhysicalDeviceProperties, which PROPERTIES_BYTES is sized to hold.
 const VENDOR_ID_OFFSET: usize = 8;
 const DEVICE_ID_OFFSET: usize = 12;
 const PROPERTIES_BYTES: usize = 2048;
+
+// PCI vendor ids, the values /sys/class/drm/card*/device/vendor carries.
+const PCI_VENDOR_NVIDIA: u32 = 0x10de;
+const PCI_VENDOR_INTEL: u32 = 0x8086;
+const PCI_VENDOR_AMD: u32 = 0x1002;
+const PCI_VENDOR_VIRTIO: u32 = 0x1af4;
 
 // VkPhysicalDeviceLimits contains VkDeviceSize fields, so the driver write needs 8-byte alignment.
 #[repr(C, align(8))]
@@ -94,8 +99,7 @@ unsafe fn entry(library: *mut c_void, symbol: &CStr) -> Result<*mut c_void, Stri
     Ok(found)
 }
 
-// Ok only when this box can start Vulkan the way Qt starts it; the error is the sentence the operator reads.
-// The Vec is PCI (vendor, device) in vkEnumeratePhysicalDevices order, which is also Qt's order.
+// Ok lists each device's PCI (vendor, device) in enumerate order; the error is the sentence the operator reads.
 pub fn usable() -> Result<Vec<(u32, u32)>, String> {
     usable_with(&[SURFACE, platform_surface()])
 }
@@ -118,10 +122,8 @@ fn usable_with(extensions: &[&CStr]) -> Result<Vec<(u32, u32)>, String> {
         let enumerate: EnumeratePhysicalDevices =
             std::mem::transmute(entry(library, c"vkEnumeratePhysicalDevices")?);
         let destroy: DestroyInstance = std::mem::transmute(entry(library, c"vkDestroyInstance")?);
-        // Missing this symbol still leaves Vulkan usable: Qt can start, it just cannot be pointed at a display GPU.
-        let properties = entry(library, c"vkGetPhysicalDeviceProperties").ok().map(|found| {
-            std::mem::transmute::<_, GetPhysicalDeviceProperties>(found)
-        });
+        let properties: GetPhysicalDeviceProperties =
+            std::mem::transmute(entry(library, c"vkGetPhysicalDeviceProperties")?);
 
         let request = InstanceCreateInfo {
             s_type: INSTANCE_CREATE_INFO,
@@ -156,13 +158,14 @@ fn usable_with(extensions: &[&CStr]) -> Result<Vec<(u32, u32)>, String> {
         let listed = enumerate(instance, &mut filled, handles.as_mut_ptr());
         // VK_INCOMPLETE still wrote `filled` handles; treating it as failure would drop to OpenGL.
         let complete = listed == VK_SUCCESS || listed == VK_INCOMPLETE;
-        let ids = match (complete, properties) {
-            (true, Some(get)) => handles
+        let ids: Vec<(u32, u32)> = if complete {
+            handles
                 .iter()
                 .take(filled as usize)
-                .map(|handle| pci_id(*handle, get))
-                .collect(),
-            _ => vec![(0, 0); devices as usize],
+                .map(|handle| pci_id(*handle, properties))
+                .collect()
+        } else {
+            Vec::new()
         };
         destroy(instance, null());
         if !complete {
@@ -182,17 +185,21 @@ fn pci_id(handle: *mut c_void, get: GetPhysicalDeviceProperties) -> (u32, u32) {
     )
 }
 
-// A colon-separated ICD list for Qt, or None when device 0 is already a display GPU
-// or the loader order is not our problem. Qt's enumerate order is not the loader's:
-// this box lists NVIDIA then Intel to vkEnumeratePhysicalDevices and Intel then NVIDIA
-// to QRhi, so an index pin would name the wrong device. Restricting the ICD list does not
-// care about order: Qt can only open the GPU that owns a connected connector.
-pub fn display_icd(devices: &[(u32, u32)]) -> Option<String> {
-    icd_for_displays(
-        devices,
-        &display_pci_ids(Path::new("/sys/class/drm")),
-        &icd_search_dirs(),
-    )
+// The display GPU's ICD list; AGENTS.md rule 5 says why an index pin cannot do this job.
+pub fn display_pin(devices: &[(u32, u32)]) -> DisplayPin {
+    display_pin_in(devices, Path::new("/sys/class/drm"), &icd_search_dirs())
+}
+
+// Split from display_pin so a test can drive the whole chain against a fake sysfs and icd dir.
+fn display_pin_in(devices: &[(u32, u32)], drm: &Path, icd_dirs: &[PathBuf]) -> DisplayPin {
+    icd_for_displays(devices, &display_pci_ids(drm), icd_dirs)
+}
+
+// What the launcher should do about this box's GPUs, so src/gui.rs can say it in one sentence.
+pub enum DisplayPin {
+    NotNeeded,
+    Unmatched { vendor: u32 },
+    Pin { icd: String, gpu: (u32, u32) },
 }
 
 fn icd_search_dirs() -> Vec<PathBuf> {
@@ -214,14 +221,20 @@ fn needs_icd_pin(devices: &[(u32, u32)], displays: &[(u32, u32)]) -> bool {
         return false;
     }
     let has_display = devices.iter().any(|id| displays.contains(id));
-    let has_other = devices.iter().any(|id| !displays.contains(id));
-    has_display && has_other
+    // An ICD list is vendor granular, so a rival sharing the display vendor cannot be excluded by one.
+    let excludable = devices
+        .iter()
+        .any(|id| !displays.contains(id) && !displays.iter().any(|(vendor, _)| *vendor == id.0));
+    has_display && excludable
 }
 
-fn icd_for_displays(devices: &[(u32, u32)], displays: &[(u32, u32)], icd_dirs: &[PathBuf]) -> Option<String> {
+fn icd_for_displays(devices: &[(u32, u32)], displays: &[(u32, u32)], icd_dirs: &[PathBuf]) -> DisplayPin {
     if !needs_icd_pin(devices, displays) {
-        return None;
+        return DisplayPin::NotNeeded;
     }
+    let Some(gpu) = devices.iter().copied().find(|id| displays.contains(id)) else {
+        return DisplayPin::NotNeeded;
+    };
     let mut files = Vec::new();
     for dir in icd_dirs {
         let Ok(entries) = std::fs::read_dir(dir) else { continue };
@@ -244,9 +257,9 @@ fn icd_for_displays(devices: &[(u32, u32)], displays: &[(u32, u32)], icd_dirs: &
         }
     }
     if files.is_empty() {
-        None
+        DisplayPin::Unmatched { vendor: gpu.0 }
     } else {
-        Some(files.join(":"))
+        DisplayPin::Pin { icd: files.join(":"), gpu }
     }
 }
 
@@ -268,18 +281,19 @@ fn vendor_of_library(lib: &str) -> Option<u32> {
         return None;
     }
     if lib.contains("nvidia") {
-        Some(0x10de)
+        Some(PCI_VENDOR_NVIDIA)
     } else if lib.contains("intel") {
-        Some(0x8086)
+        Some(PCI_VENDOR_INTEL)
     } else if lib.contains("radeon") || lib.contains("amdvlk") || lib.contains("amd_") {
-        Some(0x1002)
+        Some(PCI_VENDOR_AMD)
     } else if lib.contains("virtio") {
-        Some(0x1af4)
+        Some(PCI_VENDOR_VIRTIO)
     } else {
         None
     }
 }
 
+// corner: a connected connector is the proxy for the compositor's render device, so a lid-closed box wired to the other GPU needs the operator's own VK_DRIVER_FILES.
 // Sample input: a sysfs drm class with card0 (Intel, disconnected) and card1 (NVIDIA, connected).
 fn display_pci_ids(drm: &Path) -> Vec<(u32, u32)> {
     let Ok(entries) = std::fs::read_dir(drm) else {
@@ -362,33 +376,23 @@ mod tests {
     }
 
     #[test]
-    fn usable_lists_pci_ids_in_enumerate_order() {
+    fn usable_reports_the_connected_card_pci_id() {
         let displays = display_pci_ids(Path::new("/sys/class/drm"));
-        if displays.is_empty() {
+        // corner: one connected card is the only shape where a rival GPU cannot explain a mismatch.
+        if displays.len() != 1 {
             return;
         }
-        let ids = match usable() {
-            Ok(ids) => ids,
-            Err(reason)
-                if reason.contains("libvulkan.so.1 did not load")
-                    || reason.contains("listed no device") =>
-            {
-                return;
-            }
-            Err(reason) => panic!("{reason}"),
+        let Ok(ids) = usable() else {
+            return;
         };
-        assert!(!ids.is_empty(), "{ids:?}");
-        assert!(
-            displays.iter().any(|id| ids.contains(id)),
-            "devices {ids:?} displays {displays:?}"
-        );
+        assert!(ids.contains(&displays[0]), "devices {ids:?} displays {displays:?}");
     }
 
     #[test]
     fn parse_hex_id_accepts_sysfs_and_bare_forms() {
-        assert_eq!(parse_hex_id("0x8086\n"), Some(0x8086));
+        assert_eq!(parse_hex_id("0x8086\n"), Some(PCI_VENDOR_INTEL));
         assert_eq!(parse_hex_id("0XA788"), Some(0xa788));
-        assert_eq!(parse_hex_id("10de"), Some(0x10de));
+        assert_eq!(parse_hex_id("10de"), Some(PCI_VENDOR_NVIDIA));
         assert_eq!(parse_hex_id("not-a-pci-id"), None);
     }
 
@@ -409,17 +413,17 @@ mod tests {
 
     #[test]
     fn vendor_of_library_skips_hasvk_and_names_the_rest() {
-        assert_eq!(vendor_of_library("libGLX_nvidia.so.0"), Some(0x10de));
-        assert_eq!(vendor_of_library("libvulkan_intel.so"), Some(0x8086));
+        assert_eq!(vendor_of_library("libGLX_nvidia.so.0"), Some(PCI_VENDOR_NVIDIA));
+        assert_eq!(vendor_of_library("libvulkan_intel.so"), Some(PCI_VENDOR_INTEL));
         assert_eq!(vendor_of_library("libvulkan_intel_hasvk.so"), None);
-        assert_eq!(vendor_of_library("libvulkan_radeon.so"), Some(0x1002));
+        assert_eq!(vendor_of_library("libvulkan_radeon.so"), Some(PCI_VENDOR_AMD));
     }
 
     // Hybrid: Vulkan sees Intel and NVIDIA, only NVIDIA has a panel, so the Intel ICD has to go.
     #[test]
     fn a_gpu_with_no_display_needs_the_display_icd() {
-        let intel = (0x8086, 0xa788);
-        let nvidia = (0x10de, 0x27e0);
+        let intel = (PCI_VENDOR_INTEL, 0xa788);
+        let nvidia = (PCI_VENDOR_NVIDIA, 0x27e0);
         assert!(needs_icd_pin(&[intel, nvidia], &[nvidia]));
         assert!(needs_icd_pin(&[intel, nvidia], &[intel]));
         assert!(!needs_icd_pin(&[intel, nvidia], &[intel, nvidia]));
@@ -429,32 +433,90 @@ mod tests {
 
     #[test]
     fn icd_for_displays_picks_the_nvidia_json_and_not_hasvk() {
-        let root = std::env::temp_dir().join(format!("flea-icd-{}-{}", std::process::id(), "hybrid"));
-        let _ = std::fs::remove_dir_all(&root);
-        std::fs::create_dir_all(&root).unwrap();
+        let root = fixture_root("icd-pick");
         std::fs::write(root.join("nvidia_icd.json"), "{\"ICD\":{\"library_path\":\"libGLX_nvidia.so.0\"}}\n").unwrap();
         std::fs::write(root.join("intel_icd.json"), "{\"ICD\":{\"library_path\":\"libvulkan_intel.so\"}}\n").unwrap();
         std::fs::write(root.join("intel_hasvk_icd.json"), "{\"ICD\":{\"library_path\":\"libvulkan_intel_hasvk.so\"}}\n").unwrap();
-        let intel = (0x8086, 0xa788);
-        let nvidia = (0x10de, 0x27e0);
-        let picked = icd_for_displays(&[intel, nvidia], &[nvidia], &[root.clone()]).unwrap();
+        let intel = (PCI_VENDOR_INTEL, 0xa788);
+        let nvidia = (PCI_VENDOR_NVIDIA, 0x27e0);
+        let picked = icd_for_displays(&[intel, nvidia], &[nvidia], &[root.clone()]);
         let _ = std::fs::remove_dir_all(&root);
-        assert!(picked.ends_with("nvidia_icd.json"), "{picked}");
-        assert!(!picked.contains("intel"), "{picked}");
+        match picked {
+            DisplayPin::Pin { icd, .. } => {
+                assert!(icd.ends_with("nvidia_icd.json"), "{icd}");
+                assert!(!icd.contains("intel"), "{icd}");
+            }
+            _ => panic!("a hybrid tree must pin the display GPU"),
+        }
     }
 
     #[test]
     fn display_pci_ids_reads_connected_cards_from_a_fake_drm_tree() {
-        let root = std::env::temp_dir().join(format!("flea-drm-{}-{}", std::process::id(), "hybrid"));
-        let _ = std::fs::remove_dir_all(&root);
-        write_card(&root, "card0", 0x8086, 0xa788);
+        let root = fixture_root("drm-read");
+        write_card(&root, "card0", PCI_VENDOR_INTEL, 0xa788);
         write_connector(&root, "card0-eDP-1", "disconnected");
-        write_card(&root, "card1", 0x10de, 0x27e0);
+        write_card(&root, "card1", PCI_VENDOR_NVIDIA, 0x27e0);
         write_connector(&root, "card1-DP-1", "connected");
         write_connector(&root, "card1-eDP-1", "connected");
         let ids = display_pci_ids(&root);
         let _ = std::fs::remove_dir_all(&root);
-        assert_eq!(ids, vec![(0x10de, 0x27e0)]);
+        assert_eq!(ids, vec![(PCI_VENDOR_NVIDIA, 0x27e0)]);
+    }
+
+    #[test]
+    fn a_fake_hybrid_tree_pins_the_display_gpu_icd() {
+        let drm = fixture_root("drm-hybrid");
+        write_card(&drm, "card0", PCI_VENDOR_INTEL, 0xa788);
+        write_connector(&drm, "card0-eDP-1", "disconnected");
+        write_card(&drm, "card1", PCI_VENDOR_NVIDIA, 0x27e0);
+        write_connector(&drm, "card1-DP-1", "connected");
+        let icd = fixture_root("icd-hybrid");
+        std::fs::write(icd.join("nvidia_icd.json"), "{\"ICD\":{\"library_path\":\"libGLX_nvidia.so.0\"}}\n").unwrap();
+        std::fs::write(icd.join("intel_icd.json"), "{\"ICD\":{\"library_path\":\"libvulkan_intel.so\"}}\n").unwrap();
+        let pinned = display_pin_in(&[(PCI_VENDOR_INTEL, 0xa788), (PCI_VENDOR_NVIDIA, 0x27e0)], &drm, &[icd.clone()]);
+        let alone = display_pin_in(&[(PCI_VENDOR_NVIDIA, 0x27e0)], &drm, &[icd.clone()]);
+        let _ = std::fs::remove_dir_all(&drm);
+        let _ = std::fs::remove_dir_all(&icd);
+        match pinned {
+            DisplayPin::Pin { icd, gpu } => {
+                assert!(icd.ends_with("nvidia_icd.json"), "{icd}");
+                assert!(!icd.contains("intel"), "{icd}");
+                assert_eq!(gpu, (PCI_VENDOR_NVIDIA, 0x27e0));
+            }
+            _ => panic!("a hybrid tree must pin the display GPU"),
+        }
+        assert!(matches!(alone, DisplayPin::NotNeeded));
+    }
+
+    #[test]
+    fn a_same_vendor_rival_cannot_be_excluded_by_an_icd_list() {
+        let igpu = (PCI_VENDOR_AMD, 0x164e);
+        let dgpu = (PCI_VENDOR_AMD, 0x744c);
+        assert!(!needs_icd_pin(&[igpu, dgpu], &[igpu]));
+    }
+
+    #[test]
+    fn a_display_gpu_with_no_known_icd_is_reported_rather_than_pinned() {
+        let icd = fixture_root("icd-unknown");
+        std::fs::write(icd.join("nouveau_icd.json"), "{\"ICD\":{\"library_path\":\"libvulkan_nouveau.so\"}}\n").unwrap();
+        let answer = icd_for_displays(
+            &[(PCI_VENDOR_INTEL, 0xa788), (PCI_VENDOR_NVIDIA, 0x27e0)],
+            &[(PCI_VENDOR_NVIDIA, 0x27e0)],
+            &[icd.clone()],
+        );
+        let _ = std::fs::remove_dir_all(&icd);
+        assert!(matches!(answer, DisplayPin::Unmatched { vendor: PCI_VENDOR_NVIDIA }));
+    }
+
+    // A fixture root this test created itself, so a pre-planted symlink cannot divert its writes.
+    fn fixture_root(name: &str) -> PathBuf {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("flea-{name}-{}-{unique}", std::process::id()));
+        std::fs::create_dir(&root).unwrap();
+        root
     }
 
     fn write_card(root: &Path, card: &str, vendor: u32, device: u32) {

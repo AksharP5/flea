@@ -29,6 +29,9 @@ pub fn open(path: &str) -> i32 {
     thp::enable();
     // corner: waited for, not detached, and on an archive that wait is a cold handler start; see AGENTS.md "Opening a file".
     let finished = Command::new("gio")
+        // The display-GPU pin is Qt's, so a program Flea starts gets the loader's own ICD list back.
+        .env_remove("VK_DRIVER_FILES")
+        .env_remove("VK_ICD_FILENAMES")
         .arg("open")
         .arg(&target)
         // The handler outlives us, so an inherited pipe would kill it on its first write; see AGENTS.md "Opening a file".
