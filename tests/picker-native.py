@@ -40,6 +40,14 @@ def check(label, condition, observed=None):
     print(f"PICKER_CHECK {checks} {label} {json.dumps(observed)}", flush=True)
 
 
+def signal_if_alive(pid, number):
+    # The chooser kills and replaces its own listing worker, so a PID read a moment ago may be gone.
+    try:
+        os.kill(pid, number)
+    except ProcessLookupError:
+        pass
+
+
 def wait(label, predicate):
     deadline = time.monotonic() + DEADLINE
     while time.monotonic() < deadline:
@@ -442,19 +450,19 @@ def test_failure():
         before = lost.state()
         children = Path(f"/proc/{lost.pid}/task/{lost.pid}/children").read_text().split()
         backends = [int(pid) for pid in children if Path(f"/proc/{pid}/exe").resolve() == BIN]
-        # Owned candidate children only, and the chooser runs two: identity checks and the listing worker.
-        check("backend failure targets only owned candidate children", bool(backends), backends)
-        # Stop them to make the UI's outstanding check observable before killing them.
-        for backend in backends:
-            os.kill(backend, signal.SIGSTOP)
+        # The chooser owns exactly two candidate children: the identity checks and the listing worker.
+        check("backend failure targets both owned candidate children", len(backends) == 2, backends)
         try:
+            # A child the chooser replaced between the read and here is gone, and the wait below is what pins the identity backend.
+            for backend in backends:
+                signal_if_alive(backend, signal.SIGSTOP)
             lost.click("Save" if mode == "save" else "Open")
             lost.until("acceptance waits on the real stopped backend", lambda state: state["submitting"])
             lost.until("submission keeps enabled Cancel focused", lambda state: any(
                 control["name"] == "Cancel" and control["focused"] and control["enabled"] for control in state["controls"]))
         finally:
             for backend in backends:
-                os.kill(backend, signal.SIGKILL)
+                signal_if_alive(backend, signal.SIGKILL)
         after = lost.until("lost backend clears checks and disables acceptance", lambda state: state["backendUnavailable"] and not state["submitting"] and not state["marksBusy"] and not state["saveBusy"] and not state["canAccept"] and state["messageError"])
         check("backend loss retains selected identities and draft", after["marks"] == before["marks"] and after["saveName"] == before["saveName"])
         check("backend loss advertises only cancellation", after["hints"] == "Esc cancel", after["hints"])
