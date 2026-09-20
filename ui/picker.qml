@@ -52,6 +52,7 @@ ShellRoot {
         readonly property int shownTotal: win.total
         onFilterChanged: if (win.path.length) win.openWithoutHistory(win.path)
 
+        // Where Back goes, and it only ever goes back: Parent is its own button and pushes here too.
         property var history: []
         // The save mode's own name, which starts as the caller's suggestion only when that
         // suggestion is a filename: tools/flea-portal passes current_name through verbatim, so a
@@ -277,7 +278,7 @@ ShellRoot {
             // The reply file does not exist until this window writes it, and a preload read of a
             // path that is not there is not an error worth a line; onSaveFailed below is.
             printErrors: false
-            // Only the persisted reply releases the caller; both read-only children are reaped first.
+            // Sequenced on saved(), never on setText() returning: the reply is on disk before both children are reaped.
             onSaved: lifecycle.quit()
             onSaveFailed: {
                 console.warn("the portal reply could not be written, so the request fails rather than reporting a refusal")

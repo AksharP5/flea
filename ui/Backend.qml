@@ -104,9 +104,10 @@ Item {
     // Only the portal chooser opts in: it has no filesystem write operations to drain.
     property bool pickerOnly: false
 
-    // Everything the UI sends goes through here, so the protocol has exactly one author.
+    // One of two writers: the chooser's listing worker builds its own list, listpaths and window lines.
     function send(object) {
-        if (root.pickerOnly && object.c !== "picker" && object.c !== "formats") return
+        // The chooser opts out of writes, so a dropped command names the command it refused.
+        if (root.pickerOnly && object.c !== "picker" && object.c !== "formats") { console.warn("Backend refused command " + object.c); return }
         var line = JSON.stringify(object) + "\n"
         if (root.queueing) {
             root.pending.push(line)

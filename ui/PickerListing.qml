@@ -21,7 +21,9 @@ Item {
         }
     }
     function request(value) {
-        if (quitting || (value.c !== "list" && value.c !== "listpaths")) return
+        if (quitting) return
+        // Only list and listpaths have a worker to serve them, so any other request names itself here.
+        if (value.c !== "list" && value.c !== "listpaths") { console.warn("PickerListing refused request " + value.c); return }
         pending = value
         if (current) {
             current.obsolete = true

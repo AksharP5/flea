@@ -11,7 +11,7 @@ fixture="$FIXTURE_ROOT/picker-stall-$$"
 sandbox_make "$fixture"
 cleanup() {
     # On a failed assertion the owned helper may still be blocked; never signal a recycled PID.
-    python3 - "$fixture" <<'PYEND'
+    python3 - "$fixture" <<'PYEND' || true
 import os
 from pathlib import Path
 import signal
@@ -39,7 +39,9 @@ python3 - "$fixture/flea/Backend.qml" <<'PYEND'
 from pathlib import Path
 import sys
 path = Path(sys.argv[1])
-text = path.read_text().replace('    function send(object) {', '''
+anchor = '    function send(object) {'
+before = path.read_text()
+text = before.replace(anchor, '''
     function testFailedStartDuringQuit() {
         if (child.running) throw new Error("Failed-start fixture unexpectedly has a child")
         root.queueing = true
@@ -48,6 +50,9 @@ text = path.read_text().replace('    function send(object) {', '''
     }
     function send(object) {
 ''', 1)
+if text == before:
+    print(f"FAIL: {path} has no anchor {anchor!r}", file=sys.stderr)
+    sys.exit(1)
 path.write_text(text)
 PYEND
 printf 'module flea\nsingleton ViewState 1.0 ViewState.qml\n' > "$fixture/flea/qmldir"
@@ -70,7 +75,11 @@ for scenario in navigate cancel early missing early-missing missing-order; do
         echo "FAIL: superseded navigation launched an extra worker"; exit 1
     fi
     while read -r pid; do
-        if kill -0 "$pid" 2>/dev/null; then echo "FAIL: owned helper $pid survived"; exit 1; fi
+        # A recycled PID counts only with this uid and the fixture helper on its cmdline.
+        if [[ -e "/proc/$pid/cmdline" ]] && [[ "$(stat -c %u "/proc/$pid" 2>/dev/null)" == "$(id -u)" ]] \
+            && grep -q -F "$fixture/helper" "/proc/$pid/cmdline" 2>/dev/null; then
+            echo "FAIL: owned helper $pid survived"; exit 1
+        fi
     done < "$fixture/pids"
     if grep -q '"c":"transfer"' "$fixture/requests"; then echo 'FAIL: picker sent a write'; exit 1; fi
 done

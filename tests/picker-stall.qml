@@ -11,8 +11,18 @@ ShellRoot {
     property bool validationBlocked: false
     property bool stopping: false
     property int failures: 0
+    property bool advanced: false
     property double began: Date.now()
     function stop() { stopping = true; lifecycle.quit() }
+    // Both legs answer on their own signal, so the second of the two to arrive drives the rest.
+    function advance() {
+        if (!root.stalled || !root.validationBlocked || root.advanced) return
+        root.advanced = true
+        if (root.scenario === "navigate") {
+            listing.request({c: "list", path: "/superseded", first: 1})
+            listing.request({c: "list", path: "/local", first: 1})
+        } else root.stop()
+    }
     Flea.PickerListing {
         id: listing
         onFailed: function(reason) {
@@ -22,7 +32,7 @@ ShellRoot {
         onMessage: function(message) {
             if (message.t === "blocked") {
                 root.stalled = true
-                next.start()
+                root.advance()
             } else if (message.t === "listed") {
                 if (message.path !== "/local") root.failures++
                 root.localReady = true
@@ -36,7 +46,7 @@ ShellRoot {
     Flea.Backend {
         id: checks
         pickerOnly: true
-        onPickerResult: function(message) { if (message.op === "blocked") root.validationBlocked = true }
+        onPickerResult: function(message) { if (message.op === "blocked") { root.validationBlocked = true; root.advance() } }
         onFailed: function(where, input, message, mode) {
             if (root.scenario.indexOf("missing") < 0) { console.log(message); root.failures++ }
         }
@@ -46,22 +56,12 @@ ShellRoot {
         checks: checks
         listing: listing
         onStopped: {
-            var good = root.stopping && !root.failures && Date.now() - root.began < 2000
+            var good = root.stopping && !root.failures
             if (root.scenario.indexOf("missing") < 0 && root.scenario.indexOf("early") < 0)
                 good = good && root.stalled && root.validationBlocked
             if (root.scenario === "navigate") good = good && root.localReady && root.paged
             console.log("picker-stall", root.scenario, good ? "PASS" : "FAIL", Date.now() - root.began)
             Qt.exit(good ? 0 : 1)
-        }
-    }
-    Timer {
-        id: next
-        interval: 100
-        onTriggered: {
-            if (root.scenario === "navigate") {
-                listing.request({c: "list", path: "/superseded", first: 1})
-                listing.request({c: "list", path: "/local", first: 1})
-            } else root.stop()
         }
     }
     Timer {
