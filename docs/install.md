@@ -35,7 +35,7 @@ uncommitted edits are what gets packaged.
 | Path | What it is |
 |---|---|
 | `/usr/bin/flea` | the binary, backend and launcher both |
-| `/usr/share/flea/ui/` | the Quickshell UI, which `paths.rs` looks for by `shell.qml` |
+| `/usr/share/flea/ui/` | the Quickshell UI, which `paths.rs` looks for by `boot/shell.qml` |
 | `/usr/share/flea/ui/Commons`, `/usr/share/flea/ui/Ui` | symlinks into `/usr/share/omarchy/shell/`, reached from QML as `qs.Commons` |
 | `/usr/lib/flea/flea-portal` | the XDG portal backend, which answers `org.freedesktop.impl.portal.FileChooser` |
 | `/usr/lib/flea/flea-filemanager1` | the D-Bus service, which answers `org.freedesktop.FileManager1` for "Show in folder" |
@@ -286,7 +286,7 @@ meaning the window. Launcher stdio is beside the point either way, and every lau
 hands over none: glib routes the launch through the session bus, so the child's stdio is the user
 manager's.
 
-`StartupWMClass` because the window's app id comes from the `AppId` pragma at `ui/shell.qml:1` and
+`StartupWMClass` because the window's app id comes from the `AppId` pragma at `ui/boot/shell.qml:1` and
 is not the binary name. `packaging/flea-package-test` reads both and fails if they drift apart.
 
 ## Proving it

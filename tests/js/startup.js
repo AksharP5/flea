@@ -21,7 +21,7 @@ function run(check) {
     check("the chosen folder opens when nothing was named",
           Startup.startPath(chosen, HOME, ""), "/home/gm/Work")
 
-    // "Last folder" reads the path ui/shell.qml records as the pane moves.
+    // "Last folder" reads the path ui/WindowBody.qml records as the pane moves.
     var last = { startIn: "last", lastPath: "/home/gm/Pictures/2026" }
     check("last folder opens where the pane was left", Startup.startPath(last, HOME, ""), "/home/gm/Pictures/2026")
 

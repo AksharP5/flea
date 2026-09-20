@@ -75,7 +75,7 @@ printf 'background = "#1e1e2e"\nforeground = "#cdd6f4"\naccent = "#89b4fa"\nred 
 # literal: the two halves meeting on this value is what binds that mirror to the running window.
 no_muted_caption="#9299ae"
 
-ipc() { omarchy-drive ipc -p "$flea_ui" flea "$@"; }
+ipc() { omarchy-drive ipc -p "$flea_ui/boot" flea "$@"; }
 key() { omarchy-drive key "$@" >/dev/null; }
 window_xy() { hyprctl clients -j | jq -r --arg c "$class" '[.[]|select(.class==$c)][0] | "\(.at[0]) \(.at[1])"'; }
 fail() { printf 'FAIL %s\n' "$1"; failures=$((failures + 1)); }

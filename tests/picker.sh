@@ -28,7 +28,7 @@ fi
 # A portal client opens its own connection to the session bus, which an ssh session does not export.
 export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=$XDG_RUNTIME_DIR/bus}"
 
-picker_config="${FLEA_PICKER_CONFIG:-/usr/share/flea/ui/picker.qml}"
+picker_config="${FLEA_PICKER_CONFIG:-/usr/share/flea/ui/boot/picker.qml}"
 fixture="$FIXTURE_ROOT/flea-picker-$$"
 # The taildrop case takes the title the real caller gives its window, so this is not readonly.
 title="Flea picker test $$"

@@ -2,7 +2,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
-const source = fs.readFileSync(require('node:path').join(__dirname, '../ui/shell.qml'), 'utf8');
+const source = fs.readFileSync(require('node:path').join(__dirname, '../ui/boot/shell.qml'), 'utf8');
 const handler = source.match(/^        function rectOf\(item\) \{[^]*?^        \}/m);
 assert.ok(handler, 'production rectangle observer exists');
 const context = vm.createContext({fleaWindow: {itemRect: item => item}});

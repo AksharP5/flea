@@ -8,7 +8,7 @@ use std::process::Command;
 
 // exec rather than spawn, so the shell replaces this process and no pid is orphaned.
 pub fn exec_qs(ui: &Path, start: Option<&str>, select: Option<&str>) -> i32 {
-    let mut cmd = qs_command(ui.to_path_buf());
+    let mut cmd = qs_command(ui.join(paths::ENTRY));
     if let Some(path) = start {
         cmd.env("FLEA_PATH", path);
     }
@@ -38,7 +38,7 @@ pub fn pick(reply: &str) -> i32 {
         eprintln!("flea: the shell config is missing, set FLEA_UI or install /usr/share/flea/ui");
         return 2;
     };
-    let mut cmd = qs_command(ui.join("picker.qml"));
+    let mut cmd = qs_command(ui.join("boot").join("picker.qml"));
     cmd.env("FLEA_PICKER_REPLY", reply);
     exec(cmd)
 }
@@ -48,6 +48,8 @@ pub fn pick(reply: &str) -> i32 {
 fn qs_command(target: PathBuf) -> Command {
     let mut cmd = Command::new("qs");
     cmd.arg("-p").arg(target);
+    first_paint_colour(&mut cmd);
+    skip_gtk_platform_theme(&mut cmd);
     // An explicit choice is the operator's, the same rule FLEA_UI and QSG_RHI_BACKEND follow here.
     // map_or, not is_none_or: that method landed in 1.82 and Cargo.toml declares a 1.77 floor.
     if std::env::var_os("FLEA_BIN").map_or(true, |value| value.is_empty()) {
@@ -123,6 +125,33 @@ fn apply_display_pin(cmd: &mut Command, pin: vulkan::DisplayPin) {
             cmd.env(vulkan::PIN_MARKER, "1");
         }
     }
+}
+
+// The entry maps its window before the body exists, so it needs the theme's background from out
+// here; ui/Theme.qml is one of the files that has not compiled yet. The TUI's parser is the one
+// source of the OEM key precedence, so this reads its answer rather than adding a second reader.
+fn first_paint_colour(cmd: &mut Command) {
+    cmd.env("FLEA_FIRST_PAINT", crate::tui::theme::Theme::load().background_hex);
+}
+
+// gtk3 as Qt's platform theme starts GTK inside the shell, which costs about 60 ms warm and 7 MB of
+// PSS, and the only thing Flea takes from it is the icon theme name. Omarchy writes that same name
+// here, and Quickshell reads QS_ICON_THEME and sets it itself. A missing or empty file changes
+// nothing, and an operator who set QS_ICON_THEME keeps whatever platform theme they chose.
+fn skip_gtk_platform_theme(cmd: &mut Command) {
+    // Empty is absent, the rule paths::has_display() applies: a wrapper's unset variable is not a choice.
+    if std::env::var_os("QS_ICON_THEME").is_some_and(|value| !value.is_empty()) {
+        return;
+    }
+    let Some(home) = std::env::var_os("HOME") else { return };
+    let path = PathBuf::from(home).join(".local/state/omarchy/current/theme/icons.theme");
+    let Ok(text) = std::fs::read_to_string(path) else { return };
+    let name = text.trim();
+    if name.is_empty() {
+        return;
+    }
+    cmd.env("QS_ICON_THEME", name);
+    cmd.env_remove("QT_QPA_PLATFORMTHEME");
 }
 
 fn exec(mut cmd: Command) -> i32 {

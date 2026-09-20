@@ -130,7 +130,7 @@ function run(check) {
     check("the table declares the neighbour columns' clicks", countWhere("neighbour"), 4)
     check("the table declares the rail's clicks", countWhere("rail"), 2)
     // Issue 20's back button belongs to no row, so it is declared against the window itself and
-    // ui/shell.qml is what carries it; nothing here can press it and tests/ui.sh does, with ydotool.
+    // ui/WindowBody.qml is what carries it; nothing here can press it and tests/ui.sh does, with ydotool.
     check("the table declares the window's own buttons", countWhere("window"), 1)
     // Issue 45's crumbs are ui/ChromeBar.qml's own targets, above the listing and not in it, so
     // driveListing has nothing to press for them either; the same tests/ui.sh case clicks one.

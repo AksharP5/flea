@@ -42,19 +42,19 @@ ui/Pane.qml 663
 ui/PaneMenuActions.qml 404
 ui/PaneWire.qml 485
 ui/PermissionsDialog.qml 426
+ui/PickerWindow.qml 632
 ui/PreviewColumn.qml 463
 ui/Row.qml 410
 ui/SettingsPanel.qml 542
 ui/SettingsRow.qml 409
 ui/Sidebar.qml 535
 ui/TrashView.qml 466
+ui/WindowBody.qml 480
 ui/js/Filter.js 301
 ui/js/Focus.js 341
 ui/js/Keymap.js 310
 ui/js/Ops.js 331
-ui/js/Settings.js 427
-ui/picker.qml 635
-ui/shell.qml 532"
+ui/js/Settings.js 427"
 
 status=0
 

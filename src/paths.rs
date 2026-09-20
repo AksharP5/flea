@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-// An empty FLEA_UI would resolve shell.qml against the working directory, so it is no candidate.
+// An empty FLEA_UI would resolve the entry against the working directory, so it is no candidate.
 fn env_ui_dir() -> Option<PathBuf> {
     let value = std::env::var("FLEA_UI").ok()?;
     if value.is_empty() {
@@ -9,21 +9,25 @@ fn env_ui_dir() -> Option<PathBuf> {
     Some(PathBuf::from(value))
 }
 
+// The Quickshell entry, in its own directory so that ui/qmldir's singletons stay off the
+// startup path; see AGENTS.md "The first window". A tree without it is not a UI tree.
+pub const ENTRY: &str = "boot/shell.qml";
+
 // The UI ships as data, so it is found the same way FLEA_BIN finds the binary.
 pub fn ui_dir() -> Option<PathBuf> {
     if let Some(p) = env_ui_dir() {
-        if p.join("shell.qml").is_file() {
+        if p.join(ENTRY).is_file() {
             return Some(p);
         }
     }
     let packaged = PathBuf::from("/usr/share/flea/ui");
-    if packaged.join("shell.qml").is_file() {
+    if packaged.join(ENTRY).is_file() {
         return Some(packaged);
     }
     // The dev tree keeps ui/ beside target/, so walk up from the binary.
     let exe = std::env::current_exe().ok()?;
     let dev = exe.parent()?.parent()?.parent()?.join("ui");
-    if dev.join("shell.qml").is_file() {
+    if dev.join(ENTRY).is_file() {
         return Some(dev);
     }
     None

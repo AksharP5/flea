@@ -28,7 +28,7 @@ this tree yet: `flea --tui` says so and exits 2.
 4. **Prewarm stays disabled until it is both safe and faster.** The `flea --prewarm`
    producer exists, but the proposed UI reader measured a 485 ms median against 439 ms
    for the live path. After its removal, ignored experimental generation measured
-   469 ms against 437 ms live. Production `ui/shell.qml` intentionally calls only
+   469 ms against 437 ms live. Production `ui/WindowBody.qml` intentionally calls only
    `pane.open(start)`, and `tools/flea-first-paint` preserves the comparison. The reader
    was rejected as slower and stale-capable; it remains disabled until the wire carries
    the requested path and a new measurement proves a real win.
@@ -102,14 +102,14 @@ this tree yet: `flea --tui` says so and exits 2.
    box: a broken Vulkan loader cannot stand in for it, because the shell dies first, which is the
    whole of issue #14. Measured here with every ICD hidden, `qs` warns `No QVulkanInstance set for
    QQuickWindow` and exits 255 without raising anything; the SIGSEGV is issue #14's own report on a
-   QEMU Virtio GPU. `view.Window.window` is null while `ui/shell.qml` loads and holds the
-   `QQuickWindow` once it exists, and that same `Connections` was measured receiving
+   QEMU Virtio GPU. `bodyLoader.Window.window` is null while `ui/boot/shell.qml` loads and holds
+   the `QQuickWindow` once it exists, and that same `Connections` was measured receiving
    `sceneGraphInitialized`, the signal Qt raises at the phase `sceneGraphError` replaces. What no
    test reaches is the positive arm, a Vulkan failure leaving `QVulkanInstance` valid and failing
    at `QRhi::create`, which no environment variable here was able to produce.
-   **`ui/shell.qml` no longer carries the `//@ pragma DefaultEnv QSG_RHI_BACKEND=vulkan`
+   **`ui/boot/shell.qml` no longer carries the `//@ pragma DefaultEnv QSG_RHI_BACKEND=vulkan`
    line**, so `src/gui.rs` is the only thing that chooses a renderer for a launch, the one OpenGL
-   relaunch in `ui/shell.qml` aside, and a direct `qs -p ui` launch bypasses it entirely:
+   relaunch in `ui/boot/shell.qml` aside, and a direct `qs -p ui/boot` launch bypasses it entirely:
    `tools/flea-first-paint`, `tools/flea-metrics-gate`, `tests/ui.sh`, `tests/drag.sh` and the
    `README.md` dev loop each state `QSG_RHI_BACKEND` for themselves, so their numbers stay on the
    Vulkan baseline they were recorded against.
@@ -456,6 +456,70 @@ instead. This producer and its secure file contract remain available for measure
 but production ignores `FLEA_PREWARM`: the rejected reader was slower and the file
 carries no requested path with which to reject stale content (rule 4 above).
 
+## The first window
+
+`flea --gui` maps its window before any other GUI entrant in the field, and the whole of how is
+three mechanisms that are independent of each other.
+
+**Qt never caches a Quickshell config.** Quickshell serves its config through its own `qs:@/qs/`
+URL scheme (`src/core/rootwrapper.cpp`, intercepted in `src/core/qsintercept.cpp`) and Qt's QML
+disk cache accepts local files only. Run any launch with
+`QT_LOGGING_RULES="qt.qml.diskcache*=true"` and every Flea file prints
+`File has to be a local file.` Anything loaded by a `file:` URL is cached, which is why the OEM
+bar's plugins have `.qmlc` files and Flea had none. So the entry stays small and hands off:
+`ui/boot/shell.qml` imports `Quickshell` and `QtQuick` and nothing else, and `ui/WindowBody.qml`
+arrives by `file:` URL.
+
+**The entry lives in its own directory because of a Qt rule.** A document implicitly imports its
+own directory, and Qt loads every composite singleton that directory's `qmldir` names. An entry in
+`ui/` therefore compiles `Theme`, `ViewState`, `Favourites`, `MediaSound`, `Scripts` and
+`ShelfPins`, plus the JavaScript they import, through `qs:` before the window can map, and then
+never instantiates any of them, because the `file:` side loads its own cached copies. `ui/boot/`
+has no `qmldir`. It needs `Commons` and `Ui` symlinks of its own, the same targets as the two in
+`ui/`, because `import qs.Commons` resolves against the config root and `ui/boot` is the config
+root now. The package ships all four.
+
+**The window does not wait for its contents.** The entry is the window: it maps with a background
+and nothing in it, and a `Connections` on the window's `frameSwapped` sets the `Loader`'s source
+once. A one-shot `Timer` does the same after `bodyBackstopMs`, because a window that maps where it
+is never drawn swaps no frame and would otherwise wait forever. `Loader.Error` logs and quits: an
+empty window that stays empty is the failure that would otherwise say nothing at all.
+
+**What has to stay with the window.** `itemRect` is the window's, so `centreOf`, `rectOf` and
+`boxOf` stay in the entry and `ui/Ipc.qml` reads them through its own `fleaWindow`. `sceneGraphError`
+arrives on the first frame, which is before the body exists, so the handler and PR119's one OpenGL
+retry are in the entry too; the argv rule itself is `ui/RendererRetry.qml`, loaded by `file:` URL
+only once the error has arrived, because the boot directory cannot import `ui/js/Renderer.js`
+through `qs:` and the startup path must not compile it. The body takes the window as `host` rather
+than `fleaWindow`: a root property of that name binds to itself through `Ipc` and reads null, which
+is how an earlier experiment's `rowRect` came back empty.
+
+**`QT_QPA_PLATFORMTHEME=gtk3` starts GTK inside the shell**, about 60 ms warm and 7 MB of PSS, and
+the one thing Flea takes from that theme is the icon theme name. Omarchy writes the same name to
+`~/.local/state/omarchy/current/theme/icons.theme`, and Quickshell reads `QS_ICON_THEME` and calls
+`QIcon::setThemeName` itself, so `src/gui.rs` sets `QS_ICON_THEME` from that file and removes
+`QT_QPA_PLATFORMTHEME` from the child. A missing or empty file changes nothing, and an operator who
+set `QS_ICON_THEME` keeps whatever platform theme they chose. Without gtk3 the Qt defaults differ:
+application font `Sans Serif 9` rather than `Adwaita Sans 11`, `colorScheme` Unknown rather than
+Dark, cursor flash 1000 rather than 1200 ms. Every shipped surface is compared with and without it,
+and a surface that differs is fixed with an explicit font or hint rather than by keeping gtk3.
+
+**The first paint colour comes from out here.** `ui/Theme.qml` has not compiled when the window
+maps, so `src/gui.rs` passes the theme's background as `FLEA_FIRST_PAINT` and the entry uses it,
+falling back to the same `#101315` `ui/Theme.qml` carries. The hex comes from
+`src/tui/theme.rs`, which already parses `colors.toml` with the OEM key precedence: one parser,
+not two.
+
+**Two costs are accepted, both GM's ruling.** The window is empty and theme-coloured while the body
+loads, and the first launch after each update is slow once, 1.7 to 3.0 s on this box, while Qt
+writes its 121 cache files with an `fdatasync` each. Every later launch is fast, across reboots.
+
+**The chooser keeps its window whole.** `ui/boot/picker.qml` is a thin entry whose `LazyLoader`
+takes `ui/PickerWindow.qml` by `file:` URL, so the chooser gets the cache and the boot directory,
+but not the body-after-the-first-frame split. Its title and size are read from `ui/js/Picker.js`
+and the Theme, so splitting them off the first map would resize a portal dialog in front of the
+operator, and the chooser is not on the measured path.
+
 ## Predictable path writes
 
 `dest` sits in a shared runtime directory, so its path is guessable and could be
@@ -638,7 +702,7 @@ said, and the panel carried no switch to say otherwise; both sides now read `ope
 
 **`keyHints` is the Menus section's one row that is not an action.** It governs presentation across
 two surfaces: `ui/MenuRow.qml`'s key column, whose width goes with its text so a menu with hints off
-reads exactly as it did before that slot existed, and the tip `ui/shell.qml` draws under an empty
+reads exactly as it did before that slot existed, and the tip `ui/WindowBody.qml` draws under an empty
 directory. It ships off. A hint is only ever `ui/js/Keymap.js` `hintFor`, which is generated from
 `keys.toml`, so no surface can advertise a key nothing is bound to, and no chord depends on the
 setting: the keymap is read by `Focus.handleKey` and this value is read by nobody in that path.
@@ -794,7 +858,7 @@ the terminal invocation that used to fall into the unbuilt interface.
 the backend binary comes from" below): `FLEA_UI` first, then the packaged
 `/usr/share/flea/ui`, then the dev tree's `ui/` found by walking up three parents from the
 running binary (`target/debug/flea` to the repository root). Each candidate is confirmed by
-checking for its `shell.qml` before being accepted, and an empty `FLEA_UI` is rejected before
+checking for its `boot/shell.qml` before being accepted, and an empty `FLEA_UI` is rejected before
 that check because `PathBuf::from("")` would test the working directory, so a stale or empty
 `FLEA_UI` falls through instead of handing `qs` a broken path.
 
@@ -823,9 +887,10 @@ gets the same chooser.
   again on the next call.
 - `flea --pick <reply>` is `gui::pick`: it refuses without `FLEA_PICKER` or a reply path, refuses
   without a display, resolves the UI with the same `paths::ui_dir()` the window uses, and `exec`s
-  `qs -p <ui>/picker.qml` with the same renderer choice `--gui` makes. One code path chooses Vulkan
+  `qs -p <ui>/boot/picker.qml` with the same renderer choice `--gui` makes. One code path chooses Vulkan
   for both front doors.
-- `ui/picker.qml` is the window. It instantiates the same `Backend`, draws the same `Row` behind a
+- `ui/PickerWindow.qml` is the window, loaded by file: URL from `ui/boot/picker.qml`; see "The
+  first window". It instantiates the same `Backend`, draws the same `Row` behind a
   check box, reads the same `Theme` and the same `Places.favorites`, and carries none of the
   window's operations: a chooser that can rename or delete is a file manager wearing a dialog's
   clothes. `SendPicker.html` draws that row as the name, a 70 px size and an 80 px date, so
@@ -895,7 +960,7 @@ defect, because the client waits 600 s for it, so `flea --pick` refuses loudly b
 anything and every path out of `Pick.answer` answers exactly once.
 
 **The reply is a file, not the child's stdout.** `qs` writes its own logs to stdout, so the answer
-travels in a JSON file inside a `mkdtemp` the backend owns and removes. `ui/picker.qml` writes it
+travels in a JSON file inside a `mkdtemp` the backend owns and removes. `ui/PickerWindow.qml` writes it
 with `FileView` and only kills its own process on `saved()`: the backend reads the file after the
 child exits, and a write still in flight would be a lost answer read as a fault.
 
@@ -1065,7 +1130,12 @@ this coverage needed no new entry there.
 - `heap.rs` pins glibc's mmap threshold for the backend, see "The listing arena returns to the OS".
 - `launcher/mod.rs` re-exports `prewarm`, nothing else.
 - `launcher/prewarm.rs` writes the listing and first screenful before the UI starts.
-- `ui/shell.qml` owns the pragmas, window, startup path and read-only IPC seam.
+- `ui/boot/shell.qml` owns the pragmas, the window, its geometry readers and the scene-graph
+  error path; it holds nothing else, see "The first window".
+- `ui/WindowBody.qml` owns everything inside that window: the view, the startup path, the quit
+  handshake and the read-only IPC seam. It is loaded by file: URL, so it has no qmldir line.
+- `ui/RendererRetry.qml` owns the OpenGL retry argv, loaded by file: URL only once the scene
+  graph has failed.
 - `ui/Backend.qml` is the only QML component that talks to the Rust child, and carries
   `thumb` and `thumbcancel` out and `thumbed` in alongside `list`, `window` and `sort`.
 - `ui/ViewState.qml` reads `ui.json` once at startup with a blocking `FileView` and writes nothing
@@ -1171,11 +1241,11 @@ reference goes through it**. An unqualified name resolves only through the qmldi
 `Backend` is a type only because a line declares one, however correct `Backend.qml` itself is.
 A namespace-qualified name does not: under `import "." as Flea` an undeclared sibling still
 resolves by file name, so `Flea.StatusBar` loads `StatusBar.qml` with no qmldir line at all.
-`shell.qml` carries both `import "."` and `import "." as Flea`, so both spellings are in scope
+`WindowBody.qml` carries both `import "."` and `import "." as Flea`, so both spellings are in scope
 and only the qualified one falls back to the file on disk. Deleting the `Header`, `Row` or
 `StatusBar` line therefore does nothing whatever with the caches cleared, not an error and not
 a warning, while deleting the `Backend` line breaks the load outright: `StatusBar` and
-`Backend` are both used from `shell.qml`, and the qualifier is the only thing separating them.
+`Backend` are both used from `WindowBody.qml`, and the qualifier is the only thing separating them.
 Adding `ui/Backend.qml` alone left the config refusing to load, and the entire message
 was `ERROR: Failed to load configuration` followed by `caused by @shell.qml[25:13]: Backend
 is not a type`, which names the line that uses the type and says nothing about the qmldir.
@@ -1602,7 +1672,7 @@ reach: it is what says a delegate hands `Tap.tapped` the tap count and the modif
 actually carried.
 
 The last two rows landed with issues 20 and 45 and are not `Tap.js`'s. `window` is the mouse's
-back button, which belongs to no row: `ui/shell.qml` carries the handler and `ui/js/Nav.js`
+back button, which belongs to no row: `ui/WindowBody.qml` carries the handler and `ui/js/Nav.js`
 `mouseBack` decides between the history and the climb. `chrome` is the path above the listing,
 whose segments `ui/ChromeBar.qml` draws as their own click targets through `Nav.crumbs`; the `row`
 column reads `parent` there because the leaf is the directory already listed and answers no single
@@ -2185,7 +2255,7 @@ waits for its consumer.
   always describes the last one. Idle it reads 33 to 48 ms with a median of 38 over the 192 baseline
   samples of the eight-round battery.
 
-- The UI has no accessibility tree, so the one `IpcHandler` in `ui/shell.qml` is the seam
+- The UI has no accessibility tree, so the one `IpcHandler` in `ui/WindowBody.qml` is the seam
   every UI test reads state through. It reports and never acts: a test that could mutate
   state through the seam it asserts on would not be testing the keyboard path. Assert
   through `omarchy-drive wait ipc -p ui <target> <fn> <value> --timeout 0`, never a bare
@@ -3220,7 +3290,7 @@ not, is corroboration and not the gate. `tests/ui.sh nosweep` asserts a full tra
 120 ms is a feel decision, confirmed on the box against 60 ms and 250 ms rather than measured.
 
 **The first screen races the compositor's resize, and `firstSettleMs` exists to lose that race on
-purpose.** Flea's `FloatingWindow` declares `implicitHeight: 600` at `ui/shell.qml:18`, Hyprland
+purpose.** Flea's `FloatingWindow` declares `implicitHeight: 600` at `ui/boot/shell.qml:20`, Hyprland
 then tiles it to the full screen, and the viewport a request would name depends on which of the two
 arrives first. Before the resize the list is **526 px** tall and `visibleRows` is **15**; both
 `ui/Header.qml` and `ui/StatusBar.qml` declare `implicitHeight: Theme.rowHeight`, which the IPC
@@ -4588,7 +4658,7 @@ the names: `ui/NetworkMounts.qml`'s `listShares()` fires a `sharesListed(baseUri
 names)` signal instead of writing bookmark lines, and nothing in this file touches
 `~/.config/gtk-3.0/bookmarks` for this path any more (`addShareBookmarks` and `expandBareRoot` are
 gone). `ui/ShareBrowser.qml` is a new overlay, the same instantiated-from-shell pattern as
-`ui/EmptyState.qml` and `ui/Preview.qml`: `ui/shell.qml` sizes it over `pane.listArea`, exactly
+`ui/EmptyState.qml` and `ui/Preview.qml`: `ui/WindowBody.qml` sizes it over `pane.listArea`, exactly
 like the empty state, and `ui/Pane.qml` gained a `shareBrowser` property wired the same way
 `preview` already was, so its own `Keys.onPressed` can route j/k/Enter/Escape to
 `Focus.shareBrowserAct` while it is active, ahead of the normal list/rail routing.
@@ -4605,7 +4675,7 @@ listed a stat for.
 
 Enter on a row calls the exact same `openShare(uri, false, label)` a bookmarked share's own
 `activate()` already calls, so a share picked from the overlay is never a second code path: mount,
-`gio info` for the local path, `pane.open()`. `ui/shell.qml` closes the overlay on `pane`'s own
+`gio info` for the local path, `pane.open()`. `ui/WindowBody.qml` closes the overlay on `pane`'s own
 `opened` signal (fired once a listing actually lands), not on the mount succeeding, so a share that
 mounts but is slow to enumerate over the network still shows the overlay until there is something
 real to show instead of it.
@@ -4808,7 +4878,7 @@ The old check could not have caught any of it. `networkMarkGeometry()` measured 
 compared it against an arithmetic slot, `heading.x + heading.width - rowPaddingX - caption / 2`,
 which is term for term what a right-anchored glyph's centre already is: an identity, and it passed
 at all thirteen interface scales it was walked over. `tests/ui.sh` then pinned the same anchoring a
-second time by grepping the source. Both are gone. `networkMarkGeometry()` returns three measured boxes through `ui/shell.qml`'s `boxOf`, the
+second time by grepping the source. Both are gone. `networkMarkGeometry()` returns three measured boxes through `ui/boot/shell.qml`'s `boxOf`, the
 ink, the target and the real `dot`, in one coordinate system, and `tests/ui.sh case_netmark` asserts
 their centres agree at Omarchy's seven text sizes, 9, 10, 11, 12, 14, 16 and 20 px, driven through a
 fixture `[font] base-size`, plus both ends of the interface zoom.
@@ -4865,7 +4935,7 @@ that a bare root normalizes to its one-trailing-slash form regardless of how it 
 ### The rail menu, tested with a stubbed gio and a stubbed lsblk
 
 `tests/ui.sh case_unmount` and `case_eject` drive the rail menu through the real window.
-`ui/shell.qml`'s `railRowCentre(i)` is the same `itemRect`-based reader `rowCentre` uses for list
+`ui/Ipc.qml`'s `railRowCentre(i)` is the same `itemRect`-based reader `rowCentre` uses for list
 rows, through `ui/Sidebar.qml`'s `railItemFor(index)` (the rail has no `ListView` and every
 Repeater keeps every row instantiated, so this just indexes into whichever group carries it).
 
@@ -4946,7 +5016,7 @@ used to be refused forever: Add through the dialog, then Remove in the same sess
 `ui/NetworkDialog.qml` appends through a `FileView` of its own and nothing reloads the one this
 Service writes with, so a body read back from it was the pre-Add snapshot, `next === body` was true
 and the removal was refused on every retry until a restart. Deriving the body from `bookmarksText`,
-which `ui/shell.qml:158` reloads on that dialog's own `saved()`, is what closed it for `forget()`;
+which `ui/Sidebar.qml`'s own `FileView` reloads on that dialog's own `saved()`, is what closed it for `forget()`;
 `rename()` took its body from the same place for the same reason until it had to answer a failed
 read as well, and reads the file itself now (see "A failed FileView read" above).
 
@@ -4970,7 +5040,7 @@ and both are why `case_network` now runs an Add after its Remove and a rename af
 
 Not reimplemented, and both are omissions of PR #21 rather than of this rail: the branch's
 Add-dialog reuse, which reopens the form prefilled to edit a place's URI (that needs a
-`ui/shell.qml` connection and an `ui/Ipc.qml` reader, and the pinned-places store itself is being
+`ui/WindowBody.qml` connection and an `ui/Ipc.qml` reader, and the pinned-places store itself is being
 replaced, so `Rename` is the edit this rail offers today), and its per-host SFTP collapse.
 `gvfsd-sftp` mounts one connection per host, so `gio` lists `sftp://user@host/` while the bookmark
 is `sftp://user@host/home/tom`; those normalize to different keys and `rebuild()` keeps both rows.
@@ -5017,7 +5087,7 @@ indentation along with its old label.
 
 Three fixes on 2026-09-02, one on the way out and two on the rail. None of them had a line here.
 
-**The exit, `5fc2668`, `ui/shell.qml`.** A Quickshell shell outlives its windows by design, and
+**The exit, `5fc2668`, `ui/WindowBody.qml`.** A Quickshell shell outlives its windows by design, and
 0.3.1 exposes no exit API: `Qt.quit()` and `Qt.exit()` are no-ops, which the engine says out loud
 as "no receivers connected", so signalling its own pid is the only lever left. The window carries
 `Connections { target: Quickshell; function onLastWindowClosed() { ... } }` and the body is
@@ -5081,7 +5151,7 @@ rather than in the timer, because a collector whose stream was cut off may never
 
 ### Closing the window quits the backend, and a copy in flight is cancelled
 
-`ui/shell.qml` answers `Quickshell.onLastWindowClosed` with `backend.quit()` and signals its own pid
+`ui/WindowBody.qml` answers `Quickshell.onLastWindowClosed` with `backend.quit()` and signals its own pid
 only once `Backend.onQuitReady` reports the child gone. Before this it killed the pid immediately and
 left the backend to notice EOF by itself.
 

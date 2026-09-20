@@ -10,7 +10,7 @@ const BEGIN: &str = "-- flea --default: begin. Written by `flea --default`; `fle
 const END: &str = "-- flea --default: end.";
 const FLOAT_BEGIN: &str = "-- flea --picker: begin. Written by `flea --picker`; `flea --picker off` removes the block whole.";
 const FLOAT_END: &str = "-- flea --picker: end.";
-// The picker's own app id, ui/picker.qml's AppId pragma, which is not the window's.
+// The picker's own app id, ui/boot/picker.qml's AppId pragma, which is not the window's.
 const PICKER_APP_ID: &str = "com.thisisgm.flea.picker";
 // Omarchy binds both to Nautilus in default/hypr/bindings/applications.lua; the cwd one opens on the active terminal's directory.
 const BINDS: [(&str, &str, &str); 2] = [

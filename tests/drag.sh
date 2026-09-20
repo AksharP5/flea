@@ -182,7 +182,7 @@ hits = [i for i in json.load(sys.stdin) if i["config_path"] == sys.argv[1] and i
 if len(hits) != 1:
     sys.exit(1)
 print("%s %s" % (hits[0]["id"], hits[0]["pid"]))
-' "$repo/ui/shell.qml" "$FLEA_PID"
+' "$repo/ui/boot/shell.qml" "$FLEA_PID"
 }
 ipc() { qs ipc -i "$MYID" call flea "$@" 2>&1; }
 native_key() {
@@ -220,7 +220,7 @@ for i in $(seq 1 60); do
   [ -n "$MYID" ] && [ "$(ipc ready)" = "true" ] && break
   sleep 0.5
 done
-[ -n "$MYID" ] || { echo "no instance of $repo/ui/shell.qml came up"; exit 1; }
+[ -n "$MYID" ] || { echo "no instance of $repo/ui/boot/shell.qml came up"; exit 1; }
 [ "$(ipc path)" = "$HOMEDIR" ] || { echo "ipc answered '$(ipc path)', not the fixture $HOMEDIR"; exit 1; }
 [ "$(ipc themeLoaded)" = "true" ] || { echo "theme did not load in the fixture home"; exit 1; }
 
@@ -966,7 +966,7 @@ done
 # ---------------------------------------------------------------- R11
 echo
 echo "== R11: a press that travels on the chrome strip moves the window =="
-# ui/shell.qml asks for no decorations, so the compositor never gave this window a title bar and the
+# ui/boot/shell.qml asks for no decorations, so the compositor never gave this window a title bar and the
 # strip is it. The window is floated and placed first: a tiled window has nowhere of its own to move
 # to, and a full-screen float puts the strip under the Omarchy bar, which owns those pixels.
 r11_geometry() {

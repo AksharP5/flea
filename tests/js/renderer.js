@@ -1,6 +1,6 @@
 .import "../../ui/js/Renderer.js" as Renderer
 
-// ui/shell.qml's OpenGL retry: its guard and its argv, driven without the scene-graph failure that raises it.
+// ui/boot/shell.qml's OpenGL retry: its guard and its argv, driven without the scene-graph failure that raises it.
 
 // The argv as one string, so a wrong element and a wrong length both read as one difference.
 function command(backend, automatic, bin) {

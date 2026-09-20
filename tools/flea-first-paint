@@ -85,7 +85,7 @@ wait_for_row() {
     local deadline=$((SECONDS + timeout_seconds))
     local actual
     while ((SECONDS <= deadline)); do
-        actual=$(omarchy-drive ipc -p "$ui" flea rowAt 0 2>/dev/null) || true
+        actual=$(omarchy-drive ipc -p "$ui/boot" flea rowAt 0 2>/dev/null) || true
         if [ "$actual" = "$expected_row" ]; then
             return 0
         fi
@@ -111,10 +111,10 @@ run_once() {
     # The renderer is stated because src/gui.rs owns it and a direct qs launch would take Qt's default.
     if [ "$generate_prewarm" = yes ]; then
         QSG_RHI_BACKEND="${QSG_RHI_BACKEND:-vulkan}" FLEA_PREWARM="$prewarm_path" FLEA_PATH="$dir" FLEA_BIN="$bin" \
-            qs -p "$ui" >"$log" 2>&1 &
+            qs -p "$ui/boot" >"$log" 2>&1 &
     else
         env -u FLEA_PREWARM QSG_RHI_BACKEND="${QSG_RHI_BACKEND:-vulkan}" FLEA_PATH="$dir" FLEA_BIN="$bin" \
-            qs -p "$ui" >"$log" 2>&1 &
+            qs -p "$ui/boot" >"$log" 2>&1 &
     fi
     shell_pid=$!
     pid=$shell_pid
@@ -127,7 +127,7 @@ run_once() {
         stop_shell "$pid"
         fail "the mapped window is not Flea"
     fi
-    if ! omarchy-drive wait ipc -p "$ui" flea total "$expected_total" --timeout "$timeout_seconds" >/dev/null; then
+    if ! omarchy-drive wait ipc -p "$ui/boot" flea total "$expected_total" --timeout "$timeout_seconds" >/dev/null; then
         stop_shell "$pid"
         fail "the expected total never reached the window"
     fi

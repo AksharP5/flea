@@ -10,8 +10,10 @@ BIN=./target/debug/flea
 [ -x "$BIN" ] || { echo "modes.sh: $BIN is missing, run cargo build" >&2; exit 1; }
 # current_exe() answers with the kernel's own resolved path, so the expectation is resolved the same way.
 BIN_REAL=$(readlink -f "$BIN")
+# paths::ui_dir walks up from the binary, so the entry it will name is derived the same way.
+UI_REAL=$(readlink -f "$(dirname "$BIN_REAL")/../..")/ui
 # An operator exporting any of these would answer for src/gui.rs, which is the thing under test here.
-unset QSG_RHI_BACKEND FLEA_RENDERER_AUTOMATIC QT_VK_PHYSICAL_DEVICE_INDEX VK_DRIVER_FILES VK_ICD_FILENAMES
+unset QSG_RHI_BACKEND FLEA_RENDERER_AUTOMATIC QT_VK_PHYSICAL_DEVICE_INDEX VK_DRIVER_FILES VK_ICD_FILENAMES QS_ICON_THEME
 fail=0
 
 check() {
@@ -135,6 +137,9 @@ printf 'DRIVER_FILES %s\n' "${VK_DRIVER_FILES-unset}"
 printf 'ARGV %s\n' "$*"
 printf 'FLEA_PATH %s\n' "${FLEA_PATH-unset}"
 printf 'FLEA_SELECT %s\n' "${FLEA_SELECT-unset}"
+printf 'FIRST_PAINT %s\n' "${FLEA_FIRST_PAINT-unset}"
+printf 'PLATFORM_THEME %s\n' "${QT_QPA_PLATFORMTHEME-unset}"
+printf 'ICON_THEME %s\n' "${QS_ICON_THEME-unset}"
 STUB
 chmod +x "$D/qs"
 out=$(env FLEA_BIN=stale WAYLAND_DISPLAY=flea-modes-test-display PATH="$D:/usr/bin:/bin" $BIN --gui 2>&1 </dev/null)
@@ -220,10 +225,50 @@ check "the fallback arm passes the same UI root" "$(echo "$good" | grep '^ARGV '
 check "and the fallback arm is the one that changed renderer" "1" "$(echo "$broken" | grep -c '^RENDERER opengl$')"
 check "and it is the only arm that reported a downgrade" "0" "$(echo "$good" | grep -c 'Vulkan is unusable')"
 
+# The entry is ui/boot/shell.qml and not the ui directory: a document implicitly imports its own
+# directory, so an entry in ui/ compiles every singleton ui/qmldir names before the window can map.
+# See AGENTS.md "The first window".
+check "the launch targets the boot entry" "ARGV -p $UI_REAL/boot/shell.qml" "$(echo "$out" | grep '^ARGV ')"
+# The entry maps its window before ui/Theme.qml has compiled, so the launcher hands it the colour.
+check "the first paint colour is a hex colour" "1" \
+  "$(echo "$out" | grep -c '^FIRST_PAINT #[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]$')"
+
+
 # A launch with no FLEA_BIN in the environment is the ordinary one, and it must still name this binary.
 out=$(env -u FLEA_BIN WAYLAND_DISPLAY=flea-modes-test-display PATH="$D:/usr/bin:/bin" $BIN --gui 2>&1 </dev/null)
 check "an unset FLEA_BIN is derived from the running binary" "FLEA_BIN $BIN_REAL" \
   "$(echo "$out" | grep '^FLEA_BIN ')"
+
+# gtk3 as Qt's platform theme starts GTK inside the shell for one string, the icon theme name, and
+# Omarchy writes that same name to icons.theme, which Quickshell reads as QS_ICON_THEME. Three arms:
+# the swap, an operator's own QS_ICON_THEME, and a box with no icons.theme at all.
+theme_home="$D/home"
+mkdir -p "$theme_home/.local/state/omarchy/current/theme"
+printf 'Yaru-blue\n' > "$theme_home/.local/state/omarchy/current/theme/icons.theme"
+out=$(env HOME="$theme_home" QT_QPA_PLATFORMTHEME=gtk3 WAYLAND_DISPLAY=flea-modes-test-display \
+  PATH="$D:/usr/bin:/bin" $BIN --gui 2>&1 </dev/null)
+check "the icon theme name reaches the shell" "ICON_THEME Yaru-blue" "$(echo "$out" | grep '^ICON_THEME ')"
+check "and gtk3 does not" "PLATFORM_THEME unset" "$(echo "$out" | grep '^PLATFORM_THEME ')"
+
+# An operator who named an icon theme keeps whatever platform theme they chose with it.
+out=$(env HOME="$theme_home" QT_QPA_PLATFORMTHEME=gtk3 QS_ICON_THEME=Papirus \
+  WAYLAND_DISPLAY=flea-modes-test-display PATH="$D:/usr/bin:/bin" $BIN --gui 2>&1 </dev/null)
+check "an operator's own icon theme is untouched" "ICON_THEME Papirus" "$(echo "$out" | grep '^ICON_THEME ')"
+check "and their platform theme survives with it" "PLATFORM_THEME gtk3" "$(echo "$out" | grep '^PLATFORM_THEME ')"
+
+# No icons.theme is not an invitation to guess: the launch must be exactly today's.
+rm -f "$theme_home/.local/state/omarchy/current/theme/icons.theme"
+out=$(env HOME="$theme_home" QT_QPA_PLATFORMTHEME=gtk3 WAYLAND_DISPLAY=flea-modes-test-display \
+  PATH="$D:/usr/bin:/bin" $BIN --gui 2>&1 </dev/null)
+check "a box with no icons.theme keeps its platform theme" "PLATFORM_THEME gtk3" "$(echo "$out" | grep '^PLATFORM_THEME ')"
+check "and gets no icon theme of its own" "ICON_THEME unset" "$(echo "$out" | grep '^ICON_THEME ')"
+
+# An empty icons.theme is absent, the rule every other empty variable follows here.
+printf '\n' > "$theme_home/.local/state/omarchy/current/theme/icons.theme"
+out=$(env HOME="$theme_home" QT_QPA_PLATFORMTHEME=gtk3 WAYLAND_DISPLAY=flea-modes-test-display \
+  PATH="$D:/usr/bin:/bin" $BIN --gui 2>&1 </dev/null)
+check "an empty icons.theme keeps the platform theme" "PLATFORM_THEME gtk3" "$(echo "$out" | grep '^PLATFORM_THEME ')"
+check "and names no icon theme" "ICON_THEME unset" "$(echo "$out" | grep '^ICON_THEME ')"
 
 sandbox_remove "$D"
 
@@ -337,6 +382,9 @@ check "and --open waited for a launcher that outlived its own last write" "1" \
 # Flea's own pin carries a marker, and only a marked pin is taken back off a program Flea opens.
 VK_ICD_FILENAMES=/tmp/flea-pin-icd.json VK_DRIVER_FILES=/tmp/flea-pin-driver.json FLEA_VK_PIN=1 \
   PATH="$D/bin:/usr/bin:/bin" $BIN --open "$D/file.txt" 2>&1 | cat >/dev/null
+# The pipe is the one Quickshell hands this entry point, so the status wanted is the launcher's own
+# rather than cat's, which is 0 whatever happened upstream of it.
+check "the marked-pin open returned success" "0" "${PIPESTATUS[0]}"
 wait_for_line "$opened" '^THP_enabled'
 out=$(cat "$opened")
 check "a marked pin is dropped from an opened program" "1" "$(echo "$out" | grep -c '^ICD unset$')"
@@ -356,6 +404,7 @@ check "and so does their own driver file list" "1" "$(echo "$out" | grep -c '^DR
 # An exported but empty marker is absent, so it must not turn an operator's own list into a pin.
 VK_ICD_FILENAMES=/tmp/flea-operator-icd.json VK_DRIVER_FILES=/tmp/flea-operator-driver.json FLEA_VK_PIN= \
   PATH="$D/bin:/usr/bin:/bin" $BIN --open "$D/file.txt" 2>&1 | cat >/dev/null
+check "the empty-marker open returned success" "0" "${PIPESTATUS[0]}"
 wait_for_line "$opened" '^THP_enabled'
 out=$(cat "$opened")
 check "an empty marker leaves an operator's ICD list alone" "1" "$(echo "$out" | grep -c '^ICD /tmp/flea-operator-icd.json$')"
@@ -498,6 +547,8 @@ check "and the stub reported its THP state at all" "1" "$(echo "$out" | grep -c 
 # Flea's own pin carries a marker, and only a marked pin is taken back off a terminal Flea opens.
 VK_ICD_FILENAMES=/tmp/flea-pin-icd.json VK_DRIVER_FILES=/tmp/flea-pin-driver.json FLEA_VK_PIN=1 \
   PATH="$D/bin:/usr/bin:/bin" $BIN --terminal "$D/dir" 2>&1 | cat >/dev/null
+# Same reason as the open path's marker arms: cat's status says nothing about the launcher.
+check "the marked-pin terminal returned success" "0" "${PIPESTATUS[0]}"
 wait_for_line "$ran" '^THP_enabled'
 out=$(cat "$ran")
 check "a marked pin is dropped from a terminal" "1" "$(echo "$out" | grep -c '^ICD unset$')"
@@ -512,6 +563,17 @@ wait_for_line "$ran" '^THP_enabled'
 out=$(cat "$ran")
 check "an operator's own ICD list reaches the terminal" "1" "$(echo "$out" | grep -c '^ICD /tmp/flea-operator-icd.json$')"
 check "and so does their own driver file list" "1" "$(echo "$out" | grep -c '^DRIVER_FILES /tmp/flea-operator-driver.json$')"
+
+: > "$ran"
+# An exported but empty marker is absent, so it must not turn an operator's own list into a pin.
+# The open path has the same arm, and both spawn sites reach one shared guard, pin_is_marked.
+VK_ICD_FILENAMES=/tmp/flea-operator-icd.json VK_DRIVER_FILES=/tmp/flea-operator-driver.json FLEA_VK_PIN= \
+  PATH="$D/bin:/usr/bin:/bin" $BIN --terminal "$D/dir" 2>&1 | cat >/dev/null
+check "the empty-marker terminal returned success" "0" "${PIPESTATUS[0]}"
+wait_for_line "$ran" '^THP_enabled'
+out=$(cat "$ran")
+check "an empty marker leaves an operator's ICD list alone in a terminal" "1" "$(echo "$out" | grep -c '^ICD /tmp/flea-operator-icd.json$')"
+check "and leaves their driver file list alone in a terminal" "1" "$(echo "$out" | grep -c '^DRIVER_FILES /tmp/flea-operator-driver.json$')"
 
 : > "$ran"
 PATH="$D/bin:/usr/bin:/bin" $BIN --terminal "$D/linkdir" >/dev/null 2>&1

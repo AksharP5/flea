@@ -130,7 +130,7 @@ stale_mtime_back_s=86400
 preview_play_wait_s=5
 
 ipc() {
-    omarchy-drive ipc -p "$flea_ui" flea "$@"
+    omarchy-drive ipc -p "$flea_ui/boot" flea "$@"
 }
 
 # Window class used by every preflight, focus check and injected keystroke.
@@ -467,12 +467,12 @@ wait_listing_wall() {
     local want_total="$1" timeout_s="${2:-20}" total=unavailable row=loading state=unavailable
     local deadline=$(( $(date +%s%3N) + timeout_s * 1000 ))
     while (( $(date +%s%3N) < deadline )); do
-        total=$(timeout 1 omarchy-drive ipc -p "$flea_ui" flea total 2>/dev/null || printf unavailable)
+        total=$(timeout 1 omarchy-drive ipc -p "$flea_ui/boot" flea total 2>/dev/null || printf unavailable)
         if [[ "$want_total" == 0 ]]; then
-            state=$(timeout 1 omarchy-drive ipc -p "$flea_ui" flea state 2>/dev/null || printf unavailable)
+            state=$(timeout 1 omarchy-drive ipc -p "$flea_ui/boot" flea state 2>/dev/null || printf unavailable)
             [[ "$total" == 0 && "$state" == empty ]] && return 0
         else
-            row=$(timeout 1 omarchy-drive ipc -p "$flea_ui" flea rowAt 0 2>/dev/null || printf loading)
+            row=$(timeout 1 omarchy-drive ipc -p "$flea_ui/boot" flea rowAt 0 2>/dev/null || printf loading)
             [[ "$total" == "$want_total" && "$row" != "loading" ]] && return 0
         fi
         sleep 0.05
@@ -484,7 +484,7 @@ wait_path_wall() {
     local want="$1" timeout_s="${2:-20}" seen=unavailable
     local deadline=$(( $(date +%s%3N) + timeout_s * 1000 ))
     while (( $(date +%s%3N) < deadline )); do
-        seen=$(timeout 1 omarchy-drive ipc -p "$flea_ui" flea path 2>/dev/null || printf unavailable)
+        seen=$(timeout 1 omarchy-drive ipc -p "$flea_ui/boot" flea path 2>/dev/null || printf unavailable)
         [[ "$seen" == "$want" ]] && return 0
         sleep 0.05
     done
@@ -495,9 +495,9 @@ find_row_wall() {
     local want="$1" timeout_s="${2:-20}" total=0 seen="" path=unavailable row
     local deadline=$(( $(date +%s%3N) + timeout_s * 1000 ))
     while (( $(date +%s%3N) < deadline )); do
-        total=$(timeout 1 omarchy-drive ipc -p "$flea_ui" flea total 2>/dev/null || printf 0)
+        total=$(timeout 1 omarchy-drive ipc -p "$flea_ui/boot" flea total 2>/dev/null || printf 0)
         for ((row = 0; row < total && $(date +%s%3N) < deadline; row++)); do
-            seen=$(timeout 1 omarchy-drive ipc -p "$flea_ui" flea rowAt "$row" 2>/dev/null || true)
+            seen=$(timeout 1 omarchy-drive ipc -p "$flea_ui/boot" flea rowAt "$row" 2>/dev/null || true)
             if [[ "$seen" == "$want|"* ]]; then
                 printf '%s\n' "$row"
                 return 0
@@ -506,7 +506,7 @@ find_row_wall() {
         sleep 0.05
     done
     [[ "$total" =~ ^[0-9]+$ ]] || total=-1
-    path=$(timeout 1 omarchy-drive ipc -p "$flea_ui" flea path 2>/dev/null || printf unavailable)
+    path=$(timeout 1 omarchy-drive ipc -p "$flea_ui/boot" flea path 2>/dev/null || printf unavailable)
     printf 'NETWORKLIVE traversal expected=%s total=%s path=%s\n' "$want" "$total" "$path" >&2
     return 1
 }
@@ -798,7 +798,7 @@ click_rail_row() {
 }
 
 # GM's contract, measured and not recomputed: the NETWORK "+" ink, its hit target and the rail's own
-# indicator dot share one x centre. The three boxes come from ui/shell.qml's boxOf, in window
+# indicator dot share one x centre. The three boxes come from ui/boot/shell.qml's boxOf, in window
 # coordinates, so nothing here restates the anchoring the way an arithmetic slot did.
 # The centres compare as strings and not with -eq, because -eq is integer-only and the defect this
 # case exists for is half a pixel: 8 and 8.5 round to the same whole number and pass a numeric test.
@@ -875,7 +875,7 @@ wait_message() {
     while (( $(date +%s%3N) < deadline )); do
         # 3 s, not 1: one ipc round trip costs hundreds of ms and grows under load, and a call that
         # times out returns nothing, which spends a sample of a sentence that stands for only 4 s.
-        seen=$(timeout 3 omarchy-drive ipc -p "$flea_ui" flea lastMessage 2>/dev/null || true)
+        seen=$(timeout 3 omarchy-drive ipc -p "$flea_ui/boot" flea lastMessage 2>/dev/null || true)
         if [[ "$seen" == "$want" ]]; then
             return 0
         fi
@@ -888,7 +888,7 @@ wait_network_result() {
     local want="$1" timeout_s="${2:-40}" seen=""
     local deadline=$(( $(date +%s%3N) + timeout_s * 1000 ))
     while (( $(date +%s%3N) < deadline )); do
-        seen=$(timeout 1 omarchy-drive ipc -p "$flea_ui" flea networkResult 2>/dev/null || true)
+        seen=$(timeout 1 omarchy-drive ipc -p "$flea_ui/boot" flea networkResult 2>/dev/null || true)
         [[ "$seen" == "$want" ]] && return 0
         sleep 0.1
     done
@@ -901,7 +901,7 @@ wait_network_status() {
     local want="$1" timeout_s="${2:-40}" seen=""
     local deadline=$(( $(date +%s%3N) + timeout_s * 1000 ))
     while (( $(date +%s%3N) < deadline )); do
-        seen=$(timeout 2 omarchy-drive ipc -p "$flea_ui" flea networkStatus 2>/dev/null || true)
+        seen=$(timeout 2 omarchy-drive ipc -p "$flea_ui/boot" flea networkStatus 2>/dev/null || true)
         [[ "$seen" == "$want" ]] && return 0
         sleep 0.1
     done
@@ -912,7 +912,7 @@ wait_network_entry_state() {
     local want="$1" timeout_s="${2:-20}" seen=""
     local deadline=$(( $(date +%s%3N) + timeout_s * 1000 ))
     while (( $(date +%s%3N) < deadline )); do
-        seen=$(timeout 1 omarchy-drive ipc -p "$flea_ui" flea networkEntries 2>/dev/null || true)
+        seen=$(timeout 1 omarchy-drive ipc -p "$flea_ui/boot" flea networkEntries 2>/dev/null || true)
         [[ "$seen" == *"|network|share|$want" ]] && return 0
         sleep 0.1
     done
@@ -924,7 +924,7 @@ wait_network_entry_absent() {
     local row="$1" mount_uri="$2" timeout_s="${3:-20}" seen="" status=0 line present
     local deadline=$(( $(date +%s%3N) + timeout_s * 1000 ))
     while (( $(date +%s%3N) < deadline )); do
-        if seen=$(timeout 1 omarchy-drive ipc -p "$flea_ui" flea networkEntries 2>/dev/null); then
+        if seen=$(timeout 1 omarchy-drive ipc -p "$flea_ui/boot" flea networkEntries 2>/dev/null); then
             status=0
             present=false
             # networkEntries row: SFTP|network|share|true
@@ -1154,7 +1154,7 @@ case_terminal() {
     printf 'TERMINAL qs=%s backend=%s before state=%s total=%s row=%q\n' \
         "$qs_pid" "$backend_pid" "$(ipc state)" "$(ipc total)" "$(ipc rowAt 0)"
     kill "$backend_pid"
-    omarchy-drive wait ipc -p "$flea_ui" flea state error --timeout 15 >/dev/null \
+    omarchy-drive wait ipc -p "$flea_ui/boot" flea state error --timeout 15 >/dev/null \
         || fail "the pane stayed in state '$(ipc state)' after the backend died"
     [[ "$(ipc total)" == "0" ]] || fail "the stale total $(ipc total) survived the backend"
     [[ "$(ipc rowAt 0)" == "loading" ]] || fail "the stale row $(ipc rowAt 0) survived the backend"
@@ -1329,7 +1329,7 @@ case_open() {
     seek_row_named subdir
     key l >/dev/null
     wait_path "$dir/subdir"
-    omarchy-drive wait ipc -p "$flea_ui" flea state empty --timeout 10 >/dev/null \
+    omarchy-drive wait ipc -p "$flea_ui/boot" flea state empty --timeout 10 >/dev/null \
         || fail "open: subdir never reached its empty listing, state is $(ipc state)"
     [[ ! -s "$opened" ]] || fail "l on a directory handed $(cat "$opened") to $open_handoff open"
     [[ -z "$(ipc lastMessage)" ]] || fail "open: entering the empty subdir said $(ipc lastMessage)"
@@ -1392,7 +1392,7 @@ case_open() {
     # because every archive type this box can name defaults to org.gnome.Nautilus.desktop.
     seek_row_named sample.zip
     key -k Return >/dev/null
-    omarchy-drive wait ipc -p "$flea_ui" flea previewState archive --timeout 10 >/dev/null \
+    omarchy-drive wait ipc -p "$flea_ui/boot" flea previewState archive --timeout 10 >/dev/null \
         || fail "Enter on an archive left the preview at $(ipc previewState), kind $(ipc previewKind), and the log holds $(cat "$opened")"
     printf 'OPEN archive kind=%q state=%q log=%q\n' "$(ipc previewKind)" "$(ipc previewState)" "$(cat "$opened")"
     shot open-archive
@@ -2639,7 +2639,7 @@ case_watch() {
     printf '%s' "$move_bytes" > "$dir/move-source.txt"
     mkdir "$dir/move-target"
     mv "$dir/move-source.txt" "$dir/move-target/move-source.txt"
-    omarchy-drive wait ipc -p "$flea_ui" flea total 4 --timeout 15 >/dev/null \
+    omarchy-drive wait ipc -p "$flea_ui/boot" flea total 4 --timeout 15 >/dev/null \
         || fail "watch: creating a directory and moving a file into it left the listing at $(ipc total) rows"
     [[ "$(ipc rowAt 0)" == move-target\|dir\|* ]] \
         || fail "watch: the moved-into directory is not row 0, got $(ipc rowAt 0)"
@@ -2673,7 +2673,7 @@ case_watch() {
     [[ "$(ipc selectionCount)" == 0 ]] || fail "watch: Escape did not release the folder selection"
     rm "$dir/move-target/move-source.txt"
     rmdir "$dir/move-target"
-    omarchy-drive wait ipc -p "$flea_ui" flea total 3 --timeout 15 >/dev/null \
+    omarchy-drive wait ipc -p "$flea_ui/boot" flea total 3 --timeout 15 >/dev/null \
         || fail "watch: move-case cleanup left the parent listing at $(ipc total) rows"
 
     # The reporter's four changes, from another process, while the window sits on the folder.
@@ -2682,7 +2682,7 @@ case_watch() {
     rm "$dir/beta.txt"
     mkdir "$dir/brand-new-folder"
     # The 400 ms settle plus the re-read; the reporter waited several seconds and saw nothing move.
-    omarchy-drive wait ipc -p "$flea_ui" flea total 4 --timeout 15 >/dev/null \
+    omarchy-drive wait ipc -p "$flea_ui/boot" flea total 4 --timeout 15 >/dev/null \
         || fail "watch: the listing stayed at $(ipc total) rows after four outside changes"
     settle
     printf 'WATCH total=%s row0=%q row1=%q row2=%q\n' \
@@ -2705,7 +2705,7 @@ case_watch() {
     [[ "$(ipc rowAt "$(ipc cursor)")" == preview-me.txt\|* ]] \
         || fail "watch: the cursor did not start on preview-me.txt"
     printf 'z\n' > "$dir/AAA-above-the-cursor.txt"
-    omarchy-drive wait ipc -p "$flea_ui" flea total 5 --timeout 15 >/dev/null \
+    omarchy-drive wait ipc -p "$flea_ui/boot" flea total 5 --timeout 15 >/dev/null \
         || fail "watch: the second outside create left the listing at $(ipc total) rows"
     settle
     printf 'WATCH cursor=%s row=%q\n' "$(ipc cursor)" "$(ipc rowAt "$(ipc cursor)")"
@@ -2723,7 +2723,7 @@ case_watch() {
     [[ "$(ipc selectionCount)" == "1" ]] || fail "watch: the held selection was cleared anyway"
     # Clearing the selection is what pays the debt the notification left standing.
     key -k Escape >/dev/null
-    omarchy-drive wait ipc -p "$flea_ui" flea total 6 --timeout 15 >/dev/null \
+    omarchy-drive wait ipc -p "$flea_ui/boot" flea total 6 --timeout 15 >/dev/null \
         || fail "watch: clearing the selection did not run the owed re-read, total is $(ipc total)"
     printf 'WATCH deferred=ok paid=ok total=%s\n' "$(ipc total)"
 
@@ -2914,7 +2914,7 @@ case_select() {
     : > "$flea_log"
     # The renderer is stated because src/gui.rs owns that choice and a direct qs launch never runs it.
     QSG_RHI_BACKEND="${QSG_RHI_BACKEND:-vulkan}" FLEA_PATH="$dir" FLEA_SELECT="$dir/b.txt" FLEA_BIN="$flea_bin" \
-        setsid nohup qs -p "$flea_ui" >"$flea_log" 2>&1 </dev/null &
+        setsid nohup qs -p "$flea_ui/boot" >"$flea_log" 2>&1 </dev/null &
     omarchy-drive wait window flea --timeout 15 >/dev/null
     omarchy-drive focus flea >/dev/null
     assert_window
@@ -2932,7 +2932,7 @@ case_select() {
     : > "$flea_log"
     # The renderer is stated because src/gui.rs owns that choice and a direct qs launch never runs it.
     QSG_RHI_BACKEND="${QSG_RHI_BACKEND:-vulkan}" FLEA_PATH="$dir" FLEA_SELECT="$dir/does-not-exist.txt" FLEA_BIN="$flea_bin" \
-        setsid nohup qs -p "$flea_ui" >"$flea_log" 2>&1 </dev/null &
+        setsid nohup qs -p "$flea_ui/boot" >"$flea_log" 2>&1 </dev/null &
     omarchy-drive wait window flea --timeout 15 >/dev/null
     omarchy-drive focus flea >/dev/null
     assert_window
@@ -4259,7 +4259,7 @@ case_renderer() {
     env QSG_RHI_BACKEND=opengl FLEA_RENDERER_AUTOMATIC=1 \
         __EGL_VENDOR_LIBRARY_FILENAMES="$dir/no-such-egl-vendor.json" \
         FLEA_PATH="$dir" FLEA_BIN="$dir/flea-stub" \
-        setsid nohup qs -p "$flea_ui" > "$log" 2>&1 </dev/null &
+        setsid nohup qs -p "$flea_ui/boot" > "$log" 2>&1 </dev/null &
     local waited
     for waited in $(seq 1 200); do
         grep -aq 'graphics backend opengl failed' "$log" && break
@@ -4268,7 +4268,7 @@ case_renderer() {
     kill_flea
     printf 'RENDERER ran=%q\n' "$(tr '\n' ' ' < "$relaunched")"
     grep -aq 'graphics backend opengl failed' "$log" \
-        || fail "no scene-graph error reached ui/shell.qml, so its Connections never held the window"
+        || fail "no scene-graph error reached ui/boot/shell.qml, so its Connections never held the window"
     # The denominator: with no stub run at all, the count of retries below would be zero for free.
     local ran retried
     ran=$(grep -c -- '--backend' "$relaunched" || true)
@@ -4478,7 +4478,7 @@ PYEOF
         || fail "preview: the pdf overlay reports $(ipc previewState), so it fell through to the refusal"
     [[ "$(ipc previewPdfPage)" == "0" ]] || fail "preview: manual.pdf opened on page $(ipc previewPdfPage), not page 0"
     key l >/dev/null
-    omarchy-drive wait ipc -p "$flea_ui" flea previewPdfPage 1 --timeout 10 >/dev/null \
+    omarchy-drive wait ipc -p "$flea_ui/boot" flea previewPdfPage 1 --timeout 10 >/dev/null \
         || fail "preview: l left manual.pdf on page $(ipc previewPdfPage), not page 1"
     omarchy-drive wait ocr flea PAGETWO --timeout 10 >/dev/null \
         || fail "preview: l advanced manual.pdf state but left page 1 painted"
@@ -5693,7 +5693,7 @@ EOS
     local want_entries='Own slot|network|share|true' seen_entries="" entries_deadline
     entries_deadline=$(( $(date +%s%3N) + 12000 ))
     while (( $(date +%s%3N) < entries_deadline )); do
-        seen_entries=$(timeout 1 omarchy-drive ipc -p "$flea_ui" flea networkEntries 2>/dev/null || true)
+        seen_entries=$(timeout 1 omarchy-drive ipc -p "$flea_ui/boot" flea networkEntries 2>/dev/null || true)
         [[ "$seen_entries" == "$want_entries" ]] && break
         sleep 0.1
     done

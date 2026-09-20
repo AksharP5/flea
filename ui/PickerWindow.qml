@@ -1,9 +1,5 @@
-// Its own app id, so one Hyprland rule can give the chooser the floating treatment Omarchy already
-// gives xdg-desktop-portal-gtk without touching the window; flea --picker writes that rule.
-//@ pragma AppId com.thisisgm.flea.picker
-//@ pragma ShellId fleapicker
-//@ pragma NativeTextRendering
-//@ pragma CacheDir $BASE/flea
+// The pragmas that name this window's app id and shell id live in ui/boot/picker.qml, which is
+// the Quickshell entry; this document is loaded from there by file: URL so that Qt caches it.
 
 import Quickshell
 import Quickshell.Io

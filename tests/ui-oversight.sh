@@ -69,7 +69,7 @@ if int(pid):
         require(Path(os.environ[name]).resolve().is_relative_to(Path(sandbox)), "state escaped sandbox: " + name)
     require((process / "exe").resolve() == Path(shutil.which("qs")).resolve(), "window is not the native Quickshell executable")
     instances = json.loads(subprocess.check_output(["qs", "list", "--all", "--json"]))
-    instances = [item for item in instances if item["pid"] == int(pid) and item["config_path"] == str(Path(ui, "shell.qml"))]
+    instances = [item for item in instances if item["pid"] == int(pid) and item["config_path"] == str(Path(ui, "boot", "shell.qml"))]
     require(len(instances) == 1, "window has no exact native UI instance")
     clients = json.loads(subprocess.check_output(["hyprctl", "clients", "-j"]))
     clients = [item for item in clients if item.get("class") == "com.thisisgm.flea"]

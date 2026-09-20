@@ -201,7 +201,7 @@ PY
         thumbnailpolicy_expect '.pending == [] and (.files | keys) == ["0","1","2","3","4"] and all(.files[]; type == "string" and length > 0)' "$mode lets running real helpers finish while canceled jobs stay absent"
         if [[ "$mode" == columns ]]; then
             thumbnailpolicy_expect '.previewIndex == 1 and (.previewPath | endswith("/b-block1.png")) and .previewReady' 'Columns decodes its owned thumbnail after gate release'
-            omarchy-drive wait ipc -p "$flea_ui" flea columnThumbShown true --timeout 15 >/dev/null \
+            omarchy-drive wait ipc -p "$flea_ui/boot" flea columnThumbShown true --timeout 15 >/dev/null \
                 || fail "thumbnailpolicy: completed selected thumbnail is not drawn in the Columns frame"
             baseline=$(jq -c '.previewReady = true' <<< "$baseline") || fail "thumbnailpolicy: invalid preview baseline"
         fi

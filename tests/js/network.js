@@ -253,7 +253,7 @@ function run(check) {
     check("which disarms it, so a later unrelated mount rewrites nothing", armed.editingPlace, "")
     RailMenu.placeSaved(armed, writer, "r3", "smb://stranger/share", true)
     check("proved by that later mount", wrote.join(","), "smb://nas/")
-    // ui/shell.qml clears editingPlace when the dialog closes, so an abandoned Edit disarms too.
+    // ui/WindowBody.qml clears editingPlace when the dialog closes, so an abandoned Edit disarms too.
     RailMenu.release("editPlace", "smb://nas/", { eject: function () {} }, writer, armed)
     armed.editingPlace = ""
     RailMenu.placeSubmitted(armed, "r4")

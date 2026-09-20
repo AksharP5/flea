@@ -133,7 +133,7 @@ pub const SCHEMA: &[(&str, Rule)] = &[
     // directory's own tip, off until it is switched on.
     ("keyHints", Rule::Bool),
     // Where a window opens, and where a new tab opens. "folder" reads startFolder, "last" reads
-    // lastPath, which ui/shell.qml writes as the pane moves and no panel control ever touches.
+    // lastPath, which ui/WindowBody.qml writes as the pane moves and no panel control ever touches.
     ("startIn", Rule::Word(&["home", "last", "folder"])),
     ("startFolder", Rule::Place),
     ("lastPath", Rule::Place),

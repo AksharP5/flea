@@ -14,7 +14,8 @@ mod preview;
 mod render;
 mod taildrop;
 mod terminal;
-mod theme;
+// src/gui.rs reads the background hex from here, so the OEM key precedence has one parser.
+pub(crate) mod theme;
 mod wire;
 
 use std::io;

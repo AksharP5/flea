@@ -144,7 +144,7 @@ class Request:
         check(f"{self.name}: candidate UI", environ.get(b"FLEA_UI", b"").decode() == str(UI), environ.get(b"FLEA_UI", b"").decode())
         self.reply_path = guard(environ[b"FLEA_PICKER_REPLY"].decode())
         command = Path(f"/proc/{self.pid}/cmdline").read_bytes().replace(b"\0", b" ").decode()
-        check(f"{self.name}: native config", str(UI / "picker.qml") in command, command)
+        check(f"{self.name}: native config", str(UI / "boot" / "picker.qml") in command, command)
         drive("focus", self.title)
         self.until("ready listing", lambda state: state["state"] != "loading" and not state["marksBusy"] and (state["total"] == 0 or state["rows"]))
         children = Path(f"/proc/{self.pid}/task/{self.pid}/children").read_text().split()

@@ -8,7 +8,7 @@
 var HOME = "/home/gm"
 
 // Only the members Focus.handleKey touches on its way to the path bar, and the counter for the one
-// call it must make: the pane asks, and ui/shell.qml is what opens the field. The routing lives in
+// call it must make: the pane asks, and ui/WindowBody.qml is what opens the field. The routing lives in
 // this suite rather than in tests/js/focus.js, which is at its own hard cap.
 function barPane(view) {
     return {
