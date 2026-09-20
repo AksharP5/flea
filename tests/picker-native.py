@@ -452,16 +452,19 @@ def test_failure():
         backends = [int(pid) for pid in children if Path(f"/proc/{pid}/exe").resolve() == BIN]
         # The chooser owns exactly two candidate children: the identity checks and the listing worker.
         check("backend failure targets both owned candidate children", len(backends) == 2, backends)
+        stopped = []
         try:
             # This case navigates nowhere after the read above, so the chooser replaces no worker and a missing child is a defect.
             for backend in backends:
                 os.kill(backend, signal.SIGSTOP)
+                stopped.append(backend)
             lost.click("Save" if mode == "save" else "Open")
             lost.until("acceptance waits on the real stopped backend", lambda state: state["submitting"])
             lost.until("submission keeps enabled Cancel focused", lambda state: any(
                 control["name"] == "Cancel" and control["focused"] and control["enabled"] for control in state["controls"]))
         finally:
-            for backend in backends:
+            # A stopped process cannot exit, so its PID was never reaped and is still the child this run signalled.
+            for backend in stopped:
                 kill_if_alive(backend)
         after = lost.until("lost backend clears checks and disables acceptance", lambda state: state["backendUnavailable"] and not state["submitting"] and not state["marksBusy"] and not state["saveBusy"] and not state["canAccept"] and state["messageError"])
         check("backend loss retains selected identities and draft", after["marks"] == before["marks"] and after["saveName"] == before["saveName"])
