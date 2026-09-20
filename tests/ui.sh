@@ -2180,7 +2180,7 @@ case_runscript() {
 
 # Catches narrowing the delegate TapHandler back to Qt.LeftButton in ui/Pane.qml.
 case_menu() {
-    local dir="$fixture_root/menu"
+    local dir="$fixture_root/menu" state="$fixture_root/menu-state"
     sandbox_scratch "$dir"
     mkdir -p "$dir/subdir"
     : > "$dir/a.txt"
@@ -2195,6 +2195,7 @@ case_menu() {
     : > "$dir/z3.txt"
     : > "$dir/z4.txt"
     : > "$dir/z5.txt"
+    seed_ui_state "$state" '{"view":"list","keys":"default"}'
     launch "$dir"
     wait_listing 10
     local row_height row_padding_x centre cx cy wx wy ww wh row_left beneath_y metrics
@@ -2596,7 +2597,24 @@ case_selection() {
     [[ "$(ipc selectionCount)" == "1" ]] || fail "selection: setup toggle before the stale check did not take"
     key -k Backspace >/dev/null
     wait_path "$fixture_root"
-    [[ "$(ipc selectionCount)" == "0" ]] || fail "selection: a new listing kept a stale selection"
+    local parent_cursor parent_row parent_state parent_loading
+    for _attempt in $(seq 1 300); do
+        parent_cursor=$(ipc cursor 2>/dev/null || printf 0)
+        parent_row=$(ipc rowAt "$parent_cursor" 2>/dev/null || true)
+        parent_state=$(ipc state 2>/dev/null || printf loading)
+        parent_loading=$(ipc listInFlight 2>/dev/null || printf true)
+        [[ "$parent_state" == ready && "$parent_loading" == false && "$parent_row" == selection\|dir\|* ]] && break
+        sleep 0.05
+    done
+    [[ "$parent_state" == ready && "$parent_loading" == false && "$parent_row" == selection\|dir\|* ]] \
+        || fail "selection: parent listing did not reselect selection/, row=$parent_row state=$parent_state inFlight=$parent_loading"
+    [[ "$(ipc selectionCount)" == "1" ]] \
+        || fail "selection: parent listing selection count is $(ipc selectionCount), not the pending folder"
+    [[ "$(ipc selectedIndices)" == "$parent_cursor" ]] \
+        || fail "selection: selectedIndices=$(ipc selectedIndices), cursor=$parent_cursor"
+    key -k Escape >/dev/null
+    settle
+    [[ "$(ipc selectionCount)" == "0" ]] || fail "selection: Escape did not clear the pending folder selection"
 
     printf 'SELECTION toggle=ok extend=ok all=ok clear=ok stale=ok\n'
     kill_flea
@@ -3982,6 +4000,7 @@ case_stale() {
     local pics="$stale_fixture/tree/pics"
     local cache="$stale_fixture/cache"
     local src="$stale_fixture/src"
+    local state="$stale_fixture/state"
     sandbox_make "$stale_fixture"
     mkdir -p "$pics" "$src" "$cache/thumbnails/large" "$cache/thumbnails/fail"
     magick -size 512x512 xc:red "$src/before.jpg"
@@ -3989,6 +4008,7 @@ case_stale() {
     cp "$src/before.jpg" "$pics/one.jpg"
     # Exported inside this case's own subshell, so no other case reads or writes the redirected root.
     export XDG_CACHE_HOME="$cache"
+    seed_ui_state "$state" '{"view":"list","keys":"default","preview":{"column":false,"thumbnails":"images"}}'
     launch "$pics"
     wait_listing 1
 
