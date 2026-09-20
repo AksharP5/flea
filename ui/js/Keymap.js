@@ -196,7 +196,7 @@ function presetMatch(name, key, text, modifiers, context, frontend) {
         for (var i = 0; i < PRESET_KEYS.length; i++) {
             var row = PRESET_KEYS[i]
             if (row.preset !== (pass === 0 ? name : "all")) continue
-            if (applies(row, context, frontend) && matches(row, key, text, modifiers)) return row
+            if (matches(row, key, text, modifiers) && applies(row, context, frontend)) return row
         }
     }
     return null
