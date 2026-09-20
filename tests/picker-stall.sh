@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
-# A real Quickshell Process blocks on a private FIFO just as a sequential backend can block on
-# FUSE. New navigation must reap it, discard its incomplete stdout line and page the replacement.
-# In parallel the identity-check backend blocks on its own read: cancel must reap both, even if
-# neither reads another stdin byte. Immediate cancellation covers the before-onStarted race.
+# A blocked read must be reaped, its stale partial line discarded, the replacement paged, and both read-only children reaped on cancel.
 set -eu
 . "$(dirname "$0")/../tools/flea-sandbox-guard"
 cd "$(dirname "$0")/.."
@@ -32,9 +29,7 @@ trap cleanup EXIT
 mkdir -p "$fixture/flea/js"
 cp ui/PickerListing.qml ui/PickerLifecycle.qml ui/Backend.qml "$fixture/flea/"
 cp ui/js/Messages.js "$fixture/flea/js/"
-# Drive the real runningChanged handler in the rare cancel-before-FailedToStart order. Natural
-# missing-executable timing here fails before cancel; this test-only method fixes the event order,
-# not the handler, so restoring the old guard makes missing-order time out.
+# A test-only method fixes the rare cancel-before-FailedToStart event order, never the handler under test.
 python3 - "$fixture/flea/Backend.qml" <<'PYEND'
 from pathlib import Path
 import sys
