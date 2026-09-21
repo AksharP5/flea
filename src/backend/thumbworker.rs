@@ -675,6 +675,9 @@ mod tests {
         let program = call_filter().expect("the filter did not build");
         let number = |call: &str| *numbers.get(call).unwrap_or_else(|| panic!("{} has no __NR_{}", UNISTD_64, call));
         let refused = SECCOMP_RET_ERRNO | EPERM;
+        for (call, listed) in METADATA_WRITES.iter().chain(NEW_PROCESSES) {
+            assert_eq!(*listed, number(call), "the table gives {} the number {}", call, listed);
+        }
         for call in MUST_REFUSE {
             assert_eq!(verdict_of(&program, AUDIT_ARCH_X86_64, number(call), 0), refused, "{} is not refused", call);
         }

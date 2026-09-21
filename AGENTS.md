@@ -2892,14 +2892,16 @@ facts are the negative controls, taken unconfined with a `fchmod` to the file's 
 probe makes a few of the refused calls for real;
 `thumbworker::tests::every_call_that_changes_a_file_or_starts_a_process_is_refused` covers all of
 them without making any, by running the built filter the way the kernel does for each call named in
-its own list, at the number `/usr/include/asm/unistd_64.h` gives, so an entry deleted from the table
-or typed with the wrong number goes red. **The signal scope is what lets the children share one PID
-namespace**: every exec-path job had a namespace of its own, and without the scope a decoder
-compromised by one video could kill a sibling mid-decode, or the worker. corner: a kernel between
-Landlock ABI 1 and 5 still gets the worker, without that scope. A kernel without Landlock gets no
-worker at all: the worker answers `K` and the exec path takes every video. The worker is also not
-dumpable, which children inherit, so no process of the same user can ptrace it or read its
-descriptors.
+its own list, at the number `/usr/include/asm/unistd_64.h` gives, and checks every entry of the
+table against that header by name, so an entry deleted from the table or typed with the wrong number
+goes red; the thread bit is checked against `/usr/include/linux/sched.h` the same way, with the
+flags glibc's `pthread_create`, `fork` and `posix_spawn` pass. **The signal scope is what lets the
+children share one PID namespace**: every exec-path job had a namespace of its own, and without the
+scope a decoder compromised by one video could kill a sibling mid-decode, or the worker. corner: a
+kernel between Landlock ABI 1 and 5 still gets the worker, without that scope. A kernel without
+Landlock gets no worker at all: the worker answers `K` and the exec path takes every video. The
+worker is also not dumpable, which children inherit, so no process of the same user can ptrace it or
+read its descriptors.
 
 **The worker's only final verdict is a thumbnail.** It reaps each child through a pidfd, kills one
 still running at `JOB_TIMEOUT`, and writes one byte on that job's reply socket: `S` for exit 0, `F`
