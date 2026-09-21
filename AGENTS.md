@@ -2838,9 +2838,12 @@ probed, mp4, mkv, webm, avi, mov, ts, mpg, flv, 3gp, wmv, m4v, ogv, m2ts, raw h2
 **One worker for the pool, started lazily.** The first job that qualifies spawns it under the pool's
 own bwrap flags from `sandbox::wrap_worker`: every namespace flag, `--clearenv`, read-only `/usr` and
 `/etc`, and the flea executable itself bound read-only, and no input or output bind at all. There is
-no `prlimit` around it, because the limits are per job and every child sets its own; a cap on the
-worker would bound only the worker's own few milliseconds a fork, since `RLIMIT_CPU` never counts
-reaped children. Pool threads meeting their first video together start one worker between them,
+no `prlimit` around it, because the limits are per job and every child sets its own after the
+fork. A cap on the worker would be inherited by every child anyway, and the 30 s `RLIMIT_CPU` would
+also count the worker's own CPU for the whole session, which `RLIMIT_CPU` accumulates and which
+never includes its reaped children: measured on minipc at 9 ticks for 60 videos, about 1.5 ms a job,
+so such a cap would end the worker after roughly 20,000 videos. Pool threads meeting their first
+video together start one worker between them,
 because it is spawned under the link's lock. **It stays resident for the rest of the backend's
 life**, and that is its cost: about 20 MB of PSS for the worker, 37.5 MB resident, and a third of a
 megabyte for its two `bwrap` processes, against the backend's 2.5 MB, in one sample on minipc after
@@ -2864,14 +2867,16 @@ file: measured inside this exact bwrap, a child holding one reopened `/proc/self
 and could have rewritten the operator's video, which the exec path's `--ro-bind` makes impossible.
 With the ruleset the same reopen is `EACCES`, a direct open of the path is refused too, the read
 reopen still works and the file is untouched. `thumbworker::tests::
-a_confined_child_holds_only_its_job_and_can_write_or_signal_nothing` runs `confine()` itself in a
-copy of the test binary and reports through descriptor 4, the way a job writes its PNG, that
-exactly descriptors 0 to 4 are open, both limits are set, neither the input nor its path opens for
-writing, the input still reads and the parent can no longer be signalled; `before=true` and
-`signalled_before=true` are the negative controls. **The signal scope is what lets the children
-share one PID namespace**: every exec-path job had a namespace of its own, and without the scope a
-decoder compromised by one video could kill a sibling mid-decode, or the worker. corner: a kernel
-between Landlock ABI 1 and 5 still gets the worker, without that scope. A kernel without Landlock
+a_confined_child_holds_only_its_job_and_can_write_or_signal_nothing` plants a socket on
+descriptor 0, where the worker's request socket sits, runs `confine()` itself in a copy of the test
+binary and reports through descriptor 4, the way a job writes its PNG, that exactly descriptors 0
+to 4 are open, 0 to 2 are `/dev/null`, both limits are set, neither the input nor its path opens for
+writing, the input still reads and the parent can no longer be signalled; `socket_before=true`,
+`before=true` and `signalled_before=true` are the negative controls. **The signal scope is what
+lets the children share one PID namespace**: every exec-path job had a namespace of its own, and
+without the scope a decoder compromised by one video could kill a sibling mid-decode, or the
+worker. corner: a kernel between Landlock ABI 1 and 5 still gets the worker, without that scope.
+A kernel without Landlock
 gets no worker at all: the worker answers `K` and the exec path takes every video. The worker is
 also not dumpable, which children inherit, so no process of the same user can ptrace it or read
 its descriptors.
@@ -2885,22 +2890,28 @@ thumbnailer program ever writes a `fail/` marker: the worker's child is more con
 program, with no writable `/tmp`, and a file only the worker failed must not be recorded broken on
 its word. `N` retires the worker, as below. corner: a video that hangs the decoder costs two
 deadlines, one in the worker and one on the exec path, and costs them once, because the exec
-path's failure records the marker. The child never holds its reply socket, so a reply that closes
-with no byte can only mean the worker died.
+path's failure records the marker. `workerlink::tests::
+only_a_thumbnail_is_final_and_a_machine_failure_retires_the_worker` answers one request each way
+from a stand-in worker and pins all three arms. The child never holds its reply socket, so a reply
+that closes with no byte can only mean the worker died.
 
 **Every failure of the worker falls back, and none judges a file.** No worker, a library that will
 not load, no Landlock, a request that cannot be sent, an `N`, a reply that closes with no byte, or
 no word within `JOB_TIMEOUT` plus 5 s all retire the worker for the rest of the process and send
-that job, and every later one, down the exec path. One stderr line names the cause, such as
-`flea: the thumbnail worker did not start (libffmpegthumbnailer.so.4 did not load), so videos use
-the thumbnailer program`, or no Landlock, no answer within 5 s or `bwrap` not starting, and once
-it ran, `failed a job on this machine`, `stopped answering` or `stopped taking requests`. The
-backend says it because the worker's stderr is `/dev/null`, like every child's, so libav's logs
-never reach the operator's. Before this, a hard `RLIMIT_AS` below 2 GiB made every child refuse
-its confinement and every video answer empty with nothing on stderr and no fallback; reproduced on
-minipc under `prlimit --as=1900000000:1900000000`. An input that no longer opens, or is no longer a
-regular file, is answered as `NotStarted` without touching the worker and records nothing, where the
-exec path writes a `fail/` marker for a file it cannot read; `tests/thumbs.sh` asserts the missing
+that job, and every later one, down the exec path. One stderr line names the cause, such as `flea:
+the thumbnail worker did not start (libffmpegthumbnailer.so.4 did not load), so videos use the
+thumbnailer program`, or no Landlock, no answer within 5 s, an exit before any answer or `bwrap` not
+starting, and once it ran, `failed a job on this machine`, `stopped answering` or `stopped taking
+requests`. The backend says it because the worker's stderr is `/dev/null`, like every child's, so
+libav's logs never reach the operator's. Before this, a hard `RLIMIT_AS` below 2 GiB made every
+child refuse its confinement and every video answer empty with nothing on stderr and no fallback;
+reproduced on minipc under `prlimit --as=1900000000:1900000000`. Under that limit the exec path it
+now falls back to fails too, because `prlimit` cannot raise a hard limit, and records a `fail/`
+marker for the video exactly as it already did for every image; the stderr line is what says so.
+corner: minipc's hard `RLIMIT_AS` is unlimited, in the Hyprland session as in a login shell, so that
+limit exists only where someone sets it. An input that no longer opens, or is no longer a regular
+file, is answered as `NotStarted` without touching the worker and records nothing, where the exec
+path writes a `fail/` marker for a file it cannot read; `tests/thumbs.sh` asserts the missing
 marker, which is what pins that branch. `FLEA_THUMB_WORKER=off` starts with the worker retired:
 `tests/thumbs-exec.sh` runs all of `tests/thumbs.sh` that way inside `tests/run-all.sh`, and it is
 how an operator gets the exec path back.

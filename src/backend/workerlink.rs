@@ -70,6 +70,17 @@ pub fn worker_shape(spec: &Spec) -> Option<bool> {
     (input && output && size).then_some(film_strip)
 }
 
+// Why a worker that did not answer READY is not serving, from its first byte and how long it took; None before the limit is an exit, not a timeout.
+fn why_not(answer: Option<u8>, waited: Duration) -> String {
+    match answer {
+        Some(NO_LIBRARY) => format!("{} did not load", SONAME.to_string_lossy()),
+        Some(NO_LANDLOCK) => String::from("this kernel has no Landlock"),
+        Some(other) => format!("it answered the unknown byte {}", other),
+        None if waited >= READY_LIMIT => format!("it did not answer within {} s", READY_LIMIT.as_secs()),
+        None => String::from("it exited before it answered"),
+    }
+}
+
 // Waits for one byte on a socket, or answers None on a timeout, a closed peer or an error.
 fn read_byte(sock: &OwnedFd, limit: Duration) -> Option<u8> {
     let deadline = std::time::Instant::now() + limit;
@@ -114,17 +125,15 @@ impl WorkerLink {
             .stderr(Stdio::null())
             .spawn()
             .map_err(|e| format!("bwrap did not start: {}", e))?;
+        let asked = std::time::Instant::now();
         let answer = read_byte(&mine, READY_LIMIT);
         if answer == Some(READY) {
             return Ok((child, mine));
         }
+        let waited = asked.elapsed();
         let _ = child.kill();
         let _ = child.wait();
-        Err(match answer {
-            Some(NO_LIBRARY) => format!("{} did not load", SONAME.to_string_lossy()),
-            Some(NO_LANDLOCK) => String::from("this kernel has no Landlock"),
-            _ => format!("it did not answer within {} s", READY_LIMIT.as_secs()),
-        })
+        Err(why_not(answer, waited))
     }
 
     // Holding the lock across the send keeps a request whole and lets one failure retire the worker for every thread.
@@ -200,6 +209,44 @@ impl WorkerLink {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::backend::testdir::TestDir;
+    use crate::backend::thumbs::THUMB_SIZE;
+
+    // Stands in for the worker: answers the one request it is sent with `verdict`, on the reply socket that request carried.
+    fn answered_by(verdict: u8) -> (WorkerLink, std::thread::JoinHandle<()>) {
+        let (mine, theirs) = fdpass::pair().unwrap();
+        let child = Command::new("true").spawn().unwrap();
+        let link = WorkerLink { state: Mutex::new(State::Running { child, requests: mine }) };
+        let answering = std::thread::spawn(move || {
+            let request = fdpass::recv(theirs.as_raw_fd()).unwrap().expect("a request");
+            let reply = request.fds.into_iter().nth(2).expect("a reply socket");
+            fdpass::send_byte(&reply, verdict).unwrap();
+        });
+        (link, answering)
+    }
+
+    #[test]
+    fn only_a_thumbnail_is_final_and_a_machine_failure_retires_the_worker() {
+        let dir = TestDir::new("worker-verdicts");
+        let input = dir.file("clip.mp4", "not a video");
+        let output = dir.file("out.png", "");
+        for (verdict, published, keeps_serving) in [(SUCCEEDED, true, true), (FAILED, false, true), (NOT_STARTED, false, false)] {
+            let (link, answering) = answered_by(verdict);
+            let got = link.generate(&input, &output, THUMB_SIZE, true, Duration::from_secs(1));
+            answering.join().unwrap();
+            assert_eq!(matches!(got, Some(Ran::Succeeded)), published, "verdict {}", verdict as char);
+            assert_eq!(got.is_none(), !published, "verdict {} must send the job down the exec path", verdict as char);
+            assert_eq!(matches!(*link.state.lock().unwrap(), State::Running { .. }), keeps_serving, "verdict {}", verdict as char);
+        }
+    }
+
+    #[test]
+    fn a_worker_that_is_not_serving_says_why() {
+        assert_eq!(why_not(Some(NO_LIBRARY), Duration::ZERO), "libffmpegthumbnailer.so.4 did not load");
+        assert_eq!(why_not(Some(NO_LANDLOCK), Duration::ZERO), "this kernel has no Landlock");
+        assert_eq!(why_not(None, Duration::ZERO), "it exited before it answered");
+        assert_eq!(why_not(None, READY_LIMIT), "it did not answer within 5 s");
+    }
 
     fn spec(exec: &str) -> Spec {
         Spec { exec: exec.split(' ').map(str::to_string).collect() }

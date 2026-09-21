@@ -420,11 +420,21 @@ mod tests {
         limit.current
     }
 
-    // Holds the input read-only and the report write-only, the way a job's two files arrive, runs confine() and writes what it can still do to the report.
+    // What descriptor 0, 1 or 2 points at, such as "/dev/null" or "socket:[123]".
+    fn target(fd: c_int) -> String {
+        std::fs::read_link(format!("/proc/self/fd/{}", fd)).map(|p| p.to_string_lossy().into_owned()).unwrap_or_default()
+    }
+
+    // Holds the input read-only, the report write-only and a socket on 0, the way a job arrives in the worker, runs confine() and writes what it can still do to the report.
     fn probe(dir: &str) -> ! {
         let victim = format!("{}/victim.mp4", dir);
         let reader = std::fs::File::open(&victim).expect("the probe could not open its input");
         let report = std::fs::OpenOptions::new().write(true).open(format!("{}/report", dir)).expect("the probe could not open its report");
+        let (_peer, planted) = fdpass::pair().expect("the probe could not make its socket");
+        if unsafe { dup2(planted.as_raw_fd(), 0) } != 0 {
+            unsafe { _exit(CHILD_MACHINE) };
+        }
+        let socket_before = target(0).starts_with("socket:");
         let Some(abi) = landlock_abi() else {
             println!("probe=no-landlock");
             std::process::exit(0);
@@ -436,8 +446,11 @@ mod tests {
             unsafe { _exit(CHILD_MACHINE) };
         }
         let open: Vec<c_int> = (0..FD_CEILING).filter(|fd| unsafe { fcntl(*fd, F_GETFD, 0) } >= 0).collect();
+        let nulls = (0..3).all(|fd| target(fd) == "/dev/null");
         let facts = format!(
-            "before={} reopened={} direct={} readable={} signalled_before={} signalled={} fds={:?} cpu={} as={}",
+            "socket_before={} nulls={} before={} reopened={} direct={} readable={} signalled_before={} signalled={} fds={:?} cpu={} as={}",
+            socket_before,
+            nulls,
             wrote_before,
             writable("/proc/self/fd/3"),
             writable(&victim),
@@ -471,9 +484,9 @@ mod tests {
             return;
         }
         let scoped = landlock_abi().is_some_and(|abi| abi >= LANDLOCK_SCOPE_SIGNAL_ABI);
-        // before=true and signalled_before=true are the negative controls: unconfined, the same process can do both.
+        // socket_before, before and signalled_before are the negative controls: unconfined, the same process holds a socket on 0, writes and signals.
         let expected = format!(
-            "before=true reopened=false direct=false readable=true signalled_before=true signalled={} fds=[0, 1, 2, 3, 4] cpu={} as={}",
+            "socket_before=true nulls=true before=true reopened=false direct=false readable=true signalled_before=true signalled={} fds=[0, 1, 2, 3, 4] cpu={} as={}",
             !scoped,
             sandbox::CPU_SECONDS,
             sandbox::ADDRESS_SPACE_BYTES

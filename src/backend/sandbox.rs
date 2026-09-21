@@ -90,7 +90,7 @@ pub fn wrap(inner: &[String], input: &Path, out: &Path) -> Vec<String> {
     a
 }
 
-// The pool's namespace flags around the long-lived thumbnail worker, which gets each job's files as descriptors and binds only its own executable; no prlimit, because the limits are per job and each forked child sets them itself.
+// The pool's namespace flags around the long-lived thumbnail worker, which gets each job's files as descriptors and binds only its own executable; no prlimit, because the limits are per job and a CPU cap would also accumulate the worker's own time across the session.
 pub fn wrap_worker(inner: &[String], exe: &Path) -> Vec<String> {
     let head_and_binds = 4;
     let mut a: Vec<String> = Vec::with_capacity(inner.len() + BWRAP_FLAGS.len() + head_and_binds);
