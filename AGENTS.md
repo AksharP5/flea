@@ -2922,11 +2922,11 @@ address space and not resident memory, so it does not net against those 19 GiB**
 own test has the kernel admit the same `PROT_NONE` reservation at 1536 MiB and refuse it at
 3072 MiB while `VmRSS` stays under the test's 256 MiB ceiling, so the cap decided on the mapping
 and not on a resident page. What the cap change moves is the composed case, and it moves it in
-permitted address space: `src/backend/run.rs`'s `THUMB_WORKERS` is 4, so four decoders multiply the
-permitted total to 8 GiB, where at one GiB it was 4 and at four GiB it would have been 16. The case
+permitted address space: `src/backend/run.rs`'s `THUMB_WORKERS` is 6 since 0.3.2, so six decoders
+multiply the permitted total to 12 GiB; at four workers it was 8. The case
 that matters is the bomb that faults its pages in instead of reserving them sparsely, because that
 is the only one that turns permitted address space into memory the box has to find. Not run,
-deliberately: four decoders each faulting in a 2 GiB bomb at once is the state this paragraph warns
+deliberately: six decoders each faulting in a 2 GiB bomb at once is the state this paragraph warns
 about, not a test to schedule on the box.
 
 Only a SIGKILL of the sandbox launcher itself arrives as `signal=9`, and that process decodes
@@ -3065,7 +3065,7 @@ the listing looking for work at any priority, and the proof is on the record: li
 100,000-file fixture and stat'ing every row through two full windows grows
 `~/.cache/thumbnails/large` by zero files and never creates `fail/flea`.
 
-**`THUMB_WORKERS` is 4, and it is a measured ceiling and not a core count.** It lives here and
+**`THUMB_WORKERS` is 6 since 0.3.2, and it is a measured choice and not a core count.** It lives here and
 not in `thumbs.rs` because it is scheduling policy and belongs with the request policy.
 
 **The reason this paragraph used to give was half wrong, and the box said so.** It claimed the
@@ -3149,7 +3149,7 @@ noise of the 4-worker arm and whose first thumbnail is too.** On the trimmed ser
 by 25.0 ms of latency and 83 ms of first thumbnail; 8 fails both, by 5.5 ms and 13.5 ms; and 6
 passes the first-wave check outright, 123.5 against 121.5 with overlapping ranges, and fails the
 latency check by 3.0 ms while sitting above the 4-worker arm in 8 of 8 rounds. Nothing above 4
-survives both, so **4 stays**.
+survives both, so **4 stayed**, until 0.3.2 below.
 
 **Say the margin out loud, because it is small and the trade is not.** The honest cost of 6
 workers is **3.0 ms** of input-to-rows latency on the trimmed series, 51.0 against 48.0, and 4.0 ms
@@ -3159,6 +3159,19 @@ thumbnail and a tie on the first. The rule disqualified 6 because the cost is me
 out of 8, not because it is large, and the 69.5 ms that looked decisive before the instrument was
 fixed was the harness timing itself. Anyone revisiting this constant should start from 3.0 against
 199.5 and not from the conclusion.
+
+**0.3.2 moved it to 6, on a different question.** Strata caught Flea's settle on the media fixture
+through a reusable sandbox worker of its own, and the research session measured the harness at
+both widths on the final 0.3.2 candidate, two interleaved batches of three: settled 2701 to 2860 ms
+at 4 and 2333 to 2631 at 6, which clears strata's 2804 to 3071. GM's ruling for that release was to
+keep 4 only if 6 cost input latency a person would feel. Re-timed with `inputToRows()` by the method
+above, eight rounds, arm order alternating, a second backend generating 210 media rows at the arm's
+own width, every sample the burst had already finished by dropped and the last survivor of each
+round trimmed: idle 46.5 against 46.5 ms over 48 samples each, and under the burst **65.0 at 4 and
+70.5 at 6**, 33 and 24 samples, 6 above in 6 of 8 rounds. **5.5 ms is a third of a 60 Hz frame**,
+which nobody feels, so 6 ships. The 6-worker burst ended sooner, 5.2 against 6.5 s, so more of its
+samples were dropped, and every one it kept was taken with its whole pool busy. The artefact is
+`fw-lat.csv` in the 0.3.2 release evidence.
 
 **One thing this measurement does not contain.** The burst runs in a SECOND backend process, so
 the window under the input has an idle pool of its own and the contention a real burst adds to

@@ -40,8 +40,8 @@ use std::sync::mpsc::{channel, Receiver, TryRecvError};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-// Wider pools settle sooner and answer input later, and 4 is the widest that costs neither the first thumbnail nor the scroll; see AGENTS.md "Thumbnail requests".
-const THUMB_WORKERS: usize = 4;
+// Wider pools settle sooner and answer input later: 6 settles the media fixture ahead of strata for 5.5 ms of input under a full pool; see AGENTS.md "Thumbnail requests".
+const THUMB_WORKERS: usize = 6;
 // The whole shutdown budget: a running job is killed at the pool's own 20 s deadline, so waiting longer than that can never cut one short.
 const DRAIN_LIMIT: Duration = Duration::from_secs(25);
 
