@@ -48,6 +48,9 @@ sandbox_make "$shots"
 launched=""
 # How long a stopped candidate may take to leave before this run refuses to launch the next one.
 stop_wait_s=10
+# How many composited frames the edge check samples, and how far apart, before it calls the edge missing.
+edge_shots=10
+edge_shot_gap_s=0.3
 # True once no live member of process group $1 remains, polled for at most $2 seconds.
 group_gone() {
     local deadline=$((SECONDS + $2)) pid alive
@@ -156,9 +159,9 @@ pixel_at() {
 }
 # A screenshot is not bit exact: measured over all 22 themes the compositor's own round trip moves a
 # role by up to three steps a channel, so a role matches within role_steps and never by string.
-same_colour() {
-    local theme="$1" rule="$2" got="${3#\#}" want="$4" near
-    near=$(python3 -c '
+# near or off: within role_steps per channel of the wanted colour, the rule every role check uses.
+near_colour() {
+    python3 -c '
 import sys
 def channels(value):
     h = value.lstrip("#")
@@ -166,8 +169,11 @@ def channels(value):
     return [int(h[i:i + 2], 16) for i in (0, 2, 4)]
 got, want, steps = channels(sys.argv[1]), channels(sys.argv[2]), int(sys.argv[3])
 print("near" if all(abs(a - b) <= steps for a, b in zip(got, want)) else "off")
-' "$got" "$want" "$role_steps")
-    [ "$near" = "near" ] || fail "$theme: $rule draws #$got, not $want"
+' "${1#\#}" "$2" "$role_steps"
+}
+same_colour() {
+    local theme="$1" rule="$2" got="${3#\#}" want="$4"
+    [ "$(near_colour "$got" "$want")" = "near" ] || fail "$theme: $rule draws #$got, not $want"
 }
 
 for colours in "$themes_dir"/*/colors.toml "$synthetic"; do
@@ -254,21 +260,25 @@ for colours in "$themes_dir"/*/colors.toml "$synthetic"; do
     read -r cx cy <<< "$(ipc rowCentre 2)"
     [ -n "${cx:-}" ] && omarchy-drive move "$((wx + cx))" "$((wy + cy))" >/dev/null
     sleep 1
-    omarchy-drive shot "$shots/$theme-list.png" "$class" >/dev/null
     # The edge is a solid bar at the cursor row's leading corner, so its own pixel is the accent itself.
     read -r rx ry rw rh <<< "$(ipc rowRect "$(ipc cursor)")"
     if [ -n "${rx:-}" ]; then
+        # ipc confirms the model, not a composited frame: one run shot its first frame 1.5 s after cursor 2.
+        edge="" shot_n=0
+        while [ "$shot_n" -lt "$edge_shots" ]; do
+            shot_n=$((shot_n + 1))
+            omarchy-drive shot "$shots/$theme-list.png" "$class" >/dev/null
+            edge=$(pixel_at "$shots/$theme-list.png" "$((rx + 1))" "$((ry + rh / 2))")
+            [ "$(near_colour "$edge" "$accent")" = near ] && break
+            sleep "$edge_shot_gap_s"
+        done
+        if [ "$shot_n" -gt 1 ] && [ "$(near_colour "$edge" "$accent")" = near ]; then
+            printf 'NOTE %s: the accent edge was composited on shot %s of %s\n' "$theme" "$shot_n" "$edge_shots"
+        fi
         fails_before=$failures
-        same_colour "$theme" "the cursor's accent edge" "$(pixel_at "$shots/$theme-list.png" "$((rx + 1))" "$((ry + rh / 2))")" "$accent"
-        # corner: evidence only, the FAIL stands; later shots say whether that frame was late or never came.
+        same_colour "$theme" "the cursor's accent edge" "$edge" "$accent"
         if [ "$failures" -gt "$fails_before" ]; then
-            for late_s in 0 2; do
-                sleep "$late_s"
-                omarchy-drive shot "$shots/$theme-list-late$late_s.png" "$class" >/dev/null
-                printf 'NOTE %s: a shot %s s later draws #%s there, ipc cursor %s\n' "$theme" "$late_s" \
-                    "$(pixel_at "$shots/$theme-list-late$late_s.png" "$((rx + 1))" "$((ry + rh / 2))")" "$(ipc cursor)"
-            done
-            printf 'NOTE %s: window %s, active workspace %s\n' "$theme" \
+            printf 'NOTE %s: model cursor %s, window %s, active workspace %s\n' "$theme" "$(ipc cursor)" \
                 "$(hyprctl clients -j | jq -c --arg c "$class" '[.[] | select(.class == $c) | {ws: .workspace.id, mapped, hidden, focus: .focusHistoryID}]')" \
                 "$(hyprctl activeworkspace -j | jq .id)"
         fi
