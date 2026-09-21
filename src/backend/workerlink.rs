@@ -273,6 +273,8 @@ mod tests {
         assert!(matches!(read_byte(&mine, Duration::ZERO), Heard::Silence), "nothing was sent");
         drop(theirs);
         assert!(matches!(read_byte(&mine, Duration::from_secs(1)), Heard::Closed));
+        let not_a_socket = OwnedFd::from(std::fs::File::open("/dev/null").unwrap());
+        assert!(matches!(read_byte(&not_a_socket, Duration::from_secs(1)), Heard::Broken(_)), "recvmsg on a file that is not a socket fails");
     }
 
     #[test]
