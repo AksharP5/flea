@@ -526,6 +526,7 @@ FocusScope {
     property bool dualMode: false
     readonly property alias pathCrumbs: panePath.crumbItems
     readonly property alias pathSlot: panePath.crumbSlot
+    readonly property alias pathStrip: panePath
     signal switchPane()
 
     Flea.List {

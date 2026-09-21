@@ -7654,6 +7654,8 @@ case_dual() {
     # The baseline the disk facts hold to for the rest of this case, taken before any transient exists.
     status_disk_x=$(ipc statusFooterState | jq -r '.disk.x')
     [[ "$status_disk_x" =~ ^[0-9.]+$ ]] || fail "dual: the quiet strip reported no disk position, got [$status_disk_x]"
+    # The single view keeps the pane's own path at height 0, so it must hold no crumbs to rebuild on every move.
+    [[ "$(ipc paneCrumbCount 0)" == 0 ]] || fail "dual: the hidden pane path holds $(ipc paneCrumbCount 0) crumbs in the single view"
     click_chrome dual
     settle
     ipc dualState | jq -e '.active and .focused == 0' >/dev/null || fail "dual: chrome did not enter dual mode"
@@ -7724,6 +7726,37 @@ case_dual() {
         '.focused == 0 and .panes[0].path == $left and .panes[1].path == $right' >/dev/null \
         || fail "dual: a tap on the left pane's parent crumb left $(ipc dualState | jq -c '[.focused, .panes[0].path, .panes[1].path]')"
     [[ "$(ipc pathBarOpen)" == "false" ]] || fail "dual: a single tap on a pane crumb opened the path bar"
+    # A double click types the path wherever it lands on the strip: the padding before the first crumb, then a crumb.
+    local strip sx sy _sw sh press_x press_y
+    read -r sx sy _sw sh <<< "$(ipc panePathRect 0)"
+    [[ -n "$sh" ]] || fail "dual: the left pane path has no on-screen box"
+    # The tap moved the pane up one level, so the parent is the second-last crumb of the new path.
+    target=$(( $(ipc paneCrumbCount 0) - 2 ))
+    centre=$(ipc paneCrumbCentre 0 "$target")
+    [[ -n "$centre" ]] || fail "dual: left crumb $target has no on-screen centre after the tap"
+    read -r cx cy <<< "$centre"
+    for strip in padding crumb; do
+        if [[ "$strip" == padding ]]; then
+            press_x=$((sx + chrome_band_inset)) press_y=$((sy + sh / 2))
+        else
+            press_x=$cx press_y=$cy
+        fi
+        omarchy-drive click "$((press_x + wx))" "$((press_y + wy))" --double >/dev/null \
+            || fail "dual: omarchy-drive refused the double click on the left pane path's $strip"
+        settle
+        settle
+        shot "dual-path-double-$strip"
+        [[ "$(ipc pathBarOpen)" == "true" ]] || fail "dual: a double click on the left pane path's $strip did not open the path bar"
+        ipc dualState | jq -e --arg left "$dir/left" '.panes[0].path == $left' >/dev/null \
+            || fail "dual: the double click on the left pane path's $strip navigated to $(ipc dualState | jq -r '.panes[0].path')"
+        key -k Escape >/dev/null
+        settle
+        [[ "$(ipc pathBarOpen)" == "false" ]] || fail "dual: Escape did not close the path bar opened from the pane path's $strip"
+    done
+    # Leaving dual has to put focus back on the primary pane, which only shows if the second pane holds it first.
+    key -k Tab >/dev/null
+    settle
+    ipc dualState | jq -e '.focused == 1' >/dev/null || fail "dual: Tab did not focus the right pane before leaving dual"
     click_chrome list
     settle
     ipc dualState | jq -e '(.active | not) and .focused == 0' >/dev/null || fail "dual: leaving dual did not restore primary focus"

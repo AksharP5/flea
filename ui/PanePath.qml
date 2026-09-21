@@ -17,6 +17,17 @@ Rectangle {
 
     color: root.focused ? Theme.color.surface : Theme.color.background
 
+    // Where no crumb is, the strip keeps the one gesture it had before issue 45: a double click types the path.
+    component TypeArea: Item {
+        HoverHandler {
+            cursorShape: Qt.IBeamCursor
+        }
+        TapHandler {
+            acceptedButtons: Qt.LeftButton
+            onDoubleTapped: root.editRequested()
+        }
+    }
+
     // One glyph's advance is every glyph's advance in this face, the same fit ui/ChromeBar.qml makes.
     TextMetrics {
         id: metrics
@@ -28,17 +39,20 @@ Rectangle {
     Item {
         id: slot
         anchors.fill: parent
-        anchors.leftMargin: Theme.spacing.rowPaddingX
-        anchors.rightMargin: Theme.spacing.rowPaddingX
         clip: true
 
         Row {
             id: row
+            x: Theme.spacing.rowPaddingX
             height: slot.height
 
             Repeater {
                 id: crumbs
-                model: Crumbs.fitCrumbs(Crumbs.crumbs(root.path, root.home), Math.floor(slot.width / metrics.advanceWidth))
+                // Empty while the strip is hidden, because the single view keeps it at height 0 and would rebuild its crumbs on every move.
+                model: root.visible
+                       ? Crumbs.fitCrumbs(Crumbs.crumbs(root.path, root.home),
+                                          Math.floor((slot.width - 2 * Theme.spacing.rowPaddingX) / metrics.advanceWidth))
+                       : []
 
                 delegate: Flea.Crumb {
                     height: slot.height
@@ -49,13 +63,13 @@ Rectangle {
             }
         }
 
-        // The rest of the strip names no directory and keeps the double click that types the path.
-        Item {
+        TypeArea {
+            anchors { left: parent.left; top: parent.top; bottom: parent.bottom }
+            width: Theme.spacing.rowPaddingX
+        }
+
+        TypeArea {
             anchors { left: row.right; right: parent.right; top: parent.top; bottom: parent.bottom }
-            TapHandler {
-                acceptedButtons: Qt.LeftButton
-                onDoubleTapped: root.editRequested()
-            }
         }
     }
 

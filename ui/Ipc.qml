@@ -679,6 +679,11 @@ QtObject {
             var inside = box.x >= 0 && box.x + item.width <= pane.pathSlot.width
             return inside ? root.fleaWindow.centreOf(item) : ""
         }
+        // The whole of that pane's path strip, "x y width height", so a test can press where no crumb is.
+        function panePathRect(side: int): string {
+            var pane = root.panes[side]
+            return pane && pane.pathStrip.visible ? root.fleaWindow.rectOf(pane.pathStrip) : ""
+        }
         // The button's painted box as "WxH": the mark is Theme.chromeMarkSize wide and the hit area is the whole strip tall.
         function chromeButtonSize(glyph: string): string {
             var item = root.chrome.buttonFor(glyph)

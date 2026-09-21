@@ -1716,7 +1716,9 @@ no single click. Neither `where` has a `pointercase_` driver in `tools/flea-acce
 both report as derived and undriven in that battery; `tests/js/tap.js` holds their counts and drives
 neither, because both are QML bindings rather than `Tap.js` calls, and **`tests/js` is structurally
 unable to press either one**. `tests/ui.sh` case `click` is what presses them at the real window,
-and case `dual` presses a pane's crumb from `paneCrumbCentre`.
+and case `dual` presses a pane's crumb from `paneCrumbCentre`, then double clicks that pane's path
+in its padding and on a crumb from `panePathRect`. A pane's path builds no crumbs while it is hidden,
+because the single view keeps it at height 0 and rule 6 is exactly that cost.
 
 The `Qt.BackButton` binding is now driven at the product, and the probe that used to stand in for it
 is the reason to say what changed. That probe was a standalone Quickshell `FloatingWindow` carrying
