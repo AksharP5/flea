@@ -2886,14 +2886,19 @@ runs `confine()` itself in a copy of the test binary and reports through descrip
 writes its PNG, that exactly descriptors 0 to 4 are open, 0 to 2 are `/dev/null`, 3 is the input,
 both limits are set, neither the input nor its path opens for writing, the input still reads, the
 parent can no longer be signalled, its mode and times can no longer be set, `fsetxattr`, `ioctl` and
-`fork` answer `EPERM` and a thread still starts; the `_before` facts are the negative controls,
-taken unconfined with a `fchmod` to the file's own mode, a `futimens` that omits both times and a
-fork whose child only exits, so they change nothing. **The signal scope is what lets the children
-share one PID namespace**: every exec-path job had a namespace of its own, and without the scope a
-decoder compromised by one video could kill a sibling mid-decode, or the worker. corner: a kernel
-between Landlock ABI 1 and 5 still gets the worker, without that scope. A kernel without Landlock
-gets no worker at all: the worker answers `K` and the exec path takes every video. The worker is
-also not dumpable, which children inherit, so no process of the same user can ptrace it or read its
+a `fork`, which glibc makes through `clone`, answer `EPERM` and a thread still starts; the `_before`
+facts are the negative controls, taken unconfined with a `fchmod` to the file's own mode, a
+`futimens` that omits both times and a fork whose child only exits, so they change nothing. The
+probe makes a few of the refused calls for real;
+`thumbworker::tests::every_call_that_changes_a_file_or_starts_a_process_is_refused` covers all of
+them without making any, by running the built filter the way the kernel does for each call named in
+its own list, at the number `/usr/include/asm/unistd_64.h` gives, so an entry deleted from the table
+or typed with the wrong number goes red. **The signal scope is what lets the children share one PID
+namespace**: every exec-path job had a namespace of its own, and without the scope a decoder
+compromised by one video could kill a sibling mid-decode, or the worker. corner: a kernel between
+Landlock ABI 1 and 5 still gets the worker, without that scope. A kernel without Landlock gets no
+worker at all: the worker answers `K` and the exec path takes every video. The worker is also not
+dumpable, which children inherit, so no process of the same user can ptrace it or read its
 descriptors.
 
 **The worker's only final verdict is a thumbnail.** It reaps each child through a pidfd, kills one

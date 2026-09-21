@@ -295,7 +295,7 @@ fn lock_down(abi: i64) -> Option<()> {
 }
 
 // A foreign arch is killed, an x32 call, a listed call or a clone that is not a thread answers EPERM, clone3 answers ENOSYS, and every other call runs.
-fn install_call_filter() -> Option<()> {
+fn call_filter() -> Option<Vec<SockFilter>> {
     let refused: Vec<u32> = METADATA_WRITES.iter().chain(NEW_PROCESSES).map(|(_, number)| *number).collect();
     let x32_check = 4;
     let first_listed = x32_check + 1;
@@ -325,9 +325,11 @@ fn install_call_filter() -> Option<()> {
     program.push(op(BPF_RET_K, 0, 0, SECCOMP_RET_ALLOW));
     program.push(op(BPF_RET_K, 0, 0, SECCOMP_RET_ERRNO | EPERM));
     program.push(op(BPF_RET_K, 0, 0, SECCOMP_RET_ERRNO | ENOSYS));
-    if program.len() != no_such_call + 1 {
-        return None;
-    }
+    (program.len() == no_such_call + 1).then_some(program)
+}
+
+fn install_call_filter() -> Option<()> {
+    let program = call_filter()?;
     let filter = SockFprog { len: u16::try_from(program.len()).ok()?, filter: program.as_ptr() };
     (unsafe { prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &filter as *const SockFprog as u64, 0, 0) } == 0).then_some(())
 }
@@ -593,6 +595,78 @@ mod tests {
             assert_eq!(unsafe { poll(&mut ended, 1, CHILD_WAIT_MS) }, 1, "the child never ended");
         }
         Running { pid, pidfd, reply, deadline: Instant::now() }
+    }
+
+    // Where the kernel's own numbers live on Arch, from linux-api-headers, so the table is checked against something it did not write.
+    const UNISTD_64: &str = "/usr/include/asm/unistd_64.h";
+    // Any arch but x86_64, here 32-bit x86, which the filter must kill.
+    const AUDIT_ARCH_I386: u32 = 0x4000_0003;
+    // clone(2) flags glibc's fork() passes: SIGCHLD and no CLONE_THREAD.
+    const FORK_CLONE_FLAGS: u32 = 17;
+    // Every call a job must never make, named independently of the table under test.
+    const MUST_REFUSE: [&str; 25] = [
+        "ioctl", "chmod", "fchmod", "chown", "fchown", "lchown", "utime", "setxattr", "lsetxattr", "fsetxattr",
+        "removexattr", "lremovexattr", "fremovexattr", "utimes", "fchownat", "futimesat", "fchmodat", "utimensat",
+        "io_uring_setup", "fchmodat2", "setxattrat", "removexattrat", "file_setattr", "fork", "vfork",
+    ];
+
+    // Sample input line: "#define __NR_fchmod 91"
+    fn kernel_numbers() -> std::collections::HashMap<String, u32> {
+        let header = std::fs::read_to_string(UNISTD_64).unwrap_or_else(|e| panic!("{} did not read: {}", UNISTD_64, e));
+        let mut numbers = std::collections::HashMap::new();
+        for line in header.lines() {
+            let mut words = line.split_whitespace();
+            if let (Some("#define"), Some(name), Some(number)) = (words.next(), words.next(), words.next()) {
+                if let (Some(call), Ok(number)) = (name.strip_prefix("__NR_"), number.parse()) {
+                    numbers.insert(call.to_string(), number);
+                }
+            }
+        }
+        numbers
+    }
+
+    // Runs the filter the way the kernel does for one call and returns what it answers, so no call is ever made.
+    fn verdict_of(program: &[SockFilter], arch: u32, number: u32, first_argument: u32) -> u32 {
+        let mut at = 0;
+        let mut loaded = 0;
+        loop {
+            let step = &program[at];
+            let here = at;
+            let jump = |taken: bool| here + 1 + usize::from(if taken { step.jt } else { step.jf });
+            at = match step.code {
+                BPF_LD_W_ABS => {
+                    loaded = match step.k {
+                        SECCOMP_DATA_ARCH => arch,
+                        SECCOMP_DATA_NR => number,
+                        SECCOMP_DATA_ARG0_LOW => first_argument,
+                        other => panic!("the filter loads offset {}, which this walk does not model", other),
+                    };
+                    here + 1
+                }
+                BPF_JEQ_K => jump(loaded == step.k),
+                BPF_JGE_K => jump(loaded >= step.k),
+                BPF_JSET_K => jump(loaded & step.k != 0),
+                BPF_RET_K => return step.k,
+                other => panic!("the filter uses opcode {:#x}, which this walk does not model", other),
+            };
+        }
+    }
+
+    #[test]
+    fn every_call_that_changes_a_file_or_starts_a_process_is_refused() {
+        let numbers = kernel_numbers();
+        let program = call_filter().expect("the filter did not build");
+        let number = |call: &str| *numbers.get(call).unwrap_or_else(|| panic!("{} has no __NR_{}", UNISTD_64, call));
+        let refused = SECCOMP_RET_ERRNO | EPERM;
+        for call in MUST_REFUSE {
+            assert_eq!(verdict_of(&program, AUDIT_ARCH_X86_64, number(call), 0), refused, "{} is not refused", call);
+        }
+        assert_eq!(verdict_of(&program, AUDIT_ARCH_X86_64, number("clone"), CLONE_THREAD), SECCOMP_RET_ALLOW, "a thread must start");
+        assert_eq!(verdict_of(&program, AUDIT_ARCH_X86_64, number("clone"), FORK_CLONE_FLAGS), refused, "a process must not");
+        assert_eq!(verdict_of(&program, AUDIT_ARCH_X86_64, number("clone3"), 0), SECCOMP_RET_ERRNO | ENOSYS);
+        assert_eq!(verdict_of(&program, AUDIT_ARCH_X86_64, number("read"), 0), SECCOMP_RET_ALLOW, "an ordinary call must run");
+        assert_eq!(verdict_of(&program, AUDIT_ARCH_X86_64, number("read") | X32_SYSCALL_BIT, 0), refused, "an x32 call must not");
+        assert_eq!(verdict_of(&program, AUDIT_ARCH_I386, number("read"), 0), SECCOMP_RET_KILL_PROCESS);
     }
 
     #[test]
