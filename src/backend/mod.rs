@@ -57,6 +57,10 @@ pub mod child;
 pub mod thumbs;
 pub mod thumbreq;
 pub mod thumbwrite;
+// The pre-linked video thumbnailer and the backend's link to it; see AGENTS.md "Thumbnail worker".
+pub mod fdpass;
+pub mod thumbworker;
+pub mod workerlink;
 // File operations and the undo journal they record into.
 pub mod convert;
 pub mod copyfile;

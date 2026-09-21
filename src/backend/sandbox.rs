@@ -5,9 +5,9 @@ const BWRAP: &str = "bwrap";
 // bwrap has no rlimit option, so stock prlimit carries them; see AGENTS.md "Thumbnail sandbox".
 const PRLIMIT: &str = "prlimit";
 // A 1080p decode is well under a second of CPU here, so 30 s is a runaway, not a slow file.
-const CPU_SECONDS: u32 = 30;
+pub(crate) const CPU_SECONDS: u32 = 30;
 // Issue #17 reports glycin exhausting 1 GiB of address space on a large ICC-tagged JPEG and aborting, which this box does not reproduce, so the cap is 2 GiB: the smallest value the ticket records as working, still finite, and virtual rather than resident. What actually consumed it is the arena reservation capped above, not the image.
-const ADDRESS_SPACE_BYTES: u64 = 2 * 1024 * 1024 * 1024;
+pub(crate) const ADDRESS_SPACE_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 
 // /bin, /sbin, /lib and /lib64 are all symlinks into usr on this box, so binding /usr covers them.
 const BWRAP_FLAGS: &[&str] = &[
@@ -86,6 +86,23 @@ pub fn wrap(inner: &[String], input: &Path, out: &Path) -> Vec<String> {
     a.push("--bind".to_string());
     a.push(out.to_string_lossy().to_string());
     a.push(out.to_string_lossy().to_string());
+    a.extend_from_slice(inner);
+    a
+}
+
+// The same namespace flags around the long-lived thumbnail worker, which is handed each job's files
+// as descriptors and so binds neither; its own executable is the one extra path it can read. No
+// prlimit: the worker would reach a CPU cap in a long session, so each forked child sets its own.
+pub fn wrap_worker(inner: &[String], exe: &Path) -> Vec<String> {
+    let head_and_binds = 4;
+    let mut a: Vec<String> = Vec::with_capacity(inner.len() + BWRAP_FLAGS.len() + head_and_binds);
+    a.push(BWRAP.to_string());
+    for flag in BWRAP_FLAGS {
+        a.push(flag.to_string());
+    }
+    a.push("--ro-bind".to_string());
+    a.push(exe.to_string_lossy().to_string());
+    a.push(exe.to_string_lossy().to_string());
     a.extend_from_slice(inner);
     a
 }

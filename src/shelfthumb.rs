@@ -55,6 +55,7 @@ fn thumb_of(
                 aliases: Arc::clone(aliases),
                 specs: Arc::clone(specs),
                 cache: Cache::at(root.to_path_buf()),
+                worker: None,
             };
             let mut job = Job { path: file.to_path_buf(), mtime, mime: kind, trace: None };
             match run_one(&tables, &mut job) {

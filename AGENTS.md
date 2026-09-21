@@ -2797,10 +2797,83 @@ and `glycin-thumbnailer` was re-checked against a 1x1 PNG when the pool started 
 caller may still pass a directory, which is the looser bind and what a thumbnailer that wrote
 to a temporary name and renamed would need; only those two thumbnailers were probed.
 
+## Thumbnail worker
+
+**42 of the 97 ms a video thumbnail cost was `ffmpegthumbnailer` linking itself**, about a hundred
+shared libraries, once per file; the sandbox around it is about 5 ms. `flea --thumb-worker`
+(`backend/thumbworker.rs`) links `libffmpegthumbnailer.so.4` once and forks one child per video,
+and `backend/workerlink.rs` is the backend's side. It changes how a video is decoded and nothing
+about what may be thumbnailed: the `.thumbnailer` files stay the only source of that.
+
+**Which jobs it takes.** `workerlink::worker_shape` accepts exactly the program ffmpegthumbnailer
+ships, `Exec=ffmpegthumbnailer -i %i -o %o -s %s -f`, bare or by path, with `-f` optional. Any
+other program, any other flag, `%u` for `%i`, or a repeated flag keeps the job on the exec path
+described under "Thumbnail pool", so the worker never guesses at an option it does not implement.
+
+**The image is the program's own, pixel for pixel.** `-s N` is `video_thumbnailer_set_size(N, N)`
+and `-f` is the struct's `overlay_film_strip`; measured on minipc with ffmpegthumbnailer 2.3.1,
+`generate_thumbnail_to_buffer` so set wrote the CLI's exact bytes for all 43 videos on the media
+fixture's first screen and for 360x640, 640x360, 200x200 and 1080x1920 test clips, each handed its
+real path. `set_size(N, 0)` differs on every portrait clip, so it is not the CLI's `-s`. **Through
+Flea the published entry differs in one optional key**: the program writes `Thumb::Mimetype` from
+the input's extension, and the worker's `/proc/self/fd/3` has none, so the worker's entry omits it.
+The pixels and every other key match, which `tests/thumbs.sh` asserts on the entries both paths
+publish for the same file; the freedesktop spec makes the key optional and Flea's cache reads only
+`Thumb::URI` and `Thumb::MTime`.
+
+**One worker for the pool, started lazily.** The first job that qualifies spawns it under the pool's
+own bwrap flags from `sandbox::wrap_worker`: every namespace flag, `--clearenv`, read-only `/usr` and
+`/etc`, and the flea executable itself bound read-only, and no input or output bind at all. There is
+no `prlimit` around it, because a long session would reach a CPU cap on the worker's own forks;
+every child sets its own. Four pool threads meeting their first video start one worker between
+them, because it is spawned under the link's lock.
+
+**One job sees one file, and cannot write it.** The backend opens the input read-only and the
+pre-created temp write-only and passes both, with a reply socket, over the worker's stdin as
+`SCM_RIGHTS` (`backend/fdpass.rs`). The child the worker forks for it then:
+
+- keeps `/dev/null` on 0 to 2, the input on 3 and the output on 4, and closes everything else, which
+  is the request socket, every other job's reply socket and every sibling's pidfd;
+- sets `RLIMIT_CPU` 30 s and `RLIMIT_AS` 2 GiB, the values `prlimit` applies on the exec path;
+- sets `no_new_privs` and a Landlock ruleset handling every right that writes, creates, removes,
+  renames or truncates, with no rule granting any. Reading is not handled, so it still reads its
+  libraries and its input;
+- hands libav `/proc/self/fd/3` and writes the encoded PNG to descriptor 4.
+
+**The Landlock step is not optional, and here is why.** A read-only descriptor is not a read-only
+file: measured inside this exact bwrap, a child holding one reopened `/proc/self/fd/3` for writing
+and could have rewritten the operator's video, which the exec path's `--ro-bind` makes impossible.
+With the ruleset the same reopen is `EACCES`, a direct open of the path is refused too, the read
+reopen still works and the file is untouched; `thumbworker::tests::
+a_confined_child_cannot_reopen_its_input_for_writing` runs that probe in a copy of the test binary,
+and its `before=true` is the negative control. A kernel without Landlock gets no worker: the worker
+answers UNAVAILABLE and the exec path takes every video. The worker is also not dumpable, which
+children inherit, so no process of the same user can ptrace it or read its descriptors.
+
+**The verdict is the worker's, from the child's exit.** It reaps each child through a pidfd, kills
+one still running at `JOB_TIMEOUT`, and writes one byte on that job's reply socket: `S` for exit 0,
+`N` for exit 2, which is a failure of this machine inside the child such as a confinement step
+refused or a write that failed, and `F` for anything else, a refusal, a signal or the deadline.
+These map onto `Ran` exactly as a spawned program's do, so the `fail/` marker rule is unchanged.
+The child never holds its reply socket, so a reply that closes with no byte can only mean the
+worker died.
+
+**Every failure of the worker falls back, and none judges a file.** No worker, a library that will
+not load, no Landlock, a request that cannot be sent, a reply that closes with no byte, or no word
+within `JOB_TIMEOUT` plus 5 s all retire the worker for the rest of the process and send that job,
+and every later one, down the exec path; one line on stderr says so. An input that no longer opens,
+or is no longer a regular file, is answered as `NotStarted` without touching the worker.
+`FLEA_THUMB_WORKER=off` starts with the worker retired; it is how the battery runs
+`tests/thumbs.sh` on the exec path and how an operator gets it back.
+
+**Measured before it was built**, outside Flea, from the research session's `prefork.c`: the first
+43 videos of the media fixture took 828 ms at 4 at a time against 1489 through the sandboxed exec
+path, and 2595 against 4387 one at a time.
+
 ## Thumbnail pool
 
-`backend/thumbs.rs` is the only thing that generates a thumbnail, and it generates one
-only for a `Job` a caller submits. **Nothing in it enumerates a directory**, at any
+`backend/thumbs.rs` is the only thing that generates a thumbnail, directly or through the
+worker above, and it generates one only for a `Job` a caller submits. **Nothing in it enumerates a directory**, at any
 priority: the load-bearing rule that every per-file operation stays scoped to the viewport
 is the reason the product beats the field, and a sweep here would forfeit it.
 

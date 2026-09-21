@@ -166,6 +166,11 @@ fn main() {
         exit(backend::run::run());
     }
 
+    // flea --thumb-worker: only ever started by the backend, inside its sandbox, with a socket on stdin.
+    if args.len() == 2 && args[1] == "--thumb-worker" {
+        exit(backend::thumbworker::run());
+    }
+
     // flea --prewarm <path> <count> <dest>
     if args.len() == 5 && args[1] == "--prewarm" {
         let first: usize = args[3].parse().unwrap_or(0);

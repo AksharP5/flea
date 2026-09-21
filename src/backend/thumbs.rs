@@ -5,6 +5,7 @@ use crate::backend::thumbargv::argv;
 use crate::backend::thumbcache::{uri_for, Cache};
 use crate::backend::thumbspec::Thumbnailers;
 use crate::backend::thumbwrite::{exclusive_temp, stamp, write_marker};
+use crate::backend::workerlink::{worker_shape, WorkerLink};
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::Sender;
@@ -16,7 +17,7 @@ pub const MAX_QUEUE: usize = 70;
 // The freedesktop "large" size, which is what this box's cache holds.
 pub const THUMB_SIZE: u32 = 256;
 // A decoder that has not answered in this long is hung, and a hung child starves the pool.
-const JOB_TIMEOUT: Duration = Duration::from_secs(20);
+pub(crate) const JOB_TIMEOUT: Duration = Duration::from_secs(20);
 
 pub struct Job {
     pub path: PathBuf,
@@ -59,7 +60,8 @@ pub struct Done {
 }
 
 // Parsed once by the caller and shared from here, so no worker ever opens these files and four workers never read one of them four times.
-pub(crate) struct Tables { pub aliases: Arc<Aliases>, pub specs: Arc<Thumbnailers>, pub cache: Cache }
+// The worker is None where no pool exists to share one, which is the shelf's single job.
+pub(crate) struct Tables { pub aliases: Arc<Aliases>, pub specs: Arc<Thumbnailers>, pub cache: Cache, pub worker: Option<WorkerLink> }
 
 type Shared = Arc<(Mutex<VecDeque<Job>>, Condvar)>;
 
@@ -70,7 +72,7 @@ pub struct Pool {
 impl Pool {
     // The cache root and both tables are the caller's: a test never writes into the operator's shared cache, and run.rs has already parsed these two files.
     pub fn new(workers: usize, results: Sender<Done>, root: PathBuf, aliases: Arc<Aliases>, specs: Arc<Thumbnailers>) -> Pool {
-        Pool::start(workers, results, Tables { aliases, specs, cache: Cache::at(root) })
+        Pool::start(workers, results, Tables { aliases, specs, cache: Cache::at(root), worker: Some(WorkerLink::new()) })
     }
 
     fn start(workers: usize, results: Sender<Done>, tables: Tables) -> Pool {
@@ -188,7 +190,15 @@ pub(crate) fn run_one(tables: &Tables, job: &mut Job) -> Outcome {
     if let Some(t) = job.trace.as_mut() {
         t.spawned = t.at.elapsed();
     }
-    let ran = run_with_timeout(&full, JOB_TIMEOUT);
+    // A video the pre-linked worker can take goes there first; anything it cannot judge runs the exec path as before.
+    let by_worker = match (&tables.worker, worker_shape(spec)) {
+        (Some(worker), Some(film_strip)) => worker.generate(&abs, &temp, THUMB_SIZE, film_strip, JOB_TIMEOUT),
+        _ => None,
+    };
+    let ran = match by_worker {
+        Some(ran) => ran,
+        None => run_with_timeout(&full, JOB_TIMEOUT),
+    };
     if let Some(t) = job.trace.as_mut() {
         t.exited = t.at.elapsed();
     }
@@ -260,7 +270,7 @@ mod tests {
             sandbox.assert_contains(sandbox.path());
             let inner = Arc::new((Mutex::new(VecDeque::new()), Condvar::new()));
             let pool = Pool { inner: Arc::clone(&inner) };
-            let tables = Arc::new(Tables { aliases, specs, cache: Cache::at(sandbox.path().to_path_buf()) });
+            let tables = Arc::new(Tables { aliases, specs, cache: Cache::at(sandbox.path().to_path_buf()), worker: None });
             let (sender, receiver) = channel();
             let worker = std::thread::spawn(move || worker(inner, sender, tables));
             Self { sandbox, pool, receiver: Some(receiver), worker: Some(worker) }

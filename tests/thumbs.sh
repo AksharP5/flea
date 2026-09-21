@@ -154,6 +154,89 @@ check "the trace reaches stderr when asked for" "1" "$(echo "$err" | grep -c 'tr
 off=$(ask 2 | timeout 120 $BIN --backend 2>&1 >/dev/null)
 check "and nothing at all when it is not" "0" "$(echo "$off" | grep -c 'trace')"
 
+# The pre-linked worker, see AGENTS.md "Thumbnail worker". The whole suite above runs through it by
+# default and through the exec path under FLEA_THUMB_WORKER=off, so the battery runs this file twice.
+echo "worker mode: ${FLEA_THUMB_WORKER:-on}"
+# Sample input: /proc/123/status "PPid:	45", one tab after the colon.
+parent_of() { grep '^PPid:' "/proc/$1/status" 2>/dev/null | cut -f2; }
+descends_from() {
+  local pid=$1 root=$2
+  while [ -n "$pid" ] && [ "$pid" -gt 1 ]; do
+    [ "$pid" = "$root" ] && return 0
+    pid=$(parent_of "$pid")
+  done
+  return 1
+}
+# The worker's own comm is flea; bwrap carries --thumb-worker in its argv too and must not be counted.
+workers_under() {
+  local pid
+  for pid in $(pgrep -f -- '--thumb-worker'); do
+    [ "$(cat "/proc/$pid/comm" 2>/dev/null)" = flea ] && descends_from "$pid" "$1" && echo "$pid"
+  done
+}
+# Reads backend lines until row $1 is answered or ten seconds pass, into ANSWER. Never inside $(),
+# because a coprocess's descriptors are not promised to a subshell.
+answer_for() {
+  local line
+  ANSWER=""
+  while IFS= read -r -t 10 line <&"${BK[0]}"; do
+    case $line in *'"t":"thumbed","row":'"$1"','*) ANSWER=$line; return 0 ;; esac
+  done
+  return 1
+}
+mkdir -p "$D/worker"
+for i in 0 1 2; do cp "$FIXTURE/clip_6.mp4" "$D/worker/w$i.mp4"; done
+cp "$FIXTURE/clip_6.mp4" "$D/worker/w3-unreadable.mp4"; chmod 000 "$D/worker/w3-unreadable.mp4"
+coproc BK { exec timeout 120 $BIN --backend 2>/dev/null; }
+printf '{"c":"list","path":"%s","first":10}\n{"c":"thumb","rows":[0]}\n' "$D/worker" >&"${BK[1]}"
+answer_for 0
+check "a video is answered with a thumbnail" "1" "$(echo "$ANSWER" | grep -c '"file":"/')"
+live=$(workers_under "$BK_PID" | wc -l | tr -d ' ')
+if [ "${FLEA_THUMB_WORKER:-on}" = off ]; then
+  check "the off switch starts no worker" "0" "$live"
+else
+  check "the video went through one worker" "1" "$live"
+  printf '{"c":"thumb","rows":[3]}\n' >&"${BK[1]}"
+  answer_for 3
+  check "an unreadable video answers empty" "1" "$(echo "$ANSWER" | grep -c '"file":""')"
+  check "and leaves the same worker serving" "1" "$(workers_under "$BK_PID" | wc -l | tr -d ' ')"
+  kill -9 $(workers_under "$BK_PID") 2>/dev/null
+  printf '{"c":"thumb","rows":[1]}\n' >&"${BK[1]}"
+  answer_for 1
+  check "a video after the worker died still gets a thumbnail" "1" "$(echo "$ANSWER" | grep -c '"file":"/')"
+  check "and no worker is started again" "0" "$(workers_under "$BK_PID" | wc -l | tr -d ' ')"
+fi
+printf '{"c":"quit"}\n' >&"${BK[1]}"
+wait "$BK_PID" 2>/dev/null
+# The two paths publish the same image: set_size(N, N) and the film strip are the CLI's -s and -f.
+w_key=$(printf 'file://%s' "$D/worker/w2.mp4" | md5sum | cut -d' ' -f1)
+printf '{"c":"list","path":"%s","first":10}\n{"c":"thumb","rows":[2]}\n{"c":"quit"}\n' "$D/worker" | timeout 120 $BIN --backend >/dev/null 2>&1
+mkdir -p "$D/exec-cache"
+printf '{"c":"list","path":"%s","first":10}\n{"c":"thumb","rows":[2]}\n{"c":"quit"}\n' "$D/worker" \
+  | XDG_CACHE_HOME="$D/exec-cache" FLEA_THUMB_WORKER=off timeout 120 $BIN --backend >/dev/null 2>&1
+# Sample input: a PNG, whose IDAT chunks are the pixels and whose tEXt chunks are "key\0value".
+# The one known difference is Thumb::Mimetype, which the program derives from the input's extension
+# and the worker's /proc/self/fd/3 does not have; it is optional, and nothing here reads it.
+png_facts() {
+  python3 - "$1" <<'PY'
+import hashlib, struct, sys
+data = open(sys.argv[1], "rb").read()
+at, pixels, keys = 8, hashlib.sha256(), []
+while at < len(data):
+    size = struct.unpack(">I", data[at:at + 4])[0]
+    kind, body = data[at + 4:at + 8], data[at + 8:at + 8 + size]
+    if kind == b"IDAT":
+        pixels.update(body)
+    elif kind == b"tEXt" and not body.startswith(b"Thumb::Mimetype\0"):
+        keys.append(body.decode("latin-1"))
+    at += 12 + size
+print(pixels.hexdigest(), sorted(keys))
+PY
+}
+check "the worker and the thumbnailer program publish the same image and keys" \
+  "$(png_facts "$D/exec-cache/thumbnails/large/$w_key.png")" "$(png_facts "$CACHE/large/$w_key.png")"
+chmod 600 "$D/worker/w3-unreadable.mp4"
+
 # -A, never ls: the one kind of litter this subsystem leaves is a dotfile temp a bare ls cannot see.
 check "no temp file is left in the cache this run filled" "0" "$(ls -A "$CACHE/large" 2>/dev/null | grep -c '^\.flea-')"
 sandbox_remove "$D"
