@@ -1,12 +1,9 @@
-// The backend's side of `flea --thumb-worker`: one worker for the whole pool, started on the first
-// video that qualifies, and given up on for good the first time it fails. Every way this can go
-// wrong answers None, and the caller then runs the job the way it always has; see AGENTS.md
-// "Thumbnail worker".
+// The backend's side of `flea --thumb-worker`: one worker for the pool, started on the first video that qualifies and retired for good at its first failure; see AGENTS.md "Thumbnail worker".
 use crate::backend::child::Ran;
 use crate::backend::fdpass;
 use crate::backend::sandbox;
 use crate::backend::thumbspec::Spec;
-use crate::backend::thumbworker::{FAILED, NOT_STARTED, READY, REQUEST_BYTES, SUCCEEDED};
+use crate::backend::thumbworker::{FAILED, NOT_STARTED, NO_LANDLOCK, NO_LIBRARY, READY, REQUEST_BYTES, SONAME, SUCCEEDED};
 use std::os::fd::{AsRawFd, OwnedFd};
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
@@ -49,9 +46,7 @@ pub struct WorkerLink {
     state: Mutex<State>,
 }
 
-// Sample Exec, the one ffmpegthumbnailer ships: "ffmpegthumbnailer -i %i -o %o -s %s -f". Some(film
-// strip) only for exactly that program with exactly those options, so the worker never guesses at a
-// flag and every other thumbnailer, and every other spelling of this one, stays on the exec path.
+// Sample Exec, the one ffmpegthumbnailer ships: "ffmpegthumbnailer -i %i -o %o -s %s -f"; any other program, flag or spelling stays on the exec path.
 pub fn worker_shape(spec: &Spec) -> Option<bool> {
     let mut tokens = spec.exec.iter().map(String::as_str);
     let program = tokens.next()?;
@@ -105,11 +100,11 @@ impl WorkerLink {
         WorkerLink { state: Mutex::new(if off { State::Gone } else { State::Unstarted }) }
     }
 
-    // Started under the lock, so four pool threads meeting their first video start one worker between them.
-    fn spawn() -> Option<(Child, OwnedFd)> {
-        let exe = std::fs::canonicalize("/proc/self/exe").ok()?;
-        let exe_text = exe.to_str()?.to_string();
-        let (mine, theirs) = fdpass::pair().ok()?;
+    // Started under the lock, so pool threads meeting their first video together start one worker between them.
+    fn spawn() -> Result<(Child, OwnedFd), String> {
+        let exe = std::fs::canonicalize("/proc/self/exe").map_err(|e| format!("/proc/self/exe did not resolve: {}", e))?;
+        let exe_text = exe.to_str().ok_or("the flea executable's path is not UTF-8")?.to_string();
+        let (mine, theirs) = fdpass::pair().map_err(|e| format!("no socket pair: {}", e))?;
         let argv = sandbox::wrap_worker(&[exe_text, "--thumb-worker".to_string()], &exe);
         // corner: bwrap's --die-with-parent follows the thread that spawns it, and a pool thread lives as long as the backend.
         let mut child = Command::new(&argv[0])
@@ -118,13 +113,18 @@ impl WorkerLink {
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()
-            .ok()?;
-        if read_byte(&mine, READY_LIMIT) == Some(READY) {
-            return Some((child, mine));
+            .map_err(|e| format!("bwrap did not start: {}", e))?;
+        let answer = read_byte(&mine, READY_LIMIT);
+        if answer == Some(READY) {
+            return Ok((child, mine));
         }
         let _ = child.kill();
         let _ = child.wait();
-        None
+        Err(match answer {
+            Some(NO_LIBRARY) => format!("{} did not load", SONAME.to_string_lossy()),
+            Some(NO_LANDLOCK) => String::from("this kernel has no Landlock"),
+            _ => format!("it did not answer within {} s", READY_LIMIT.as_secs()),
+        })
     }
 
     // Holding the lock across the send keeps a request whole and lets one failure retire the worker for every thread.
@@ -132,9 +132,9 @@ impl WorkerLink {
         let mut state = self.state.lock().unwrap();
         if matches!(*state, State::Unstarted) {
             *state = match WorkerLink::spawn() {
-                Some((child, requests)) => State::Running { child, requests },
-                None => {
-                    eprintln!("flea: the thumbnail worker did not start, so videos use the thumbnailer program");
+                Ok((child, requests)) => State::Running { child, requests },
+                Err(why) => {
+                    eprintln!("flea: the thumbnail worker did not start ({}), so videos use the thumbnailer program", why);
                     State::Gone
                 }
             };
@@ -144,32 +144,30 @@ impl WorkerLink {
             _ => return false,
         };
         if !sent {
-            WorkerLink::retire(&mut state);
+            WorkerLink::retire(&mut state, "stopped taking requests");
         }
         sent
     }
 
-    fn retire(state: &mut State) {
+    fn retire(state: &mut State, why: &str) {
         if let State::Running { child, .. } = state {
             let _ = child.kill();
             let _ = child.wait();
-            eprintln!("flea: the thumbnail worker stopped answering, so videos use the thumbnailer program");
+            eprintln!("flea: the thumbnail worker {}, so videos use the thumbnailer program", why);
         }
         *state = State::Gone;
     }
 
-    // Some(verdict) when the worker judged the job, None when the job has to go down the exec path.
+    // Some only for a thumbnail the worker made or an input that is not a file to judge; None sends the job down the exec path.
     pub fn generate(&self, input: &Path, output: &Path, size: u32, film_strip: bool, limit: Duration) -> Option<Ran> {
         if matches!(*self.state.lock().unwrap(), State::Gone) {
             return None;
         }
-        let input = std::fs::OpenOptions::new()
-            .read(true)
-            .custom_flags(O_NONBLOCK | O_NOCTTY)
-            .open(input)
-            .ok()?;
-        // corner: a fifo or a device swapped in after the listing judges nothing, and the exec path would only hang on it.
-        if !input.metadata().ok()?.is_file() {
+        // corner: an input that no longer opens, or a fifo or device swapped in after the listing, judges nothing, and the exec path would fail or hang on it.
+        let Ok(input) = std::fs::OpenOptions::new().read(true).custom_flags(O_NONBLOCK | O_NOCTTY).open(input) else {
+            return Some(Ran::NotStarted);
+        };
+        if !input.metadata().is_ok_and(|m| m.is_file()) {
             return Some(Ran::NotStarted);
         }
         let output = std::fs::OpenOptions::new().write(true).custom_flags(O_NOFOLLOW | O_NOCTTY).open(output).ok()?;
@@ -184,11 +182,15 @@ impl WorkerLink {
         drop(theirs);
         match read_byte(&reply, limit + REPLY_GRACE) {
             Some(SUCCEEDED) => Some(Ran::Succeeded),
-            Some(FAILED) => Some(Ran::Failed),
-            Some(NOT_STARTED) => Some(Ran::NotStarted),
+            // The exec path judges this file again, so only the thumbnailer program ever records a failure.
+            Some(FAILED) => None,
+            Some(NOT_STARTED) => {
+                WorkerLink::retire(&mut self.state.lock().unwrap(), "failed a job on this machine");
+                None
+            }
             // No verdict at all is the worker dying or wedging, which says nothing about this file.
             _ => {
-                WorkerLink::retire(&mut self.state.lock().unwrap());
+                WorkerLink::retire(&mut self.state.lock().unwrap(), "stopped answering");
                 None
             }
         }

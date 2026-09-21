@@ -2802,6 +2802,12 @@ and `glycin-thumbnailer` was re-checked against a 1x1 PNG when the pool started 
 caller may still pass a directory, which is the looser bind and what a thumbnailer that wrote
 to a temporary name and renamed would need; only those two thumbnailers were probed.
 
+**A video the worker takes is confined without this argv.** `sandbox::wrap_worker` runs
+`flea --thumb-worker` under the same flags minus the two binds and minus `prlimit`, and each child
+it forks sets the same two limits itself through an `extern "C"` `setrlimit` from the system libc
+that `std` already links, so no crate is taken and the zero-dependency rule above holds.
+"Thumbnail worker" has what stands in for the binds.
+
 ## Thumbnail worker
 
 **42 of the 97 ms a video thumbnail cost was `ffmpegthumbnailer` linking itself**, about a hundred
@@ -2823,53 +2829,81 @@ real path. `set_size(N, 0)` differs on every portrait clip, so it is not the CLI
 Flea the published entry differs in one optional key**: the program writes `Thumb::Mimetype` from
 the input's extension, and the worker's `/proc/self/fd/3` has none, so the worker's entry omits it.
 The pixels and every other key match, which `tests/thumbs.sh` asserts on the entries both paths
-publish for the same file; the freedesktop spec makes the key optional and Flea's cache reads only
-`Thumb::URI` and `Thumb::MTime`.
+publish for the same file, and the key's presence is what tells that test which path made each
+entry; the freedesktop spec makes the key optional and Flea's cache reads only `Thumb::URI` and
+`Thumb::MTime`. **libav does not lean on the missing extension**: on 2026-09-21 the program run on
+`/proc/self/fd/3` gave the same pixels as its run on the real path for all fifteen containers
+probed, mp4, mkv, webm, avi, mov, ts, mpg, flv, 3gp, wmv, m4v, ogv, m2ts, raw h264 and vob.
 
 **One worker for the pool, started lazily.** The first job that qualifies spawns it under the pool's
 own bwrap flags from `sandbox::wrap_worker`: every namespace flag, `--clearenv`, read-only `/usr` and
 `/etc`, and the flea executable itself bound read-only, and no input or output bind at all. There is
-no `prlimit` around it, because a long session would reach a CPU cap on the worker's own forks;
-every child sets its own. Four pool threads meeting their first video start one worker between
-them, because it is spawned under the link's lock.
+no `prlimit` around it, because the limits are per job and every child sets its own; a cap on the
+worker would bound only the worker's own few milliseconds a fork, since `RLIMIT_CPU` never counts
+reaped children. Pool threads meeting their first video together start one worker between them,
+because it is spawned under the link's lock. **It stays resident for the rest of the backend's
+life**, and that is its cost: about 20 MB of PSS for the worker, 37.5 MB resident, and a third of a
+megabyte for its two `bwrap` processes, against the backend's 2.5 MB, in one sample on minipc after
+one video. The libraries it keeps linked are that number; nothing else in Flea maps them.
 
-**One job sees one file, and cannot write it.** The backend opens the input read-only and the
-pre-created temp write-only and passes both, with a reply socket, over the worker's stdin as
-`SCM_RIGHTS` (`backend/fdpass.rs`). The child the worker forks for it then:
+**One job sees one file, and can write nothing else or signal anyone.** The backend opens the
+input read-only and the pre-created temp write-only and passes both, with a reply socket, over the
+worker's stdin as `SCM_RIGHTS` (`backend/fdpass.rs`). The child the worker forks for it then:
 
 - keeps `/dev/null` on 0 to 2, the input on 3 and the output on 4, and closes everything else, which
   is the request socket, every other job's reply socket and every sibling's pidfd;
 - sets `RLIMIT_CPU` 30 s and `RLIMIT_AS` 2 GiB, the values `prlimit` applies on the exec path;
 - sets `no_new_privs` and a Landlock ruleset handling every right that writes, creates, removes,
-  renames or truncates, with no rule granting any. Reading is not handled, so it still reads its
-  libraries and its input;
+  renames or truncates, with no rule granting any, and from Landlock ABI 6 scoped for signals, so it
+  cannot signal a sibling, the worker or anything else outside its own domain. Reading is not
+  handled, so it still reads its libraries and its input;
 - hands libav `/proc/self/fd/3` and writes the encoded PNG to descriptor 4.
 
 **The Landlock step is not optional, and here is why.** A read-only descriptor is not a read-only
 file: measured inside this exact bwrap, a child holding one reopened `/proc/self/fd/3` for writing
 and could have rewritten the operator's video, which the exec path's `--ro-bind` makes impossible.
 With the ruleset the same reopen is `EACCES`, a direct open of the path is refused too, the read
-reopen still works and the file is untouched; `thumbworker::tests::
-a_confined_child_cannot_reopen_its_input_for_writing` runs that probe in a copy of the test binary,
-and its `before=true` is the negative control. A kernel without Landlock gets no worker: the worker
-answers UNAVAILABLE and the exec path takes every video. The worker is also not dumpable, which
-children inherit, so no process of the same user can ptrace it or read its descriptors.
+reopen still works and the file is untouched. `thumbworker::tests::
+a_confined_child_holds_only_its_job_and_can_write_or_signal_nothing` runs `confine()` itself in a
+copy of the test binary and reports through descriptor 4, the way a job writes its PNG, that
+exactly descriptors 0 to 4 are open, both limits are set, neither the input nor its path opens for
+writing, the input still reads and the parent can no longer be signalled; `before=true` and
+`signalled_before=true` are the negative controls. **The signal scope is what lets the children
+share one PID namespace**: every exec-path job had a namespace of its own, and without the scope a
+decoder compromised by one video could kill a sibling mid-decode, or the worker. corner: a kernel
+between Landlock ABI 1 and 5 still gets the worker, without that scope. A kernel without Landlock
+gets no worker at all: the worker answers `K` and the exec path takes every video. The worker is
+also not dumpable, which children inherit, so no process of the same user can ptrace it or read
+its descriptors.
 
-**The verdict is the worker's, from the child's exit.** It reaps each child through a pidfd, kills
-one still running at `JOB_TIMEOUT`, and writes one byte on that job's reply socket: `S` for exit 0,
-`N` for exit 2, which is a failure of this machine inside the child such as a confinement step
-refused or a write that failed, and `F` for anything else, a refusal, a signal or the deadline.
-These map onto `Ran` exactly as a spawned program's do, so the `fail/` marker rule is unchanged.
-The child never holds its reply socket, so a reply that closes with no byte can only mean the
-worker died.
+**The worker's only final verdict is a thumbnail.** It reaps each child through a pidfd, kills one
+still running at `JOB_TIMEOUT`, and writes one byte on that job's reply socket: `S` for exit 0, `F`
+for a refusal, a signal or the deadline, and `N` for exit 2, a failure of this machine inside the
+child such as a confinement step refused or a write that failed. `S` publishes the thumbnail. `F`
+sends the job down the exec path, which judges the file exactly as it always has, so only the
+thumbnailer program ever writes a `fail/` marker: the worker's child is more confined than the
+program, with no writable `/tmp`, and a file only the worker failed must not be recorded broken on
+its word. `N` retires the worker, as below. corner: a video that hangs the decoder costs two
+deadlines, one in the worker and one on the exec path, and costs them once, because the exec
+path's failure records the marker. The child never holds its reply socket, so a reply that closes
+with no byte can only mean the worker died.
 
 **Every failure of the worker falls back, and none judges a file.** No worker, a library that will
-not load, no Landlock, a request that cannot be sent, a reply that closes with no byte, or no word
-within `JOB_TIMEOUT` plus 5 s all retire the worker for the rest of the process and send that job,
-and every later one, down the exec path; one line on stderr says so. An input that no longer opens,
-or is no longer a regular file, is answered as `NotStarted` without touching the worker.
-`FLEA_THUMB_WORKER=off` starts with the worker retired; it is how the battery runs
-`tests/thumbs.sh` on the exec path and how an operator gets it back.
+not load, no Landlock, a request that cannot be sent, an `N`, a reply that closes with no byte, or
+no word within `JOB_TIMEOUT` plus 5 s all retire the worker for the rest of the process and send
+that job, and every later one, down the exec path. One stderr line names the cause, such as
+`flea: the thumbnail worker did not start (libffmpegthumbnailer.so.4 did not load), so videos use
+the thumbnailer program`, or no Landlock, no answer within 5 s or `bwrap` not starting, and once
+it ran, `failed a job on this machine`, `stopped answering` or `stopped taking requests`. The
+backend says it because the worker's stderr is `/dev/null`, like every child's, so libav's logs
+never reach the operator's. Before this, a hard `RLIMIT_AS` below 2 GiB made every child refuse
+its confinement and every video answer empty with nothing on stderr and no fallback; reproduced on
+minipc under `prlimit --as=1900000000:1900000000`. An input that no longer opens, or is no longer a
+regular file, is answered as `NotStarted` without touching the worker and records nothing, where the
+exec path writes a `fail/` marker for a file it cannot read; `tests/thumbs.sh` asserts the missing
+marker, which is what pins that branch. `FLEA_THUMB_WORKER=off` starts with the worker retired:
+`tests/thumbs-exec.sh` runs all of `tests/thumbs.sh` that way inside `tests/run-all.sh`, and it is
+how an operator gets the exec path back.
 
 **Measured before it was built**, outside Flea, from the research session's `prefork.c`: the first
 43 videos of the media fixture took 828 ms at 4 at a time against 1489 through the sandboxed exec
@@ -2878,7 +2912,8 @@ path, and 2595 against 4387 one at a time.
 ## Thumbnail pool
 
 `backend/thumbs.rs` is the only thing that generates a thumbnail, directly or through the
-worker above, and it generates one only for a `Job` a caller submits. **Nothing in it enumerates a directory**, at any
+worker above, and it generates one only for a `Job` a caller submits. **Nothing in it enumerates
+a directory**, at any
 priority: the load-bearing rule that every per-file operation stays scoped to the viewport
 is the reason the product beats the field, and a sweep here would forfeit it.
 

@@ -154,8 +154,7 @@ check "the trace reaches stderr when asked for" "1" "$(echo "$err" | grep -c 'tr
 off=$(ask 2 | timeout 120 $BIN --backend 2>&1 >/dev/null)
 check "and nothing at all when it is not" "0" "$(echo "$off" | grep -c 'trace')"
 
-# The pre-linked worker, see AGENTS.md "Thumbnail worker". The whole suite above runs through it by
-# default and through the exec path under FLEA_THUMB_WORKER=off, so the battery runs this file twice.
+# The pre-linked worker, see AGENTS.md "Thumbnail worker"; tests/thumbs-exec.sh runs this whole file again with it off.
 echo "worker mode: ${FLEA_THUMB_WORKER:-on}"
 # Sample input: /proc/123/status "PPid:	45", one tab after the colon.
 parent_of() { grep '^PPid:' "/proc/$1/status" 2>/dev/null | cut -f2; }
@@ -174,8 +173,7 @@ workers_under() {
     [ "$(cat "/proc/$pid/comm" 2>/dev/null)" = flea ] && descends_from "$pid" "$1" && echo "$pid"
   done
 }
-# Reads backend lines until row $1 is answered or ten seconds pass, into ANSWER. Never inside $(),
-# because a coprocess's descriptors are not promised to a subshell.
+# Reads backend lines into ANSWER until row $1 is answered or ten seconds pass; never inside $(), which is not promised the coprocess's descriptors.
 answer_for() {
   local line
   ANSWER=""
@@ -199,6 +197,9 @@ else
   printf '{"c":"thumb","rows":[3]}\n' >&"${BK[1]}"
   answer_for 3
   check "an unreadable video answers empty" "1" "$(echo "$ANSWER" | grep -c '"file":""')"
+  # The exec path would have recorded a failure here, so no marker is what says the worker branch judged nothing.
+  w3_key=$(printf 'file://%s' "$D/worker/w3-unreadable.mp4" | md5sum | cut -d' ' -f1)
+  check "and records no failure, because a file that will not open judges nothing" "0" "$(ls "$CACHE/fail/flea/$w3_key.png" 2>/dev/null | wc -l | tr -d ' ')"
   check "and leaves the same worker serving" "1" "$(workers_under "$BK_PID" | wc -l | tr -d ' ')"
   kill -9 $(workers_under "$BK_PID") 2>/dev/null
   printf '{"c":"thumb","rows":[1]}\n' >&"${BK[1]}"
@@ -215,8 +216,7 @@ mkdir -p "$D/exec-cache"
 printf '{"c":"list","path":"%s","first":10}\n{"c":"thumb","rows":[2]}\n{"c":"quit"}\n' "$D/worker" \
   | XDG_CACHE_HOME="$D/exec-cache" FLEA_THUMB_WORKER=off timeout 120 $BIN --backend >/dev/null 2>&1
 # Sample input: a PNG, whose IDAT chunks are the pixels and whose tEXt chunks are "key\0value".
-# The one known difference is Thumb::Mimetype, which the program derives from the input's extension
-# and the worker's /proc/self/fd/3 does not have; it is optional, and nothing here reads it.
+# Thumb::Mimetype comes from the input's extension, which the worker's /proc/self/fd/3 lacks, so it is left out.
 png_facts() {
   python3 - "$1" <<'PY'
 import hashlib, struct, sys
@@ -233,8 +233,14 @@ while at < len(data):
 print(pixels.hexdigest(), sorted(keys))
 PY
 }
-check "the worker and the thumbnailer program publish the same image and keys" \
-  "$(png_facts "$D/exec-cache/thumbnails/large/$w_key.png")" "$(png_facts "$CACHE/large/$w_key.png")"
+worker_png=$CACHE/large/$w_key.png
+exec_png=$D/exec-cache/thumbnails/large/$w_key.png
+check "both paths published an entry for the same video" "2" "$(ls "$worker_png" "$exec_png" 2>/dev/null | wc -l | tr -d ' ')"
+# Only the program writes Thumb::Mimetype, so the key names the path that made each entry.
+check "the exec path made its entry" "1" "$(grep -ac 'Thumb::Mimetype' "$exec_png")"
+if [ "${FLEA_THUMB_WORKER:-on}" = off ]; then made_by_program=1; else made_by_program=0; fi
+check "and the default run made the other through the ${FLEA_THUMB_WORKER:-on} path" "$made_by_program" "$(grep -ac 'Thumb::Mimetype' "$worker_png")"
+check "the two publish the same image and keys" "$(png_facts "$exec_png")" "$(png_facts "$worker_png")"
 chmod 600 "$D/worker/w3-unreadable.mp4"
 
 # -A, never ls: the one kind of litter this subsystem leaves is a dotfile temp a bare ls cannot see.

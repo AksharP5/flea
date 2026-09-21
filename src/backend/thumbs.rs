@@ -59,8 +59,7 @@ pub struct Done {
     pub trace: Option<Trace>,
 }
 
-// Parsed once by the caller and shared from here, so no worker ever opens these files and four workers never read one of them four times.
-// The worker is None where no pool exists to share one, which is the shelf's single job.
+// Parsed once by the caller and shared from here, so no pool thread reads these files again; the shelf's single job has no pool and so no worker.
 pub(crate) struct Tables { pub aliases: Arc<Aliases>, pub specs: Arc<Thumbnailers>, pub cache: Cache, pub worker: Option<WorkerLink> }
 
 type Shared = Arc<(Mutex<VecDeque<Job>>, Condvar)>;
@@ -190,7 +189,7 @@ pub(crate) fn run_one(tables: &Tables, job: &mut Job) -> Outcome {
     if let Some(t) = job.trace.as_mut() {
         t.spawned = t.at.elapsed();
     }
-    // A video the pre-linked worker can take goes there first; anything it cannot judge runs the exec path as before.
+    // A video the pre-linked worker can take goes there first; anything it does not finish runs the exec path as before.
     let by_worker = match (&tables.worker, worker_shape(spec)) {
         (Some(worker), Some(film_strip)) => worker.generate(&abs, &temp, THUMB_SIZE, film_strip, JOB_TIMEOUT),
         _ => None,

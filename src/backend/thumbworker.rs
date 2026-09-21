@@ -1,6 +1,4 @@
-// `flea --thumb-worker`: libffmpegthumbnailer linked once, then one forked child per video, all
-// inside the pool's own bwrap flags. The child holds exactly one input and one output descriptor
-// and nothing else; see AGENTS.md "Thumbnail worker" for the contract and what each step is for.
+// `flea --thumb-worker`: libffmpegthumbnailer linked once, then one forked and confined child per video; see AGENTS.md "Thumbnail worker".
 use crate::backend::fdpass;
 use crate::backend::sandbox;
 use crate::backend::thumbs::JOB_TIMEOUT;
@@ -11,18 +9,19 @@ use std::os::raw::{c_char, c_int, c_long};
 use std::os::unix::process::ExitStatusExt;
 use std::time::Instant;
 
-// The protocol, one byte each way. The worker's first packet is READY or UNAVAILABLE; every job then
-// gets exactly one verdict on its own reply socket, and a reply socket that closes with none means
-// the worker itself died, which judges no file.
+// The worker's first byte: it can serve, or which of its two requirements is missing.
 pub const READY: u8 = b'R';
-pub const UNAVAILABLE: u8 = b'U';
+pub const NO_LIBRARY: u8 = b'L';
+pub const NO_LANDLOCK: u8 = b'K';
+// Each job's one verdict: a thumbnail was written, the file failed, or this machine failed the job.
 pub const SUCCEEDED: u8 = b'S';
 pub const FAILED: u8 = b'F';
 pub const NOT_STARTED: u8 = b'N';
-// A request is the thumbnail size as four little-endian bytes and a film-strip flag, with the
-// input, the output and the reply socket as its three descriptors.
+// A request is the thumbnail size as four little-endian bytes and then the film-strip flag.
 pub const REQUEST_BYTES: usize = 5;
-// Where the child keeps the two job files, so the path libav is handed is a constant.
+// The ffmpegthumbnailer 2.x soname, the same library /usr/bin/ffmpegthumbnailer links.
+pub const SONAME: &CStr = c"libffmpegthumbnailer.so.4";
+// The child keeps the two job files here, so the path libav is handed is a constant.
 const INPUT_FD: RawFd = 3;
 const OUTPUT_FD: RawFd = 4;
 const FIRST_UNUSED_FD: u32 = 5;
@@ -33,29 +32,28 @@ const PARK_FD: c_int = 100;
 const CHILD_OK: i32 = 0;
 const CHILD_REFUSED: i32 = 1;
 const CHILD_MACHINE: i32 = 2;
-// The ffmpegthumbnailer 2.x soname, the same library /usr/bin/ffmpegthumbnailer links.
-const SONAME: &CStr = c"libffmpegthumbnailer.so.4";
 // A larger request is not a thumbnail, and the pool only ever asks for THUMB_SIZE.
 const MAX_SIZE: u32 = 1024;
 
 // dlopen(3) RTLD_NOW, so a library missing a symbol fails at load and never inside a child.
 const RTLD_NOW: c_int = 2;
-// prctl(2): not dumpable, so no process of the same user can ptrace this one or read its descriptors; and no new privileges, which Landlock requires.
+// prctl(2): not dumpable, so no process of this user can ptrace the worker or read its descriptors; no new privileges, which Landlock requires.
 const PR_SET_DUMPABLE: c_int = 4;
 const PR_SET_NO_NEW_PRIVS: c_int = 38;
 // setrlimit(2) resources, and the two values prlimit applies on the exec path.
 const RLIMIT_CPU: c_int = 0;
 const RLIMIT_AS: c_int = 9;
-// Landlock's three syscalls on x86_64, and the flag that asks create_ruleset for the ABI version.
+// Landlock's two syscalls on x86_64, and the flag that asks create_ruleset for the ABI version.
 const SYS_LANDLOCK_CREATE_RULESET: c_long = 444;
 const SYS_LANDLOCK_RESTRICT_SELF: c_long = 446;
 const LANDLOCK_CREATE_RULESET_VERSION: u32 = 1;
-// Every filesystem right that writes, creates, removes, renames or truncates. Reading is not handled,
-// so the child still reads its libraries and its input, and with no rule granting these nothing new
-// can be opened for writing, the input reopened through /proc/self/fd included; measured on minipc.
+// Every filesystem right that writes, creates, removes, renames or truncates; reads are not handled, so libraries and the input still open.
 const LANDLOCK_WRITE_V1: u64 = (1 << 1) | (0x1ff << 4);
 const LANDLOCK_REFER_V2: u64 = 1 << 13;
 const LANDLOCK_TRUNCATE_V3: u64 = 1 << 14;
+// From ABI 6 a scoped child can signal nothing outside its own domain, so not a sibling and not the worker.
+const LANDLOCK_SCOPE_SIGNAL: u64 = 1 << 1;
+const LANDLOCK_SCOPE_SIGNAL_ABI: i64 = 6;
 // poll(2) POLLIN, and EINTR, which is a retry.
 const POLLIN: i16 = 1;
 const EINTR: i32 = 4;
@@ -74,6 +72,14 @@ struct PollFd {
 struct RLimit {
     current: u64,
     maximum: u64,
+}
+
+// struct landlock_ruleset_attr; a kernel older than a field accepts it while that field is zero.
+#[repr(C)]
+struct RulesetAttr {
+    handled_access_fs: u64,
+    handled_access_net: u64,
+    scoped: u64,
 }
 
 // video_thumbnailer from ffmpegthumbnailer 2.3's videothumbnailerc.h; only overlay_film_strip is written.
@@ -134,23 +140,18 @@ struct Decoder {
 }
 
 impl Decoder {
-    // Split on the soname so a test can ask for a library that is not there.
     // corner: the handle is never dlclose()d, because every child borrows it until this process exits.
-    fn load(soname: &CStr) -> Result<Decoder, String> {
+    fn load(soname: &CStr) -> Option<Decoder> {
         unsafe {
             let library = dlopen(soname.as_ptr(), RTLD_NOW);
             if library.is_null() {
-                return Err(format!("{} did not load", soname.to_string_lossy()));
+                return None;
             }
             let entry = |symbol: &CStr| {
                 let found = dlsym(library, symbol.as_ptr());
-                if found.is_null() {
-                    Err(format!("{} has no {}", soname.to_string_lossy(), symbol.to_string_lossy()))
-                } else {
-                    Ok(found)
-                }
+                (!found.is_null()).then_some(found)
             };
-            Ok(Decoder {
+            Some(Decoder {
                 create: std::mem::transmute::<*mut c_void, Create>(entry(c"video_thumbnailer_create")?),
                 set_size: std::mem::transmute::<*mut c_void, SetSize>(entry(c"video_thumbnailer_set_size")?),
                 create_image_data: std::mem::transmute::<*mut c_void, CreateImageData>(entry(
@@ -163,40 +164,35 @@ impl Decoder {
         }
     }
 
-    // `-s N` is set_size(N, N), measured against the CLI on portrait clips where (N, 0) differs;
-    // `-f` is overlay_film_strip. Ok(false) is the library's own refusal of these bytes.
-    fn generate(&self, size: c_int, film_strip: bool) -> Result<bool, String> {
+    // `-s N` is set_size(N, N), measured against the CLI on portrait clips where (N, 0) differs, and `-f` is overlay_film_strip.
+    fn generate(&self, size: c_int, film_strip: bool) -> i32 {
         unsafe {
             let thumbnailer = (self.create)();
             let image = (self.create_image_data)();
             if thumbnailer.is_null() || image.is_null() {
-                return Err(String::from("the library could not allocate a thumbnailer"));
+                return CHILD_MACHINE;
             }
             (self.set_size)(thumbnailer, size, size);
             (*thumbnailer).overlay_film_strip = c_int::from(film_strip);
-            if (self.to_buffer)(thumbnailer, INPUT_PATH.as_ptr(), image) != 0 {
-                return Ok(false);
-            }
-            if (*image).ptr.is_null() || (*image).size <= 0 {
-                return Ok(false);
+            if (self.to_buffer)(thumbnailer, INPUT_PATH.as_ptr(), image) != 0 || (*image).ptr.is_null() || (*image).size <= 0 {
+                return CHILD_REFUSED;
             }
             let png = std::slice::from_raw_parts((*image).ptr, (*image).size as usize);
             let mut out = std::fs::File::from_raw_fd(OUTPUT_FD);
-            out.write_all(png).map_err(|e| format!("the thumbnail could not be written: {}", e))?;
-            Ok(true)
+            if out.write_all(png).is_err() {
+                return CHILD_MACHINE;
+            }
+            CHILD_OK
         }
     }
 }
 
-// The Landlock ABI version, or the reason there is none; a kernel without it gets no worker.
-fn landlock_abi() -> Result<i64, String> {
+// The Landlock ABI version, or None on a kernel without Landlock, which gets no worker.
+fn landlock_abi() -> Option<i64> {
     let abi = unsafe {
-        syscall(SYS_LANDLOCK_CREATE_RULESET, std::ptr::null::<u64>(), 0usize, LANDLOCK_CREATE_RULESET_VERSION)
+        syscall(SYS_LANDLOCK_CREATE_RULESET, std::ptr::null::<RulesetAttr>(), 0usize, LANDLOCK_CREATE_RULESET_VERSION)
     };
-    if abi < 1 {
-        return Err(String::from("this kernel has no Landlock"));
-    }
-    Ok(abi)
+    (abi >= 1).then_some(abi)
 }
 
 // The write rights this ABI knows, so an older kernel is not handed a bit it would refuse.
@@ -211,74 +207,60 @@ fn write_rights(abi: i64) -> u64 {
     rights
 }
 
-// After this nothing can be opened for writing, created or removed, by the child or anything it runs.
-fn deny_writes(abi: i64) -> Result<(), String> {
-    let handled: u64 = write_rights(abi);
+// After this the child can open nothing for writing, create or remove nothing, and signal nothing outside itself.
+fn lock_down(abi: i64) -> Option<()> {
+    // corner: before ABI 6 there is no signal scope, so a child there could still signal its siblings.
+    let scoped = if abi >= LANDLOCK_SCOPE_SIGNAL_ABI { LANDLOCK_SCOPE_SIGNAL } else { 0 };
+    let attr = RulesetAttr { handled_access_fs: write_rights(abi), handled_access_net: 0, scoped };
     unsafe {
         if prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0 {
-            return Err(String::from("no_new_privs was refused"));
+            return None;
         }
-        let ruleset = syscall(SYS_LANDLOCK_CREATE_RULESET, &handled as *const u64, std::mem::size_of::<u64>(), 0u32);
+        let ruleset = syscall(SYS_LANDLOCK_CREATE_RULESET, &attr as *const RulesetAttr, std::mem::size_of::<RulesetAttr>(), 0u32);
         if ruleset < 0 {
-            return Err(String::from("the Landlock ruleset was refused"));
+            return None;
         }
         let ruleset = OwnedFd::from_raw_fd(ruleset as RawFd);
-        if syscall(SYS_LANDLOCK_RESTRICT_SELF, ruleset.as_raw_fd(), 0u32) != 0 {
-            return Err(String::from("the Landlock restriction was refused"));
-        }
+        (syscall(SYS_LANDLOCK_RESTRICT_SELF, ruleset.as_raw_fd(), 0u32) == 0).then_some(())
     }
-    Ok(())
 }
 
 // The child's whole descriptor table becomes /dev/null on 0 to 2, the input on 3 and the output on 4.
-fn keep_only_the_job(input: RawFd, output: RawFd) -> Result<(), String> {
-    let null = std::fs::OpenOptions::new().read(true).write(true).open("/dev/null")
-        .map_err(|e| format!("/dev/null did not open: {}", e))?
-        .into_raw_fd();
+fn keep_only_the_job(input: RawFd, output: RawFd) -> Option<()> {
+    let null = std::fs::OpenOptions::new().read(true).write(true).open("/dev/null").ok()?.into_raw_fd();
     unsafe {
         let parked = [fcntl(null, F_DUPFD_CLOEXEC, PARK_FD), fcntl(input, F_DUPFD_CLOEXEC, PARK_FD), fcntl(output, F_DUPFD_CLOEXEC, PARK_FD)];
         if parked.iter().any(|fd| *fd < 0) {
-            return Err(String::from("a descriptor could not be parked"));
+            return None;
         }
         let [null, input, output] = parked;
         for (from, to) in [(null, 0), (null, 1), (null, 2), (input, INPUT_FD), (output, OUTPUT_FD)] {
             if dup2(from, to) != to {
-                return Err(String::from("a descriptor could not be placed"));
+                return None;
             }
         }
-        if close_range(FIRST_UNUSED_FD, u32::MAX, 0) != 0 {
-            return Err(String::from("the inherited descriptors could not be closed"));
-        }
+        (close_range(FIRST_UNUSED_FD, u32::MAX, 0) == 0).then_some(())
     }
-    Ok(())
 }
 
-fn set_limit(resource: c_int, value: u64) -> Result<(), String> {
+fn set_limit(resource: c_int, value: u64) -> Option<()> {
     let limit = RLimit { current: value, maximum: value };
-    if unsafe { setrlimit(resource, &limit) } != 0 {
-        return Err(format!("setrlimit {} was refused", resource));
-    }
-    Ok(())
+    (unsafe { setrlimit(resource, &limit) } == 0).then_some(())
 }
 
 // Everything that has to hold before a byte of the file is decoded; any failure judges no file.
-fn confine(input: RawFd, output: RawFd, abi: i64) -> Result<(), String> {
+fn confine(input: RawFd, output: RawFd, abi: i64) -> Option<()> {
     keep_only_the_job(input, output)?;
     set_limit(RLIMIT_CPU, u64::from(sandbox::CPU_SECONDS))?;
     set_limit(RLIMIT_AS, sandbox::ADDRESS_SPACE_BYTES)?;
-    deny_writes(abi)
+    lock_down(abi)
 }
 
-// Runs in the forked child and never returns: the exit code is the verdict. A panic must not unwind
-// back into the worker's own loop inside the child, so it is caught and judges nothing.
+// Runs in the forked child and never returns: the exit code is the verdict, and a panic is caught so it never unwinds into the worker's loop.
 fn child(input: RawFd, output: RawFd, size: c_int, film_strip: bool, decoder: &Decoder, abi: i64) -> ! {
     let verdict = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| match confine(input, output, abi) {
-        Err(_) => CHILD_MACHINE,
-        Ok(()) => match decoder.generate(size, film_strip) {
-            Ok(true) => CHILD_OK,
-            Ok(false) => CHILD_REFUSED,
-            Err(_) => CHILD_MACHINE,
-        },
+        None => CHILD_MACHINE,
+        Some(()) => decoder.generate(size, film_strip),
     }));
     unsafe { _exit(verdict.unwrap_or(CHILD_MACHINE)) }
 }
@@ -290,7 +272,7 @@ struct Running {
     deadline: Instant,
 }
 
-// Reaps one child and answers its job. A child killed by a signal, the deadline's included, ran on the file and failed.
+// Reaps one child and answers its job; a child killed by a signal, the deadline's included, ran on the file and failed.
 fn finish(job: Running, past_deadline: bool) {
     if past_deadline {
         unsafe { kill(job.pid, SIGKILL) };
@@ -395,17 +377,17 @@ fn serve(requests: &OwnedFd, decoder: &Decoder, abi: i64) -> i32 {
     }
 }
 
-// The whole process: stdin is the request socket, and the first packet says whether this worker can serve.
+// The whole process: stdin is the request socket, and the first byte says whether this worker can serve.
 pub fn run() -> i32 {
     let requests = unsafe { OwnedFd::from_raw_fd(0) };
     unsafe { prctl(PR_SET_DUMPABLE, 0, 0, 0, 0) };
-    let ready = Decoder::load(SONAME).and_then(|decoder| landlock_abi().map(|abi| (decoder, abi)));
-    let (decoder, abi) = match ready {
-        Ok(pair) => pair,
-        Err(_) => {
-            let _ = fdpass::send_byte(&requests, UNAVAILABLE);
-            return 1;
-        }
+    let Some(decoder) = Decoder::load(SONAME) else {
+        let _ = fdpass::send_byte(&requests, NO_LIBRARY);
+        return 1;
+    };
+    let Some(abi) = landlock_abi() else {
+        let _ = fdpass::send_byte(&requests, NO_LANDLOCK);
+        return 1;
     };
     if fdpass::send_byte(&requests, READY).is_err() {
         return 1;
@@ -419,66 +401,90 @@ mod tests {
     use crate::backend::testdir::TestDir;
     use std::process::Command;
 
-    // The probe runs in a second copy of this test binary, because Landlock binds the thread that
-    // asks for it and must never land on the harness running every other test.
+    // The probe confines a second copy of this test binary, so nothing it locks down can reach the harness running every other test.
     const CONFINE_PROBE: &str = "FLEA_CONFINE_PROBE";
-    const THIS_TEST: &str = "backend::thumbworker::tests::a_confined_child_cannot_reopen_its_input_for_writing";
+    const THIS_TEST: &str = "backend::thumbworker::tests::a_confined_child_holds_only_its_job_and_can_write_or_signal_nothing";
+    // Every descriptor below this is looked at, which covers PARK_FD and anything a leak could leave.
+    const FD_CEILING: c_int = 1024;
+    // fcntl(2) F_GETFD, which fails only on a descriptor that is not open.
+    const F_GETFD: c_int = 1;
 
-    // Opens the input read-only the way the backend hands it over, then asks for write access to it three ways.
-    fn probe(victim: &str) -> ! {
-        let reader = std::fs::File::open(victim).expect("the probe could not open its input");
-        let through = format!("/proc/self/fd/{}", reader.as_raw_fd());
-        let abi = match landlock_abi() {
-            Ok(abi) => abi,
-            Err(_) => {
-                println!("probe=no-landlock");
-                std::process::exit(0);
-            }
+    extern "C" {
+        fn getppid() -> c_int;
+        fn getrlimit(resource: c_int, limit: *mut RLimit) -> c_int;
+    }
+
+    fn soft_limit(resource: c_int) -> u64 {
+        let mut limit = RLimit { current: 0, maximum: 0 };
+        unsafe { getrlimit(resource, &mut limit) };
+        limit.current
+    }
+
+    // Holds the input read-only and the report write-only, the way a job's two files arrive, runs confine() and writes what it can still do to the report.
+    fn probe(dir: &str) -> ! {
+        let victim = format!("{}/victim.mp4", dir);
+        let reader = std::fs::File::open(&victim).expect("the probe could not open its input");
+        let report = std::fs::OpenOptions::new().write(true).open(format!("{}/report", dir)).expect("the probe could not open its report");
+        let Some(abi) = landlock_abi() else {
+            println!("probe=no-landlock");
+            std::process::exit(0);
         };
         let writable = |path: &str| std::fs::OpenOptions::new().write(true).open(path).is_ok();
-        let before = writable(&through);
-        deny_writes(abi).expect("the confinement was refused");
-        println!(
-            "probe=ran before={} reopened={} direct={} readable={}",
-            before,
-            writable(&through),
-            writable(victim),
-            std::fs::File::open(&through).is_ok()
+        let wrote_before = writable(&format!("/proc/self/fd/{}", reader.as_raw_fd()));
+        let signalled_before = unsafe { kill(getppid(), 0) } == 0;
+        if confine(reader.as_raw_fd(), report.as_raw_fd(), abi).is_none() {
+            unsafe { _exit(CHILD_MACHINE) };
+        }
+        let open: Vec<c_int> = (0..FD_CEILING).filter(|fd| unsafe { fcntl(*fd, F_GETFD, 0) } >= 0).collect();
+        let facts = format!(
+            "before={} reopened={} direct={} readable={} signalled_before={} signalled={} fds={:?} cpu={} as={}",
+            wrote_before,
+            writable("/proc/self/fd/3"),
+            writable(&victim),
+            std::fs::File::open("/proc/self/fd/3").is_ok(),
+            signalled_before,
+            unsafe { kill(getppid(), 0) } == 0,
+            open,
+            soft_limit(RLIMIT_CPU),
+            soft_limit(RLIMIT_AS)
         );
-        std::process::exit(0)
+        let mut out = unsafe { std::fs::File::from_raw_fd(OUTPUT_FD) };
+        let _ = out.write_all(facts.as_bytes());
+        unsafe { _exit(CHILD_OK) }
     }
 
     #[test]
-    fn a_confined_child_cannot_reopen_its_input_for_writing() {
-        if let Ok(victim) = std::env::var(CONFINE_PROBE) {
-            probe(&victim);
+    fn a_confined_child_holds_only_its_job_and_can_write_or_signal_nothing() {
+        if let Ok(dir) = std::env::var(CONFINE_PROBE) {
+            probe(&dir);
         }
         let dir = TestDir::new("worker-confine");
-        let victim = dir.join("victim.mp4");
-        std::fs::write(&victim, b"original").unwrap();
+        let victim = dir.file("victim.mp4", "original");
+        let report = dir.file("report", "");
         let out = Command::new(std::env::current_exe().unwrap())
             .args(["--exact", THIS_TEST, "--test-threads=1", "--nocapture"])
-            .env(CONFINE_PROBE, &victim)
+            .env(CONFINE_PROBE, dir.path())
             .output()
             .unwrap();
-        let text = String::from_utf8_lossy(&out.stdout);
-        if text.contains("probe=no-landlock") {
+        if String::from_utf8_lossy(&out.stdout).contains("probe=no-landlock") {
             std::io::stderr().write_all(format!("SKIP {}: this kernel has no Landlock\n", THIS_TEST).as_bytes()).ok();
             return;
         }
-        // before=true is the negative control: without Landlock a read-only descriptor reopens for writing.
-        assert!(
-            text.contains("probe=ran before=true reopened=false direct=false readable=true"),
-            "the confined probe said: {}",
-            text
+        let scoped = landlock_abi().is_some_and(|abi| abi >= LANDLOCK_SCOPE_SIGNAL_ABI);
+        // before=true and signalled_before=true are the negative controls: unconfined, the same process can do both.
+        let expected = format!(
+            "before=true reopened=false direct=false readable=true signalled_before=true signalled={} fds=[0, 1, 2, 3, 4] cpu={} as={}",
+            !scoped,
+            sandbox::CPU_SECONDS,
+            sandbox::ADDRESS_SPACE_BYTES
         );
+        assert_eq!(std::fs::read_to_string(&report).unwrap(), expected, "the probe exited {:?}", out.status);
         assert_eq!(std::fs::read(&victim).unwrap(), b"original");
     }
 
     #[test]
-    fn a_library_that_is_not_there_names_itself() {
-        let got = Decoder::load(c"libflea-definitely-not-here.so.9");
-        assert!(matches!(got, Err(ref why) if why.contains("libflea-definitely-not-here.so.9")));
+    fn a_library_that_is_not_there_is_refused() {
+        assert!(Decoder::load(c"libflea-definitely-not-here.so.9").is_none());
     }
 
     #[test]

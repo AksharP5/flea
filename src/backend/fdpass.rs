@@ -1,10 +1,8 @@
-// Descriptors over a local socket, which is how the thumbnail worker is handed one job's two files
-// without being able to see a single path; see AGENTS.md "Thumbnail worker".
+// Descriptors over a local socket, which is how the thumbnail worker gets one job's two files without seeing a path; see AGENTS.md "Thumbnail worker".
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
 use std::os::raw::{c_int, c_void};
 
-// socket(2) and cmsg(3) constants, x86_64 Linux: AF_UNIX, SOCK_SEQPACKET so a message keeps its
-// bounds, SOCK_CLOEXEC so no exec'd child inherits either end, and SCM_RIGHTS on SOL_SOCKET.
+// socket(2) and cmsg(3) constants on x86_64 Linux: SOCK_SEQPACKET keeps a message's bounds and SOCK_CLOEXEC keeps both ends out of every exec'd child.
 const AF_UNIX: c_int = 1;
 const SOCK_SEQPACKET: c_int = 5;
 const SOCK_CLOEXEC: c_int = 0o2000000;
