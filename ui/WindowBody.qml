@@ -9,10 +9,8 @@ import "js/Ops.js" as Ops
 import "js/Search.js" as Search
 import "js/Startup.js" as Startup
 
-// The window that ui/boot/shell.qml maps is empty; this is everything in it. It arrives by
-// file: URL once the first frame has swapped, which is the only way Qt caches its QML: a
-// Quickshell config is served through qs: URLs and the disk cache takes local files only.
-// See AGENTS.md "The first window".
+// Everything inside the window ui/boot/shell.qml maps, arriving by file: URL on the first frame
+// because that is the only way Qt caches it; see AGENTS.md "The first window".
 Rectangle {
     id: view
     anchors.fill: parent
@@ -82,11 +80,8 @@ Rectangle {
         view.currentPane.message(TextSize.announce(ViewState.textSize, ViewState.omarchyBase), false)
     }
 
-    // Quickshell 0.3.1 has no exit API and Qt.quit() is a no-op, so the shell signals itself. The
-    // backend is told first and answers when it has drained: a quit cancels the operation in
-    // flight, and a cancelled copy removes its own partial, so closing never leaves a half file.
-    // The last-window handler is in ui/boot/shell.qml, which is the only thing that exists when a
-    // window is closed before this body has loaded.
+    // The backend is told first and answers when it has drained, so closing never leaves a half
+    // file; the last-window handler itself is in ui/boot/shell.qml, which always exists.
     Connections { target: backend; function onQuitReady() { view.backendDrained(0) } }
 
     Backend {

@@ -6,23 +6,17 @@
 import Quickshell
 import QtQuick
 
-// The entry is the window, and it imports Quickshell and QtQuick only. Quickshell serves a config
-// through qs: URLs and Qt's QML disk cache takes local files only, so every type this file reaches
-// is compiled again on every launch; ui/WindowBody.qml arrives by file: URL, which is cached, once
-// the first frame has swapped. This file sits in its own directory because a document implicitly
-// imports its own, and ui/qmldir's singletons would compile here and never be instantiated.
-// See AGENTS.md "The first window".
+// The entry is the window and imports Quickshell and QtQuick only, because a Quickshell config is
+// served through qs: URLs, which Qt's disk cache refuses; see AGENTS.md "The first window".
 ShellRoot {
     FloatingWindow {
         id: fleaWindow
         title: "Flea"
         implicitWidth: 900
         implicitHeight: 600
-        // The launcher hands over the theme's background, so the window the operator sees before
-        // the body lands is already the colour the body paints. Same fallback as ui/Theme.qml.
+        // The launcher hands over the theme's background, and the fallback is ui/Theme.qml's own.
         color: Quickshell.env("FLEA_FIRST_PAINT") || "#101315"
-        // Long enough that a drawn window has swapped its first frame, short enough that a window
-        // which is never drawn still gets its body while the operator is still looking at it.
+        // Long enough for a drawn window's first frame, short enough that an undrawn one still loads.
         readonly property int bodyBackstopMs: 250
         property bool rendererFallbackStarted: false
 
@@ -49,8 +43,7 @@ ShellRoot {
             return Math.round(rect.x) + " " + Math.round(rect.width) + " " + (rect.x + rect.width / 2).toFixed(3)
         }
 
-        // A qs: import outside the config root is blackholed, so this directory cannot reach
-        // ui/js/Format.js and the one call it needs is written out here.
+        // This directory cannot reach ui/js/Format.js through qs:, so its one call is written out.
         function fileUrl(path) {
             return "file://" + encodeURI(path).replace(/#/g, "%23").replace(/\?/g, "%3F")
         }
@@ -63,9 +56,8 @@ ShellRoot {
             bodyLoader.setSource(fleaWindow.fileUrl(Quickshell.shellDir + "/../WindowBody.qml"), { host: fleaWindow })
         }
 
-        // Quickshell 0.3.1 has no exit API and Qt.quit() is a no-op, so the shell signals itself,
-        // and it is signalled from here because a window closed before the body loads still has to
-        // take the process with it.
+        // Quickshell 0.3.1 has no exit API, and it is signalled from here because a window closed
+        // before the body loads still has to take the process with it.
         Connections { target: Quickshell; function onLastWindowClosed() { fleaWindow.quit() } }
 
         // Nothing has been told to drain before the body exists, so an early exit kills directly.
@@ -76,8 +68,7 @@ ShellRoot {
                 Quickshell.execDetached(["kill", String(Quickshell.processId)])
         }
 
-        // sceneGraphError arrives on the first frame, which is before the body exists, so PR119's
-        // retry lives here rather than in the body.
+        // sceneGraphError arrives on the first frame, before the body exists, so the retry is here.
         function handleSceneGraphError(error, message) {
             var backendName = Quickshell.env("QSG_RHI_BACKEND")
             console.warn("graphics backend " + backendName + " failed (" + error + "): " + message)
@@ -89,8 +80,7 @@ ShellRoot {
             quit()
         }
 
-        // ui/RendererRetry.qml owns the argv rule, and loading it by file: URL only after the error
-        // has arrived is what keeps ui/js/Renderer.js off the startup path.
+        // Loaded only once the error has arrived, which keeps ui/js/Renderer.js off the startup path.
         function retryCommand(backendName) {
             var helper = Qt.createComponent(fleaWindow.fileUrl(Quickshell.shellDir + "/../RendererRetry.qml"))
             if (helper.status !== Component.Ready) {
@@ -106,8 +96,7 @@ ShellRoot {
         Loader {
             id: bodyLoader
             anchors.fill: parent
-            // A Loader is a focus scope, so without this the pane inside never takes active focus
-            // and every key press lands nowhere; driven with j against a live window.
+            // A Loader is a focus scope, so without this every key press lands nowhere.
             focus: true
             // An empty window forever is what this catches; the engine prints the reason above it.
             onStatusChanged: {
