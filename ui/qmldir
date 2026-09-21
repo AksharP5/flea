@@ -12,6 +12,7 @@ ChromeModes 1.0 ChromeModes.qml
 ColumnsArea 1.0 ColumnsArea.qml
 ColumnPane 1.0 ColumnPane.qml
 ColumnRow 1.0 ColumnRow.qml
+Crumb 1.0 Crumb.qml
 PreviewColumn 1.0 PreviewColumn.qml
 PreviewLines 1.0 PreviewLines.qml
 PreviewPdf 1.0 PreviewPdf.qml
@@ -71,6 +72,7 @@ PickerList 1.0 PickerList.qml
 PickerPlaces 1.0 PickerPlaces.qml
 PickerRecent 1.0 PickerRecent.qml
 PickerSave 1.0 PickerSave.qml
+PanePath 1.0 PanePath.qml
 PaneRail 1.0 PaneRail.qml
 PaneWire 1.0 PaneWire.qml
 ShareBrowser 1.0 ShareBrowser.qml

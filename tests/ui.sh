@@ -7705,11 +7705,30 @@ case_dual() {
     ipc dualState | jq -e --arg path "$dir/left/nested" '.active and .focused == 1 and .panes[0].path == $path' >/dev/null \
         || fail "dual: independent paths did not survive restart"
     shot dual-reopened
+    # Issue 45 in dual view: the unfocused pane's own path answers one tap on a parent, and the tap focuses that pane.
+    local crumbs target centre cx cy wx wy _ww _wh
+    crumbs=$(ipc paneCrumbCount 0)
+    (( crumbs >= 3 )) || fail "dual: the left pane drew $crumbs crumbs, too few to press a parent"
+    target=$((crumbs - 2))
+    centre=$(ipc paneCrumbCentre 0 "$target")
+    [[ -n "$centre" ]] || fail "dual: left crumb $target has no on-screen centre"
+    read -r cx cy <<< "$centre"
+    read -r wx wy _ww _wh < <(window_box) || fail "native window coordinates unavailable"
+    omarchy-drive click "$((cx + wx))" "$((cy + wy))" >/dev/null \
+        || fail "dual: omarchy-drive refused the press on left crumb $target"
+    # A crumb's single tap waits out the double-tap interval, so the reading is taken well after the click.
+    settle
+    settle
+    shot dual-crumb
+    ipc dualState | jq -e --arg left "$dir/left" --arg right "$dir/right" \
+        '.focused == 0 and .panes[0].path == $left and .panes[1].path == $right' >/dev/null \
+        || fail "dual: a tap on the left pane's parent crumb left $(ipc dualState | jq -c '[.focused, .panes[0].path, .panes[1].path]')"
+    [[ "$(ipc pathBarOpen)" == "false" ]] || fail "dual: a single tap on a pane crumb opened the path bar"
     click_chrome list
     settle
     ipc dualState | jq -e '(.active | not) and .focused == 0' >/dev/null || fail "dual: leaving dual did not restore primary focus"
     kill_flea
-    printf 'DUAL navigation=ok focus=ok watch=ok restart=ok before=%s\n' "$before"
+    printf 'DUAL navigation=ok focus=ok watch=ok restart=ok crumb=ok before=%s\n' "$before"
 }
 
 dual_sort_wait() {

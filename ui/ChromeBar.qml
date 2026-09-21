@@ -256,40 +256,12 @@ Item {
                     model: Crumbs.fitCrumbs(Crumbs.crumbs(root.path, root.home),
                                          Math.floor(crumbSlot.width / crumbMetrics.advanceWidth))
 
-                    // corner: a path is arbitrary text, so PlainText, the same rule every filename on this surface follows.
-                    delegate: Text {
-                        id: crumb
-                        required property var modelData
-                        text: crumb.modelData.text
-                        // Only the current folder is lit at rest; an ancestor lights under the pointer, one at a time, which is the one sign a crumb answers a click.
-                        color: crumb.modelData.last || (crumbHover.hovered && !crumb.modelData.elided)
-                            ? Theme.color.foreground : Theme.color.muted
-                        font.family: Theme.font.family
-                        font.pixelSize: Theme.font.caption
-                        textFormat: Text.PlainText
-                        // The box is the strip's height with the glyphs centred in it, because the
-                        // handlers below are the path area's whole gesture and a text-tall box left
-                        // 11 of the strip's 27 px dead, measured at the window.
+                    delegate: Flea.Crumb {
+                        // The strip's height with the glyphs centred, because the crumb's handlers are the path area's
+                        // whole gesture and a text-tall box left 11 of the strip's 27 px dead, measured at the window.
                         height: crumbSlot.height
-                        verticalAlignment: Text.AlignVCenter
-
-                        HoverHandler {
-                            id: crumbHover
-                            cursorShape: crumb.modelData.last || crumb.modelData.elided ? Qt.IBeamCursor : Qt.PointingHandCursor
-                        }
-
-                        // Both flags together, measured on Qt 6.11.2: one of them alone suppresses
-                        // the other signal instead of waiting, and only the pair makes the tap count
-                        // decide, so a double click types the path rather than also navigating.
-                        // The gesture is on the crumb and not on the strip because a TapHandler on a
-                        // parent item takes the second tap away from the child under the pointer.
-                        TapHandler {
-                            acceptedButtons: Qt.LeftButton
-                            exclusiveSignals: TapHandler.SingleTap | TapHandler.DoubleTap
-                            // The collapsed marker names no directory, so a press on it opens nothing rather than whichever crumb it stands for.
-                            onSingleTapped: if (!crumb.modelData.last && !crumb.modelData.elided) root.pathEntered(crumb.modelData.path)
-                            onDoubleTapped: root.startEdit()
-                        }
+                        onChosen: function (path) { root.pathEntered(path) }
+                        onEditRequested: root.startEdit()
                     }
                 }
             }

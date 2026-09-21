@@ -3,7 +3,6 @@ import Quickshell
 import "." as Flea
 import "js/DirSizes.js" as DirSizes
 import "js/Dropbox.js" as Dropbox
-import "js/Crumbs.js" as Crumbs
 import "js/Filter.js" as Filter
 import "js/Format.js" as Format
 import "js/Focus.js" as Focus
@@ -411,29 +410,16 @@ FocusScope {
         pane: root
     }
 
-    Rectangle {
+    Flea.PanePath {
         id: panePath
         anchors { left: railHost.right; right: parent.right; top: parent.top }
         height: root.dualMode && !trashHost.opened ? Theme.chromeHeight : 0
         visible: height > 0
-        color: root.paneFocused ? Theme.color.surface : Theme.color.background
-        Text {
-            anchors.fill: parent
-            anchors.leftMargin: Theme.spacing.rowPaddingX
-            anchors.rightMargin: Theme.spacing.rowPaddingX
-            verticalAlignment: Text.AlignVCenter
-            text: Crumbs.crumbs(root.path, root.home).map(function(c) { return c.text }).join("")
-            textFormat: Text.PlainText
-            color: Theme.color.foreground
-            font { family: Theme.font.family; pixelSize: Theme.font.caption }
-            elide: Text.ElideLeft
-        }
-        Rectangle {
-            anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-            height: Theme.spacing.hairline
-            color: Theme.color.muted
-        }
-        TapHandler { onDoubleTapped: root.pathBarRequested() }
+        path: root.path
+        home: root.home
+        focused: root.paneFocused
+        onChosen: function (path) { root.open(path) }
+        onEditRequested: root.pathBarRequested()
     }
 
     PointHandler {
@@ -538,6 +524,8 @@ FocusScope {
         if (root.viewMode === "columns" && columnsLoader.item) columnsLoader.item.focusPreview()
     }
     property bool dualMode: false
+    readonly property alias pathCrumbs: panePath.crumbItems
+    readonly property alias pathSlot: panePath.crumbSlot
     signal switchPane()
 
     Flea.List {

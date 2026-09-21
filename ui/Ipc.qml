@@ -668,6 +668,17 @@ QtObject {
             var inside = box.x >= 0 && box.x + item.width <= root.chrome.pathArea.width
             return inside ? root.fleaWindow.centreOf(item) : ""
         }
+        // A dual pane's own path, side 0 or 1, answered the way crumbCount and crumbCentre answer the chrome's.
+        function paneCrumbCount(side: int): int { return root.panes[side] ? root.panes[side].pathCrumbs.count : 0 }
+        function paneCrumbCentre(side: int, i: int): string {
+            var pane = root.panes[side]
+            var item = pane ? pane.pathCrumbs.itemAt(i) : null
+            if (!item || !item.visible || !pane.pathSlot.visible)
+                return ""
+            var box = item.mapToItem(pane.pathSlot, 0, 0)
+            var inside = box.x >= 0 && box.x + item.width <= pane.pathSlot.width
+            return inside ? root.fleaWindow.centreOf(item) : ""
+        }
         // The button's painted box as "WxH": the mark is Theme.chromeMarkSize wide and the hit area is the whole strip tall.
         function chromeButtonSize(glyph: string): string {
             var item = root.chrome.buttonFor(glyph)

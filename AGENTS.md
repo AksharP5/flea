@@ -1706,13 +1706,17 @@ actually carried.
 
 The last two rows landed with issues 20 and 45 and are not `Tap.js`'s. `window` is the mouse's
 back button, which belongs to no row: `ui/WindowBody.qml` carries the handler and `ui/js/Nav.js`
-`mouseBack` decides between the history and the climb. `chrome` is the path above the listing,
-whose segments `ui/ChromeBar.qml` draws as their own click targets through `Nav.crumbs`; the `row`
-column reads `parent` there because the leaf is the directory already listed and answers no single
-click. Neither `where` has a `pointercase_` driver in `tools/flea-acceptance-drive`, so both report
-as derived and undriven in that battery; `tests/js/tap.js` holds their counts and drives neither,
-because both are QML bindings rather than `Tap.js` calls, and **`tests/js` is structurally unable
-to press either one**. `tests/ui.sh` case `click` is what presses them at the real window.
+`mouseBack` decides between the history and the climb. `chrome` is the path above the listing and,
+in the dual view, each pane's own path, whose segments `ui/Crumb.qml` draws as their own click
+targets for both, placed by `ui/ChromeBar.qml` and by `ui/PanePath.qml`, from `ui/js/Crumbs.js`.
+Until 0.3.2 a dual pane's path was one `Text` answering only the double click, so a tap on a parent
+there did nothing, measured on 0.3.1 and on the 0.3.2 candidate after the second report on issue 45;
+the `row` column reads `parent` there because the leaf is the directory already listed and answers
+no single click. Neither `where` has a `pointercase_` driver in `tools/flea-acceptance-drive`, so
+both report as derived and undriven in that battery; `tests/js/tap.js` holds their counts and drives
+neither, because both are QML bindings rather than `Tap.js` calls, and **`tests/js` is structurally
+unable to press either one**. `tests/ui.sh` case `click` is what presses them at the real window,
+and case `dual` presses a pane's crumb from `paneCrumbCentre`.
 
 The `Qt.BackButton` binding is now driven at the product, and the probe that used to stand in for it
 is the reason to say what changed. That probe was a standalone Quickshell `FloatingWindow` carrying
@@ -1727,7 +1731,7 @@ branch and the climb branch of `mouseBack` are each pressed through the shipped 
 is pressed the same way, from `crumbCentre`, which is the seam `ui/Ipc.qml` grew for it.
 
 A crumb click costs the platform's own double-click interval before anything happens, and that is
-inherent rather than a defect: `ui/ChromeBar.qml`'s `exclusiveSignals: TapHandler.SingleTap |
+inherent rather than a defect: `ui/Crumb.qml`'s `exclusiveSignals: TapHandler.SingleTap |
 TapHandler.DoubleTap` is what makes the tap count decide, and `singleTapped` cannot fire until the
 interval has expired. One target cannot host both gestures and answer the first one early, so the
 alternative is not a faster click, it is losing the double click that opens the path for editing.

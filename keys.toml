@@ -726,7 +726,8 @@ label = "keys"
 #        neighbour  the columns view's parent and child columns, which are peeks with no cursor
 #        rail       ui/SidebarRow.qml: favourites, mounts and network places
 #        window     a press that belongs to no row at all, taken by ui/shell.qml
-#        chrome     ui/ChromeBar.qml's path above the listing, whose segments are their own targets
+#        chrome     ui/ChromeBar.qml's path above the listing and a dual pane's own path, ui/PanePath.qml,
+#                   whose segments are their own targets, both drawn by ui/Crumb.qml
 # press  the button, then any modifier before it, then "x2" for the second tap of a double click
 # row    which rows the line covers: any, dir, file, parent, renaming or result
 # does   backOrParent commitRename extendSelect goToCrumb menu nothing open pathBar reveal selectOnly toggleSelect
