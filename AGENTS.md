@@ -1430,8 +1430,8 @@ make the seam the test harness rather than the subject.
 limits, Landlock, the seccomp call filter and the reap, and its walk test checks the filter's tables
 against `asm/unistd_64.h` and `linux/sched.h` beside the tables themselves. The same release moved
 three recorded ceilings: `src/backend/thumbs.rs` 432 to 441 for routing a video to the worker,
-`ui/Row.qml` 410 to 421 for the row diet's `Loader`s, and `ui/Ipc.qml` 762 to 778 for the three
-readers of a dual pane's path. Each count is `wc -l` on the file at the commit that recorded it.
+`ui/Row.qml` 410 to 421 for the row diet's `Loader`s, and `ui/Ipc.qml` 762 to 780 for the three
+readers of a dual pane's path and the file row height a density sets. Each count is `wc -l` on the file at the commit that recorded it.
 
 `src/backend/ops.rs` split to `src/backend/renamecompat.rs` at 455: composing PR 35's safe rclone
 rename into the release tree put the rename exception over the 400-line hard cap, so the exception

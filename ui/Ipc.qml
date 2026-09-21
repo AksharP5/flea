@@ -51,6 +51,8 @@ QtObject {
         function bodyPx(): int { return Theme.font.body }
         function rowNamePx(i: int): int { var item = root.pane.itemFor(i); return item ? item.namePx : -1 }
         function metrics(): string { return Theme.font.bodySmall + " " + Theme.font.caption + " " + Theme.spacing.rowPaddingX + " " + Theme.rowHeight }
+        // A file row at the stored density; metrics() keeps the board rowHeight, which density never moves.
+        function fileRowHeight(): int { return Theme.fileRowHeight }
         // Every token the Blueprint board states, one key=value per line; tools/flea-metrics-gate diffs it. metrics() above stays positional for tests/ui.sh.
         function tokens(): string { return Theme.tokens() }
         function cursor(): int { return root.pane.cursorIndex }

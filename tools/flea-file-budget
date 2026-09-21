@@ -36,7 +36,7 @@ ui/Backend.qml 435
 ui/ChromeBar.qml 448
 ui/ContextMenu.qml 534
 ui/ConvertDialog.qml 440
-ui/Ipc.qml 778
+ui/Ipc.qml 780
 ui/NetworkDialog.qml 449
 ui/NetworkMounts.qml 557
 ui/OpenWithDialog.qml 583

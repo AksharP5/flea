@@ -679,7 +679,7 @@ list_row_at_y() {
             best=$i
         fi
     done
-    (( best_gap <= $(ipc metrics | cut -d' ' -f4) / 2 )) && printf '%s' "$best"
+    (( best_gap <= $(ipc fileRowHeight) / 2 )) && printf '%s' "$best"
 }
 
 # A right click on the listing's empty space, the background menu's own entrance. The point is
@@ -3838,7 +3838,7 @@ case_icons() {
     launch "$dir"
     wait_listing 5
     local row_height i y0 y1 pitch
-    row_height=$(ipc metrics | cut -d' ' -f4)
+    row_height=$(ipc fileRowHeight)
     for i in 0 1 2 3 4; do
         printf 'ICONS row=%s name=%q glyph=%q\n' "$i" "$(ipc rowAt "$i")" "$(ipc rowGlyph "$i")"
     done
@@ -3880,7 +3880,7 @@ case_thumbs() {
     [[ "$(ipc viewMode)" == list ]] || fail "thumbs: fixture did not open its list view"
     # Read before any thumbnail lands, so the slot is compared against its pre-thumbnail row.
     local row_height
-    row_height=$(ipc metrics | cut -d' ' -f4)
+    row_height=$(ipc fileRowHeight)
 
     # One settle after the first window, and one request naming the visible rows.
     local waited
