@@ -4269,14 +4269,11 @@ case_renderer() {
     printf 'RENDERER ran=%q\n' "$(tr '\n' ' ' < "$relaunched")"
     grep -aq 'graphics backend opengl failed' "$log" \
         || fail "no scene-graph error reached ui/boot/shell.qml, so its Connections never held the window"
-    # The backend is no longer the denominator it was: the body loads on the first frame and this arm
-    # never gets one, so nothing starts FLEA_BIN at all. The grep above is what proves the handler
-    # ran, and the probe below is what proves it could have fired. See AGENTS.md "The first window".
+    # A scene-graph failure now starts no backend at all, so counting FLEA_BIN is a zero denominator.
     local retried
     retried=$(grep -c -- '--gui' "$relaunched" || true)
     [[ "$retried" == "0" ]] || fail "the retry fired for a renderer the operator named: $(cat "$relaunched")"
-    # The positive arm, which no scene-graph failure here can raise: ui/RendererRetry.qml is loaded
-    # by the same file: URL the entry uses, and asked for the argv of a renderer that may retry.
+    # The positive arm no scene-graph failure here can raise, through the entry's own file: URL.
     local probe="$dir/retry-probe.log"
     : > "$probe"
     env RETRY_HELPER="$flea_ui/RendererRetry.qml" RETRY_BACKEND=vulkan \
