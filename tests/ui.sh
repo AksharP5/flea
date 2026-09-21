@@ -8760,9 +8760,10 @@ case_clickthrough() {
     local dir="$fixture_root/clickthrough"
     sandbox_scratch "$dir"
     local i
-    for i in $(seq -w 1 40); do : > "$dir/f$i.txt"; done
+    # Eighty rows overflow the window at every density; forty stopped short of a compact screen's 43.
+    for i in $(seq -w 1 80); do : > "$dir/f$i.txt"; done
     launch "$dir"
-    wait_listing 40
+    wait_listing 80
     local parked; parked=$(ipc cursor)
     [[ "$parked" == "0" ]] || fail "clickthrough: the cursor did not start on row 0, it is on $parked"
 
@@ -8940,7 +8941,9 @@ views_fixture() {
 # and scrolling under an open menu or card, a click outside the menu selecting the row beneath, and
 # a right click on a card running on to the row under it. Every check runs in all three views.
 case_overlays() {
-    local dir="$fixture_root/overlays" mode n cx cy wx wy
+    local dir="$fixture_root/overlays" mode n cx cy wx wy board_row file_row
+    # corner: columns row 8 was measured clear of the open menu at the board's row height, which the menu keeps at every density.
+    local columns_clear_row=8
     views_fixture "$dir"
     launch "$dir"
     wait_listing 406
@@ -8949,7 +8952,8 @@ case_overlays() {
         key -k Home >/dev/null
         settle
         n=$(( $(ipc visibleRows) - 3 ))
-        [[ "$mode" == "columns" ]] && n=8
+        board_row=$(ipc metrics | cut -d' ' -f4) file_row=$(ipc fileRowHeight)
+        [[ "$mode" == "columns" ]] && n=$(( (columns_clear_row * board_row + file_row - 1) / file_row ))
         [[ -n "$(ipc rowRect "$n")" ]] || fail "$mode: row $n has no box, the reader answers nothing here"
         hover_row "$n"
         settle
