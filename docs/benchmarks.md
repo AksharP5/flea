@@ -97,7 +97,8 @@ A GUI run that never asks for thumbnails (the scale fixture) does not touch this
 - **`cpu_s` / `cpu_tree_s`**: CPU seconds at the settle point. `cpu_s` is `utime + stime` of the
   entrant process alone. `cpu_tree_s` is `usage_usec` of a control group the run made for this
   entrant, which holds everything it started, sandboxed or reparented, plus a declared helper that
-  lives outside it (thunar's `tumblerd`). Before 0.3.2 it summed reaped ticks, which a decode under
+  lives outside it (thunar's `tumblerd`). A TUI row's control group holds its terminal as well, so
+  that column includes kitty's own drawing. Before 0.3.2 it summed reaped ticks, which a decode under
   `bwrap` never reaches; that older figure is kept as `cpu_reaped_s`, the last column.
 - **`thumbs_n`**: on a media run, the count of files in the shared cache's `large/` bucket at the
   settle point, evidence that generation actually happened rather than a warm cache being read, and

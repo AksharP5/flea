@@ -165,9 +165,7 @@ Item {
     signal renameAbandoned()
 
     // The editor takes the name column's own box, so the row does not change shape when it opens.
-    // Built only while this row renames, ui/ColumnPane.qml's idiom: one row at a time ever needs it.
-    // The Loader destroys it without a hide, measured, which is safe because renaming ends only after
-    // renamingIndex is cleared; a scroll or a view change still hides the live editor, which abandons.
+    // Built only while renaming; a Loader destroys it without a hide, so RenameField's begun guard owns the abandon.
     Loader {
         id: renameLoader
         active: root.renaming

@@ -150,7 +150,9 @@ this tree yet: `flea --tui` says so and exits 2.
    Item 6 above is the first place to look: its `Loader` gating was MEASURED to recover 14.7 MB at
    100k and is not in the tree, and memory is the column that actually lost a place. Read its
    caveat first, because that figure is a list-view number rather than a whole-product one, and
-   the split it needs broke `tests/ui.sh` twice.
+   the split it needs broke `tests/ui.sh` twice. The CPU figures in this rule predate 0.3.2 and are the
+   reaped-tick column, which counted no sandboxed decode for Flea or strata; see "Testing" for the
+   control-group column that replaced it.
 
 ## Two-phase listing
 
@@ -1864,9 +1866,9 @@ waits for its consumer.
   where the watched set earned no tick, because it costs a read per thread and per descendant.
   **`cutime` alone is not enough**: it holds only what a watched pid has REAPED, so a decode still
   running is invisible to it, and Flea's decode is two levels down under `bwrap`.
-- **`cpu_tree_s` is a new column at the END of each row**, so an old parser still works. It carries
-  the watched set's tree total; `cpu_s` still reports the entrant process alone. On the media fixture
-  they diverge hard: pcmanfm reads 38.83 against 90.00 and dolphin 3.29 against 68.59.
+- **`cpu_tree_s` was added at the END of each row**, so an old parser still works. Until 0.3.2 it
+  carried the watched set's tree total; `cpu_s` still reports the entrant process alone. On the media
+  fixture they diverged hard then: pcmanfm read 38.83 against 90.00 and dolphin 3.29 against 68.59.
 - **`cpu_tree_s` is read from a control group since 0.3.2, because the tick total was blind to every
   sandboxed decode.** Measured on minipc: ten `ffmpegthumbnailer` decodes of the media fixture add
   0.95 s to the caller's `cutime` run bare and 0.01 s run under Flea's own `prlimit` plus `bwrap`
@@ -1880,6 +1882,9 @@ waits for its consumer.
   backend is inside the leaf and is not added twice. The old figure stays as `cpu_reaped_s` at the
   END of each row, so a table from before this change is compared against like, and a leaf still
   holding a process after the kill list ran names it as `LEFTOVER` and ends it by `cgroup.kill`.
+  **A TUI row's leaf holds its terminal too**: the run launches kitty and kitty starts the TUI, so that
+  bracket's column includes the terminal's own drawing, the same kitty for every TUI entrant, where the
+  old column, rooted at the TUI process, never counted it.
 - **`thumbs_by_format` is a newer column at the END of each row**, and it is why a count can be
   compared at all. A thumbnailer with no plugin registered for a MIME type never attempts the file
   and writes no failure marker, so a silent skip and work-not-done are the same zero in a total.

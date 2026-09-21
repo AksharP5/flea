@@ -120,7 +120,6 @@ Item {
     // Same slot as the label above; only one of the two is ever visible. ui/RenameField.qml is the
     // one editor in the product, so the rail gets rail type, an accent hairline frame and stem-only
     // preselection where the stock control brought body type, its own 30 px height and a filled ground.
-    // Built only while this row renames, the idiom ui/Row.qml and ui/ColumnPane.qml use.
     Loader {
         id: renameLoader
         active: root.renaming

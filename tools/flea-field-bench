@@ -10,8 +10,7 @@ set -uo pipefail
 export FLEA_REPO="${FLEA_REPO:-$HOME/Work/claude/flea}"
 . "$FLEA_REPO/tools/flea-sandbox-guard"
 
-# The CPU column is read from a control group of this run's own, and only a delegated user scope may
-# make one, so the bench re-enters itself inside one before anything else; see AGENTS.md "Testing".
+# The CPU column needs a leaf cgroup, which only a delegated user scope may make; see AGENTS.md "Testing".
 # Sample input: /proc/self/cgroup "0::/user.slice/user-1000.slice/user@1000.service/app.slice/flea-field-bench-123.scope"
 case "$(cut -d: -f3 /proc/self/cgroup)" in
   */flea-field-bench-*.scope) ;;
@@ -616,18 +615,22 @@ clean_bench() {
     IFS='|' read -r comm token <<< "$row"
     kill_entrant "$comm" "$token"
   done
-  close_fixture_dialogs
+  close_entrant_dialogs
 }
 
-# An entrant this run killed can leave Hyprland's not-responding dialog naming its window, and that
-# dialog then floats over, and takes focus from, every entrant after it: measured, pcmanfm's did.
+# A killed entrant can leave Hyprland's not-responding dialog over every entrant after it, and the text ends with the window's class.
 # Sample input: hyprland-dialog's cmdline "--title Application Not Responding --text An application flea-media-btrfs - pcmanfm is not responding. ..."
-close_fixture_dialogs() {
-  local pid
+close_entrant_dialogs() {
+  local pid text row id kind class rest
   for pid in $(pgrep -x hyprland-dialog 2>/dev/null); do
-    tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null | grep -Fq -- "An application ${FIXTURE##*/} - " || continue
-    printf 'closing the not-responding dialog %s an entrant left over %s\n' "$pid" "${FIXTURE##*/}" >&2
-    kill "$pid" 2>/dev/null
+    text=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null)
+    for row in "${ENTRANTS[@]}"; do
+      IFS='|' read -r id kind class rest <<< "$row"
+      case "$text" in *" - $class is not responding"*) ;; *) continue ;; esac
+      printf 'closing the not-responding dialog %s that %s left behind\n' "$pid" "$id" >&2
+      kill "$pid" 2>/dev/null
+      break
+    done
   done
 }
 
@@ -748,7 +751,9 @@ run_one() {
   mkdir "$leaf" || fail "could not make the control group $leaf"
   RUN_CG=$leaf
   ENTRANT_LAUNCHED=yes
-  { printf '%s\n' "$BASHPID" > "$RUN_CG/cgroup.procs" || exit 1; eval "$shift_cmd"; } >/dev/null 2>&1 &
+  { printf '%s\n' "$BASHPID" > "$RUN_CG/cgroup.procs" \
+      || { printf 'FAIL: could not join %s, so %s was not launched\n' "$RUN_CG" "$id" >&2; exit 1; }
+    eval "$shift_cmd" >/dev/null 2>&1; } &
 
   # A TUI row's window belongs to its terminal, which the class this run gives it already names.
   local owner_comm=$comm owner_token=$token
@@ -760,7 +765,7 @@ run_one() {
     wait_for_window "$class" "$deadline" "$owner_comm" "$owner_token" && mapped=$(( NOW_MS - t0 ))
   fi
 
-  wait_for_pid "$comm" "$token" "$deadline" || { watch_kill; printf '%s,%s,ERROR,no-process\n' "$id" "$RUN_INDEX"; return 1; }
+  wait_for_pid "$comm" "$token" "$deadline" || { watch_kill; printf '%s,%s,ERROR,no-process\n' "$id" "$RUN_INDEX"; clean_bench; release_run_cg; return 1; }
   pid=$ENTRANT_PID
   grep -qx "0::${RUN_CG#/sys/fs/cgroup}" "/proc/$pid/cgroup" 2>/dev/null \
     || fail "$id pid $pid is not in its control group $RUN_CG, so its CPU column would count nothing"
@@ -798,12 +803,14 @@ run_one() {
   local cpu_s cpu_tree_s cpu_reaped_s helper_add=0 child_pss=0 thumbs_n=n/a thumbs_dirs=- thumbs_fmt=- ranked=yes
   # drm-resident-system0 is RAM that PSS cannot see, read once after settle because fdinfo is too costly to poll.
   drm_kb "$pid"
-  cpu_s=$(awk -v t="$last_entrant" 'BEGIN { printf "%.2f", t / 100 }')
+  # cpu.stat counts microseconds and /proc/<pid>/stat counts USER_HZ ticks, 100 a second on this kernel.
+  local usec_per_second=1000000 ticks_per_second=100
+  cpu_s=$(awk -v t="$last_entrant" -v hz="$ticks_per_second" 'BEGIN { printf "%.2f", t / hz }')
   # The old reading, kept so a table from before the leaf can still be compared: a sandboxed decode never reaches it, see AGENTS.md "Testing".
-  cpu_reaped_s=$(awk -v t="$last_tree" 'BEGIN { printf "%.2f", t / 100 }')
+  cpu_reaped_s=$(awk -v t="$last_tree" -v hz="$ticks_per_second" 'BEGIN { printf "%.2f", t / hz }')
   cgroup_usage_usec "$RUN_CG" || fail "no usage_usec in $RUN_CG/cpu.stat, so this row has no CPU column"
   [ "$HELPER_SIDE" = outside ] && helper_add=$last_helper
-  cpu_tree_s=$(awk -v u="$CG_USEC" -v t="$helper_add" 'BEGIN { printf "%.2f", u / 1000000 + t / 100 }')
+  cpu_tree_s=$(awk -v u="$CG_USEC" -v us="$usec_per_second" -v t="$helper_add" -v hz="$ticks_per_second" 'BEGIN { printf "%.2f", u / us + t / hz }')
   # Evidence that the media run actually exercised thumbnail generation, not just a warm cache.
   if [ "$DROP_THUMBS" = yes ]; then
     count_thumbs
