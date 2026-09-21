@@ -258,7 +258,20 @@ for colours in "$themes_dir"/*/colors.toml "$synthetic"; do
     # The edge is a solid bar at the cursor row's leading corner, so its own pixel is the accent itself.
     read -r rx ry rw rh <<< "$(ipc rowRect "$(ipc cursor)")"
     if [ -n "${rx:-}" ]; then
+        fails_before=$failures
         same_colour "$theme" "the cursor's accent edge" "$(pixel_at "$shots/$theme-list.png" "$((rx + 1))" "$((ry + rh / 2))")" "$accent"
+        # corner: evidence only, the FAIL stands; later shots say whether that frame was late or never came.
+        if [ "$failures" -gt "$fails_before" ]; then
+            for late_s in 0 2; do
+                sleep "$late_s"
+                omarchy-drive shot "$shots/$theme-list-late$late_s.png" "$class" >/dev/null
+                printf 'NOTE %s: a shot %s s later draws #%s there, ipc cursor %s\n' "$theme" "$late_s" \
+                    "$(pixel_at "$shots/$theme-list-late$late_s.png" "$((rx + 1))" "$((ry + rh / 2))")" "$(ipc cursor)"
+            done
+            printf 'NOTE %s: window %s, active workspace %s\n' "$theme" \
+                "$(hyprctl clients -j | jq -c --arg c "$class" '[.[] | select(.class == $c) | {ws: .workspace.id, mapped, hidden, focus: .focusHistoryID}]')" \
+                "$(hyprctl activeworkspace -j | jq .id)"
+        fi
     else
         fail "$theme: the cursor row has no rectangle to measure"
     fi
