@@ -927,17 +927,13 @@ cp -r "$TUI_CONF_SRC/." "$TUI_CONF/" || fail "could not copy $TUI_CONF_SRC"
 # the run materialises it. The manifest records the materialised copy, which is what actually ran.
 find "$TUI_CONF" -type f -exec sed -i "s|\$XDG_CONFIG_HOME|$TUI_CONF|g" {} +
 
-# Flea's state is the bench's own too: an operator's saved sort, view and density decide what the first screen holds.
+# Flea runs on its shipped defaults, because an operator's saved view, sort, rows or text size decide what the first screen holds.
 FLEA_STATE=$(mktemp -d /tmp/flea-bench-state.XXXXXX) || fail "no temp directory for Flea's state"
-operator_ui="${XDG_STATE_HOME:-$HOME/.local/state}/flea/ui.json"
-mkdir -p "$FLEA_STATE/flea" || fail "could not make $FLEA_STATE/flea"
-if [ -f "$operator_ui" ]; then
-  cp "$operator_ui" "$FLEA_STATE/flea/ui.json" || fail "could not copy $operator_ui"
-fi
-# The shipped defaults for all three: a dual view left in the operator's file would bench two panes.
-XDG_STATE_HOME="$FLEA_STATE" "$FLEA_BIN" --ui-state '{"sort":{"key":"name","reverse":false},"view":"list","density":"compact"}' >/dev/null \
-  || fail "flea --ui-state refused to set name sort, list view and compact rows in the bench's copy of $operator_ui"
-printf 'flea-state: %s, a copy of %s with name sort, list view and compact rows\n' "$FLEA_STATE" "$operator_ui"
+mkdir -p "$FLEA_STATE/flea" "$FLEA_STATE/no-config" || fail "could not make $FLEA_STATE/flea"
+# An empty config directory for this one write, so an old view.json cannot migrate into the defaults.
+XDG_STATE_HOME="$FLEA_STATE" XDG_CONFIG_HOME="$FLEA_STATE/no-config" "$FLEA_BIN" --ui-state '{"sort":{"key":"name","reverse":false}}' >/dev/null \
+  || fail "flea --ui-state refused to write the shipped defaults into $FLEA_STATE"
+printf 'flea-state: %s, the shipped defaults and none of the operator settings\n' "$FLEA_STATE"
 
 # The band the TUI bracket watches for its preview, and the file it captures into.
 # corner: one monitor and one tiled window, which require_bench_idle already guarantees. The band is
