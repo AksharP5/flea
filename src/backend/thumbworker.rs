@@ -443,6 +443,11 @@ mod tests {
         if reader < 0 || report < 0 {
             unsafe { _exit(CHILD_MACHINE) };
         }
+        // Lowest-free numbering puts an idle job on 3 and 4 only when nothing was inherited, so a shifted idle arm fails rather than rerunning the busy one.
+        if !busy && (reader, report) != (INPUT_FD, OUTPUT_FD) {
+            println!("probe=idle-arm-on {} {}", reader, report);
+            unsafe { _exit(CHILD_MACHINE) };
+        }
         let (_peer, planted) = fdpass::pair().expect("the probe could not make its socket");
         if unsafe { dup2(planted.as_raw_fd(), 0) } != 0 {
             unsafe { _exit(CHILD_MACHINE) };
@@ -508,7 +513,7 @@ mod tests {
                 sandbox::CPU_SECONDS,
                 sandbox::ADDRESS_SPACE_BYTES
             );
-            assert_eq!(std::fs::read_to_string(&report).unwrap(), expected, "busy {} probe exited {:?}", busy, out.status);
+            assert_eq!(std::fs::read_to_string(&report).unwrap(), expected, "busy {} probe exited {:?}: {}", busy, out.status, String::from_utf8_lossy(&out.stdout));
             assert_eq!(std::fs::read(&victim).unwrap(), b"original");
         }
     }
