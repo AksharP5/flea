@@ -11,6 +11,8 @@ import QtQuick
 // A file: URL away for the reason ui/boot/shell.qml gives, but its window stays whole: the chooser
 // is not on the measured path and its size comes from the Theme. See AGENTS.md "The first window".
 ShellRoot {
+    id: root
+
     LazyLoader {
         id: chooser
         active: true
@@ -18,12 +20,13 @@ ShellRoot {
         source: "file://" + encodeURI(Quickshell.shellDir + "/../PickerWindow.qml").replace(/#/g, "%23").replace(/\?/g, "%3F")
     }
 
-    // LazyLoader carries neither a status nor a usable loading edge, so the only answer is to look
-    // once, late: no window by now is a load that failed, and silence would leave
-    // tools/flea-portal's caller waiting out its whole 600 s. Well past the 1.7 to 3.0 s the first
-    // launch after an update spends writing Qt's cache, which is the slowest honest load there is.
+    // Well past the 1.7 to 3.0 s the first launch after an update spends writing Qt's cache.
+    readonly property int windowBackstopMs: 6000
+
+    // LazyLoader carries neither a status nor a usable loading edge, so no window by this point is
+    // a load that failed, and silence would leave tools/flea-portal's caller waiting out its 600 s.
     Timer {
-        interval: 6000
+        interval: root.windowBackstopMs
         repeat: false
         running: true
         onTriggered: {

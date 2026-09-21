@@ -76,7 +76,8 @@ printf 'background = "#1e1e2e"\nforeground = "#cdd6f4"\naccent = "#89b4fa"\nred 
 no_muted_caption="#9299ae"
 
 ipc() { omarchy-drive ipc -p "$flea_ui/boot" flea "$@"; }
-key() { omarchy-drive key "$@" >/dev/null; }
+# Filtered to the window under test, as tests/ui.sh does: an unfiltered send goes wherever focus is.
+key() { omarchy-drive key --window flea "$@" >/dev/null; }
 window_xy() { hyprctl clients -j | jq -r --arg c "$class" '[.[]|select(.class==$c)][0] | "\(.at[0]) \(.at[1])"'; }
 fail() { printf 'FAIL %s\n' "$1"; failures=$((failures + 1)); }
 
@@ -218,9 +219,14 @@ for colours in "$themes_dir"/*/colors.toml "$synthetic"; do
     fi
 
     # The cursor row's own accent edge, marked and hovered rows beside it: a shot of all three.
-    key j; sleep 0.5
-    key v; sleep 0.5
-    key j; sleep 0.5
+    # Waited for, not slept over: a fixed sleep sampled a frame predating the last key, 1 run in 6.
+    key j
+    key v
+    key j
+    if ! omarchy-drive wait ipc -p "$flea_ui/boot" flea cursor 2 --timeout 10 >/dev/null; then
+        fail "$theme: the cursor never reached row 2, so no shot of it can be measured"
+        continue
+    fi
     read -r wx wy <<< "$(window_xy)"
     read -r cx cy <<< "$(ipc rowCentre 2)"
     [ -n "${cx:-}" ] && omarchy-drive move "$((wx + cx))" "$((wy + cy))" >/dev/null
