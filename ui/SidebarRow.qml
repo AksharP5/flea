@@ -120,23 +120,26 @@ Item {
     // Same slot as the label above; only one of the two is ever visible. ui/RenameField.qml is the
     // one editor in the product, so the rail gets rail type, an accent hairline frame and stem-only
     // preselection where the stock control brought body type, its own 30 px height and a filled ground.
-    RenameField {
-        id: renameField
-        visible: root.renaming
+    // Built only while this row renames, the idiom ui/Row.qml and ui/ColumnPane.qml use.
+    Loader {
+        id: renameLoader
+        active: root.renaming
         anchors.left: mark.right
         anchors.leftMargin: Style.spacing.rowGap
         anchors.right: root.detail.length > 0 ? detailText.left : dot.left
         anchors.rightMargin: root.detail.length > 0 ? Style.spacing.rowGap : 0
         anchors.verticalCenter: parent.verticalCenter
         height: Theme.railRowHeight - 2 * Theme.spacing.rowPaddingY
-        name: root.modelData.label
-        onCommitted: function (newName) { root.renameCommitted(root.index, newName) }
-        onAbandoned: root.renameCancelled(root.index)
+        sourceComponent: RenameField {
+            name: root.modelData.label
+            onCommitted: function (newName) { root.renameCommitted(root.index, newName) }
+            onAbandoned: root.renameCancelled(root.index)
+        }
     }
 
     // What the editor holds right now, for tests through ui/Ipc.qml's railRenameEditorText.
-    readonly property string editorText: renameField.current
-    readonly property bool editorShown: renameField.visible
+    readonly property string editorText: renameLoader.item ? renameLoader.item.current : ""
+    readonly property bool editorShown: renameLoader.item !== null && renameLoader.item.visible
     // The rail's real trailing indicator slot, so ui/Ipc.qml measures this dot instead of recomputing it.
     readonly property Item indicatorSlot: dot
     readonly property Item detailItem: detailText

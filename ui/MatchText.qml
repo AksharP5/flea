@@ -22,7 +22,8 @@ Item {
     readonly property string after: root.marked ? root.text.substring(root.matchStart + root.matchLength) : ""
 
     implicitHeight: beforeText.implicitHeight
-    implicitWidth: beforeText.implicitWidth + runText.implicitWidth + afterText.implicitWidth
+    // The marked run and its tail exist only while a match is marked, so their widths are the loaded item's.
+    implicitWidth: beforeText.implicitWidth + (markLoader.item ? markLoader.item.runsImplicitWidth : 0)
     clip: true
 
     Text {
@@ -39,37 +40,50 @@ Item {
         maximumLineCount: 1
     }
 
-    Rectangle {
-        anchors.fill: runText
-        visible: root.marked && runText.width > 0
-        color: Qt.alpha(root.accent, Theme.washActive)
-    }
-
-    Text {
-        id: runText
+    // Built only while a match is marked: an unmarked name is the one run above, and most rows are unmarked.
+    Loader {
+        id: markLoader
+        active: root.marked
         anchors.left: beforeText.right
-        anchors.verticalCenter: parent.verticalCenter
-        width: Math.min(implicitWidth, Math.max(0, root.width - beforeText.width))
-        text: root.run
-        color: root.color
-        font.family: Theme.font.family
-        font.pixelSize: root.pixelSize
-        elide: Text.ElideRight
-        textFormat: Text.PlainText
-        maximumLineCount: 1
-    }
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        width: Math.max(0, root.width - beforeText.width)
+        sourceComponent: Item {
+            readonly property real runsImplicitWidth: runText.implicitWidth + afterText.implicitWidth
 
-    Text {
-        id: afterText
-        anchors.left: runText.right
-        anchors.verticalCenter: parent.verticalCenter
-        width: Math.max(0, root.width - beforeText.width - runText.width)
-        text: root.after
-        color: root.color
-        font.family: Theme.font.family
-        font.pixelSize: root.pixelSize
-        elide: Text.ElideRight
-        textFormat: Text.PlainText
-        maximumLineCount: 1
+            Rectangle {
+                anchors.fill: runText
+                visible: runText.width > 0
+                color: Qt.alpha(root.accent, Theme.washActive)
+            }
+
+            Text {
+                id: runText
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+                width: Math.min(implicitWidth, parent.width)
+                text: root.run
+                color: root.color
+                font.family: Theme.font.family
+                font.pixelSize: root.pixelSize
+                elide: Text.ElideRight
+                textFormat: Text.PlainText
+                maximumLineCount: 1
+            }
+
+            Text {
+                id: afterText
+                anchors.left: runText.right
+                anchors.verticalCenter: parent.verticalCenter
+                width: Math.max(0, parent.width - runText.width)
+                text: root.after
+                color: root.color
+                font.family: Theme.font.family
+                font.pixelSize: root.pixelSize
+                elide: Text.ElideRight
+                textFormat: Text.PlainText
+                maximumLineCount: 1
+            }
+        }
     }
 }

@@ -31,7 +31,11 @@ Item {
     readonly property int stemEnd: root.dot > 0 ? root.dot : root.current.length
     readonly property string extension: root.current.substring(root.stemEnd)
 
+    // Set by begin(), so a hide can only abandon an edit that began; see onVisibleChanged below.
+    property bool begun: false
+
     function begin() {
+        root.begun = true
         field.text = root.name
         field.forceActiveFocus()
         // The stem alone, which is the part a rename usually changes.
@@ -72,6 +76,9 @@ Item {
             root.begin()
             return
         }
+        // A Loader that builds this field inside a pooled, hidden row hides it as it is created, and
+        // that hide abandoned the one real editor; measured by tests/ui.sh renamelife after a restart.
+        if (!root.begun) return
         // The enclosing ListView is a focus scope and remembers this field as its focused child, so
         // giving up what begin() took is what lets the scope itself take the keys again.
         field.focus = false

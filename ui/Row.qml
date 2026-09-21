@@ -75,7 +75,8 @@ Item {
     // and the decode, and a row whose Image failed to load has to be marked by its kind instead.
     readonly property bool thumbDrawn: root.thumb.length > 0 && thumbImage.status !== Image.Error
 
-    implicitHeight: root.renaming ? Math.max(Theme.fileRowHeight, editor.implicitHeight + 2 * Theme.spacing.rowPaddingY) : Theme.fileRowHeight
+    implicitHeight: root.renaming && renameLoader.item
+                    ? Math.max(Theme.fileRowHeight, renameLoader.item.implicitHeight + 2 * Theme.spacing.rowPaddingY) : Theme.fileRowHeight
     implicitWidth: parent ? parent.width : 0
 
     Accessible.role: Accessible.ListItem
@@ -154,29 +155,34 @@ Item {
 
     // ui/List.qml's click-away commit reaches the open editor through this, and reads back whether
     // a commit really happened: an abandon must not leave renameKeepsPointerRow standing.
-    function commitEditor() { return editor.commit() }
+    function commitEditor() { return renameLoader.item ? renameLoader.item.commit() : false }
 
     // What the editor holds right now, for tests/ui.sh through ui/Ipc.qml's renameEditorText.
-    readonly property string editorText: editor.current
-    readonly property Item editorField: editor
+    readonly property string editorText: renameLoader.item ? renameLoader.item.current : ""
+    readonly property Item editorField: renameLoader.item as Item
 
     signal renameCommitted(string newName)
     signal renameAbandoned()
 
     // The editor takes the name column's own box, so the row does not change shape when it opens.
-    Flea.RenameField {
-        id: editor
-        visible: root.renaming
+    // Built only while this row renames, ui/ColumnPane.qml's idiom: one row at a time ever needs it.
+    // The Loader destroys it without a hide, measured, which is safe because renaming ends only after
+    // renamingIndex is cleared; a scroll or a view change still hides the live editor, which abandons.
+    Loader {
+        id: renameLoader
+        active: root.renaming
         anchors.left: icon.right
         anchors.leftMargin: Theme.spacing.gap
         anchors.right: mode.left
         anchors.rightMargin: root.modeShown ? Theme.spacing.gap : 0
         anchors.verticalCenter: parent.verticalCenter
-        height: implicitHeight
-        pane: root.renamePane
-        name: root.displayName
-        onCommitted: function (newName) { root.renameCommitted(newName) }
-        onAbandoned: root.renameAbandoned()
+        sourceComponent: Flea.RenameField {
+            height: implicitHeight
+            pane: root.renamePane
+            name: root.displayName
+            onCommitted: function (newName) { root.renameCommitted(newName) }
+            onAbandoned: root.renameAbandoned()
+        }
     }
 
     // corner: a filename is arbitrary text, so PlainText everywhere; MatchText draws its runs the same way.
@@ -196,34 +202,41 @@ Item {
     }
 
     // The search column set: the name shrinks to its content so the location beside it has room.
-    MatchText {
-        id: searchName
-        visible: root.searching
+    // Both are built only while searching, over the same span the two drew in side by side.
+    Loader {
+        active: root.searching
         anchors.left: icon.right
-        anchors.leftMargin: Theme.spacing.gap
-        anchors.verticalCenter: parent.verticalCenter
-        width: Math.min(implicitWidth, root.searchSlot * root.nameShare)
-        text: root.decoratedName
-        matchStart: root.nameRun.start
-        matchLength: root.nameRun.length
-        color: root.nameColor()
-        accent: Theme.color.accent
-    }
-
-    Text {
-        id: location
-        visible: root.searching
-        anchors.left: searchName.right
         anchors.leftMargin: Theme.spacing.gap
         anchors.right: size.left
         anchors.rightMargin: root.sizeShown && !root.dualMode ? Theme.spacing.gap : 0
-        anchors.verticalCenter: parent.verticalCenter
-        text: root.locationText
-        color: root.cellColor()
-        font.family: Theme.font.family
-        font.pixelSize: Theme.font.caption
-        elide: Text.ElideLeft
-        textFormat: Text.PlainText
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        sourceComponent: Item {
+            MatchText {
+                id: searchName
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+                width: Math.min(implicitWidth, root.searchSlot * root.nameShare)
+                text: root.decoratedName
+                matchStart: root.nameRun.start
+                matchLength: root.nameRun.length
+                color: root.nameColor()
+                accent: Theme.color.accent
+            }
+
+            Text {
+                anchors.left: searchName.right
+                anchors.leftMargin: Theme.spacing.gap
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                text: root.locationText
+                color: root.cellColor()
+                font.family: Theme.font.family
+                font.pixelSize: Theme.font.caption
+                elide: Text.ElideLeft
+                textFormat: Text.PlainText
+            }
+        }
     }
 
     Text {
@@ -233,7 +246,8 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         visible: root.modeShown && !root.dropTarget
         width: root.modeShown ? Theme.column.mode : 0
-        text: root.row ? Format.permissions(root.row.p) : ""
+        // A hidden column holds no text, because a laid-out Text costs memory whether or not it is drawn.
+        text: root.modeShown && root.row ? Format.permissions(root.row.p) : ""
         color: root.cellColor()
         font.family: Theme.font.family
         font.pixelSize: Theme.font.caption
@@ -248,7 +262,7 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         visible: root.sizeShown && !root.dropTarget
         width: root.sizeShown ? root.sizeWidth : 0
-        text: root.row ? root.sizeText() : ""
+        text: root.sizeShown && root.row ? root.sizeText() : ""
         color: root.cellColor()
         font.family: Theme.font.family
         font.pixelSize: Theme.font.caption
@@ -264,7 +278,7 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         visible: root.dateShown && !root.dropTarget
         width: root.dateShown ? root.dateWidth : 0
-        text: root.dateText()
+        text: root.dateShown ? root.dateText() : ""
         color: root.cellColor()
         font.family: Theme.font.family
         font.pixelSize: Theme.font.caption
@@ -280,7 +294,7 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         visible: root.kindShown && !root.dropTarget
         width: root.kindShown ? Theme.column.kind : 0
-        text: root.row ? root.kindText() : ""
+        text: root.kindShown && root.row ? root.kindText() : ""
         color: root.cellColor()
         font.family: Theme.font.family
         font.pixelSize: Theme.font.caption
@@ -289,16 +303,19 @@ Item {
     }
 
     // The board's own words in the columns' place: caption type in the accent, against the row padding.
-    Text {
-        visible: root.dropTarget
+    // Built only on the one row under a drag.
+    Loader {
+        active: root.dropTarget
         anchors.right: parent.right
         anchors.rightMargin: Theme.spacing.rowPaddingX
         anchors.verticalCenter: parent.verticalCenter
-        text: DragOps.label(root.dropCopying)
-        color: Theme.color.accent
-        font.family: Theme.font.family
-        font.pixelSize: Theme.font.caption
-        textFormat: Text.PlainText
+        sourceComponent: Text {
+            text: DragOps.label(root.dropCopying)
+            color: Theme.color.accent
+            font.family: Theme.font.family
+            font.pixelSize: Theme.font.caption
+            textFormat: Text.PlainText
+        }
     }
 
     // A row not yet fetched is dimmed rather than blank, so scrolling reads as loading.
