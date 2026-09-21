@@ -110,10 +110,14 @@ this tree yet: `flea --tui` says so and exits 2.
    **`ui/boot/shell.qml` no longer carries the `//@ pragma DefaultEnv QSG_RHI_BACKEND=vulkan`
    line**, so `src/gui.rs` is the only thing that chooses a renderer for a launch, the one OpenGL
    relaunch in `ui/boot/shell.qml` aside, and a direct `qs -p ui/boot` launch bypasses it entirely:
-   `tools/flea-first-paint`, `tools/flea-metrics-gate`, `tests/ui.sh`, `tests/drag.sh` and the
+   `tools/flea-metrics-gate`, `tests/ui.sh`, `tests/drag.sh` and the
    `README.md` dev loop each state `QSG_RHI_BACKEND` for themselves, so their numbers stay on the
-   Vulkan baseline they were recorded against.
-   `tools/flea-field-bench` needs none of that, because it launches `$FLEA_BIN --gui`.
+   Vulkan baseline they were recorded against. A direct launch now bypasses two more things the
+   launcher does, `FLEA_FIRST_PAINT` and the gtk3 trade of "The first window", so anything that
+   TIMES a launch goes through `$FLEA_BIN --gui` instead: `tools/flea-field-bench` always did, and
+   `tools/flea-first-paint` was moved onto it when this landed. `tools/flea-metrics-gate` times
+   nothing and the three direct `qs` launches left in `tests/ui.sh` assert a cursor, a selection
+   and the renderer retry rather than a duration, so each is still the right launch for its job.
    Preview and QtMultimedia are now in the tree and the laziness held: `ui/PreviewMedia.qml`
    is the only file that imports QtMultimedia, reached through a `Loader` built by the first
    press of play, because QtMultimedia costs 20 MB before it plays anything.

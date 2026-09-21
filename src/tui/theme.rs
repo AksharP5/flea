@@ -1,5 +1,8 @@
 use std::collections::HashMap;
 
+// The one background fallback, and ui/Theme.qml carries the same literal for the same reason.
+const BACKGROUND_FALLBACK: &str = "#101315";
+
 pub struct Theme {
     pub foreground: String,
     pub muted: String,
@@ -10,8 +13,7 @@ pub struct Theme {
     pub executable: String,
     pub selected: String,
     pub border: String,
-    // The same background as a hex literal. src/gui.rs hands it to the shell as FLEA_FIRST_PAINT,
-    // because the entry maps its window before ui/Theme.qml has compiled.
+    // src/gui.rs hands this to the shell as FLEA_FIRST_PAINT, before ui/Theme.qml has compiled.
     pub background_hex: String,
 }
 impl Theme {
@@ -26,10 +28,10 @@ impl Theme {
             keys.iter().find_map(|key| values.get(*key)).map(String::as_str).unwrap_or(fallback).to_owned()
         };
         let foreground = pick(&["foreground", "color7"], "#cacccc");
-        let background = pick(&["background", "color0"], "#101315");
+        let background = pick(&["background", "color0"], BACKGROUND_FALLBACK);
         let accent = pick(&["accent", "color4"], "#cacccc");
         let surface = pick(&["dark_background", "background", "selection"], "#181825");
-        let role_background = pick(&["background"], "#101315");
+        let role_background = pick(&["background"], BACKGROUND_FALLBACK);
         let muted = contrast(&contrast(&pick(&["muted"], "#707880"), &role_background), &surface);
         Self {
             foreground: ansi(&foreground, false),

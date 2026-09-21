@@ -108,13 +108,15 @@ run_once() {
         "$bin" --prewarm "$dir" "$first" "$prewarm_path" || fail "prewarm failed"
     fi
 
-    # The renderer is stated because src/gui.rs owns it and a direct qs launch would take Qt's default.
+    # Through flea --gui and not a bare qs, because the launcher chooses the renderer, hands the
+    # entry its first-paint colour and trades the platform theme: a direct qs launch times a path
+    # the product does not take. FLEA_PATH is the launcher's own argument here.
     if [ "$generate_prewarm" = yes ]; then
-        QSG_RHI_BACKEND="${QSG_RHI_BACKEND:-vulkan}" FLEA_PREWARM="$prewarm_path" FLEA_PATH="$dir" FLEA_BIN="$bin" \
-            qs -p "$ui/boot" >"$log" 2>&1 &
+        QSG_RHI_BACKEND="${QSG_RHI_BACKEND:-vulkan}" FLEA_PREWARM="$prewarm_path" FLEA_UI="$ui" FLEA_BIN="$bin" \
+            "$bin" --gui "$dir" >"$log" 2>&1 &
     else
-        env -u FLEA_PREWARM QSG_RHI_BACKEND="${QSG_RHI_BACKEND:-vulkan}" FLEA_PATH="$dir" FLEA_BIN="$bin" \
-            qs -p "$ui/boot" >"$log" 2>&1 &
+        env -u FLEA_PREWARM QSG_RHI_BACKEND="${QSG_RHI_BACKEND:-vulkan}" FLEA_UI="$ui" FLEA_BIN="$bin" \
+            "$bin" --gui "$dir" >"$log" 2>&1 &
     fi
     shell_pid=$!
     pid=$shell_pid

@@ -4269,12 +4269,22 @@ case_renderer() {
     printf 'RENDERER ran=%q\n' "$(tr '\n' ' ' < "$relaunched")"
     grep -aq 'graphics backend opengl failed' "$log" \
         || fail "no scene-graph error reached ui/boot/shell.qml, so its Connections never held the window"
-    # The denominator: with no stub run at all, the count of retries below would be zero for free.
-    local ran retried
-    ran=$(grep -c -- '--backend' "$relaunched" || true)
-    [[ "$ran" != "0" ]] || fail "the stub Flea was never run, so no retry could have been recorded either"
+    # The backend is no longer the denominator it was: the body loads on the first frame and this arm
+    # never gets one, so nothing starts FLEA_BIN at all. The grep above is what proves the handler
+    # ran, and the probe below is what proves it could have fired. See AGENTS.md "The first window".
+    local retried
     retried=$(grep -c -- '--gui' "$relaunched" || true)
     [[ "$retried" == "0" ]] || fail "the retry fired for a renderer the operator named: $(cat "$relaunched")"
+    # The positive arm, which no scene-graph failure here can raise: ui/RendererRetry.qml is loaded
+    # by the same file: URL the entry uses, and asked for the argv of a renderer that may retry.
+    local probe="$dir/retry-probe.log"
+    : > "$probe"
+    env RETRY_HELPER="$flea_ui/RendererRetry.qml" RETRY_BACKEND=vulkan \
+        FLEA_RENDERER_AUTOMATIC=1 FLEA_BIN="$dir/flea-stub" QT_QPA_PLATFORM=offscreen \
+        timeout 20 qs -p "$repo/tests/renderer-retry.qml" > "$probe" 2>&1
+    local want='RETRY argv ["/usr/bin/env","QSG_RHI_BACKEND=opengl","'"$dir/flea-stub"'","--gui"]'
+    grep -aqF "$want" "$probe" \
+        || fail "the retry helper did not answer with the argv Renderer.js names: $(grep -a RETRY "$probe" | head -2)"
 }
 
 # Catches Space not opening a preview, the kind dispatch misclassifying a row, or the size gate not firing.

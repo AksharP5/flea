@@ -1,3 +1,4 @@
+use crate::gui;
 use crate::thp;
 use crate::vulkan;
 use std::os::unix::process::CommandExt;
@@ -32,6 +33,8 @@ pub fn open(path: &str) -> i32 {
     let mut launcher = Command::new("gio");
     // The display-GPU pin is Qt's alone, and only this launcher's own pin is dropped.
     vulkan::drop_display_pin(&mut launcher);
+    // The platform theme Flea traded for its own startup is Qt's alone too, and is handed back here.
+    gui::restore_platform_theme(&mut launcher);
     let finished = launcher
         .arg("open")
         .arg(&target)

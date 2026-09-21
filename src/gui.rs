@@ -38,7 +38,7 @@ pub fn pick(reply: &str) -> i32 {
         eprintln!("flea: the shell config is missing, set FLEA_UI or install /usr/share/flea/ui");
         return 2;
     };
-    let mut cmd = qs_command(ui.join("boot").join("picker.qml"));
+    let mut cmd = qs_command(ui.join(paths::PICKER_ENTRY));
     cmd.env("FLEA_PICKER_REPLY", reply);
     exec(cmd)
 }
@@ -127,24 +127,30 @@ fn apply_display_pin(cmd: &mut Command, pin: vulkan::DisplayPin) {
     }
 }
 
-// The entry maps its window before the body exists, so it needs the theme's background from out
-// here; ui/Theme.qml is one of the files that has not compiled yet. The TUI's parser is the one
-// source of the OEM key precedence, so this reads its answer rather than adding a second reader.
+// The entry maps its window before ui/Theme.qml compiles, so the colour comes from out here.
 fn first_paint_colour(cmd: &mut Command) {
     cmd.env("FLEA_FIRST_PAINT", crate::tui::theme::Theme::load().background_hex);
 }
 
-// gtk3 as Qt's platform theme starts GTK inside the shell, which costs about 60 ms warm and 7 MB of
-// PSS, and the only thing Flea takes from it is the icon theme name. Omarchy writes that same name
-// here, and Quickshell reads QS_ICON_THEME and sets it itself. A missing or empty file changes
-// nothing, and an operator who set QS_ICON_THEME keeps whatever platform theme they chose.
+// Omarchy's own platform theme, and the only one this trades away, see AGENTS.md "The first window".
+const GTK3: &str = "gtk3";
+
+// The launcher marks the theme it traded, so a program Flea opens gets it back.
+pub const THEME_MARKER: &str = "FLEA_QT_THEME";
+
+// gtk3 as Qt's platform theme starts GTK inside the shell for one string, the icon theme name.
 fn skip_gtk_platform_theme(cmd: &mut Command) {
     // Empty is absent, the rule paths::has_display() applies: a wrapper's unset variable is not a choice.
     if std::env::var_os("QS_ICON_THEME").is_some_and(|value| !value.is_empty()) {
         return;
     }
+    // Any other engine is the operator's own choice and is never traded.
+    if std::env::var_os("QT_QPA_PLATFORMTHEME").as_deref() != Some(OsStr::new(GTK3)) {
+        return;
+    }
     let Some(home) = std::env::var_os("HOME") else { return };
     let path = PathBuf::from(home).join(".local/state/omarchy/current/theme/icons.theme");
+    // Sample input, the whole file: "Yaru-purple\n"
     let Ok(text) = std::fs::read_to_string(path) else { return };
     let name = text.trim();
     if name.is_empty() {
@@ -152,6 +158,22 @@ fn skip_gtk_platform_theme(cmd: &mut Command) {
     }
     cmd.env("QS_ICON_THEME", name);
     cmd.env_remove("QT_QPA_PLATFORMTHEME");
+    cmd.env(THEME_MARKER, GTK3);
+}
+
+// Give a program Flea opens the platform theme this launcher traded away, and nothing else.
+pub fn restore_platform_theme(command: &mut Command) {
+    apply_theme_restore(command, std::env::var_os(THEME_MARKER).as_deref());
+}
+
+// Split from restore_platform_theme so a test can drive it without this process's environment.
+fn apply_theme_restore(command: &mut Command, marker: Option<&OsStr>) {
+    let Some(theme) = marker.filter(|value| !value.is_empty()) else {
+        return;
+    };
+    command.env("QT_QPA_PLATFORMTHEME", theme);
+    command.env_remove("QS_ICON_THEME");
+    command.env_remove(THEME_MARKER);
 }
 
 fn exec(mut cmd: Command) -> i32 {
@@ -206,6 +228,34 @@ mod tests {
         assert_eq!(override_of(&cmd, "VK_DRIVER_FILES"), None);
         assert_eq!(override_of(&cmd, "VK_ICD_FILENAMES"), None);
         assert_eq!(override_of(&cmd, vulkan::PIN_MARKER), None);
+    }
+
+    // A removal is a present key with no value, which override_of cannot tell from an absent one.
+    fn removed(cmd: &Command, key: &str) -> bool {
+        cmd.get_envs().any(|(name, value)| name == OsStr::new(key) && value.is_none())
+    }
+
+    #[test]
+    fn a_traded_platform_theme_is_handed_back_to_an_opened_program() {
+        let mut cmd = Command::new("true");
+        apply_theme_restore(&mut cmd, Some(OsStr::new("gtk3")));
+        assert_eq!(override_of(&cmd, "QT_QPA_PLATFORMTHEME").as_deref(), Some("gtk3"));
+        assert!(removed(&cmd, "QS_ICON_THEME"));
+        assert!(removed(&cmd, THEME_MARKER));
+    }
+
+    #[test]
+    fn an_unmarked_launch_leaves_an_opened_programs_theme_alone() {
+        let mut cmd = Command::new("true");
+        apply_theme_restore(&mut cmd, None);
+        assert_eq!(cmd.get_envs().count(), 0);
+    }
+
+    #[test]
+    fn an_exported_but_empty_theme_marker_is_absent_not_a_trade() {
+        let mut cmd = Command::new("true");
+        apply_theme_restore(&mut cmd, Some(OsStr::new("")));
+        assert_eq!(cmd.get_envs().count(), 0);
     }
 
     #[test]

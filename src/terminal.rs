@@ -1,3 +1,4 @@
+use crate::gui;
 use crate::thp;
 use crate::vulkan;
 use std::ffi::OsString;
@@ -37,6 +38,8 @@ pub fn open_terminal(path: &str) -> i32 {
     let mut terminal = Command::new("xdg-terminal-exec");
     // The display-GPU pin is Qt's alone, and only this launcher's own pin is dropped.
     vulkan::drop_display_pin(&mut terminal);
+    // The platform theme Flea traded for its own startup is Qt's alone too, and is handed back here.
+    gui::restore_platform_theme(&mut terminal);
     let started = terminal
         .arg(&dir)
         // The terminal outlives us, so an inherited pipe would kill it on its first write; see AGENTS.md "Opening a file".

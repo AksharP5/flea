@@ -9,9 +9,11 @@ fn env_ui_dir() -> Option<PathBuf> {
     Some(PathBuf::from(value))
 }
 
-// The Quickshell entry, in its own directory so that ui/qmldir's singletons stay off the
-// startup path; see AGENTS.md "The first window". A tree without it is not a UI tree.
+// The Quickshell entry, in its own directory so ui/qmldir's singletons stay off the startup path.
 pub const ENTRY: &str = "boot/shell.qml";
+
+// The chooser's own entry, beside it; see AGENTS.md "The first window".
+pub const PICKER_ENTRY: &str = "boot/picker.qml";
 
 // The UI ships as data, so it is found the same way FLEA_BIN finds the binary.
 pub fn ui_dir() -> Option<PathBuf> {

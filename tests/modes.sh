@@ -140,6 +140,7 @@ printf 'FLEA_SELECT %s\n' "${FLEA_SELECT-unset}"
 printf 'FIRST_PAINT %s\n' "${FLEA_FIRST_PAINT-unset}"
 printf 'PLATFORM_THEME %s\n' "${QT_QPA_PLATFORMTHEME-unset}"
 printf 'ICON_THEME %s\n' "${QS_ICON_THEME-unset}"
+printf 'THEME_MARKER %s\n' "${FLEA_QT_THEME-unset}"
 STUB
 chmod +x "$D/qs"
 out=$(env FLEA_BIN=stale WAYLAND_DISPLAY=flea-modes-test-display PATH="$D:/usr/bin:/bin" $BIN --gui 2>&1 </dev/null)
@@ -256,6 +257,32 @@ out=$(env HOME="$theme_home" QT_QPA_PLATFORMTHEME=gtk3 QS_ICON_THEME=Papirus \
 check "an operator's own icon theme is untouched" "ICON_THEME Papirus" "$(echo "$out" | grep '^ICON_THEME ')"
 check "and their platform theme survives with it" "PLATFORM_THEME gtk3" "$(echo "$out" | grep '^PLATFORM_THEME ')"
 
+# Only gtk3 is traded. Another engine is the operator's own choice and must survive untouched.
+out=$(env HOME="$theme_home" QT_QPA_PLATFORMTHEME=qt6ct WAYLAND_DISPLAY=flea-modes-test-display \
+  PATH="$D:/usr/bin:/bin" $BIN --gui 2>&1 </dev/null)
+check "another platform theme is the operator's and survives" "PLATFORM_THEME qt6ct" "$(echo "$out" | grep '^PLATFORM_THEME ')"
+check "and no icon theme is named over it" "ICON_THEME unset" "$(echo "$out" | grep '^ICON_THEME ')"
+check "and nothing is marked as traded" "THEME_MARKER unset" "$(echo "$out" | grep '^THEME_MARKER ')"
+
+# The trade marks itself, which is what open.rs and terminal.rs read to hand the theme back.
+out=$(env HOME="$theme_home" QT_QPA_PLATFORMTHEME=gtk3 WAYLAND_DISPLAY=flea-modes-test-display \
+  PATH="$D:/usr/bin:/bin" $BIN --gui 2>&1 </dev/null)
+check "a traded theme says what it traded" "THEME_MARKER gtk3" "$(echo "$out" | grep '^THEME_MARKER ')"
+
+# An unreadable icons.theme is a read that failed, so the launch must be exactly today's.
+chmod 000 "$theme_home/.local/state/omarchy/current/theme/icons.theme"
+out=$(env HOME="$theme_home" QT_QPA_PLATFORMTHEME=gtk3 WAYLAND_DISPLAY=flea-modes-test-display \
+  PATH="$D:/usr/bin:/bin" $BIN --gui 2>&1 </dev/null)
+check "an unreadable icons.theme keeps the platform theme" "PLATFORM_THEME gtk3" "$(echo "$out" | grep '^PLATFORM_THEME ')"
+check "and names no icon theme from it" "ICON_THEME unset" "$(echo "$out" | grep '^ICON_THEME ')"
+chmod 644 "$theme_home/.local/state/omarchy/current/theme/icons.theme"
+
+# With no HOME there is no icons.theme to find, and the first paint falls back rather than failing.
+out=$(env -u HOME QT_QPA_PLATFORMTHEME=gtk3 WAYLAND_DISPLAY=flea-modes-test-display \
+  PATH="$D:/usr/bin:/bin" $BIN --gui 2>&1 </dev/null)
+check "no HOME keeps the platform theme" "PLATFORM_THEME gtk3" "$(echo "$out" | grep '^PLATFORM_THEME ')"
+check "and still hands over a first paint colour" "FIRST_PAINT #101315" "$(echo "$out" | grep '^FIRST_PAINT ')"
+
 # No icons.theme is not an invitation to guess: the launch must be exactly today's.
 rm -f "$theme_home/.local/state/omarchy/current/theme/icons.theme"
 out=$(env HOME="$theme_home" QT_QPA_PLATFORMTHEME=gtk3 WAYLAND_DISPLAY=flea-modes-test-display \
@@ -328,6 +355,9 @@ last_arg="$D/last-arg"
   printf 'printf "ICD %%s\\n" "${VK_ICD_FILENAMES-unset}"\n'
   printf 'printf "DRIVER_FILES %%s\\n" "${VK_DRIVER_FILES-unset}"\n'
   printf 'printf "PIN %%s\\n" "${FLEA_VK_PIN-unset}"\n'
+  printf 'printf "THEME %%s\\n" "${QT_QPA_PLATFORMTHEME-unset}"\n'
+  printf 'printf "ICON_THEME %%s\\n" "${QS_ICON_THEME-unset}"\n'
+  printf 'printf "THEME_MARKER %%s\\n" "${FLEA_QT_THEME-unset}"\n'
   printf 'printf "ARGV %%s\\n" "$*"\n'
   printf 'shift $(($# - 1)); printf "%%s" "$1" > %q\n' "$last_arg"
   printf 'P=$(cut -d" " -f5 /proc/self/stat)\n'
@@ -409,6 +439,28 @@ wait_for_line "$opened" '^THP_enabled'
 out=$(cat "$opened")
 check "an empty marker leaves an operator's ICD list alone" "1" "$(echo "$out" | grep -c '^ICD /tmp/flea-operator-icd.json$')"
 check "and leaves their driver file list alone" "1" "$(echo "$out" | grep -c '^DRIVER_FILES /tmp/flea-operator-driver.json$')"
+
+: > "$opened"
+# The launcher traded gtk3 away for its own startup, so the program it opens gets it back and gets
+# neither the icon theme Flea named for Quickshell nor the marker that said so.
+env -u QT_QPA_PLATFORMTHEME QS_ICON_THEME=Yaru-blue FLEA_QT_THEME=gtk3 \
+  PATH="$D/bin:/usr/bin:/bin" $BIN --open "$D/file.txt" 2>&1 | cat >/dev/null
+check "the traded-theme open returned success" "0" "${PIPESTATUS[0]}"
+wait_for_line "$opened" '^THP_enabled'
+out=$(cat "$opened")
+check "an opened program gets the traded platform theme back" "THEME gtk3" "$(echo "$out" | grep '^THEME ')"
+check "and not the icon theme Flea named for Quickshell" "ICON_THEME unset" "$(echo "$out" | grep '^ICON_THEME ')"
+check "and not the marker that said so" "THEME_MARKER unset" "$(echo "$out" | grep '^THEME_MARKER ')"
+
+: > "$opened"
+# No marker is no trade, so an operator's own platform theme reaches the program they opened.
+env QT_QPA_PLATFORMTHEME=qt6ct QS_ICON_THEME=Papirus \
+  PATH="$D/bin:/usr/bin:/bin" $BIN --open "$D/file.txt" 2>&1 | cat >/dev/null
+check "the untraded open returned success" "0" "${PIPESTATUS[0]}"
+wait_for_line "$opened" '^THP_enabled'
+out=$(cat "$opened")
+check "an unmarked launch leaves the platform theme alone" "THEME qt6ct" "$(echo "$out" | grep '^THEME ')"
+check "and leaves an operator's own icon theme alone" "ICON_THEME Papirus" "$(echo "$out" | grep '^ICON_THEME ')"
 
 : > "$opened"
 PATH="$D/bin:/usr/bin:/bin" $BIN --open "$D/linkfile" >/dev/null 2>&1
@@ -517,6 +569,9 @@ ran="$D/ran.log"
   printf 'printf "ICD %%s\\n" "${VK_ICD_FILENAMES-unset}"\n'
   printf 'printf "DRIVER_FILES %%s\\n" "${VK_DRIVER_FILES-unset}"\n'
   printf 'printf "PIN %%s\\n" "${FLEA_VK_PIN-unset}"\n'
+  printf 'printf "THEME %%s\\n" "${QT_QPA_PLATFORMTHEME-unset}"\n'
+  printf 'printf "ICON_THEME %%s\\n" "${QS_ICON_THEME-unset}"\n'
+  printf 'printf "THEME_MARKER %%s\\n" "${FLEA_QT_THEME-unset}"\n'
   printf 'printf "ARGV %%s\\n" "$*"\n'
   printf 'P=$(cut -d" " -f5 /proc/self/stat)\n'
   printf '[ "$$" = "$P" ] && printf "PGID MATCH pid=%%s pgid=%%s\\n" "$$" "$P" || printf "PGID MISMATCH pid=%%s pgid=%%s\\n" "$$" "$P"\n'
@@ -574,6 +629,17 @@ wait_for_line "$ran" '^THP_enabled'
 out=$(cat "$ran")
 check "an empty marker leaves an operator's ICD list alone in a terminal" "1" "$(echo "$out" | grep -c '^ICD /tmp/flea-operator-icd.json$')"
 check "and leaves their driver file list alone in a terminal" "1" "$(echo "$out" | grep -c '^DRIVER_FILES /tmp/flea-operator-driver.json$')"
+
+: > "$ran"
+# The same hand-back on the terminal path, which carries its own copy of these guards.
+env -u QT_QPA_PLATFORMTHEME QS_ICON_THEME=Yaru-blue FLEA_QT_THEME=gtk3 \
+  PATH="$D/bin:/usr/bin:/bin" $BIN --terminal "$D/dir" 2>&1 | cat >/dev/null
+check "the traded-theme terminal returned success" "0" "${PIPESTATUS[0]}"
+wait_for_line "$ran" '^THP_enabled'
+out=$(cat "$ran")
+check "a terminal gets the traded platform theme back" "THEME gtk3" "$(echo "$out" | grep '^THEME ')"
+check "and not the icon theme Flea named for Quickshell" "ICON_THEME unset" "$(echo "$out" | grep '^ICON_THEME ')"
+check "and not the marker that said so" "THEME_MARKER unset" "$(echo "$out" | grep '^THEME_MARKER ')"
 
 : > "$ran"
 PATH="$D/bin:/usr/bin:/bin" $BIN --terminal "$D/linkdir" >/dev/null 2>&1
