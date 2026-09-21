@@ -487,9 +487,13 @@ root now. The package ships all four.
 **The window does not wait for its contents.** The entry is the window: it maps with a background
 and nothing in it, and a `Connections` on the window's `frameSwapped` sets the `Loader`'s source
 once. A one-shot `Timer` does the same after `bodyBackstopMs`, because a window that maps where it
-is never drawn swaps no frame and would otherwise wait forever. That interval sits above the cold
-floor for an empty window's first buffer, about 200 ms on this box, so it can never preempt a window
-that does draw and turn the backstop into the thing that delays the map. `Loader.Error` logs and quits: an
+is never drawn swaps no frame and would otherwise wait forever. That interval is an order of
+magnitude above the entry's own gap from window completion to its first `frameSwapped`, measured on
+2026-09-20 at 28 to 49 ms cold and 34 to 46 ms warm, six launches each, every cold one on an empty
+cache of its own. Cold and warm match because the entry is served through `qs:` and never cached,
+and the gap ends before the body loads. A first frame slower than the interval would still load the
+body before the map, so the margin is what protects the split, not a proof it cannot happen.
+`Loader.Error` logs and quits: an
 empty window that stays empty is the failure that would otherwise say nothing at all.
 
 **What has to stay with the window.** `itemRect` is the window's, so `centreOf`, `rectOf` and
