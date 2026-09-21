@@ -46,7 +46,7 @@ sandbox_make "$shots"
 # Only what this run launched: the candidate is started with setsid, so its own process group holds
 # it and the qs it spawns, and nothing the operator started is signalled.
 launched=""
-# How long a stopped candidate may take to leave before this run refuses to launch the next one.
+# How long a stopped candidate may take to leave before it is failed and killed.
 stop_wait_s=10
 # How many composited frames the edge check samples, and how far apart, before it calls the edge missing.
 edge_shots=10
@@ -262,17 +262,18 @@ for colours in "$themes_dir"/*/colors.toml "$synthetic"; do
     read -r cx cy <<< "$(ipc rowCentre 2)"
     [ -n "${cx:-}" ] && omarchy-drive move "$((wx + cx))" "$((wy + cy))" >/dev/null
     sleep 1
+    omarchy-drive shot "$shots/$theme-list.png" "$class" >/dev/null
     # The edge is a solid bar at the cursor row's leading corner, so its own pixel is the accent itself.
     read -r rx ry rw rh <<< "$(ipc rowRect "$(ipc cursor)")"
     if [ -n "${rx:-}" ]; then
+        edge=$(pixel_at "$shots/$theme-list.png" "$((rx + 1))" "$((ry + rh / 2))")
+        shot_n=1
         # ipc confirms the model, not a composited frame: one run shot its first frame 1.5 s after cursor 2.
-        edge="" shot_n=0
-        while [ "$shot_n" -lt "$edge_shots" ]; do
+        while [ "$(near_colour "$edge" "$accent")" != near ] && [ "$shot_n" -lt "$edge_shots" ]; do
+            sleep "$edge_shot_gap_s"
             shot_n=$((shot_n + 1))
             omarchy-drive shot "$shots/$theme-list.png" "$class" >/dev/null
             edge=$(pixel_at "$shots/$theme-list.png" "$((rx + 1))" "$((ry + rh / 2))")
-            [ "$(near_colour "$edge" "$accent")" = near ] && break
-            sleep "$edge_shot_gap_s"
         done
         if [ "$shot_n" -gt 1 ] && [ "$(near_colour "$edge" "$accent")" = near ]; then
             printf 'NOTE %s: the accent edge was composited on shot %s of %s\n' "$theme" "$shot_n" "$edge_shots"
@@ -280,6 +281,7 @@ for colours in "$themes_dir"/*/colors.toml "$synthetic"; do
         fails_before=$failures
         same_colour "$theme" "the cursor's accent edge" "$edge" "$accent"
         if [ "$failures" -gt "$fails_before" ]; then
+            # Sample input, hyprctl clients -j: [{"class":"com.thisisgm.flea","workspace":{"id":1},"mapped":true,"hidden":false,"focusHistoryID":0}]
             printf 'NOTE %s: model cursor %s, window %s, active workspace %s\n' "$theme" "$(ipc cursor)" \
                 "$(hyprctl clients -j | jq -c --arg c "$class" '[.[] | select(.class == $c) | {ws: .workspace.id, mapped, hidden, focus: .focusHistoryID}]')" \
                 "$(hyprctl activeworkspace -j | jq .id)"
