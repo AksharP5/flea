@@ -94,8 +94,11 @@ A GUI run that never asks for thumbnails (the scale fixture) does not touch this
   would cost in isolation, while a GTK entrant's libraries are shared with nothing and charged in
   full. This is a property of the box's own state at run time, not of the entrant, and is worth
   stating beside any PSS comparison that includes both toolkits.
-- **`cpu_s` / `cpu_tree_s`**: `utime + stime` at the settle point, for the entrant alone and for
-  the whole watched set, in seconds.
+- **`cpu_s` / `cpu_tree_s`**: CPU seconds at the settle point. `cpu_s` is `utime + stime` of the
+  entrant process alone. `cpu_tree_s` is `usage_usec` of a control group the run made for this
+  entrant, which holds everything it started, sandboxed or reparented, plus a declared helper that
+  lives outside it (thunar's `tumblerd`). Before 0.3.2 it summed reaped ticks, which a decode under
+  `bwrap` never reaches; that older figure is kept as `cpu_reaped_s`, the last column.
 - **`thumbs_n`**: on a media run, the count of files in the shared cache's `large/` bucket at the
   settle point, evidence that generation actually happened rather than a warm cache being read, and
   `n/a` rather than `0` on a run that never dropped the cache and so never took the count. A

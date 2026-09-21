@@ -1867,6 +1867,19 @@ waits for its consumer.
 - **`cpu_tree_s` is a new column at the END of each row**, so an old parser still works. It carries
   the watched set's tree total; `cpu_s` still reports the entrant process alone. On the media fixture
   they diverge hard: pcmanfm reads 38.83 against 90.00 and dolphin 3.29 against 68.59.
+- **`cpu_tree_s` is read from a control group since 0.3.2, because the tick total was blind to every
+  sandboxed decode.** Measured on minipc: ten `ffmpegthumbnailer` decodes of the media fixture add
+  0.95 s to the caller's `cutime` run bare and 0.01 s run under Flea's own `prlimit` plus `bwrap`
+  argv, so a decode under `bwrap`'s PID namespace never reaches the process that launched it, and
+  the old column counted none of Flea's thumbnails, nor any other entrant's sandboxed ones. The
+  bench now re-enters itself under `systemd-run --user --scope -p Delegate=yes`, makes one leaf
+  cgroup per entrant run, and has the launching shell join that leaf before it forks the entrant,
+  so the entrant and everything it starts, reaped, reparented or still alive, is in the leaf's
+  `cpu.stat` `usage_usec`. The same ten sandboxed decodes read 1.02 s there. A declared helper
+  outside the leaf, which is `tumblerd` since it is D-Bus activated, is added from its ticks; Flea's
+  backend is inside the leaf and is not added twice. The old figure stays as `cpu_reaped_s` at the
+  END of each row, so a table from before this change is compared against like, and a leaf still
+  holding a process after the kill list ran names it as `LEFTOVER` and ends it by `cgroup.kill`.
 - **`thumbs_by_format` is a newer column at the END of each row**, and it is why a count can be
   compared at all. A thumbnailer with no plugin registered for a MIME type never attempts the file
   and writes no failure marker, so a silent skip and work-not-done are the same zero in a total.

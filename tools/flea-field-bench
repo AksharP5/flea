@@ -10,8 +10,23 @@ set -uo pipefail
 export FLEA_REPO="${FLEA_REPO:-$HOME/Work/claude/flea}"
 . "$FLEA_REPO/tools/flea-sandbox-guard"
 
+# The CPU column is read from a control group of this run's own, and only a delegated user scope may
+# make one, so the bench re-enters itself inside one before anything else; see AGENTS.md "Testing".
+# Sample input: /proc/self/cgroup "0::/user.slice/user-1000.slice/user@1000.service/app.slice/flea-field-bench-123.scope"
+case "$(cut -d: -f3 /proc/self/cgroup)" in
+  */flea-field-bench-*.scope) ;;
+  *)
+    if [ -n "${FLEA_BENCH_REENTERED:-}" ]; then
+      printf 'FAIL: systemd-run did not place this bench in a scope of its own\n' >&2
+      exit 1
+    fi
+    export FLEA_BENCH_REENTERED=1
+    # A scope execs in this same process and never reads stdin, measured, so the password below still arrives.
+    exec systemd-run --user --scope --quiet -p Delegate=yes "--unit=flea-field-bench-$$" -- bash "$0" "$@"
+    ;;
+esac
 
-# First statement in the file: nothing else may touch stdin before the password is taken.
+# First statement after the re-entry: nothing else may touch stdin before the password is taken.
 read -r -s SUDO_PW || true
 [ -n "${SUDO_PW:-}" ] || { printf 'FAIL: no sudo password arrived on stdin\n' >&2; exit 1; }
 
@@ -106,6 +121,13 @@ sandbox_cache_require "$THUMBS_PARKED"
 THUMBS_PARKED_OK=no
 
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
+
+# The scope the re-entry above made; every entrant run gets a leaf of its own under it.
+BENCH_CG="/sys/fs/cgroup$(cut -d: -f3 /proc/self/cgroup)"
+[ -w "$BENCH_CG" ] || fail "the bench scope $BENCH_CG is not writable, so no run could be given a control group of its own"
+RUN_CG=""
+HELPER_TICKS=0
+HELPER_SIDE=""
 
 # EPOCHREALTIME avoids a fork per sample, which a 20 ms poll loop cannot afford.
 NOW_MS=0
@@ -370,8 +392,55 @@ settle_ticks() {
   find_helper
   if [ -n "$HELPER_PID" ] && cpu_ticks "$HELPER_PID"; then
     TREE_TICKS=$(( TREE_TICKS + CPU_TREE_TICKS ))
+    HELPER_TICKS=$CPU_TREE_TICKS
     WATCHED[$HELPER_PID]=1
+    # Flea's backend is forked inside the run's leaf and tumblerd is activated outside it, so only the second is added to the leaf's total.
+    # Sample input: /proc/456/cgroup "0::/user.slice/user-1000.slice/user@1000.service/app.slice/flea-field-bench-123.scope/run-flea-1"
+    if [ -z "$HELPER_SIDE" ]; then
+      HELPER_SIDE=outside
+      grep -qx "0::${RUN_CG#/sys/fs/cgroup}" "/proc/$HELPER_PID/cgroup" 2>/dev/null && HELPER_SIDE=inside
+    fi
   fi
+}
+
+# Sample input: <leaf>/cpu.stat "usage_usec 1021252", the first of its key and value lines.
+# usage_usec counts every process that ever ran in the leaf, reaped or reparented or still alive.
+cgroup_usage_usec() {
+  local key value
+  CG_USEC=-1
+  while read -r key value; do
+    [ "$key" = usage_usec ] && { CG_USEC=$value; return 0; }
+  done < "$1/cpu.stat"
+  return 1
+}
+
+# cgroupfs reports every file as size 0, so emptiness is a read and never test -s.
+leaf_empty() {
+  local pid
+  read -r pid < "$RUN_CG/cgroup.procs" && return 1
+  return 0
+}
+
+# Anything left in the leaf after clean_bench outlived the kill list, so it is named and ended by the group rather than left resident through the next entrant.
+release_run_cg() {
+  local pid n=0 polls=0
+  # In tenths of a second: the launcher shell still exiting when clean_bench returns is not a leftover, and the group kill gets ten seconds.
+  local grace_polls=10 kill_polls=100
+  [ -n "$RUN_CG" ] || return 0
+  case "$RUN_CG" in
+    "$BENCH_CG"/run-*) ;;
+    *) printf 'WARNING: not removing control group %s, it is not a run leaf of this bench\n' "$RUN_CG" >&2; return 1 ;;
+  esac
+  while ! leaf_empty && [ "$polls" -lt "$grace_polls" ]; do sleep 0.1; polls=$(( polls + 1 )); done
+  while read -r pid; do
+    printf 'LEFTOVER: pid %s (%s) outlived the kill list in %s\n' "$pid" "$(cat "/proc/$pid/comm" 2>/dev/null)" "$RUN_CG" >&2
+    n=$(( n + 1 ))
+  done < "$RUN_CG/cgroup.procs"
+  [ "$n" -gt 0 ] && echo 1 > "$RUN_CG/cgroup.kill"
+  polls=0
+  while ! leaf_empty && [ "$polls" -lt "$kill_polls" ]; do sleep 0.1; polls=$(( polls + 1 )); done
+  rmdir "$RUN_CG" 2>/dev/null || printf 'WARNING: control group %s could not be removed\n' "$RUN_CG" >&2
+  RUN_CG=""
 }
 
 # Sample input: /proc/123/task/456/children holds "789 1011 ", space separated, with NO trailing newline.
@@ -640,12 +709,14 @@ run_one() {
   # A GUI entrant is judged on its thumbnails and never enters the preview pass, so its column reads
   # not-applicable rather than -1, which in a TUI row means the preview never arrived.
   local preview_ms=-
-  local best_anon=0 best_uss=0 last_entrant=0 last_tree=0 last_desc=0
+  local best_anon=0 best_uss=0 last_entrant=0 last_tree=0 last_desc=0 last_helper=0
 
   HELPER_COMM=$6
   HELPER_TOKEN=$7
   HELPER_PID=""
   HELPER_POLLS_LEFT=0
+  HELPER_TICKS=0
+  HELPER_SIDE=""
 
   clean_bench
   # Above drop_caches, not below it: arming the watch walks /tmp and opens the fixture directory, so
@@ -657,8 +728,12 @@ run_one() {
   now_ms; t0=$NOW_MS
   deadline=$(( t0 + LAUNCH_TIMEOUT_MS ))
 
+  # A leaf of this run's own, entered by the launching shell before it forks the entrant, so the entrant and everything it ever starts are in it.
+  local leaf="$BENCH_CG/run-$id-$RUN_INDEX"
+  mkdir "$leaf" || fail "could not make the control group $leaf"
+  RUN_CG=$leaf
   ENTRANT_LAUNCHED=yes
-  eval "$shift_cmd" >/dev/null 2>&1 &
+  { printf '%s\n' "$BASHPID" > "$RUN_CG/cgroup.procs" || exit 1; eval "$shift_cmd"; } >/dev/null 2>&1 &
 
   # A TUI row's window belongs to its terminal, which the class this run gives it already names.
   local owner_comm=$comm owner_token=$token
@@ -672,12 +747,15 @@ run_one() {
 
   wait_for_pid "$comm" "$token" "$deadline" || { watch_kill; printf '%s,%s,ERROR,no-process\n' "$id" "$RUN_INDEX"; return 1; }
   pid=$ENTRANT_PID
+  grep -qx "0::${RUN_CG#/sys/fs/cgroup}" "/proc/$pid/cgroup" 2>/dev/null \
+    || fail "$id pid $pid is not in its control group $RUN_CG, so its CPU column would count nothing"
 
   while :; do
     if ! settle_ticks "$pid"; then break; fi
     now_ms
     last_entrant=$ENTRANT_TICKS
     last_tree=$TREE_TICKS
+    last_helper=$HELPER_TICKS
     if [ "$TREE_TICKS" -ne "$last_settle" ]; then
       last_settle=$TREE_TICKS
       last_change=$NOW_MS
@@ -702,11 +780,15 @@ run_one() {
   done
 
   # n/a and not 0: a run that never counted must stay tellable from one that counted and found none.
-  local cpu_s cpu_tree_s child_pss=0 thumbs_n=n/a thumbs_dirs=- thumbs_fmt=- ranked=yes
+  local cpu_s cpu_tree_s cpu_reaped_s helper_add=0 child_pss=0 thumbs_n=n/a thumbs_dirs=- thumbs_fmt=- ranked=yes
   # drm-resident-system0 is RAM that PSS cannot see, read once after settle because fdinfo is too costly to poll.
   drm_kb "$pid"
   cpu_s=$(awk -v t="$last_entrant" 'BEGIN { printf "%.2f", t / 100 }')
-  cpu_tree_s=$(awk -v t="$last_tree" 'BEGIN { printf "%.2f", t / 100 }')
+  # The old reading, kept so a table from before the leaf can still be compared: a sandboxed decode never reaches it, see AGENTS.md "Testing".
+  cpu_reaped_s=$(awk -v t="$last_tree" 'BEGIN { printf "%.2f", t / 100 }')
+  cgroup_usage_usec "$RUN_CG" || fail "no usage_usec in $RUN_CG/cpu.stat, so this row has no CPU column"
+  [ "$HELPER_SIDE" = outside ] && helper_add=$last_helper
+  cpu_tree_s=$(awk -v u="$CG_USEC" -v t="$helper_add" 'BEGIN { printf "%.2f", u / 1000000 + t / 100 }')
   # Evidence that the media run actually exercised thumbnail generation, not just a warm cache.
   if [ "$DROP_THUMBS" = yes ]; then
     count_thumbs
@@ -760,8 +842,9 @@ run_one() {
     if [ ${#PIDS[@]} -ge 1 ] && pss_kb "${PIDS[0]}"; then child_pss=$PSS_KB; fi
   fi
 
-  printf '%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n' "$id" "$RUN_INDEX" "$mapped" "$settled" "$best_pss" "$cpu_s" "$child_pss" "$thumbs_n" "$best_anon" "$best_uss" "$DRM_KB" "$thumbs_dirs" "$cpu_tree_s" "$thumbs_fmt" "$ranked" "$preview_ms"
+  printf '%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n' "$id" "$RUN_INDEX" "$mapped" "$settled" "$best_pss" "$cpu_s" "$child_pss" "$thumbs_n" "$best_anon" "$best_uss" "$DRM_KB" "$thumbs_dirs" "$cpu_tree_s" "$thumbs_fmt" "$ranked" "$preview_ms" "$cpu_reaped_s"
   clean_bench
+  release_run_cg
 }
 
 # Two checks, because one count cannot do both jobs. The payload is what the fixture is for, and a
@@ -796,6 +879,7 @@ bench_cleanup() {
   watch_kill
   # A subshell, because clean_bench can fail and an exit inside this trap would skip the restore below.
   [ -n "$ENTRANT_LAUNCHED" ] && ( clean_bench )
+  release_run_cg
   restore_thumbs
   case ${TUI_CONF:-} in
     /*/*) rm -rf "$TUI_CONF" ;;
@@ -855,7 +939,7 @@ park_thumbs
 
 mkdir -p "$(dirname "$OUT")"
 : > "$OUT"
-echo "id,run,mapped_ms,settled_ms,pss_kb,cpu_s,child_pss_kb,thumbs_n,pss_anon_kb,uss_kb,drm_kb,thumbs_by_dir,cpu_tree_s,thumbs_by_format,ranked,preview_ms" >> "$OUT"
+echo "id,run,mapped_ms,settled_ms,pss_kb,cpu_s,child_pss_kb,thumbs_n,pss_anon_kb,uss_kb,drm_kb,thumbs_by_dir,cpu_tree_s,thumbs_by_format,ranked,preview_ms,cpu_reaped_s" >> "$OUT"
 
 # Fields: id|kind|class|comm|token|helper_comm|helper_token|command, and the command holds any later pipe.
 declare -a ENTRANTS=(
