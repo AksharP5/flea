@@ -403,13 +403,14 @@ mod tests {
 
     // The probe confines a second copy of this test binary, so nothing it locks down can reach the harness running every other test.
     const CONFINE_PROBE: &str = "FLEA_CONFINE_PROBE";
+    const CONFINE_BUSY: &str = "FLEA_CONFINE_BUSY";
     const THIS_TEST: &str = "backend::thumbworker::tests::a_confined_child_holds_only_its_job_and_can_write_or_signal_nothing";
     // Every descriptor below this is looked at, which covers PARK_FD and anything a leak could leave.
     const FD_CEILING: c_int = 1024;
     // fcntl(2) F_GETFD, which fails only on a descriptor that is not open.
     const F_GETFD: c_int = 1;
-    // A job's files reach the worker at whatever numbers recvmsg picked, so the probe holds them well above 3 and 4.
-    const ARRIVAL_FD: c_int = 40;
+    // recvmsg hands an idle worker a job on 3 and 4 and a busy one higher up, so the probe runs once from each.
+    const BUSY_FD: c_int = 40;
 
     extern "C" {
         fn getppid() -> c_int;
@@ -428,16 +429,20 @@ mod tests {
     }
 
     // Holds the input read-only, the report write-only and a socket on 0, the way a job arrives in the worker, runs confine() and writes what it can still do to the report.
-    fn probe(dir: &str) -> ! {
+    fn probe(dir: &str, busy: bool) -> ! {
         let victim = format!("{}/victim.mp4", dir);
-        let opened = std::fs::File::open(&victim).expect("the probe could not open its input");
-        let written = std::fs::OpenOptions::new().write(true).open(format!("{}/report", dir)).expect("the probe could not open its report");
-        let (reader, report) = unsafe { (fcntl(opened.as_raw_fd(), F_DUPFD_CLOEXEC, ARRIVAL_FD), fcntl(written.as_raw_fd(), F_DUPFD_CLOEXEC, ARRIVAL_FD)) };
+        let opened = std::fs::File::open(&victim).expect("the probe could not open its input").into_raw_fd();
+        let written = std::fs::OpenOptions::new().write(true).open(format!("{}/report", dir)).expect("the probe could not open its report").into_raw_fd();
+        let (reader, report) = if busy {
+            let moved = unsafe { (fcntl(opened, F_DUPFD_CLOEXEC, BUSY_FD), fcntl(written, F_DUPFD_CLOEXEC, BUSY_FD)) };
+            drop(unsafe { (OwnedFd::from_raw_fd(opened), OwnedFd::from_raw_fd(written)) });
+            moved
+        } else {
+            (opened, written)
+        };
         if reader < 0 || report < 0 {
             unsafe { _exit(CHILD_MACHINE) };
         }
-        drop(opened);
-        drop(written);
         let (_peer, planted) = fdpass::pair().expect("the probe could not make its socket");
         if unsafe { dup2(planted.as_raw_fd(), 0) } != 0 {
             unsafe { _exit(CHILD_MACHINE) };
@@ -479,30 +484,33 @@ mod tests {
     #[test]
     fn a_confined_child_holds_only_its_job_and_can_write_or_signal_nothing() {
         if let Ok(dir) = std::env::var(CONFINE_PROBE) {
-            probe(&dir);
+            probe(&dir, std::env::var(CONFINE_BUSY).is_ok_and(|v| v == "1"));
         }
         let dir = TestDir::new("worker-confine");
         let victim = dir.file("victim.mp4", "original");
-        let report = dir.file("report", "");
-        let out = Command::new(std::env::current_exe().unwrap())
-            .args(["--exact", THIS_TEST, "--test-threads=1", "--nocapture"])
-            .env(CONFINE_PROBE, dir.path())
-            .output()
-            .unwrap();
-        if String::from_utf8_lossy(&out.stdout).contains("probe=no-landlock") {
-            std::io::stderr().write_all(format!("SKIP {}: this kernel has no Landlock\n", THIS_TEST).as_bytes()).ok();
-            return;
+        for busy in [false, true] {
+            let report = dir.file("report", "");
+            let out = Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", THIS_TEST, "--test-threads=1", "--nocapture"])
+                .env(CONFINE_PROBE, dir.path())
+                .env(CONFINE_BUSY, if busy { "1" } else { "0" })
+                .output()
+                .unwrap();
+            if String::from_utf8_lossy(&out.stdout).contains("probe=no-landlock") {
+                std::io::stderr().write_all(format!("SKIP {}: this kernel has no Landlock\n", THIS_TEST).as_bytes()).ok();
+                return;
+            }
+            let scoped = landlock_abi().is_some_and(|abi| abi >= LANDLOCK_SCOPE_SIGNAL_ABI);
+            // socket_before, before and signalled_before are the negative controls: unconfined, the same process holds a socket on 0, writes and signals.
+            let expected = format!(
+                "socket_before=true nulls=true input_on_3=true before=true reopened=false direct=false readable=true signalled_before=true signalled={} fds=[0, 1, 2, 3, 4] cpu={} as={}",
+                !scoped,
+                sandbox::CPU_SECONDS,
+                sandbox::ADDRESS_SPACE_BYTES
+            );
+            assert_eq!(std::fs::read_to_string(&report).unwrap(), expected, "busy {} probe exited {:?}", busy, out.status);
+            assert_eq!(std::fs::read(&victim).unwrap(), b"original");
         }
-        let scoped = landlock_abi().is_some_and(|abi| abi >= LANDLOCK_SCOPE_SIGNAL_ABI);
-        // socket_before, before and signalled_before are the negative controls: unconfined, the same process holds a socket on 0, writes and signals.
-        let expected = format!(
-            "socket_before=true nulls=true input_on_3=true before=true reopened=false direct=false readable=true signalled_before=true signalled={} fds=[0, 1, 2, 3, 4] cpu={} as={}",
-            !scoped,
-            sandbox::CPU_SECONDS,
-            sandbox::ADDRESS_SPACE_BYTES
-        );
-        assert_eq!(std::fs::read_to_string(&report).unwrap(), expected, "the probe exited {:?}", out.status);
-        assert_eq!(std::fs::read(&victim).unwrap(), b"original");
     }
 
     #[test]

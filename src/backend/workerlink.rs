@@ -260,6 +260,19 @@ mod tests {
         assert_eq!(why_not(&Heard::Byte(NO_LANDLOCK)), "this kernel has no Landlock");
         assert_eq!(why_not(&Heard::Closed), "it exited before it answered");
         assert_eq!(why_not(&Heard::Silence), "it did not answer within 5 s");
+        assert_eq!(why_not(&Heard::Broken(std::io::Error::other("a test error"))), "its socket failed: a test error");
+    }
+
+    #[test]
+    fn a_wait_names_what_it_heard() {
+        let (mine, theirs) = fdpass::pair().unwrap();
+        fdpass::send(theirs.as_raw_fd(), &[READY, READY], &[]).unwrap();
+        assert!(matches!(read_byte(&mine, Duration::from_secs(1)), Heard::Broken(_)), "a two-byte packet is a broken socket");
+        fdpass::send_byte(&theirs, READY).unwrap();
+        assert!(matches!(read_byte(&mine, Duration::from_secs(1)), Heard::Byte(READY)));
+        assert!(matches!(read_byte(&mine, Duration::ZERO), Heard::Silence), "nothing was sent");
+        drop(theirs);
+        assert!(matches!(read_byte(&mine, Duration::from_secs(1)), Heard::Closed));
     }
 
     #[test]
