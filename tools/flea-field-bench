@@ -277,7 +277,7 @@ measure_preview() {
   now_ms; t0=$NOW_MS
   deadline=$(( t0 + PREVIEW_TIMEOUT_MS ))
   eval "$launch" >/dev/null 2>&1 &
-  wait_for_window "$TUI_CLASS" "$deadline" || { clean_bench; return 0; }
+  wait_for_window "$TUI_CLASS" "$deadline" "$TUI_TERM" "--class $TUI_CLASS" || { clean_bench; return 0; }
   while :; do
     now_ms
     [ "$NOW_MS" -gt "$deadline" ] && break
@@ -512,6 +512,8 @@ declare -a KILL_TARGETS=(
 kill_comms_for() {
   case $1 in
     flea) printf 'qs\nflea\n' ;;
+    # tumblerd outlives thunar by 300 s, and a full-field start refuses to begin beside it.
+    thunar) printf 'thunar\ntumblerd\n' ;;
     superfile) printf 'spf\n' ;;
     *) printf '%s\n' "$1" ;;
   esac
@@ -578,15 +580,30 @@ wait_for_pid() {
   done
 }
 
-# The window is mapped when Hyprland lists a client with this class, polled directly
-# because omarchy-drive's own wait polls at 50 ms and this is a sub-100 ms measurement.
+# True when a client pid is this run's own: its comm, and its command line carrying the token when one is given.
+window_owned() {
+  local pid=$1 comm=$2 token=$3 c
+  [ "$(cat "/proc/$pid/comm" 2>/dev/null)" = "$comm" ] || return 1
+  [ -n "$token" ] || return 0
+  c=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null)
+  case "$c" in *"$token"*) return 0 ;; esac
+  return 1
+}
+
+# Mapped when a client of this class is owned by this run's entrant, polled directly because omarchy-drive waits at 50 ms.
 wait_for_window() {
-  local class=$1 deadline=$2
+  local class=$1 deadline=$2 owner_comm=$3 owner_token=$4 clients pid
   while :; do
-    if hyprctl -j clients 2>/dev/null | grep -q "\"class\": \"$class\""; then
-      now_ms
-      return 0
-    fi
+    clients=$(hyprctl -j clients 2>/dev/null)
+    # The cheap match first, so a poll with no such window costs what it always did and jq runs only once one exists.
+    case $clients in
+      *"\"class\": \"$class\""*)
+        # Sample input, one client of hyprctl -j clients: {"class": "com.thisisgm.flea", "pid": 12345, ...}
+        for pid in $(printf '%s' "$clients" | jq -r --arg c "$class" '.[] | select(.class == $c) | .pid'); do
+          if window_owned "$pid" "$owner_comm" "$owner_token"; then now_ms; return 0; fi
+        done
+        ;;
+    esac
     now_ms
     [ "$NOW_MS" -gt "$deadline" ] && return 1
     sleep 0.01
@@ -619,8 +636,14 @@ run_one() {
 
   eval "$shift_cmd" >/dev/null 2>&1 &
 
+  # A TUI row's window belongs to its terminal, which the class this run gives it already names.
+  local owner_comm=$comm owner_token=$token
+  if [ "$kind" = tui ]; then
+    owner_comm=$TUI_TERM
+    owner_token="--class $TUI_CLASS"
+  fi
   if [ "$class" != "-" ]; then
-    wait_for_window "$class" "$deadline" && mapped=$(( NOW_MS - t0 ))
+    wait_for_window "$class" "$deadline" "$owner_comm" "$owner_token" && mapped=$(( NOW_MS - t0 ))
   fi
 
   wait_for_pid "$comm" "$token" "$deadline" || { watch_kill; printf '%s,%s,ERROR,no-process\n' "$id" "$RUN_INDEX"; return 1; }
@@ -700,8 +723,8 @@ run_one() {
     preview_ms=$PREVIEW_MS
   fi
 
-  if [ "$id" = "flea" ]; then
-    pids_for flea --backend
+  if [ -n "$HELPER_COMM" ]; then
+    pids_for "$HELPER_COMM" "$HELPER_TOKEN"
     if [ ${#PIDS[@]} -ge 1 ] && pss_kb "${PIDS[0]}"; then child_pss=$PSS_KB; fi
   fi
 
@@ -742,8 +765,16 @@ bench_cleanup() {
     /*/*) rm -rf "$TUI_CONF" ;;
     *) printf 'WARNING: not removing TUI config path %s, it is not an absolute path two deep\n' "${TUI_CONF:-}" >&2 ;;
   esac
+  case ${FLEA_STATE:-} in
+    /*/*) rm -rf "$FLEA_STATE" ;;
+    "") ;;
+    *) printf 'WARNING: not removing Flea state path %s, it is not an absolute path two deep\n' "$FLEA_STATE" >&2 ;;
+  esac
 }
-trap bench_cleanup EXIT INT TERM
+trap bench_cleanup EXIT
+# A signal exits and lets the EXIT trap clean up once: a TERM trap that returned let a stopped bench keep benching.
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 # After the trap, never before it: a temp directory made above the handler that removes it leaks on
 # every early exit between the two.
@@ -753,6 +784,17 @@ cp -r "$TUI_CONF_SRC/." "$TUI_CONF/" || fail "could not copy $TUI_CONF_SRC"
 # image until the path was absolute. The committed file carries the name so it stays readable, and
 # the run materialises it. The manifest records the materialised copy, which is what actually ran.
 find "$TUI_CONF" -type f -exec sed -i "s|\$XDG_CONFIG_HOME|$TUI_CONF|g" {} +
+
+# Flea's state is the bench's own too: an operator's saved sort decides which rows the first screen holds.
+FLEA_STATE=$(mktemp -d) || fail "no temp directory for Flea's state"
+operator_ui="${XDG_STATE_HOME:-$HOME/.local/state}/flea/ui.json"
+mkdir -p "$FLEA_STATE/flea" || fail "could not make $FLEA_STATE/flea"
+if [ -f "$operator_ui" ]; then
+  cp "$operator_ui" "$FLEA_STATE/flea/ui.json" || fail "could not copy $operator_ui"
+fi
+XDG_STATE_HOME="$FLEA_STATE" "$FLEA_BIN" --ui-state '{"sort":{"key":"name","reverse":false}}' >/dev/null \
+  || fail "flea --ui-state refused to set name sort in the bench's copy of $operator_ui"
+printf 'flea-state: %s, a copy of %s with the sort set to name\n' "$FLEA_STATE" "$operator_ui"
 
 # The band the TUI bracket watches for its preview, and the file it captures into.
 # corner: one monitor and one tiled window, which require_bench_idle already guarantees. The band is
@@ -782,15 +824,15 @@ echo "id,run,mapped_ms,settled_ms,pss_kb,cpu_s,child_pss_kb,thumbs_n,pss_anon_kb
 # Fields: id|kind|class|comm|token|helper_comm|helper_token|command, and the command holds any later pipe.
 declare -a ENTRANTS=(
   # Launch the real binary, not qs: every rival is launched by its own launcher and flea's sets prctl before exec.
-  # Flea is the only entrant with a helper, because it is the only one whose work happens outside the entrant process.
+  # An entrant whose work runs in a second process names it as its helper: Flea's backend, and thunar's D-Bus activated tumblerd.
   # FLEA_UI is passed as well as FLEA_BIN, and it is not decoration. paths.rs resolves the shell as
   # FLEA_UI, then /usr/share/flea/ui, then a walk up from the binary. With nothing installed the
   # walk-up lands on this checkout, so the bench has been measuring the right UI by fallback rather
   # than by instruction; the moment a package installs /usr/share/flea/ui that branch is checked
   # second and wins, and the run would launch this tree's binary against the installed shell.
-  "flea|gui|com.thisisgm.flea|qs|$FLEA_UI|flea|--backend|FLEA_BIN=$FLEA_BIN FLEA_UI=$FLEA_UI setsid nohup $FLEA_BIN --gui $FIXTURE"
+  "flea|gui|com.thisisgm.flea|qs|$FLEA_UI|flea|--backend|FLEA_BIN=$FLEA_BIN FLEA_UI=$FLEA_UI XDG_STATE_HOME=$FLEA_STATE setsid nohup $FLEA_BIN --gui $FIXTURE"
   "nautilus|gui|org.gnome.Nautilus|nautilus||||setsid nohup nautilus --new-window $FIXTURE"
-  "thunar|gui|thunar|thunar||||setsid nohup thunar $FIXTURE"
+  "thunar|gui|thunar|thunar||tumblerd||setsid nohup thunar $FIXTURE"
   "pcmanfm|gui|pcmanfm|pcmanfm||||setsid nohup pcmanfm $FIXTURE"
   "nemo|gui|nemo|nemo||||setsid nohup nemo $FIXTURE"
   "dolphin|gui|org.kde.dolphin|dolphin||||setsid nohup dolphin $FIXTURE"
