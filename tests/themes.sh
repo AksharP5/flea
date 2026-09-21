@@ -160,7 +160,7 @@ colour_for() {
 pixel_at() {
     magick "$1" -format "%[hex:p{$2,$3}]" info: | tr 'A-F' 'a-f' | cut -c1-6
 }
-# A screenshot is not bit exact: the compositor's round trip moves a role up to three steps a channel, measured over all 22 themes.
+# A screenshot is not bit exact, up to three steps a channel over all 22 themes, so a role matches within role_steps and never by string.
 near_colour() {
     python3 -c '
 import sys
