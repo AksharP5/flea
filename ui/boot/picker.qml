@@ -6,6 +6,7 @@
 //@ pragma CacheDir $BASE/flea
 
 import Quickshell
+import QtQuick
 
 // A file: URL away for the reason ui/boot/shell.qml gives, but its window stays whole: the chooser
 // is not on the measured path and its size comes from the Theme. See AGENTS.md "The first window".
@@ -17,12 +18,19 @@ ShellRoot {
         source: "file://" + encodeURI(Quickshell.shellDir + "/../PickerWindow.qml").replace(/#/g, "%23").replace(/\?/g, "%3F")
     }
 
-    // LazyLoader has no status and this load is synchronous, so a null item here is a load that
-    // failed: silence would leave tools/flea-portal's caller waiting out its whole 600 s.
-    Component.onCompleted: {
-        if (!chooser.item) {
-            console.warn("flea: the chooser window did not load, so there is nothing to show")
-            Quickshell.execDetached(["kill", String(Quickshell.processId)])
+    // LazyLoader carries neither a status nor a usable loading edge, so the only answer is to look
+    // once, late: no window by now is a load that failed, and silence would leave
+    // tools/flea-portal's caller waiting out its whole 600 s. Well past the 1.7 to 3.0 s the first
+    // launch after an update spends writing Qt's cache, which is the slowest honest load there is.
+    Timer {
+        interval: 6000
+        repeat: false
+        running: true
+        onTriggered: {
+            if (!chooser.item) {
+                console.warn("flea: the chooser window did not load, so there is nothing to show")
+                Quickshell.execDetached(["kill", String(Quickshell.processId)])
+            }
         }
     }
 }

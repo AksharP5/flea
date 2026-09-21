@@ -518,6 +518,14 @@ not two.
 loads, and the first launch after each update is slow once, 1.7 to 3.0 s on this box, while Qt
 writes its 121 cache files with an `fdatasync` each. Every later launch is fast, across reboots.
 
+**The chooser's own failure path cost three attempts, and the working one is a late look.** A
+missing `ui/PickerWindow.qml` is not a Quickshell config error: the entry loads, the window never
+arrives, and the process sits there while `tools/flea-portal`'s caller waits out its 600 s, which is
+driven. `Component.onCompleted` on `ShellRoot` is `Non-existent attached object`; on a `QtObject`
+child it fires before `LazyLoader` has an item, so it killed a healthy chooser; `onLoadingChanged`
+never gave a usable edge in either arm. What works, with both controls driven, is one late `Timer`
+that looks once, well past the slowest honest load.
+
 **The chooser keeps its window whole.** `ui/boot/picker.qml` is a thin entry whose `LazyLoader`
 takes `ui/PickerWindow.qml` by `file:` URL, so the chooser gets the cache and the boot directory,
 but not the body-after-the-first-frame split. Its title and size are read from `ui/js/Picker.js`
