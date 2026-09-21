@@ -601,8 +601,10 @@ mod tests {
     const UNISTD_64: &str = "/usr/include/asm/unistd_64.h";
     // Any arch but x86_64, here 32-bit x86, which the filter must kill.
     const AUDIT_ARCH_I386: u32 = 0x4000_0003;
-    // clone(2) flags glibc's fork() passes: SIGCHLD and no CLONE_THREAD.
-    const FORK_CLONE_FLAGS: u32 = 17;
+    // Where the clone flag bits live, so the thread bit the filter tests is checked against the kernel's too.
+    const SCHED_H: &str = "/usr/include/linux/sched.h";
+    // The exit signal glibc's fork() and posix_spawn put in clone's low byte, from asm/signal.h.
+    const SIGCHLD: u32 = 17;
     // Every call a job must never make, named independently of the table under test.
     const MUST_REFUSE: [&str; 25] = [
         "ioctl", "chmod", "fchmod", "chown", "fchown", "lchown", "utime", "setxattr", "lsetxattr", "fsetxattr",
@@ -623,6 +625,21 @@ mod tests {
             }
         }
         numbers
+    }
+
+    // Sample input line: "#define CLONE_THREAD\t0x00010000\t/* Same thread group? */"
+    fn clone_bits() -> std::collections::HashMap<String, u32> {
+        let header = std::fs::read_to_string(SCHED_H).unwrap_or_else(|e| panic!("{} did not read: {}", SCHED_H, e));
+        let mut bits = std::collections::HashMap::new();
+        for line in header.lines() {
+            let mut words = line.split_whitespace();
+            if let (Some("#define"), Some(name), Some(value)) = (words.next(), words.next(), words.next()) {
+                if let (true, Some(Ok(value))) = (name.starts_with("CLONE_"), value.strip_prefix("0x").map(|hex| u32::from_str_radix(hex, 16))) {
+                    bits.insert(name.to_string(), value);
+                }
+            }
+        }
+        bits
     }
 
     // Runs the filter the way the kernel does for one call and returns what it answers, so no call is ever made.
@@ -661,8 +678,16 @@ mod tests {
         for call in MUST_REFUSE {
             assert_eq!(verdict_of(&program, AUDIT_ARCH_X86_64, number(call), 0), refused, "{} is not refused", call);
         }
-        assert_eq!(verdict_of(&program, AUDIT_ARCH_X86_64, number("clone"), CLONE_THREAD), SECCOMP_RET_ALLOW, "a thread must start");
-        assert_eq!(verdict_of(&program, AUDIT_ARCH_X86_64, number("clone"), FORK_CLONE_FLAGS), refused, "a process must not");
+        let bits = clone_bits();
+        let flags = |names: &[&str]| names.iter().map(|name| *bits.get(*name).unwrap_or_else(|| panic!("{} has no {}", SCHED_H, name))).fold(0, |all, bit| all | bit);
+        assert_eq!(CLONE_THREAD, flags(&["CLONE_THREAD"]), "the filter's thread bit is not the kernel's");
+        // The flags glibc's pthread_create, fork() and posix_spawn pass to clone on this box.
+        let thread = flags(&["CLONE_VM", "CLONE_FS", "CLONE_FILES", "CLONE_SIGHAND", "CLONE_THREAD", "CLONE_SYSVSEM", "CLONE_SETTLS", "CLONE_PARENT_SETTID", "CLONE_CHILD_CLEARTID"]);
+        let fork = flags(&["CLONE_CHILD_SETTID", "CLONE_CHILD_CLEARTID"]) | SIGCHLD;
+        let spawn = flags(&["CLONE_VM", "CLONE_VFORK"]) | SIGCHLD;
+        assert_eq!(verdict_of(&program, AUDIT_ARCH_X86_64, number("clone"), thread), SECCOMP_RET_ALLOW, "a thread must start");
+        assert_eq!(verdict_of(&program, AUDIT_ARCH_X86_64, number("clone"), fork), refused, "a forked process must not");
+        assert_eq!(verdict_of(&program, AUDIT_ARCH_X86_64, number("clone"), spawn), refused, "a spawned process must not");
         assert_eq!(verdict_of(&program, AUDIT_ARCH_X86_64, number("clone3"), 0), SECCOMP_RET_ERRNO | ENOSYS);
         assert_eq!(verdict_of(&program, AUDIT_ARCH_X86_64, number("read"), 0), SECCOMP_RET_ALLOW, "an ordinary call must run");
         assert_eq!(verdict_of(&program, AUDIT_ARCH_X86_64, number("read") | X32_SYSCALL_BIT, 0), refused, "an x32 call must not");
