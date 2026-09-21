@@ -1,7 +1,7 @@
 // The shipped ui.json shape and the rule each key is measured against; src/uistate.rs applies them.
 use crate::jsondoc::{self, Json};
 
-// The shape and every default, copied from docs/flea-0.1.4-build-handoff.md section 1.
+// The shape and every default from docs/flea-0.1.4-build-handoff.md section 1, but density, compact from 0.3.2.
 pub const DEFAULTS: &str = r#"{
   "view": "list",
   "density": "compact",
