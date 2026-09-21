@@ -172,6 +172,8 @@ WATCH_RENDERS=""
 WATCH_OPENS=""
 WATCH_RENDERED=""
 WATCH_N=0
+# Why the last watch_stop could not count, empty when it could; it holds no comma because it lands in a CSV column.
+WATCH_REFUSED=""
 # How long to wait for inotifywait to report its watches up. /tmp is walked recursively, so this is
 # a real wait, and a render that lands before the watch is armed is invisible to the count.
 WATCH_ARM_TIMEOUT_MS=${WATCH_ARM_TIMEOUT_MS:-30000}
@@ -227,11 +229,12 @@ watch_stop() {
   pids=$(grep -o "^$TRANSIENT_PREFIX[0-9]*" "$WATCH_RENDERS" | LC_ALL=C sort -u | grep -c .)
   [ "$pids" -le 1 ] || fail "$pids $id processes wrote renders in this run, so no count from it is attributable"
   opens_n=$(grep -c . "$WATCH_OPENS")
-  # strata thumbnails one file at a time (MAX_THUMBNAIL_WORKERS = 1 in its src/ui/thumbnail.rs), so
-  # an open and the render it earns are paired and in order, and only the render in flight when the
-  # watch stops can be unpaired.
-  [ "$opens_n" -ge "$WATCH_N" ] && [ $(( opens_n - WATCH_N )) -le 1 ] \
-    || fail "$id opened $opens_n fixture files against $WATCH_N renders, so its two watches disagree and neither is a count"
+  WATCH_REFUSED=""
+  # corner: the pairing holds for a strata that renders one file at a time into a per-render dir, and v0.19.0's reused workers write none.
+  if [ "$opens_n" -lt "$WATCH_N" ] || [ $(( opens_n - WATCH_N )) -gt 1 ]; then
+    WATCH_REFUSED="its watches saw $WATCH_N renders for $opens_n opened fixture files so neither is a count"
+    return 0
+  fi
   grep . "$WATCH_OPENS" | head -n "$WATCH_N" > "$WATCH_RENDERED"
 }
 
@@ -713,8 +716,16 @@ run_one() {
       # The cache reading above stays in thumbs_by_dir, where it is a true statement about the cache
       # and a false one about this entrant; the count and the formats come off the live watch.
       watch_stop "$id"
-      thumbs_n=$WATCH_N
-      thumbs_fmt=$(watch_classify)
+      # A count the watches cannot vouch for leaves this row unranked rather than ending every row after it.
+      if [ -n "$WATCH_REFUSED" ]; then
+        thumbs_n=unmeasurable
+        thumbs_fmt=unmeasurable
+        ranked="unranked: $WATCH_REFUSED"
+        printf 'UNRANKED: %s %s, so its work was not measured and its time is not a result\n' "$id" "$WATCH_REFUSED" >&2
+      else
+        thumbs_n=$WATCH_N
+        thumbs_fmt=$(watch_classify)
+      fi
     else
       capture_keys "$id"
       thumbs_fmt=$("$FLEA_REPO/tools/flea-bench-keys" classify "$KEY_MAP" "$KEYS_FILE")

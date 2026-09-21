@@ -559,13 +559,14 @@ mkdir -p "$(dirname "$OUT")"
   echo
 } > "$OUT"
 
-# Read whole from the field bench's own table before the loop, because an entrant reading stdin would eat the next row.
+# Sample input, one row of the field bench's ENTRANTS table: "strata|gui|io.github.lgse.Strata|strata||||setsid nohup $STRATA_BIN $FIXTURE"
 # corner: one multi-statement sed expands the five variables the bench's command field uses, rather than five processes.
 mapfile -t CAP_ROWS < <(sed -n '/^declare -a ENTRANTS=(/,/^)/p' "$FLEA_REPO/tools/flea-field-bench" \
   | grep '^  "' | tr -d '"' \
   | sed "s|\$FIXTURE|$FIXTURE|g; s|\$FLEA_UI|$FLEA_UI|g; s|\$FLEA_BIN|$FLEA_BIN|g; s|\$STRATA_BIN|$STRATA_BIN|g; s|\$FLEA_STATE|$FLEA_STATE|g")
 [ ${#CAP_ROWS[@]} -gt 0 ] || fail "no entrant rows were read out of tools/flea-field-bench"
 
+# The rows were read whole above, because an entrant reading stdin would eat the next row.
 for cap_row in "${CAP_ROWS[@]}"; do
   IFS='|' read -r id kind class comm token helper_comm helper_token cmd <<< "$cap_row"
   id=${id//[[:space:]]/}
