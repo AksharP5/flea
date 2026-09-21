@@ -281,7 +281,7 @@ for colours in "$themes_dir"/*/colors.toml "$synthetic"; do
         fails_before=$failures
         same_colour "$theme" "the cursor's accent edge" "$edge" "$accent"
         if [ "$failures" -gt "$fails_before" ]; then
-            # Sample input, hyprctl clients -j: [{"class":"com.thisisgm.flea","workspace":{"id":1},"mapped":true,"hidden":false,"focusHistoryID":0}]
+            # Sample input, clients -j: [{"class":"com.thisisgm.flea","workspace":{"id":1},"mapped":true,"hidden":false,"focusHistoryID":0}], activeworkspace -j: {"id":1,"name":"1"}
             printf 'NOTE %s: model cursor %s, window %s, active workspace %s\n' "$theme" "$(ipc cursor)" \
                 "$(hyprctl clients -j | jq -c --arg c "$class" '[.[] | select(.class == $c) | {ws: .workspace.id, mapped, hidden, focus: .focusHistoryID}]')" \
                 "$(hyprctl activeworkspace -j | jq .id)"
