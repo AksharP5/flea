@@ -60,6 +60,50 @@ const EINTR: i32 = 4;
 const SIGKILL: c_int = 9;
 // fcntl(2) F_DUPFD_CLOEXEC.
 const F_DUPFD_CLOEXEC: c_int = 1030;
+// prctl(2) PR_SET_SECCOMP with a classic BPF filter, which the no_new_privs lock_down sets first allows.
+const PR_SET_SECCOMP: c_int = 22;
+const SECCOMP_MODE_FILTER: u64 = 2;
+// seccomp_data on x86_64 holds the call number at byte 0 and the audit arch at byte 4.
+const SECCOMP_DATA_NR: u32 = 0;
+const SECCOMP_DATA_ARCH: u32 = 4;
+const AUDIT_ARCH_X86_64: u32 = 0xc000_003e;
+// An x32 call carries the x86_64 arch and this bit in its number, so every x32 call is refused rather than read past the list.
+const X32_SYSCALL_BIT: u32 = 0x4000_0000;
+// BPF opcodes: load a word of seccomp_data, jump on equal or greater-or-equal against a constant, return a constant.
+const BPF_LD_W_ABS: u16 = 0x20;
+const BPF_JEQ_K: u16 = 0x15;
+const BPF_JGE_K: u16 = 0x35;
+const BPF_RET_K: u16 = 0x06;
+const SECCOMP_RET_ALLOW: u32 = 0x7fff_0000;
+const SECCOMP_RET_KILL_PROCESS: u32 = 0x8000_0000;
+const SECCOMP_RET_ERRNO: u32 = 0x0005_0000;
+const EPERM: u32 = 1;
+// Landlock leaves a file's mode, owner, times, xattrs and ioctl flags to its owner, which --ro-bind refused with EROFS; x86_64 numbers from asm/unistd_64.h, io_uring for its xattr ops.
+const METADATA_WRITES: &[(&str, u32)] = &[
+    ("ioctl", 16),
+    ("chmod", 90),
+    ("fchmod", 91),
+    ("chown", 92),
+    ("fchown", 93),
+    ("lchown", 94),
+    ("utime", 132),
+    ("setxattr", 188),
+    ("lsetxattr", 189),
+    ("fsetxattr", 190),
+    ("removexattr", 197),
+    ("lremovexattr", 198),
+    ("fremovexattr", 199),
+    ("utimes", 235),
+    ("fchownat", 260),
+    ("futimesat", 261),
+    ("fchmodat", 268),
+    ("utimensat", 280),
+    ("io_uring_setup", 425),
+    ("fchmodat2", 452),
+    ("setxattrat", 463),
+    ("removexattrat", 466),
+    ("file_setattr", 469),
+];
 
 #[repr(C)]
 struct PollFd {
@@ -72,6 +116,21 @@ struct PollFd {
 struct RLimit {
     current: u64,
     maximum: u64,
+}
+
+// struct sock_filter and struct sock_fprog from linux/filter.h.
+#[repr(C)]
+struct SockFilter {
+    code: u16,
+    jt: u8,
+    jf: u8,
+    k: u32,
+}
+
+#[repr(C)]
+struct SockFprog {
+    len: u16,
+    filter: *const SockFilter,
 }
 
 // struct landlock_ruleset_attr; a kernel older than a field accepts it while that field is zero.
@@ -225,6 +284,27 @@ fn lock_down(abi: i64) -> Option<()> {
     }
 }
 
+// A foreign arch is killed, an x32 call or a listed one answers EPERM, and every other call runs.
+fn refuse_metadata_writes() -> Option<()> {
+    let listed = METADATA_WRITES.len();
+    let step = |code, jt, k| SockFilter { code, jt, jf: 0, k };
+    let mut program = vec![
+        step(BPF_LD_W_ABS, 0, SECCOMP_DATA_ARCH),
+        step(BPF_JEQ_K, 1, AUDIT_ARCH_X86_64),
+        step(BPF_RET_K, 0, SECCOMP_RET_KILL_PROCESS),
+        step(BPF_LD_W_ABS, 0, SECCOMP_DATA_NR),
+    ];
+    // A jump counts the instructions it skips, so each match lands on the refusal after the allow.
+    program.push(step(BPF_JGE_K, u8::try_from(listed + 1).ok()?, X32_SYSCALL_BIT));
+    for (i, (_, number)) in METADATA_WRITES.iter().enumerate() {
+        program.push(step(BPF_JEQ_K, u8::try_from(listed - i).ok()?, *number));
+    }
+    program.push(step(BPF_RET_K, 0, SECCOMP_RET_ALLOW));
+    program.push(step(BPF_RET_K, 0, SECCOMP_RET_ERRNO | EPERM));
+    let filter = SockFprog { len: u16::try_from(program.len()).ok()?, filter: program.as_ptr() };
+    (unsafe { prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &filter as *const SockFprog as u64, 0, 0) } == 0).then_some(())
+}
+
 // The child's whole descriptor table becomes /dev/null on 0 to 2, the input on 3 and the output on 4.
 fn keep_only_the_job(input: RawFd, output: RawFd) -> Option<()> {
     let null = std::fs::OpenOptions::new().read(true).write(true).open("/dev/null").ok()?.into_raw_fd();
@@ -253,7 +333,8 @@ fn confine(input: RawFd, output: RawFd, abi: i64) -> Option<()> {
     keep_only_the_job(input, output)?;
     set_limit(RLIMIT_CPU, u64::from(sandbox::CPU_SECONDS))?;
     set_limit(RLIMIT_AS, sandbox::ADDRESS_SPACE_BYTES)?;
-    lock_down(abi)
+    lock_down(abi)?;
+    refuse_metadata_writes()
 }
 
 // Runs in the forked child and never returns: the exit code is the verdict, and a panic is caught so it never unwinds into the worker's loop.
@@ -399,6 +480,7 @@ pub fn run() -> i32 {
 mod tests {
     use super::*;
     use crate::backend::testdir::TestDir;
+    use std::os::unix::fs::PermissionsExt;
     use std::process::Command;
 
     // The probe confines a second copy of this test binary, so nothing it locks down can reach the harness running every other test.
@@ -411,10 +493,32 @@ mod tests {
     const F_GETFD: c_int = 1;
     // recvmsg hands an idle worker a job on 3 and 4 and a busy one higher up, so the probe runs once from each.
     const BUSY_FD: c_int = 40;
+    // The permission bits fchmod takes, so the probe can set a file's own mode back as a no-op.
+    const MODE_BITS: u32 = 0o7777;
+    // utimensat(2) UTIME_OMIT for both times: a call that changes nothing and succeeds unconfined.
+    const UTIME_OMIT: i64 = (1 << 30) - 2;
+    const KEEP_TIMES: [Timespec; 2] = [Timespec { seconds: 0, nanoseconds: UTIME_OMIT }, Timespec { seconds: 0, nanoseconds: UTIME_OMIT }];
+    // ioctl(2) FS_IOC_GETFLAGS, a read that only the filter refuses with EPERM.
+    const FS_IOC_GETFLAGS: u64 = 0x8008_6601;
+
+    #[repr(C)]
+    struct Timespec {
+        seconds: i64,
+        nanoseconds: i64,
+    }
 
     extern "C" {
         fn getppid() -> c_int;
         fn getrlimit(resource: c_int, limit: *mut RLimit) -> c_int;
+        fn fchmod(fd: c_int, mode: u32) -> c_int;
+        fn futimens(fd: c_int, times: *const [Timespec; 2]) -> c_int;
+        fn fsetxattr(fd: c_int, name: *const c_char, value: *const c_void, size: usize, flags: c_int) -> c_int;
+        fn ioctl(fd: c_int, request: u64, ...) -> c_int;
+    }
+
+    // 0 for a call that worked, otherwise the errno it set.
+    fn errno_of(result: c_int) -> i32 {
+        if result == 0 { 0 } else { std::io::Error::last_os_error().raw_os_error().unwrap_or(-1) }
     }
 
     fn soft_limit(resource: c_int) -> u64 {
@@ -460,14 +564,22 @@ mod tests {
         let writable = |path: &str| std::fs::OpenOptions::new().write(true).open(path).is_ok();
         let wrote_before = writable(&format!("/proc/self/fd/{}", reader));
         let signalled_before = unsafe { kill(getppid(), 0) } == 0;
+        let mode = std::fs::metadata(&victim).map(|m| m.permissions().mode() & MODE_BITS).unwrap_or(0);
+        let chmod_before = unsafe { fchmod(reader, mode) } == 0;
+        let times_before = unsafe { futimens(reader, &KEEP_TIMES) } == 0;
         if confine(reader, report, abi).is_none() {
             unsafe { _exit(CHILD_MACHINE) };
         }
+        let chmod = unsafe { fchmod(INPUT_FD, mode) } == 0;
+        let times = unsafe { futimens(INPUT_FD, &KEEP_TIMES) } == 0;
+        let xattr = errno_of(unsafe { fsetxattr(INPUT_FD, c"user.flea_probe".as_ptr(), b"1".as_ptr() as *const c_void, 1, 0) });
+        let mut flags: c_long = 0;
+        let ioctl_errno = errno_of(unsafe { ioctl(INPUT_FD, FS_IOC_GETFLAGS, &mut flags) });
         let open: Vec<c_int> = (0..FD_CEILING).filter(|fd| unsafe { fcntl(*fd, F_GETFD, 0) } >= 0).collect();
         let nulls = (0..3).all(|fd| target(fd) == "/dev/null");
         let input_on_3 = target(INPUT_FD).ends_with("/victim.mp4");
         let facts = format!(
-            "socket_before={} nulls={} input_on_3={} before={} reopened={} direct={} readable={} signalled_before={} signalled={} fds={:?} cpu={} as={}",
+            "socket_before={} nulls={} input_on_3={} before={} reopened={} direct={} readable={} signalled_before={} signalled={} chmod_before={} chmod={} times_before={} times={} xattr_errno={} ioctl_errno={} fds={:?} cpu={} as={}",
             socket_before,
             nulls,
             input_on_3,
@@ -477,6 +589,12 @@ mod tests {
             std::fs::File::open("/proc/self/fd/3").is_ok(),
             signalled_before,
             unsafe { kill(getppid(), 0) } == 0,
+            chmod_before,
+            chmod,
+            times_before,
+            times,
+            xattr,
+            ioctl_errno,
             open,
             soft_limit(RLIMIT_CPU),
             soft_limit(RLIMIT_AS)
@@ -506,10 +624,12 @@ mod tests {
                 return;
             }
             let scoped = landlock_abi().is_some_and(|abi| abi >= LANDLOCK_SCOPE_SIGNAL_ABI);
-            // socket_before, before and signalled_before are the negative controls: unconfined, the same process holds a socket on 0, writes and signals.
+            // The *_before facts are the negative controls: unconfined, the same process holds a socket on 0, writes, signals, chmods and sets times.
             let expected = format!(
-                "socket_before=true nulls=true input_on_3=true before=true reopened=false direct=false readable=true signalled_before=true signalled={} fds=[0, 1, 2, 3, 4] cpu={} as={}",
+                "socket_before=true nulls=true input_on_3=true before=true reopened=false direct=false readable=true signalled_before=true signalled={} chmod_before=true chmod=false times_before=true times=false xattr_errno={} ioctl_errno={} fds=[0, 1, 2, 3, 4] cpu={} as={}",
                 !scoped,
+                EPERM,
+                EPERM,
                 sandbox::CPU_SECONDS,
                 sandbox::ADDRESS_SPACE_BYTES
             );

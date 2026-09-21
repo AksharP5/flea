@@ -194,12 +194,15 @@ if [ "${FLEA_THUMB_WORKER:-on}" = off ]; then
   check "the off switch starts no worker" "0" "$live"
 else
   check "the video went through one worker" "1" "$live"
-  printf '{"c":"thumb","rows":[3]}\n' >&"${BK[1]}"
-  answer_for 3
-  check "an unreadable video answers empty" "1" "$(echo "$ANSWER" | grep -c '"file":""')"
-  # The exec path would have recorded a failure here, so no marker is what says the worker branch judged nothing.
-  w3_key=$(printf 'file://%s' "$D/worker/w3-unreadable.mp4" | md5sum | cut -d' ' -f1)
-  check "and records no failure, because a file that will not open judges nothing" "0" "$(ls "$CACHE/fail/flea/$w3_key.png" 2>/dev/null | wc -l | tr -d ' ')"
+fi
+printf '{"c":"thumb","rows":[3]}\n' >&"${BK[1]}"
+answer_for 3
+check "an unreadable video answers empty" "1" "$(echo "$ANSWER" | grep -c '"file":""')"
+w3_key=$(printf 'file://%s' "$D/worker/w3-unreadable.mp4" | md5sum | cut -d' ' -f1)
+# The exec path records a failure for a file it cannot read, which makes the off run this check's positive control.
+if [ "${FLEA_THUMB_WORKER:-on}" = off ]; then w3_marked=1; else w3_marked=0; fi
+check "it has a failure marker only on the exec path, because the worker branch judges nothing" "$w3_marked" "$(ls "$CACHE/fail/flea/$w3_key.png" 2>/dev/null | wc -l | tr -d ' ')"
+if [ "${FLEA_THUMB_WORKER:-on}" != off ]; then
   check "and leaves the same worker serving" "1" "$(workers_under "$BK_PID" | wc -l | tr -d ' ')"
   kill -9 $(workers_under "$BK_PID") 2>/dev/null
   printf '{"c":"thumb","rows":[1]}\n' >&"${BK[1]}"

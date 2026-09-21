@@ -2860,6 +2860,13 @@ worker's stdin as `SCM_RIGHTS` (`backend/fdpass.rs`). The child the worker forks
   renames or truncates, with no rule granting any, and from Landlock ABI 6 scoped for signals, so it
   cannot signal a sibling, the worker or anything else outside its own domain. Reading is not
   handled, so it still reads its libraries and its input;
+- installs a seccomp filter that answers `EPERM` to every call changing a file's mode, owner, times
+  or extended attributes, to every `ioctl` and to `io_uring_setup`, whose ring has xattr operations
+  of its own, and kills a call from any arch but x86_64. Landlock leaves all of those to the file's
+  owner: measured on minipc, kernel 7.2 at Landlock ABI 10, a process under this ruleset alone
+  reopened descriptor 3 for writing and got `EACCES`, then `fchmod`, `futimens` and `fsetxattr`
+  through that same read-only descriptor all changed the operator's file, where the exec path's
+  `--ro-bind` answers `EROFS`. The numbers are the x86_64 ones in `asm/unistd_64.h`;
 - hands libav `/proc/self/fd/3` and writes the encoded PNG to descriptor 4.
 
 **The Landlock step is not optional, and here is why.** A read-only descriptor is not a read-only
@@ -2872,14 +2879,16 @@ files on 3 and 4, where recvmsg lands a job in an idle worker, and once well abo
 lands one in a busy worker, plants a socket on descriptor 0, where the worker's request socket sits,
 runs `confine()` itself in a copy of the test binary and reports through descriptor 4, the way a job
 writes its PNG, that exactly descriptors 0 to 4 are open, 0 to 2 are `/dev/null`, 3 is the input,
-both limits are set, neither the input nor its path opens for writing, the input still reads and the
-parent can no longer be signalled; `socket_before=true`, `before=true` and `signalled_before=true`
-are the negative controls. **The signal scope is what lets the children share one PID namespace**:
-every exec-path job had a namespace of its own, and without the scope a decoder compromised by one
-video could kill a sibling mid-decode, or the worker. corner: a kernel between Landlock ABI 1 and 5
-still gets the worker, without that scope. A kernel without Landlock gets no worker at all: the
-worker answers `K` and the exec path takes every video. The worker is also not dumpable, which
-children inherit, so no process of the same user can ptrace it or read its descriptors.
+both limits are set, neither the input nor its path opens for writing, the input still reads, the
+parent can no longer be signalled, its mode and times can no longer be set and `fsetxattr` and
+`ioctl` answer `EPERM`; the `_before` facts are the negative controls, taken unconfined with a
+`fchmod` to the file's own mode and a `futimens` that omits both times, so they change nothing.
+**The signal scope is what lets the children share one PID namespace**: every exec-path job had a
+namespace of its own, and without the scope a decoder compromised by one video could kill a sibling
+mid-decode, or the worker. corner: a kernel between Landlock ABI 1 and 5 still gets the worker,
+without that scope. A kernel without Landlock gets no worker at all: the worker answers `K` and the
+exec path takes every video. The worker is also not dumpable, which children inherit, so no process
+of the same user can ptrace it or read its descriptors.
 
 **The worker's only final verdict is a thumbnail.** It reaps each child through a pidfd, kills one
 still running at `JOB_TIMEOUT`, and writes one byte on that job's reply socket: `S` for exit 0, `F`
