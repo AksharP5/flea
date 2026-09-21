@@ -82,7 +82,7 @@ enum Heard {
 fn why_not(heard: &Heard) -> String {
     match heard {
         Heard::Byte(NO_LIBRARY) => format!("{} did not load", SONAME.to_string_lossy()),
-        Heard::Byte(NO_LANDLOCK) => String::from("this kernel has no Landlock"),
+        Heard::Byte(NO_LANDLOCK) => String::from("this kernel has no Landlock that can deny a truncation"),
         Heard::Byte(other) => format!("it answered the unknown byte {}", other),
         Heard::Silence => format!("it did not answer within {} s", READY_LIMIT.as_secs()),
         Heard::Closed => String::from("it exited before it answered"),
@@ -254,10 +254,33 @@ mod tests {
         }
     }
 
+    // A non-blocking open returns at once; this bounds a regression to a failure rather than a hung suite.
+    const HUNG: Duration = Duration::from_secs(5);
+
+    #[test]
+    fn an_input_that_is_not_a_file_to_judge_never_reaches_the_worker() {
+        let dir = TestDir::new("worker-not-a-file");
+        let fifo = dir.join("swapped.mp4");
+        assert!(Command::new("mkfifo").arg(&fifo).status().unwrap().success(), "mkfifo failed");
+        let output = dir.file("out.png", "");
+        let (mine, theirs) = fdpass::pair().unwrap();
+        let child = Command::new("true").spawn().unwrap();
+        let link = std::sync::Arc::new(WorkerLink { state: Mutex::new(State::Running { child, requests: mine }) });
+        for input in [fifo, dir.join("vanished.mp4")] {
+            let (done, answer) = std::sync::mpsc::channel();
+            let (link, output, shown) = (std::sync::Arc::clone(&link), output.clone(), input.display().to_string());
+            std::thread::spawn(move || done.send(link.generate(&input, &output, THUMB_SIZE, true, Duration::from_secs(1))).unwrap());
+            let got = answer.recv_timeout(HUNG).unwrap_or_else(|_| panic!("generate never returned for {}", shown));
+            assert!(matches!(got, Some(Ran::NotStarted)), "{} was not answered as judging nothing", shown);
+        }
+        assert!(matches!(read_byte(&theirs, Duration::ZERO), Heard::Silence), "a request reached the worker");
+        assert!(matches!(*link.state.lock().unwrap(), State::Running { .. }), "judging nothing retired the worker");
+    }
+
     #[test]
     fn a_worker_that_is_not_serving_says_why() {
         assert_eq!(why_not(&Heard::Byte(NO_LIBRARY)), "libffmpegthumbnailer.so.4 did not load");
-        assert_eq!(why_not(&Heard::Byte(NO_LANDLOCK)), "this kernel has no Landlock");
+        assert_eq!(why_not(&Heard::Byte(NO_LANDLOCK)), "this kernel has no Landlock that can deny a truncation");
         assert_eq!(why_not(&Heard::Closed), "it exited before it answered");
         assert_eq!(why_not(&Heard::Silence), "it did not answer within 5 s");
         assert_eq!(why_not(&Heard::Broken(std::io::Error::other("a test error"))), "its socket failed: a test error");

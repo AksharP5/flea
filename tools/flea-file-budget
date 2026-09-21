@@ -19,7 +19,7 @@ src/backend/opsreq/tests.rs 424
 src/backend/proto.rs 466
 src/backend/run.rs 429
 src/backend/thumbs.rs 441
-src/backend/thumbworker.rs 858
+src/backend/thumbworker.rs 855
 src/backend/trashbrowse.rs 698
 src/backend/trashdelete.rs 895
 src/tui/actions.rs 999
@@ -33,14 +33,14 @@ tests/js/focus.js 374
 tests/js/mounts.js 383
 tests/js/ops.js 384
 ui/Backend.qml 435
-ui/ChromeBar.qml 448
+ui/ChromeBar.qml 409
 ui/ContextMenu.qml 534
 ui/ConvertDialog.qml 440
 ui/Ipc.qml 780
 ui/NetworkDialog.qml 449
 ui/NetworkMounts.qml 557
 ui/OpenWithDialog.qml 583
-ui/Pane.qml 663
+ui/Pane.qml 640
 ui/PaneMenuActions.qml 404
 ui/PaneWire.qml 485
 ui/PermissionsDialog.qml 426

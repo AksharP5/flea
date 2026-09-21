@@ -927,13 +927,13 @@ cp -r "$TUI_CONF_SRC/." "$TUI_CONF/" || fail "could not copy $TUI_CONF_SRC"
 # the run materialises it. The manifest records the materialised copy, which is what actually ran.
 find "$TUI_CONF" -type f -exec sed -i "s|\$XDG_CONFIG_HOME|$TUI_CONF|g" {} +
 
-# Flea runs on its shipped defaults, because an operator's saved view, sort, rows or text size decide what the first screen holds.
+# Flea runs on its shipped defaults, because an operator's saved view, sort or rows decide what the first screen holds.
 FLEA_STATE=$(mktemp -d /tmp/flea-bench-state.XXXXXX) || fail "no temp directory for Flea's state"
 mkdir -p "$FLEA_STATE/flea" "$FLEA_STATE/no-config" || fail "could not make $FLEA_STATE/flea"
 # An empty config directory for this one write, so an old view.json cannot migrate into the defaults.
 XDG_STATE_HOME="$FLEA_STATE" XDG_CONFIG_HOME="$FLEA_STATE/no-config" "$FLEA_BIN" --ui-state '{"sort":{"key":"name","reverse":false}}' >/dev/null \
   || fail "flea --ui-state refused to write the shipped defaults into $FLEA_STATE"
-printf 'flea-state: %s, the shipped defaults and none of the operator settings\n' "$FLEA_STATE"
+printf 'flea-state: %s, the shipped defaults, whose text size follows the system font as every entrant does\n' "$FLEA_STATE"
 
 # The band the TUI bracket watches for its preview, and the file it captures into.
 # corner: one monitor and one tiled window, which require_bench_idle already guarantees. The band is

@@ -217,11 +217,22 @@ printf '{"c":"quit"}\n' >&"${BK[1]}"
 wait "$BK_PID" 2>/dev/null
 # The two paths publish the same image: set_size(N, N) and the film strip are the CLI's -s and -f.
 w_key=$(printf 'file://%s' "$D/worker/w2.mp4" | md5sum | cut -d' ' -f1)
-printf '{"c":"list","path":"%s","first":10}\n{"c":"thumb","rows":[2]}\n{"c":"quit"}\n' "$D/worker" | timeout 120 $BIN --backend >/dev/null 2>&1
+coproc BK { exec timeout 120 $BIN --backend 2>/dev/null; }
+printf '{"c":"list","path":"%s","first":10}\n{"c":"thumb","rows":[2]}\n' "$D/worker" >&"${BK[1]}"
+answer_for 2
+worker_pid=$(workers_under "$BK_PID")
+printf '{"c":"quit"}\n' >&"${BK[1]}"
+wait "$BK_PID" 2>/dev/null
+if [ "${FLEA_THUMB_WORKER:-on}" != off ]; then
+  # The worker takes its request socket closing as the end of work, so it must not outlive the backend that started it.
+  worker_exit_s=10
+  check "a fresh backend made row 2 through one worker" "1" "$(echo "$worker_pid" | grep -c .)"
+  check "and that worker ended with its backend" "0" "$(timeout "$worker_exit_s" tail --pid="$worker_pid" -f /dev/null; echo $?)"
+fi
 mkdir -p "$D/exec-cache"
 printf '{"c":"list","path":"%s","first":10}\n{"c":"thumb","rows":[2]}\n{"c":"quit"}\n' "$D/worker" \
   | XDG_CACHE_HOME="$D/exec-cache" FLEA_THUMB_WORKER=off timeout 120 $BIN --backend >/dev/null 2>&1
-# Sample input: a PNG, whose IDAT chunks are the pixels and whose tEXt chunks are "key\0value".
+# Sample input: a PNG, whose IDAT chunks are the pixels and whose tEXt chunks are "key\0value", a binary walk no plain tool makes.
 # Thumb::Mimetype comes from the input's extension, which the worker's /proc/self/fd/3 lacks, so it is left out.
 png_facts() {
   python3 - "$1" <<'PY'
@@ -246,7 +257,9 @@ check "both paths published an entry for the same video" "2" "$(ls "$worker_png"
 check "the exec path made its entry" "1" "$(grep -ac 'Thumb::Mimetype' "$exec_png")"
 if [ "${FLEA_THUMB_WORKER:-on}" = off ]; then made_by_program=1; else made_by_program=0; fi
 check "and the default run made the other through the ${FLEA_THUMB_WORKER:-on} path" "$made_by_program" "$(grep -ac 'Thumb::Mimetype' "$worker_png")"
-check "the two publish the same image and keys" "$(png_facts "$exec_png")" "$(png_facts "$worker_png")"
+exec_facts=$(png_facts "$exec_png")
+check "the exec entry's chunks were read" "1" "$(echo "$exec_facts" | grep -c '^[0-9a-f]\{64\} ')"
+check "the two publish the same image and keys" "$exec_facts" "$(png_facts "$worker_png")"
 chmod 600 "$D/worker/w3-unreadable.mp4"
 
 # -A, never ls: the one kind of litter this subsystem leaves is a dotfile temp a bare ls cannot see.

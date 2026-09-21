@@ -51,6 +51,9 @@ const LANDLOCK_CREATE_RULESET_VERSION: u32 = 1;
 const LANDLOCK_WRITE_V1: u64 = (1 << 1) | (0x1ff << 4);
 const LANDLOCK_REFER_V2: u64 = 1 << 13;
 const LANDLOCK_TRUNCATE_V3: u64 = 1 << 14;
+const LANDLOCK_WRITE_RIGHTS: u64 = LANDLOCK_WRITE_V1 | LANDLOCK_REFER_V2 | LANDLOCK_TRUNCATE_V3;
+// Truncation is a right only from ABI 3, and a job that could truncate its input would be weaker than the exec path's --ro-bind.
+const LANDLOCK_TRUNCATE_ABI: i64 = 3;
 // From ABI 6 a scoped child can signal nothing outside its own domain, so not a sibling and not the worker.
 const LANDLOCK_SCOPE_SIGNAL: u64 = 1 << 1;
 const LANDLOCK_SCOPE_SIGNAL_ABI: i64 = 6;
@@ -256,31 +259,19 @@ impl Decoder {
     }
 }
 
-// The Landlock ABI version, or None on a kernel without Landlock, which gets no worker.
+// The Landlock ABI version, or None on a kernel whose Landlock cannot deny a truncation, which gets no worker.
 fn landlock_abi() -> Option<i64> {
     let abi = unsafe {
         syscall(SYS_LANDLOCK_CREATE_RULESET, std::ptr::null::<RulesetAttr>(), 0usize, LANDLOCK_CREATE_RULESET_VERSION)
     };
-    (abi >= 1).then_some(abi)
+    (abi >= LANDLOCK_TRUNCATE_ABI).then_some(abi)
 }
 
-// The write rights this ABI knows, so an older kernel is not handed a bit it would refuse.
-fn write_rights(abi: i64) -> u64 {
-    let mut rights = LANDLOCK_WRITE_V1;
-    if abi >= 2 {
-        rights |= LANDLOCK_REFER_V2;
-    }
-    if abi >= 3 {
-        rights |= LANDLOCK_TRUNCATE_V3;
-    }
-    rights
-}
-
-// After this the child can open nothing for writing, create or remove nothing, and signal nothing outside itself.
+// After this the child can open nothing for writing, truncate, create or remove nothing, and signal nothing outside itself.
 fn lock_down(abi: i64) -> Option<()> {
     // corner: before ABI 6 there is no signal scope, so a child there could still signal its siblings.
     let scoped = if abi >= LANDLOCK_SCOPE_SIGNAL_ABI { LANDLOCK_SCOPE_SIGNAL } else { 0 };
-    let attr = RulesetAttr { handled_access_fs: write_rights(abi), handled_access_net: 0, scoped };
+    let attr = RulesetAttr { handled_access_fs: LANDLOCK_WRITE_RIGHTS, handled_access_net: 0, scoped };
     unsafe {
         if prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0 {
             return None;
@@ -527,6 +518,8 @@ mod tests {
     // utimensat(2) UTIME_OMIT for both times: a call that changes nothing and succeeds unconfined.
     const UTIME_OMIT: i64 = (1 << 30) - 2;
     const KEEP_TIMES: [Timespec; 2] = [Timespec { seconds: 0, nanoseconds: UTIME_OMIT }, Timespec { seconds: 0, nanoseconds: UTIME_OMIT }];
+    // What Landlock answers for a right its ruleset handles and no rule grants.
+    const EACCES: u32 = 13;
     // ioctl(2) FS_IOC_GETFLAGS, a read that only the filter refuses with EPERM.
     const FS_IOC_GETFLAGS: usize = 0x8008_6601;
     // A child that ends at once is readable on its pidfd long before this; it bounds a broken test, it times nothing.
@@ -542,6 +535,7 @@ mod tests {
         fn getppid() -> c_int;
         fn getrlimit(resource: c_int, limit: *mut RLimit) -> c_int;
         fn fchmod(fd: c_int, mode: u32) -> c_int;
+        fn truncate(path: *const c_char, length: i64) -> c_int;
         fn futimens(fd: c_int, times: *const [Timespec; 2]) -> c_int;
         fn fsetxattr(fd: c_int, name: *const c_char, value: *const c_void, size: usize, flags: c_int) -> c_int;
         fn ioctl(fd: i32, request: usize, ...) -> i32;
@@ -761,12 +755,16 @@ mod tests {
         let mode = std::fs::metadata(&victim).map(|m| m.permissions().mode() & MODE_BITS).unwrap_or(0);
         let chmod_before = unsafe { fchmod(reader, mode) } == 0;
         let times_before = unsafe { futimens(reader, &KEEP_TIMES) } == 0;
+        let length = std::fs::metadata(&victim).map(|m| m.len() as i64).unwrap_or(-1);
+        let victim_path = std::ffi::CString::new(victim.as_str()).expect("the victim path holds a NUL");
+        let truncate_before = unsafe { truncate(victim_path.as_ptr(), length) } == 0;
         let fork_before = forked_and_reaped() == 0;
         if confine(reader, report, abi).is_none() {
             unsafe { _exit(CHILD_MACHINE) };
         }
         let chmod = unsafe { fchmod(INPUT_FD, mode) } == 0;
         let times = unsafe { futimens(INPUT_FD, &KEEP_TIMES) } == 0;
+        let truncate_errno = errno_of(unsafe { truncate(INPUT_PATH.as_ptr(), 0) });
         let xattr = errno_of(unsafe { fsetxattr(INPUT_FD, c"user.flea_probe".as_ptr(), b"1".as_ptr() as *const c_void, 1, 0) });
         let mut flags: c_long = 0;
         let ioctl_errno = errno_of(unsafe { ioctl(INPUT_FD, FS_IOC_GETFLAGS, &mut flags) });
@@ -776,7 +774,7 @@ mod tests {
         let nulls = (0..3).all(|fd| target(fd) == "/dev/null");
         let input_on_3 = target(INPUT_FD).ends_with("/victim.mp4");
         let facts = format!(
-            "socket_before={} nulls={} input_on_3={} before={} reopened={} direct={} readable={} signalled_before={} signalled={} chmod_before={} chmod={} times_before={} times={} xattr_errno={} ioctl_errno={} fork_before={} fork_errno={} thread={} fds={:?} cpu={} as={}",
+            "socket_before={} nulls={} input_on_3={} before={} reopened={} direct={} readable={} signalled_before={} signalled={} chmod_before={} chmod={} times_before={} times={} truncate_before={} truncate_errno={} xattr_errno={} ioctl_errno={} fork_before={} fork_errno={} thread={} fds={:?} cpu={} as={}",
             socket_before,
             nulls,
             input_on_3,
@@ -790,6 +788,8 @@ mod tests {
             chmod,
             times_before,
             times,
+            truncate_before,
+            truncate_errno,
             xattr,
             ioctl_errno,
             fork_before,
@@ -820,14 +820,15 @@ mod tests {
                 .output()
                 .unwrap();
             if String::from_utf8_lossy(&out.stdout).contains("probe=no-landlock") {
-                std::io::stderr().write_all(format!("SKIP {}: this kernel has no Landlock\n", THIS_TEST).as_bytes()).ok();
+                std::io::stderr().write_all(format!("SKIP {}: this kernel has no Landlock that can deny a truncation\n", THIS_TEST).as_bytes()).ok();
                 return;
             }
             let scoped = landlock_abi().is_some_and(|abi| abi >= LANDLOCK_SCOPE_SIGNAL_ABI);
-            // The *_before facts are the negative controls: unconfined, the same process holds a socket on 0, writes, signals, chmods, sets times and forks.
+            // The *_before facts are the negative controls: unconfined, the same process holds a socket on 0, writes, signals, chmods, sets times, truncates and forks.
             let expected = format!(
-                "socket_before=true nulls=true input_on_3=true before=true reopened=false direct=false readable=true signalled_before=true signalled={} chmod_before=true chmod=false times_before=true times=false xattr_errno={} ioctl_errno={} fork_before=true fork_errno={} thread=true fds=[0, 1, 2, 3, 4] cpu={} as={}",
+                "socket_before=true nulls=true input_on_3=true before=true reopened=false direct=false readable=true signalled_before=true signalled={} chmod_before=true chmod=false times_before=true times=false truncate_before=true truncate_errno={} xattr_errno={} ioctl_errno={} fork_before=true fork_errno={} thread=true fds=[0, 1, 2, 3, 4] cpu={} as={}",
                 !scoped,
+                EACCES,
                 EPERM,
                 EPERM,
                 EPERM,
@@ -845,14 +846,10 @@ mod tests {
     }
 
     #[test]
-    fn an_older_abi_is_never_handed_a_right_it_does_not_know() {
-        assert_eq!(write_rights(1) & (LANDLOCK_REFER_V2 | LANDLOCK_TRUNCATE_V3), 0);
-        assert_eq!(write_rights(2) & LANDLOCK_TRUNCATE_V3, 0);
-        assert_ne!(write_rights(3) & LANDLOCK_TRUNCATE_V3, 0);
+    fn the_ruleset_denies_truncation_and_never_a_read() {
+        assert_ne!(LANDLOCK_WRITE_RIGHTS & LANDLOCK_TRUNCATE_V3, 0, "a job could truncate its input");
         // Execute, read file and read dir are bits 0, 2 and 3, and none of them may ever be denied.
         let reads = (1 << 0) | (1 << 2) | (1 << 3);
-        for abi in 1..=10 {
-            assert_eq!(write_rights(abi) & reads, 0, "abi {} would deny a read", abi);
-        }
+        assert_eq!(LANDLOCK_WRITE_RIGHTS & reads, 0);
     }
 }

@@ -569,6 +569,7 @@ copied from the 0.1.4 build handoff; `src/uistate.rs` holds the merges; `src/uis
 paths, the lock and the write. One default has moved since that handoff: row density is `compact` from
 0.3.2, GM's ruling. Every write stores the whole document, so a state file any earlier Flea wrote keeps
 the `normal` it recorded, and only state that never stored a density takes the new default.
+`tests/ui.sh` case `icons` launches with no `ui.json` at all and pins those rows below the board's.
 
 **One update path, and the one front end in this tree goes through it.** `flea --ui-state` prints
 the merged document and writes nothing. `flea --ui-state '<json object>'` merges that patch through
@@ -1425,8 +1426,8 @@ drive a hybrid tree this box cannot produce. The file has one subject, which is 
 asked for on this machine, and splitting the fake-tree tests away from the function they pin would
 make the seam the test harness rather than the subject.
 
-`src/backend/thumbworker.rs` is 0.3.2's second recorded exception, at 858 lines: 507 before its
-`#[cfg(test)]` line and 351 from it. The file is one job's confinement, the descriptor hand-off, the
+`src/backend/thumbworker.rs` is 0.3.2's second recorded exception, at 855 lines: 498 before its
+`#[cfg(test)]` line and 357 from it. The file is one job's confinement, the descriptor hand-off, the
 limits, Landlock, the seccomp call filter and the reap, and its walk test checks the filter's tables
 against `asm/unistd_64.h` and `linux/sched.h` beside the tables themselves. The same release moved
 three recorded ceilings: `src/backend/thumbs.rs` 432 to 441 for routing a video to the worker,
@@ -1727,7 +1728,7 @@ both report as derived and undriven in that battery; `tests/js/tap.js` holds the
 neither, because both are QML bindings rather than `Tap.js` calls, and **`tests/js` is structurally
 unable to press either one**. `tests/ui.sh` case `click` is what presses them at the real window,
 and case `dual` presses a pane's crumb from `paneCrumbCentre`, then double clicks that pane's path
-in its padding and on a crumb from `panePathRect`. A pane's path builds no crumbs while it is hidden,
+in its padding, past its last crumb and on a crumb from `panePathRect`. A pane's path builds no crumbs while it is hidden,
 because the single view keeps it at height 0 and rule 6 is exactly that cost.
 
 The `Qt.BackButton` binding is now driven at the product, and the probe that used to stand in for it
@@ -2878,7 +2879,8 @@ worker's stdin as `SCM_RIGHTS` (`backend/fdpass.rs`). The child the worker forks
   handled, so it still reads its libraries and its input;
 - installs a seccomp filter that answers `EPERM` to every call changing a file's mode, owner, times
   or extended attributes, to every `ioctl` and to `io_uring_setup`, whose ring has xattr operations
-  of its own, and kills a call from any arch but x86_64. Landlock leaves all of those to the file's
+  of its own, answers `EPERM` to every x32 call, whose number carries `__X32_SYSCALL_BIT` under the
+  x86_64 arch, and kills a call from any arch but x86_64. Landlock leaves all of those to the file's
   owner: measured on minipc, kernel 7.2 at Landlock ABI 10, a process under this ruleset alone
   reopened descriptor 3 for writing and got `EACCES`, then `fchmod`, `futimens` and `fsetxattr`
   through that same read-only descriptor all changed the operator's file, where the exec path's
@@ -2900,11 +2902,12 @@ files on 3 and 4, where recvmsg lands a job in an idle worker, and once well abo
 lands one in a busy worker, plants a socket on descriptor 0, where the worker's request socket sits,
 runs `confine()` itself in a copy of the test binary and reports through descriptor 4, the way a job
 writes its PNG, that exactly descriptors 0 to 4 are open, 0 to 2 are `/dev/null`, 3 is the input,
-both limits are set, neither the input nor its path opens for writing, the input still reads, the
-parent can no longer be signalled, its mode and times can no longer be set, `fsetxattr`, `ioctl` and
+both limits are set, neither the input nor its path opens for writing, the path cannot be truncated,
+the input still reads, the parent can no longer be signalled, its mode and times can no longer be set, `fsetxattr`, `ioctl` and
 a `fork`, which glibc makes through `clone`, answer `EPERM` and a thread still starts; the `_before`
 facts are the negative controls, taken unconfined with a `fchmod` to the file's own mode, a
-`futimens` that omits both times and a fork whose child only exits, so they change nothing. The
+`futimens` that omits both times, a `truncate` to the file's own length and a fork whose child only
+exits, so they change nothing. The
 probe makes a few of the refused calls for real;
 `thumbworker::tests::every_call_that_changes_a_file_or_starts_a_process_is_refused` covers all of
 them without making any, by running the built filter the way the kernel does for each call named in
@@ -2914,8 +2917,9 @@ goes red; the thread bit is checked against `/usr/include/linux/sched.h` the sam
 flags glibc's `pthread_create`, `fork` and `posix_spawn` pass. **The signal scope is what lets the
 children share one PID namespace**: every exec-path job had a namespace of its own, and without the
 scope a decoder compromised by one video could kill a sibling mid-decode, or the worker. corner: a
-kernel between Landlock ABI 1 and 5 still gets the worker, without that scope. A kernel without
-Landlock gets no worker at all: the worker answers `K` and the exec path takes every video. The
+kernel at Landlock ABI 3 to 5 still gets the worker, without that scope. A kernel without Landlock,
+or with one before ABI 3, which cannot deny a truncation, gets no worker at all: the worker answers
+`K` and the exec path takes every video. The
 worker is also not dumpable, which children inherit, so no process of the same user can ptrace it or
 read its descriptors.
 
@@ -2938,7 +2942,7 @@ answers. The child never holds its reply socket, so a reply that closes with no 
 the worker died.
 
 **Every failure of the worker falls back, and none judges a file.** No worker, a library that will
-not load, no Landlock, a request that cannot be sent, an `N`, a reply that closes with no byte, or
+not load, no Landlock that can deny a truncation, a request that cannot be sent, an `N`, a reply that closes with no byte, or
 no word within `JOB_TIMEOUT` plus 5 s all retire the worker for the rest of the process and send
 that job, and every later one, down the exec path. One stderr line names the cause, such as `flea:
 the thumbnail worker did not start (libffmpegthumbnailer.so.4 did not load), so videos use the
@@ -2954,7 +2958,10 @@ corner: minipc's hard `RLIMIT_AS` is unlimited, in the Hyprland session as in a 
 limit exists only where someone sets it. An input that no longer opens, or is no longer a regular
 file, is answered as `NotStarted` without touching the worker and records nothing, where the exec
 path writes a `fail/` marker for a file it cannot read; `tests/thumbs.sh` asserts the missing
-marker, which is what pins that branch. `FLEA_THUMB_WORKER=off` starts with the worker retired:
+marker for an unreadable video, which is what pins that branch. The request policy already answers
+a row that is not a regular file, so only a file swapped after that check reaches the other branch,
+and `workerlink::tests::an_input_that_is_not_a_file_to_judge_never_reaches_the_worker` drives a
+fifo and a vanished path through `generate` itself. `FLEA_THUMB_WORKER=off` starts with the worker retired:
 `tests/thumbs-exec.sh` runs all of `tests/thumbs.sh` that way inside `tests/run-all.sh`, and it is
 how an operator gets the exec path back.
 

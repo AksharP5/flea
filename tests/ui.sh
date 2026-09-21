@@ -3835,10 +3835,14 @@ case_icons() {
     # Empty on purpose: the MIME comes from the name, and a real jpeg would grow a thumbnail once Task 7 lands.
     : > "$dir/photo.jpg"
     ln -s "$dir/subdir" "$dir/linkdir"
+    # No ui.json at all, a first run's state, so these rows take the window's own default density.
+    sandbox_scratch "$fixture_root/icons-state"
+    export XDG_STATE_HOME="$fixture_root/icons-state"
     launch "$dir"
     wait_listing 5
     local row_height i y0 y1 pitch
     row_height=$(ipc fileRowHeight)
+    (( row_height < $(ipc metrics | cut -d' ' -f4) )) || fail "a first run drew $row_height px rows, not the compact default below the board's row"
     for i in 0 1 2 3 4; do
         printf 'ICONS row=%s name=%q glyph=%q\n' "$i" "$(ipc rowAt "$i")" "$(ipc rowGlyph "$i")"
     done
@@ -7726,21 +7730,24 @@ case_dual() {
         '.focused == 0 and .panes[0].path == $left and .panes[1].path == $right' >/dev/null \
         || fail "dual: a tap on the left pane's parent crumb left $(ipc dualState | jq -c '[.focused, .panes[0].path, .panes[1].path]')"
     [[ "$(ipc pathBarOpen)" == "false" ]] || fail "dual: a single tap on a pane crumb opened the path bar"
-    # A double click types the path wherever it lands on the strip: the padding before the first crumb, then a crumb.
-    local strip sx sy _sw sh press_x press_y
-    read -r sx sy _sw sh <<< "$(ipc panePathRect 0)"
+    # A double click types the path wherever it lands on the strip: the padding before the first crumb, the space after the last, then a crumb.
+    local strip sx sy sw sh press_x press_y crumb_inset
+    read -r sx sy sw sh <<< "$(ipc panePathRect 0)"
     [[ -n "$sh" ]] || fail "dual: the left pane path has no on-screen box"
+    # The crumbs start rowPaddingX in and fit inside it at the far end, so a press nearer either edge is on the strip's own area.
+    crumb_inset=$(ipc metrics | cut -d' ' -f3)
+    (( chrome_band_inset < crumb_inset )) || fail "dual: a press $chrome_band_inset px in would land on a crumb, which starts $crumb_inset px in"
     # The tap moved the pane up one level, so the parent is the second-last crumb of the new path.
     target=$(( $(ipc paneCrumbCount 0) - 2 ))
     centre=$(ipc paneCrumbCentre 0 "$target")
     [[ -n "$centre" ]] || fail "dual: left crumb $target has no on-screen centre after the tap"
     read -r cx cy <<< "$centre"
-    for strip in padding crumb; do
-        if [[ "$strip" == padding ]]; then
-            press_x=$((sx + chrome_band_inset)) press_y=$((sy + sh / 2))
-        else
-            press_x=$cx press_y=$cy
-        fi
+    for strip in padding tail crumb; do
+        case $strip in
+            padding) press_x=$((sx + chrome_band_inset)) press_y=$((sy + sh / 2)) ;;
+            tail) press_x=$((sx + sw - chrome_band_inset)) press_y=$((sy + sh / 2)) ;;
+            crumb) press_x=$cx press_y=$cy ;;
+        esac
         omarchy-drive click "$((press_x + wx))" "$((press_y + wy))" --double >/dev/null \
             || fail "dual: omarchy-drive refused the double click on the left pane path's $strip"
         settle
