@@ -16,8 +16,9 @@ ShellRoot {
         implicitHeight: 600
         // The launcher hands over the theme's background, and the fallback is ui/Theme.qml's own.
         color: Quickshell.env("FLEA_FIRST_PAINT") || "#101315"
-        // Long enough for a drawn window's first frame, short enough that an undrawn one still loads.
-        readonly property int bodyBackstopMs: 250
+        // Above the cold floor for an empty window's first buffer, about 200 ms, so a window that
+        // does draw is never preempted by this; one that never draws still gets its body.
+        readonly property int bodyBackstopMs: 1000
         property bool rendererFallbackStarted: false
 
         // Every *Centre reader on the IPC seam is this: an item's painted box, reduced to the point a test clicks.

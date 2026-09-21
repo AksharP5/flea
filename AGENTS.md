@@ -486,7 +486,9 @@ root now. The package ships all four.
 **The window does not wait for its contents.** The entry is the window: it maps with a background
 and nothing in it, and a `Connections` on the window's `frameSwapped` sets the `Loader`'s source
 once. A one-shot `Timer` does the same after `bodyBackstopMs`, because a window that maps where it
-is never drawn swaps no frame and would otherwise wait forever. `Loader.Error` logs and quits: an
+is never drawn swaps no frame and would otherwise wait forever. That interval sits above the cold
+floor for an empty window's first buffer, about 200 ms on this box, so it can never preempt a window
+that does draw and turn the backstop into the thing that delays the map. `Loader.Error` logs and quits: an
 empty window that stays empty is the failure that would otherwise say nothing at all.
 
 **What has to stay with the window.** `itemRect` is the window's, so `centreOf`, `rectOf` and
