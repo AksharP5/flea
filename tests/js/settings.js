@@ -220,12 +220,13 @@ function runCompletionRows(check) {
           find(Settings.rows("places", { data: { trashAutoEmpty: true } }), "trashAutoEmpty").on, true)
     var detailedPlaces = Settings.rows("places", { data: { places: { driveSize: true, trashCount: true } } })
     check("both rail detail controls reflect persisted on values", [find(detailedPlaces, "places.driveSize").on, find(detailedPlaces, "places.trashCount").on].join(","), "true,true")
-    var state = { data: { view: "grid", density: "compact", columns: ["name", "kind"],
+    var state = { data: { view: "grid", density: "comfortable", columns: ["name", "kind"],
         preview: { column: false, loadOn: "manual", thumbnails: "off", thumbSize: "xlarge", ctrlZoom: false } } }
     var view = Settings.rows("view", state)
     check("View displays the persisted view", find(view, "view").selected, "grid")
     check("View preserves optional column choices", find(view, "columns").value, "Name, Kind")
-    check("View density uses schema values", find(view, "density").selected, "compact")
+    check("View density uses schema values", find(view, "density").selected, "comfortable")
+    check("Row density defaults to compact", find(Settings.rows("view", { data: {} }), "density").selected, "compact")
     check("Folders first uses its distinct ordering mark", find(view, "foldersFirst").glyph, "folders-first")
     check("Preview rail mark differs from the three-column view", Settings.SECTIONS[Settings.sectionIndex("preview")].glyph, "preview")
     check("grouping explains the categories before it is enabled", find(view, "groupByKind").caption, "folders, photos, files")

@@ -4,7 +4,7 @@ use crate::jsondoc::{self, Json};
 // The shape and every default, copied from docs/flea-0.1.4-build-handoff.md section 1.
 pub const DEFAULTS: &str = r#"{
   "view": "list",
-  "density": "normal",
+  "density": "compact",
   "columns": ["name", "size", "date"],
   "addressBar": "breadcrumb",
   "sort": { "key": "name", "reverse": false },
@@ -210,7 +210,7 @@ mod tests {
             ]
         );
         assert_eq!(d.get("view").and_then(Json::as_str), Some("list"));
-        assert_eq!(d.get("density").and_then(Json::as_str), Some("normal"));
+        assert_eq!(d.get("density").and_then(Json::as_str), Some("compact"));
         assert_eq!(d.get("addressBar").and_then(Json::as_str), Some("breadcrumb"));
         assert_eq!(d.get("keys").and_then(Json::as_str), Some("default"));
         assert_eq!(d.get("foldersFirst").and_then(Json::as_bool), Some(true));

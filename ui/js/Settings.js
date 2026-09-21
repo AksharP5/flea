@@ -312,7 +312,7 @@ function viewRows(state) {
         choice("view", "Last-used view", undefined, ["list", "columns", "grid", "dual"],
                ["List", "Columns", "Grid", "Dual pane"], data.view || "list"),
         choice("density", "Row density", "list", ["compact", "normal", "comfortable"],
-               ["Compact", "Normal", "Comfortable"], data.density || "normal"),
+               ["Compact", "Normal", "Comfortable"], data.density || "compact"),
         { kind: "action", id: "columns", label: "Columns", glyph: "columns",
           value: columns.map(function (key) { return key.charAt(0).toUpperCase() + key.slice(1) }).join(", ") },
         choice("addressBar", "Address bar", undefined, ["path", "breadcrumb"],

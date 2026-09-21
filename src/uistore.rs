@@ -359,14 +359,14 @@ mod tests {
         let d = TestDir::new("uistore-settle");
         let s = store(&d);
         fs::create_dir_all(d.join("state").join("flea")).expect("state dir");
-        fs::write(s.file(), r#"{"columns":["name","size","owner"],"density":"compact","fromANewerFlea":{"a":1}}"#).expect("write");
+        fs::write(s.file(), r#"{"columns":["name","size","owner"],"density":"comfortable","fromANewerFlea":{"a":1}}"#).expect("write");
         s.settle().expect("settle");
         let body = fs::read_to_string(s.file()).expect("read back");
         assert!(!body.contains("owner"), "the refused column must not survive the settle: {}", body);
         let stored = jsondoc::parse(&body).expect("valid JSON on disk");
         let cols: Vec<&str> = stored.get("columns").and_then(Json::as_array).expect("columns").iter().filter_map(Json::as_str).collect();
         assert_eq!(cols, ["name", "size", "date"], "the refused array falls back to the shipped one");
-        assert_eq!(stored.get("density").and_then(Json::as_str), Some("compact"), "a good key beside it stands");
+        assert_eq!(stored.get("density").and_then(Json::as_str), Some("comfortable"), "a good key beside it stands");
         assert!(stored.get("fromANewerFlea").is_some(), "a newer Flea's own key still survives");
         let settled = fs::read_to_string(s.file()).expect("settled");
         let ino = fs::metadata(s.file()).expect("meta").ino();

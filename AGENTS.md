@@ -566,7 +566,9 @@ trusting whatever `dest` currently holds.
 `~/.local/state/flea/ui.json`, or `$XDG_STATE_HOME/flea/ui.json` when that is set and not empty, is
 the one file Flea writes for itself. `src/uischema.rs` holds the shipped shape and every default,
 copied from the 0.1.4 build handoff; `src/uistate.rs` holds the merges; `src/uistore.rs` holds the
-paths, the lock and the write.
+paths, the lock and the write. One default has moved since that handoff: row density is `compact` from
+0.3.2, GM's ruling. Every write stores the whole document, so a state file any earlier Flea wrote keeps
+the `normal` it recorded, and only state that never stored a density takes the new default.
 
 **One update path, and the one front end in this tree goes through it.** `flea --ui-state` prints
 the merged document and writes nothing. `flea --ui-state '<json object>'` merges that patch through

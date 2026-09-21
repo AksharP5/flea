@@ -234,9 +234,9 @@ mod tests {
 
     #[test]
     fn an_unknown_value_costs_exactly_one_key_and_leaves_every_other_alone() {
-        let merged = from_file(r#"{"view":"miller","density":"compact","hidden":true}"#);
+        let merged = from_file(r#"{"view":"miller","density":"comfortable","hidden":true}"#);
         assert_eq!(merged.get("view").and_then(Json::as_str), Some("list"));
-        assert_eq!(merged.get("density").and_then(Json::as_str), Some("compact"));
+        assert_eq!(merged.get("density").and_then(Json::as_str), Some("comfortable"));
         assert_eq!(merged.get("hidden").and_then(Json::as_bool), Some(true));
     }
 
@@ -390,10 +390,10 @@ mod tests {
             assert!(message.contains("columns"), "{} should name columns, got {}", bad, message);
         }
         // A file carrying one costs that key its own default, and the key beside it still stands.
-        let read = from_file(r#"{"columns":["size","size"],"density":"compact"}"#);
+        let read = from_file(r#"{"columns":["size","size"],"density":"comfortable"}"#);
         let cols: Vec<&str> = read.get("columns").and_then(Json::as_array).expect("columns").iter().filter_map(Json::as_str).collect();
         assert_eq!(cols, ["name", "size", "date"]);
-        assert_eq!(read.get("density").and_then(Json::as_str), Some("compact"));
+        assert_eq!(read.get("density").and_then(Json::as_str), Some("comfortable"));
     }
 
     // hiddenCols named what was hidden; columns names what is shown, so the migration inverts it.

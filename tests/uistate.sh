@@ -129,10 +129,10 @@ check "a malformed file reads as the defaults" "1" "$(echo "$out" | grep -c '"vi
 # An unknown value costs one key and every other key in the file stands.
 fresh
 mkdir -p "$STATE/flea"
-printf '{"view":"miller","density":"compact","hidden":true}\n' > "$UI"
+printf '{"view":"miller","density":"comfortable","hidden":true}\n' > "$UI"
 out=$(flea_ui 2>&1)
 check "an unknown value falls back to its default" "1" "$(echo "$out" | grep -c '"view": "list"')"
-check "the key beside it is untouched" "1" "$(echo "$out" | grep -c '"density": "compact"')"
+check "the key beside it is untouched" "1" "$(echo "$out" | grep -c '"density": "comfortable"')"
 check "the second key beside it is untouched" "1" "$(echo "$out" | grep -c '"hidden": true')"
 
 # A caller that sends junk is told which key, and nothing is half applied.
@@ -183,10 +183,10 @@ done
 # A hand edit is not a patch: it costs that one key its own default and the key beside it stands.
 fresh
 mkdir -p "$STATE/flea"
-printf '{"columns":["name","size","size"],"density":"compact"}\n' > "$UI"
+printf '{"columns":["name","size","size"],"density":"comfortable"}\n' > "$UI"
 out=$(flea_ui 2>&1)
 check "a duplicated column in the file falls back to the shipped set" "1" "$(echo "$out" | tr -d ' \n' | grep -c '"columns":\["name","size","date"\]')"
-check "the key beside the refused columns array stands" "1" "$(echo "$out" | grep -c '"density": "compact"')"
+check "the key beside the refused columns array stands" "1" "$(echo "$out" | grep -c '"density": "comfortable"')"
 
 # The path is predictable, so a link planted at it is refused and what it points at is untouched.
 fresh
@@ -260,12 +260,12 @@ check "and does not rewrite the file to say so" "$before_migrate_ino" "$(stat -c
 # must answer the same question the same way.
 fresh
 mkdir -p "$STATE/flea"
-printf '{"columns":["name","size","owner"],"density":"compact","fromANewerFlea":{"a":1}}\n' > "$UI"
+printf '{"columns":["name","size","owner"],"density":"comfortable","fromANewerFlea":{"a":1}}\n' > "$UI"
 env WAYLAND_DISPLAY=flea-uistate-test-display PATH=/nonexistent-flea-test-path \
     XDG_STATE_HOME="$STATE" XDG_CONFIG_HOME="$CONFIG" $BIN --gui </dev/null >/dev/null 2>&1
 check "the launch settles a refused value out of the file" "0" "$(grep -c 'owner' "$UI")"
 check "the settled file carries the shipped columns instead" "1" "$(tr -d ' \n' < "$UI" | grep -c '"columns":\["name","size","date"\]')"
-check "the settle leaves a good key beside it alone" "1" "$(grep -c '"density": "compact"' "$UI")"
+check "the settle leaves a good key beside it alone" "1" "$(grep -c '"density": "comfortable"' "$UI")"
 check "the settle keeps a newer Flea's own key" "1" "$(grep -c 'fromANewerFlea' "$UI")"
 settled=$(cat "$UI")
 settled_ino=$(stat -c '%i' "$UI")
@@ -282,7 +282,7 @@ check "and does not rewrite a file that is already settled" "$settled_ino" "$(st
 # in. That is the settle alone, and the block below pins what the next patch does to the same file.
 fresh
 mkdir -p "$STATE/flea"
-printf '{\n  "columns": ["name", "size"],\n  "density": "compact",\n}\n' > "$UI"
+printf '{\n  "columns": ["name", "size"],\n  "density": "comfortable",\n}\n' > "$UI"
 broken_sha=$(sha256sum "$UI" | cut -d' ' -f1)
 broken_ino=$(stat -c '%i' "$UI")
 out=$(env WAYLAND_DISPLAY=flea-uistate-test-display PATH=/nonexistent-flea-test-path \
@@ -299,7 +299,7 @@ out=$(flea_ui '{"hidden":true}' 2>&1); rc=$?
 check "a patch onto that same file exits 0" "0" "$rc"
 check "and does not leave the operator's bytes" "1" "$([ "$(sha256sum "$UI" | cut -d' ' -f1)" != "$broken_sha" ] && echo 1 || echo 0)"
 check "it writes the full default document instead" "23" "$(grep -c '^  "' "$UI")"
-check "so the hand-written key is gone" "1" "$(grep -c '"density": "normal"' "$UI")"
+check "so the hand-written key is gone" "1" "$(grep -c '"density": "compact"' "$UI")"
 check "and the patch itself landed" "1" "$(grep -c '"hidden": true' "$UI")"
 
 # A hand-edited number Rust's f64 parse takes and JSON does not is the same case: parse_number
@@ -307,12 +307,12 @@ check "and the patch itself landed" "1" "$(grep -c '"hidden": true' "$UI")"
 # it into bytes the window's own JSON.parse would then refuse.
 fresh
 mkdir -p "$STATE/flea"
-printf '{"places":{"sidebarWidth":0192},"density":"compact"}\n' > "$UI"
+printf '{"places":{"sidebarWidth":0192},"density":"comfortable"}\n' > "$UI"
 rust_only_sha=$(sha256sum "$UI" | cut -d' ' -f1)
 env WAYLAND_DISPLAY=flea-uistate-test-display PATH=/nonexistent-flea-test-path \
     XDG_STATE_HOME="$STATE" XDG_CONFIG_HOME="$CONFIG" $BIN --gui </dev/null >/dev/null 2>&1
 check "a leading-zero literal is not written back into ui.json" "$rust_only_sha" "$(sha256sum "$UI" | cut -d' ' -f1)"
-check "and that file reads as the full default shape" "1" "$(flea_ui 2>&1 | tr -d ' \n' | grep -c '"density":"normal"')"
+check "and that file reads as the full default shape" "1" "$(flea_ui 2>&1 | tr -d ' \n' | grep -c '"density":"compact"')"
 
 # The same for a document that is valid JSON but not the object the merge reads.
 fresh
@@ -348,7 +348,7 @@ check "and leaves that file byte for byte" "$notext_sha" "$(sha256sum "$UI" | cu
 # and not the file, so this guard is the only thing between one settings write and every key in it.
 fresh
 mkdir -p "$STATE/flea"
-printf '{\n  "columns": ["name", "size"],\n  "density": "compact",\n  "fromANewerFlea": {"a": 1}\n}\n' > "$UI"
+printf '{\n  "columns": ["name", "size"],\n  "density": "comfortable",\n  "fromANewerFlea": {"a": 1}\n}\n' > "$UI"
 denied_sha=$(sha256sum "$UI" | cut -d' ' -f1)
 denied_ino=$(stat -c '%i' "$UI")
 chmod 000 "$UI"

@@ -8086,12 +8086,13 @@ settings_view() {
     chrome=$(token_of chromeHeight)
     rail=$(token_of railRowHeight)
     before_card=$(ipc settingsCardRect)
-    key h >/dev/null; settle
-    settings_wait_value '.density == "compact"'
-    [[ "$(token_of chromeHeight)" == "$chrome" && "$(token_of railRowHeight)" == "$rail" && "$(ipc settingsCardRect)" == "$before_card" ]] \
-        || fail "settings: row density changed shared chrome, rail, or Settings card geometry"
+    # Compact is the default from 0.3.2, so the first step right lands on Normal.
     key l >/dev/null; settle
     settings_wait_value '.density == "normal"'
+    [[ "$(token_of chromeHeight)" == "$chrome" && "$(token_of railRowHeight)" == "$rail" && "$(ipc settingsCardRect)" == "$before_card" ]] \
+        || fail "settings: row density changed shared chrome, rail, or Settings card geometry"
+    key h >/dev/null; settle
+    settings_wait_value '.density == "compact"'
     settings_click_control hidden
     settings_wait_value '.hidden == true'
     [[ "$(ipc showHidden)" == "true" ]] || fail "settings: Show hidden control has no listing consumer"
