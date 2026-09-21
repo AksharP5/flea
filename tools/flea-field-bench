@@ -52,6 +52,8 @@ TUI_CONF_SRC="$FLEA_REPO/tools/flea-bench-tui"
 TUI_CONF=""
 # Cleared before the trap, so the cleanup can never remove a directory the caller named in its environment.
 FLEA_STATE=""
+# Set at the first launch, so the cleanup never kills an operator's window the start-up refusal left alone.
+ENTRANT_LAUNCHED=""
 # The bracket's terminal, named once. foot is sixel only and every entrant here that previews at all
 # prefers the Kitty protocol, so the old bracket's zero across all eight was this choice and not a
 # result about the entrants.
@@ -652,6 +654,7 @@ run_one() {
   now_ms; t0=$NOW_MS
   deadline=$(( t0 + LAUNCH_TIMEOUT_MS ))
 
+  ENTRANT_LAUNCHED=yes
   eval "$shift_cmd" >/dev/null 2>&1 &
 
   # A TUI row's window belongs to its terminal, which the class this run gives it already names.
@@ -778,6 +781,10 @@ require_bench_idle
 # Everything this run made, and nothing else: the parked cache goes back, and the only directory
 # removed is the one mktemp -d handed out above, checked absolute and two components deep first.
 bench_cleanup() {
+  # A run that fails mid-entrant ends that entrant here, or it stays resident through every run after it.
+  watch_kill
+  # A subshell, because clean_bench can fail and an exit inside this trap would skip the restore below.
+  [ -n "$ENTRANT_LAUNCHED" ] && ( clean_bench )
   restore_thumbs
   case ${TUI_CONF:-} in
     /*/*) rm -rf "$TUI_CONF" ;;
