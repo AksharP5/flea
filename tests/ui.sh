@@ -4273,7 +4273,7 @@ case_renderer() {
     local retried
     retried=$(grep -c -- '--gui' "$relaunched" || true)
     [[ "$retried" == "0" ]] || fail "the retry fired for a renderer the operator named: $(cat "$relaunched")"
-    # The positive arm no scene-graph failure here can raise, through the entry's own file: URL.
+    # The argv side of that arm, which the case above cannot reach: the helper by its own file: URL.
     local probe="$dir/retry-probe.log"
     : > "$probe"
     env RETRY_HELPER="$flea_ui/RendererRetry.qml" RETRY_BACKEND=vulkan \

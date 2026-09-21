@@ -108,9 +108,7 @@ run_once() {
         "$bin" --prewarm "$dir" "$first" "$prewarm_path" || fail "prewarm failed"
     fi
 
-    # Through flea --gui and not a bare qs, because the launcher chooses the renderer, hands the
-    # entry its first-paint colour and trades the platform theme: a direct qs launch times a path
-    # the product does not take. FLEA_PATH is the launcher's own argument here.
+    # Through flea --gui, not a bare qs: the launcher hands over the first-paint colour and trades the platform theme.
     if [ "$generate_prewarm" = yes ]; then
         QSG_RHI_BACKEND="${QSG_RHI_BACKEND:-vulkan}" FLEA_PREWARM="$prewarm_path" FLEA_UI="$ui" FLEA_BIN="$bin" \
             "$bin" --gui "$dir" >"$log" 2>&1 &

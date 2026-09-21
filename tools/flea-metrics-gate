@@ -4,6 +4,7 @@
 # Start one first, on a listing of your own making, never a real directory (hard rule 9):
 #   QSG_RHI_BACKEND=vulkan FLEA_PATH=$(mktemp -d) FLEA_BIN=target/release/flea qs -p ui/boot &
 # The renderer is named because src/gui.rs owns that choice and a direct qs launch never runs it.
+# That launch also skips the first-paint colour and the platform-theme trade, and neither moves a token.
 # FLEA_RENDERER_AUTOMATIC stays unset, so no QML retry can relaunch Flea underneath the gate mid-run.
 # Reads the seam and never the source: a theme's shell.toml can pin body-small or row-padding-x, so
 # the only number that counts is the one the app resolved. A token that exists and is spelled right

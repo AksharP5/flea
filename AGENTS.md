@@ -115,9 +115,10 @@ this tree yet: `flea --tui` says so and exits 2.
    Vulkan baseline they were recorded against. A direct launch now bypasses two more things the
    launcher does, `FLEA_FIRST_PAINT` and the gtk3 trade of "The first window", so anything that
    TIMES a launch goes through `$FLEA_BIN --gui` instead: `tools/flea-field-bench` always did, and
-   `tools/flea-first-paint` was moved onto it when this landed. `tools/flea-metrics-gate` times
-   nothing and the three direct `qs` launches left in `tests/ui.sh` assert a cursor, a selection
-   and the renderer retry rather than a duration, so each is still the right launch for its job.
+   `tools/flea-first-paint` was moved onto it when this landed. `tools/flea-metrics-gate` starts
+   nothing and times nothing, it reads the token seam over IPC from a Flea the operator started, and
+   the four direct `qs` launches in `tests/ui.sh` assert a cursor, a selection, a scene-graph error
+   and the retry helper's argv rather than a duration, so each is still the right launch for its job.
    Preview and QtMultimedia are now in the tree and the laziness held: `ui/PreviewMedia.qml`
    is the only file that imports QtMultimedia, reached through a `Loader` built by the first
    press of play, because QtMultimedia costs 20 MB before it plays anything.
