@@ -616,6 +616,19 @@ clean_bench() {
     IFS='|' read -r comm token <<< "$row"
     kill_entrant "$comm" "$token"
   done
+  close_fixture_dialogs
+}
+
+# An entrant this run killed can leave Hyprland's not-responding dialog naming its window, and that
+# dialog then floats over, and takes focus from, every entrant after it: measured, pcmanfm's did.
+# Sample input: hyprland-dialog's cmdline "--title Application Not Responding --text An application flea-media-btrfs - pcmanfm is not responding. ..."
+close_fixture_dialogs() {
+  local pid
+  for pid in $(pgrep -x hyprland-dialog 2>/dev/null); do
+    tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null | grep -Fq -- "An application ${FIXTURE##*/} - " || continue
+    printf 'closing the not-responding dialog %s an entrant left over %s\n' "$pid" "${FIXTURE##*/}" >&2
+    kill "$pid" 2>/dev/null
+  done
 }
 
 # This run kills everything in KILL_TARGETS and, with DROP_THUMBS=yes, removes the shared cache out from under it.
@@ -633,6 +646,8 @@ require_bench_idle() {
     waited=$(( waited + 10 ))
   done
   BENCH_IDLE_WAITED=$waited
+  # Any dialog on screen floats over the entrants and takes their focus, and one this run did not cause is not its to close.
+  pgrep -x hyprland-dialog >/dev/null && fail "a hyprland-dialog is on screen, and it would float over and take focus from every entrant"
   [ "$waited" -gt 0 ] && printf 'the box settled after %ss at load %s\n' "$waited" "$load" >&2
   for row in "${KILL_TARGETS[@]}"; do
     IFS='|' read -r comm token <<< "$row"
