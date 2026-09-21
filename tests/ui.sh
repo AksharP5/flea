@@ -4273,12 +4273,16 @@ case_renderer() {
     local retried
     retried=$(grep -c -- '--gui' "$relaunched" || true)
     [[ "$retried" == "0" ]] || fail "the retry fired for a renderer the operator named: $(cat "$relaunched")"
-    # The argv side of that arm, which the case above cannot reach: the helper by its own file: URL.
-    local probe="$dir/retry-probe.log"
+    # The argv side of that arm, from a root carrying ui/boot's own two symlinks: the helper implicitly imports ui/, whose qmldir singletons import qs.Commons, and qs: resolves against the root.
+    local proberoot="$dir/retry-cfg" probe="$dir/retry-probe.log"
+    mkdir -p "$proberoot"
+    cp -a "$flea_ui/boot/Commons" "$flea_ui/boot/Ui" "$proberoot/" \
+        || fail "the boot root has no Commons or Ui to copy, so this probe would test its own fake root"
+    cp "$repo/tests/renderer-retry.qml" "$proberoot/probe.qml"
     : > "$probe"
     env RETRY_HELPER="$flea_ui/RendererRetry.qml" RETRY_BACKEND=vulkan \
         FLEA_RENDERER_AUTOMATIC=1 FLEA_BIN="$dir/flea-stub" QT_QPA_PLATFORM=offscreen \
-        timeout 20 qs -p "$repo/tests/renderer-retry.qml" > "$probe" 2>&1
+        timeout 20 qs -p "$proberoot/probe.qml" > "$probe" 2>&1
     local want='RETRY argv ["/usr/bin/env","QSG_RHI_BACKEND=opengl","'"$dir/flea-stub"'","--gui"]'
     grep -aqF "$want" "$probe" \
         || fail "the retry helper did not answer with the argv Renderer.js names: $(grep -a RETRY "$probe" | head -2)"

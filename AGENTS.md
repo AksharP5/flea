@@ -521,6 +521,12 @@ not two.
 loads, and the first launch after each update is slow once, 1.7 to 3.0 s on this box, while Qt
 writes its 121 cache files with an `fdatasync` each. Every later launch is fast, across reboots.
 
+**The retry helper drags `ui/qmldir` with it, which is another reason it is loaded late.**
+`ui/RendererRetry.qml` implicitly imports its own directory, so compiling it compiles every
+singleton `ui/qmldir` names, and those import `qs.Commons`, which resolves against the CONFIG ROOT.
+Production's root is `ui/boot` and carries the two symlinks, so it resolves; a probe launched from
+any other root answers `Type Favourites unavailable`, which is how this was found.
+
 **The chooser's own failure path cost three attempts, and the working one is a late look.** A
 missing `ui/PickerWindow.qml` is not a Quickshell config error: the entry loads, the window never
 arrives, and the process sits there while `tools/flea-portal`'s caller waits out its 600 s, which is
