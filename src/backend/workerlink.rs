@@ -70,19 +70,36 @@ pub fn worker_shape(spec: &Spec) -> Option<bool> {
     (input && output && size).then_some(film_strip)
 }
 
-// Why a worker that did not answer READY is not serving, from its first byte and how long it took; None before the limit is an exit, not a timeout.
-fn why_not(answer: Option<u8>, waited: Duration) -> String {
-    match answer {
-        Some(NO_LIBRARY) => format!("{} did not load", SONAME.to_string_lossy()),
-        Some(NO_LANDLOCK) => String::from("this kernel has no Landlock"),
-        Some(other) => format!("it answered the unknown byte {}", other),
-        None if waited >= READY_LIMIT => format!("it did not answer within {} s", READY_LIMIT.as_secs()),
-        None => String::from("it exited before it answered"),
+// What one wait on a socket heard, kept apart so a message never has to guess an exit from a timeout.
+enum Heard {
+    Byte(u8),
+    Silence,
+    Closed,
+    Broken(std::io::Error),
+}
+
+// Why a worker that did not answer READY is not serving.
+fn why_not(heard: &Heard) -> String {
+    match heard {
+        Heard::Byte(NO_LIBRARY) => format!("{} did not load", SONAME.to_string_lossy()),
+        Heard::Byte(NO_LANDLOCK) => String::from("this kernel has no Landlock"),
+        Heard::Byte(other) => format!("it answered the unknown byte {}", other),
+        Heard::Silence => format!("it did not answer within {} s", READY_LIMIT.as_secs()),
+        Heard::Closed => String::from("it exited before it answered"),
+        Heard::Broken(e) => format!("its socket failed: {}", e),
     }
 }
 
-// Waits for one byte on a socket, or answers None on a timeout, a closed peer or an error.
-fn read_byte(sock: &OwnedFd, limit: Duration) -> Option<u8> {
+// Why a job's answer retires the worker: an N is a failure of this machine inside the child, and anything else but S or F is the worker gone.
+fn gone_because(heard: &Heard) -> &'static str {
+    match heard {
+        Heard::Byte(NOT_STARTED) => "failed a job on this machine",
+        _ => "stopped answering",
+    }
+}
+
+// Waits for one byte on a socket until the limit; a packet that is not one byte is a broken socket.
+fn read_byte(sock: &OwnedFd, limit: Duration) -> Heard {
     let deadline = std::time::Instant::now() + limit;
     loop {
         let left = deadline.saturating_duration_since(std::time::Instant::now());
@@ -90,17 +107,20 @@ fn read_byte(sock: &OwnedFd, limit: Duration) -> Option<u8> {
         let mut fds = PollFd { fd: sock.as_raw_fd(), events: POLLIN, revents: 0 };
         let ready = unsafe { poll(&mut fds, 1, ms) };
         if ready == 0 {
-            return None;
+            return Heard::Silence;
         }
         if ready < 0 {
-            if std::io::Error::last_os_error().raw_os_error() == Some(EINTR) {
+            let error = std::io::Error::last_os_error();
+            if error.raw_os_error() == Some(EINTR) {
                 continue;
             }
-            return None;
+            return Heard::Broken(error);
         }
         return match fdpass::recv(sock.as_raw_fd()) {
-            Ok(Some(message)) if message.payload.len() == 1 => Some(message.payload[0]),
-            _ => None,
+            Ok(Some(message)) if message.payload.len() == 1 => Heard::Byte(message.payload[0]),
+            Ok(Some(_)) => Heard::Broken(std::io::Error::new(std::io::ErrorKind::InvalidData, "a reply was not one byte")),
+            Ok(None) => Heard::Closed,
+            Err(e) => Heard::Broken(e),
         };
     }
 }
@@ -125,15 +145,13 @@ impl WorkerLink {
             .stderr(Stdio::null())
             .spawn()
             .map_err(|e| format!("bwrap did not start: {}", e))?;
-        let asked = std::time::Instant::now();
-        let answer = read_byte(&mine, READY_LIMIT);
-        if answer == Some(READY) {
+        let heard = read_byte(&mine, READY_LIMIT);
+        if matches!(heard, Heard::Byte(READY)) {
             return Ok((child, mine));
         }
-        let waited = asked.elapsed();
         let _ = child.kill();
         let _ = child.wait();
-        Err(why_not(answer, waited))
+        Err(why_not(&heard))
     }
 
     // Holding the lock across the send keeps a request whole and lets one failure retire the worker for every thread.
@@ -190,16 +208,12 @@ impl WorkerLink {
         // Only the worker may hold the far end, or its death would never read as a closed socket here.
         drop(theirs);
         match read_byte(&reply, limit + REPLY_GRACE) {
-            Some(SUCCEEDED) => Some(Ran::Succeeded),
+            Heard::Byte(SUCCEEDED) => Some(Ran::Succeeded),
             // The exec path judges this file again, so only the thumbnailer program ever records a failure.
-            Some(FAILED) => None,
-            Some(NOT_STARTED) => {
-                WorkerLink::retire(&mut self.state.lock().unwrap(), "failed a job on this machine");
-                None
-            }
-            // No verdict at all is the worker dying or wedging, which says nothing about this file.
-            _ => {
-                WorkerLink::retire(&mut self.state.lock().unwrap(), "stopped answering");
+            Heard::Byte(FAILED) => None,
+            // An N, no verdict at all or an unknown byte says something about the worker and nothing about this file.
+            heard => {
+                WorkerLink::retire(&mut self.state.lock().unwrap(), gone_because(&heard));
                 None
             }
         }
@@ -242,10 +256,17 @@ mod tests {
 
     #[test]
     fn a_worker_that_is_not_serving_says_why() {
-        assert_eq!(why_not(Some(NO_LIBRARY), Duration::ZERO), "libffmpegthumbnailer.so.4 did not load");
-        assert_eq!(why_not(Some(NO_LANDLOCK), Duration::ZERO), "this kernel has no Landlock");
-        assert_eq!(why_not(None, Duration::ZERO), "it exited before it answered");
-        assert_eq!(why_not(None, READY_LIMIT), "it did not answer within 5 s");
+        assert_eq!(why_not(&Heard::Byte(NO_LIBRARY)), "libffmpegthumbnailer.so.4 did not load");
+        assert_eq!(why_not(&Heard::Byte(NO_LANDLOCK)), "this kernel has no Landlock");
+        assert_eq!(why_not(&Heard::Closed), "it exited before it answered");
+        assert_eq!(why_not(&Heard::Silence), "it did not answer within 5 s");
+    }
+
+    #[test]
+    fn a_retired_worker_says_whether_the_machine_or_the_worker_failed() {
+        assert_eq!(gone_because(&Heard::Byte(NOT_STARTED)), "failed a job on this machine");
+        assert_eq!(gone_because(&Heard::Closed), "stopped answering");
+        assert_eq!(gone_because(&Heard::Byte(b'?')), "stopped answering");
     }
 
     fn spec(exec: &str) -> Spec {

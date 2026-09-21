@@ -2867,12 +2867,13 @@ file: measured inside this exact bwrap, a child holding one reopened `/proc/self
 and could have rewritten the operator's video, which the exec path's `--ro-bind` makes impossible.
 With the ruleset the same reopen is `EACCES`, a direct open of the path is refused too, the read
 reopen still works and the file is untouched. `thumbworker::tests::
-a_confined_child_holds_only_its_job_and_can_write_or_signal_nothing` plants a socket on descriptor
-0, where the worker's request socket sits, runs `confine()` itself in a copy of the test binary and
-reports through descriptor 4, the way a job writes its PNG, that exactly descriptors 0 to 4 are
-open, 0 to 2 are `/dev/null`, both limits are set, neither the input nor its path opens for writing,
-the input still reads and the parent can no longer be signalled; `socket_before=true`, `before=true`
-and `signalled_before=true` are the negative controls. **The signal scope is what lets the children
+a_confined_child_holds_only_its_job_and_can_write_or_signal_nothing` holds its two files well above
+3 and 4, where recvmsg leaves a job's, plants a socket on descriptor 0, where the worker's request
+socket sits, runs `confine()` itself in a copy of the test binary and reports through descriptor 4,
+the way a job writes its PNG, that exactly descriptors 0 to 4 are open, 0 to 2 are `/dev/null`, 3 is
+the input, both limits are set, neither the input nor its path opens for writing, the input still
+reads and the parent can no longer be signalled; `socket_before=true`, `before=true` and
+`signalled_before=true` are the negative controls. **The signal scope is what lets the children
 share one PID namespace**: every exec-path job had a namespace of its own, and without the scope a
 decoder compromised by one video could kill a sibling mid-decode, or the worker. corner: a kernel
 between Landlock ABI 1 and 5 still gets the worker, without that scope. A kernel without Landlock
@@ -2891,8 +2892,10 @@ its word. `N` retires the worker, as below. corner: a video that hangs the decod
 deadlines, one in the worker and one on the exec path, and costs them once, because the exec path's
 failure records the marker. `workerlink::tests::
 only_a_thumbnail_is_final_and_a_machine_failure_retires_the_worker` answers one request each way
-from a stand-in worker and pins all three arms. The child never holds its reply socket, so a reply
-that closes with no byte can only mean the worker died.
+from a stand-in worker and pins that only `S` publishes, that `F` keeps the worker and that `N`
+retires it, and `gone_because` is what names an `N` apart from a worker that stopped answering. The
+child never holds its reply socket, so a reply that closes with no byte can only mean the worker
+died.
 
 **Every failure of the worker falls back, and none judges a file.** No worker, a library that will
 not load, no Landlock, a request that cannot be sent, an `N`, a reply that closes with no byte, or
