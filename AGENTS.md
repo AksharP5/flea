@@ -2866,7 +2866,12 @@ worker's stdin as `SCM_RIGHTS` (`backend/fdpass.rs`). The child the worker forks
   owner: measured on minipc, kernel 7.2 at Landlock ABI 10, a process under this ruleset alone
   reopened descriptor 3 for writing and got `EACCES`, then `fchmod`, `futimens` and `fsetxattr`
   through that same read-only descriptor all changed the operator's file, where the exec path's
-  `--ro-bind` answers `EROFS`. The numbers are the x86_64 ones in `asm/unistd_64.h`;
+  `--ro-bind` answers `EROFS`. The same filter refuses `fork`, `vfork` and a `clone` without
+  `CLONE_THREAD`, so a job can start threads, which die with it, and never a process that would
+  outlive the `SIGKILL` its deadline sends, where each exec-path job's own bwrap took every
+  descendant down with it; `clone3` answers `ENOSYS`, because its flags sit behind a pointer the
+  filter cannot read, and glibc then falls back to `clone`. The numbers are the x86_64 ones in
+  `asm/unistd_64.h`;
 - hands libav `/proc/self/fd/3` and writes the encoded PNG to descriptor 4.
 
 **The Landlock step is not optional, and here is why.** A read-only descriptor is not a read-only
@@ -2880,15 +2885,16 @@ lands one in a busy worker, plants a socket on descriptor 0, where the worker's 
 runs `confine()` itself in a copy of the test binary and reports through descriptor 4, the way a job
 writes its PNG, that exactly descriptors 0 to 4 are open, 0 to 2 are `/dev/null`, 3 is the input,
 both limits are set, neither the input nor its path opens for writing, the input still reads, the
-parent can no longer be signalled, its mode and times can no longer be set and `fsetxattr` and
-`ioctl` answer `EPERM`; the `_before` facts are the negative controls, taken unconfined with a
-`fchmod` to the file's own mode and a `futimens` that omits both times, so they change nothing.
-**The signal scope is what lets the children share one PID namespace**: every exec-path job had a
-namespace of its own, and without the scope a decoder compromised by one video could kill a sibling
-mid-decode, or the worker. corner: a kernel between Landlock ABI 1 and 5 still gets the worker,
-without that scope. A kernel without Landlock gets no worker at all: the worker answers `K` and the
-exec path takes every video. The worker is also not dumpable, which children inherit, so no process
-of the same user can ptrace it or read its descriptors.
+parent can no longer be signalled, its mode and times can no longer be set, `fsetxattr`, `ioctl` and
+`fork` answer `EPERM` and a thread still starts; the `_before` facts are the negative controls,
+taken unconfined with a `fchmod` to the file's own mode, a `futimens` that omits both times and a
+fork whose child only exits, so they change nothing. **The signal scope is what lets the children
+share one PID namespace**: every exec-path job had a namespace of its own, and without the scope a
+decoder compromised by one video could kill a sibling mid-decode, or the worker. corner: a kernel
+between Landlock ABI 1 and 5 still gets the worker, without that scope. A kernel without Landlock
+gets no worker at all: the worker answers `K` and the exec path takes every video. The worker is
+also not dumpable, which children inherit, so no process of the same user can ptrace it or read its
+descriptors.
 
 **The worker's only final verdict is a thumbnail.** It reaps each child through a pidfd, kills one
 still running at `JOB_TIMEOUT`, and writes one byte on that job's reply socket: `S` for exit 0, `F`
@@ -2902,9 +2908,11 @@ deadlines, one in the worker and one on the exec path, and costs them once, beca
 failure records the marker. `workerlink::tests::
 only_a_thumbnail_is_final_and_a_machine_failure_retires_the_worker` answers one request each way
 from a stand-in worker and pins that only `S` publishes, that `F` keeps the worker and that `N`
-retires it, and `gone_because` is what names an `N` apart from a worker that stopped answering. The
-child never holds its reply socket, so a reply that closes with no byte can only mean the worker
-died.
+retires it, and `gone_because` is what names an `N` apart from a worker that stopped answering.
+`thumbworker::tests::a_verdict_is_read_from_how_the_child_ended` forks a real child for each ending,
+exit 0, 1 and 2, a signal, and exit 0 or a hang past the deadline, and pins the byte `finish`
+answers. The child never holds its reply socket, so a reply that closes with no byte can only mean
+the worker died.
 
 **Every failure of the worker falls back, and none judges a file.** No worker, a library that will
 not load, no Landlock, a request that cannot be sent, an `N`, a reply that closes with no byte, or

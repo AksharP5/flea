@@ -185,7 +185,7 @@ answer_for() {
 mkdir -p "$D/worker"
 for i in 0 1 2; do cp "$FIXTURE/clip_6.mp4" "$D/worker/w$i.mp4"; done
 cp "$FIXTURE/clip_6.mp4" "$D/worker/w3-unreadable.mp4"; chmod 000 "$D/worker/w3-unreadable.mp4"
-coproc BK { exec timeout 120 $BIN --backend 2>/dev/null; }
+coproc BK { exec timeout 120 $BIN --backend 2>"$D/worker.err"; }
 printf '{"c":"list","path":"%s","first":10}\n{"c":"thumb","rows":[0]}\n' "$D/worker" >&"${BK[1]}"
 answer_for 0
 check "a video is answered with a thumbnail" "1" "$(echo "$ANSWER" | grep -c '"file":"/')"
@@ -210,6 +210,9 @@ if [ "${FLEA_THUMB_WORKER:-on}" != off ]; then
   check "a video after the worker died still gets a thumbnail" "1" "$(echo "$ANSWER" | grep -c '"file":"/')"
   check "and no worker is started again" "0" "$(workers_under "$BK_PID" | wc -l | tr -d ' ')"
 fi
+# Retiring a running worker says so once on stderr; a worker that was never started has nothing to retire.
+if [ "${FLEA_THUMB_WORKER:-on}" = off ]; then retired=0; else retired=1; fi
+check "the backend says the worker is gone exactly when it retired one" "$retired" "$(grep -c 'flea: the thumbnail worker .*, so videos use the thumbnailer program' "$D/worker.err")"
 printf '{"c":"quit"}\n' >&"${BK[1]}"
 wait "$BK_PID" 2>/dev/null
 # The two paths publish the same image: set_size(N, N) and the film strip are the CLI's -s and -f.

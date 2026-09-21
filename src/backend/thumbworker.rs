@@ -66,6 +66,8 @@ const SECCOMP_MODE_FILTER: u64 = 2;
 // seccomp_data on x86_64 holds the call number at byte 0 and the audit arch at byte 4.
 const SECCOMP_DATA_NR: u32 = 0;
 const SECCOMP_DATA_ARCH: u32 = 4;
+// The low word of seccomp_data.args[0], where clone(2) keeps its flags on little-endian x86_64.
+const SECCOMP_DATA_ARG0_LOW: u32 = 16;
 const AUDIT_ARCH_X86_64: u32 = 0xc000_003e;
 // An x32 call carries the x86_64 arch and this bit in its number, so every x32 call is refused rather than read past the list.
 const X32_SYSCALL_BIT: u32 = 0x4000_0000;
@@ -73,11 +75,13 @@ const X32_SYSCALL_BIT: u32 = 0x4000_0000;
 const BPF_LD_W_ABS: u16 = 0x20;
 const BPF_JEQ_K: u16 = 0x15;
 const BPF_JGE_K: u16 = 0x35;
+const BPF_JSET_K: u16 = 0x45;
 const BPF_RET_K: u16 = 0x06;
 const SECCOMP_RET_ALLOW: u32 = 0x7fff_0000;
 const SECCOMP_RET_KILL_PROCESS: u32 = 0x8000_0000;
 const SECCOMP_RET_ERRNO: u32 = 0x0005_0000;
 const EPERM: u32 = 1;
+const ENOSYS: u32 = 38;
 // Landlock leaves a file's mode, owner, times, xattrs and ioctl flags to its owner, which --ro-bind refused with EROFS; x86_64 numbers from asm/unistd_64.h, io_uring for its xattr ops.
 const METADATA_WRITES: &[(&str, u32)] = &[
     ("ioctl", 16),
@@ -104,6 +108,12 @@ const METADATA_WRITES: &[(&str, u32)] = &[
     ("removexattrat", 466),
     ("file_setattr", 469),
 ];
+// A process a job starts would outlive the SIGKILL finish() sends, which the exec path's own bwrap init never allowed.
+const NEW_PROCESSES: &[(&str, u32)] = &[("fork", 57), ("vfork", 58)];
+// clone(2) is allowed only for a thread, which dies with the job; clone3 answers ENOSYS because its flags sit behind a pointer, and glibc falls back to clone.
+const SYS_CLONE: u32 = 56;
+const SYS_CLONE3: u32 = 435;
+const CLONE_THREAD: u32 = 0x0001_0000;
 
 #[repr(C)]
 struct PollFd {
@@ -284,23 +294,40 @@ fn lock_down(abi: i64) -> Option<()> {
     }
 }
 
-// A foreign arch is killed, an x32 call or a listed one answers EPERM, and every other call runs.
-fn refuse_metadata_writes() -> Option<()> {
-    let listed = METADATA_WRITES.len();
-    let step = |code, jt, k| SockFilter { code, jt, jf: 0, k };
+// A foreign arch is killed, an x32 call, a listed call or a clone that is not a thread answers EPERM, clone3 answers ENOSYS, and every other call runs.
+fn install_call_filter() -> Option<()> {
+    let refused: Vec<u32> = METADATA_WRITES.iter().chain(NEW_PROCESSES).map(|(_, number)| *number).collect();
+    let x32_check = 4;
+    let first_listed = x32_check + 1;
+    let clone3_check = first_listed + refused.len();
+    let clone_check = clone3_check + 1;
+    let thread_check = clone_check + 2;
+    let allow = thread_check + 1;
+    let refuse = allow + 1;
+    let no_such_call = refuse + 1;
+    // A BPF jump counts the instructions it skips after the one that jumps.
+    let skip = |from: usize, to: usize| u8::try_from(to - from - 1).ok();
+    let op = |code, jt, jf, k| SockFilter { code, jt, jf, k };
     let mut program = vec![
-        step(BPF_LD_W_ABS, 0, SECCOMP_DATA_ARCH),
-        step(BPF_JEQ_K, 1, AUDIT_ARCH_X86_64),
-        step(BPF_RET_K, 0, SECCOMP_RET_KILL_PROCESS),
-        step(BPF_LD_W_ABS, 0, SECCOMP_DATA_NR),
+        op(BPF_LD_W_ABS, 0, 0, SECCOMP_DATA_ARCH),
+        op(BPF_JEQ_K, 1, 0, AUDIT_ARCH_X86_64),
+        op(BPF_RET_K, 0, 0, SECCOMP_RET_KILL_PROCESS),
+        op(BPF_LD_W_ABS, 0, 0, SECCOMP_DATA_NR),
+        op(BPF_JGE_K, skip(x32_check, refuse)?, 0, X32_SYSCALL_BIT),
     ];
-    // A jump counts the instructions it skips, so each match lands on the refusal after the allow.
-    program.push(step(BPF_JGE_K, u8::try_from(listed + 1).ok()?, X32_SYSCALL_BIT));
-    for (i, (_, number)) in METADATA_WRITES.iter().enumerate() {
-        program.push(step(BPF_JEQ_K, u8::try_from(listed - i).ok()?, *number));
+    for (i, number) in refused.iter().enumerate() {
+        program.push(op(BPF_JEQ_K, skip(first_listed + i, refuse)?, 0, *number));
     }
-    program.push(step(BPF_RET_K, 0, SECCOMP_RET_ALLOW));
-    program.push(step(BPF_RET_K, 0, SECCOMP_RET_ERRNO | EPERM));
+    program.push(op(BPF_JEQ_K, skip(clone3_check, no_such_call)?, 0, SYS_CLONE3));
+    program.push(op(BPF_JEQ_K, 0, skip(clone_check, allow)?, SYS_CLONE));
+    program.push(op(BPF_LD_W_ABS, 0, 0, SECCOMP_DATA_ARG0_LOW));
+    program.push(op(BPF_JSET_K, skip(thread_check, allow)?, skip(thread_check, refuse)?, CLONE_THREAD));
+    program.push(op(BPF_RET_K, 0, 0, SECCOMP_RET_ALLOW));
+    program.push(op(BPF_RET_K, 0, 0, SECCOMP_RET_ERRNO | EPERM));
+    program.push(op(BPF_RET_K, 0, 0, SECCOMP_RET_ERRNO | ENOSYS));
+    if program.len() != no_such_call + 1 {
+        return None;
+    }
     let filter = SockFprog { len: u16::try_from(program.len()).ok()?, filter: program.as_ptr() };
     (unsafe { prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &filter as *const SockFprog as u64, 0, 0) } == 0).then_some(())
 }
@@ -334,7 +361,7 @@ fn confine(input: RawFd, output: RawFd, abi: i64) -> Option<()> {
     set_limit(RLIMIT_CPU, u64::from(sandbox::CPU_SECONDS))?;
     set_limit(RLIMIT_AS, sandbox::ADDRESS_SPACE_BYTES)?;
     lock_down(abi)?;
-    refuse_metadata_writes()
+    install_call_filter()
 }
 
 // Runs in the forked child and never returns: the exit code is the verdict, and a panic is caught so it never unwinds into the worker's loop.
@@ -499,7 +526,9 @@ mod tests {
     const UTIME_OMIT: i64 = (1 << 30) - 2;
     const KEEP_TIMES: [Timespec; 2] = [Timespec { seconds: 0, nanoseconds: UTIME_OMIT }, Timespec { seconds: 0, nanoseconds: UTIME_OMIT }];
     // ioctl(2) FS_IOC_GETFLAGS, a read that only the filter refuses with EPERM.
-    const FS_IOC_GETFLAGS: u64 = 0x8008_6601;
+    const FS_IOC_GETFLAGS: usize = 0x8008_6601;
+    // A child that ends at once is readable on its pidfd long before this; it bounds a broken test, it times nothing.
+    const CHILD_WAIT_MS: c_int = 5000;
 
     #[repr(C)]
     struct Timespec {
@@ -513,12 +542,75 @@ mod tests {
         fn fchmod(fd: c_int, mode: u32) -> c_int;
         fn futimens(fd: c_int, times: *const [Timespec; 2]) -> c_int;
         fn fsetxattr(fd: c_int, name: *const c_char, value: *const c_void, size: usize, flags: c_int) -> c_int;
-        fn ioctl(fd: c_int, request: u64, ...) -> c_int;
+        fn ioctl(fd: i32, request: usize, ...) -> i32;
+        fn getpid() -> c_int;
+        fn pause() -> c_int;
     }
 
     // 0 for a call that worked, otherwise the errno it set.
     fn errno_of(result: c_int) -> i32 {
         if result == 0 { 0 } else { std::io::Error::last_os_error().raw_os_error().unwrap_or(-1) }
+    }
+
+    // 0 when a process could be forked and reaped, otherwise the errno fork set; the forked process only exits.
+    fn forked_and_reaped() -> i32 {
+        let pid = unsafe { fork() };
+        if pid == 0 {
+            unsafe { _exit(CHILD_OK) };
+        }
+        if pid < 0 {
+            return errno_of(pid);
+        }
+        let mut status: c_int = 0;
+        unsafe { waitpid(pid, &mut status, 0) };
+        0
+    }
+
+    // How a job's child ends in the verdict test.
+    enum Ends {
+        Exits(i32),
+        Dies,
+        Hangs,
+    }
+
+    // Forks a child that ends the given way, waits until it has ended without reaping it, and hands finish() the job.
+    fn job_that(ends: &Ends, reply: OwnedFd) -> Running {
+        let pid = unsafe { fork() };
+        if pid == 0 {
+            match ends {
+                Ends::Exits(code) => unsafe { _exit(*code) },
+                Ends::Dies => unsafe { kill(getpid(), SIGKILL) },
+                Ends::Hangs => loop {
+                    unsafe { pause() };
+                },
+            };
+            unsafe { _exit(CHILD_OK) };
+        }
+        assert!(pid > 0, "the test could not fork");
+        let pidfd = unsafe { OwnedFd::from_raw_fd(pidfd_open(pid, 0)) };
+        if !matches!(ends, Ends::Hangs) {
+            let mut ended = PollFd { fd: pidfd.as_raw_fd(), events: POLLIN, revents: 0 };
+            assert_eq!(unsafe { poll(&mut ended, 1, CHILD_WAIT_MS) }, 1, "the child never ended");
+        }
+        Running { pid, pidfd, reply, deadline: Instant::now() }
+    }
+
+    #[test]
+    fn a_verdict_is_read_from_how_the_child_ended() {
+        let cases = [
+            (Ends::Exits(CHILD_OK), false, SUCCEEDED),
+            (Ends::Exits(CHILD_REFUSED), false, FAILED),
+            (Ends::Exits(CHILD_MACHINE), false, NOT_STARTED),
+            (Ends::Dies, false, FAILED),
+            (Ends::Exits(CHILD_OK), true, FAILED),
+            (Ends::Hangs, true, FAILED),
+        ];
+        for (ends, past_deadline, verdict) in cases {
+            let (mine, theirs) = fdpass::pair().unwrap();
+            finish(job_that(&ends, mine), past_deadline);
+            let answer = fdpass::recv(theirs.as_raw_fd()).unwrap().expect("a verdict");
+            assert_eq!(answer.payload, vec![verdict], "past deadline {} wanted {}", past_deadline, verdict as char);
+        }
     }
 
     fn soft_limit(resource: c_int) -> u64 {
@@ -567,6 +659,7 @@ mod tests {
         let mode = std::fs::metadata(&victim).map(|m| m.permissions().mode() & MODE_BITS).unwrap_or(0);
         let chmod_before = unsafe { fchmod(reader, mode) } == 0;
         let times_before = unsafe { futimens(reader, &KEEP_TIMES) } == 0;
+        let fork_before = forked_and_reaped() == 0;
         if confine(reader, report, abi).is_none() {
             unsafe { _exit(CHILD_MACHINE) };
         }
@@ -575,11 +668,13 @@ mod tests {
         let xattr = errno_of(unsafe { fsetxattr(INPUT_FD, c"user.flea_probe".as_ptr(), b"1".as_ptr() as *const c_void, 1, 0) });
         let mut flags: c_long = 0;
         let ioctl_errno = errno_of(unsafe { ioctl(INPUT_FD, FS_IOC_GETFLAGS, &mut flags) });
+        let fork_errno = forked_and_reaped();
+        let thread = std::thread::Builder::new().spawn(|| true).map(|handle| handle.join().unwrap_or(false)).unwrap_or(false);
         let open: Vec<c_int> = (0..FD_CEILING).filter(|fd| unsafe { fcntl(*fd, F_GETFD, 0) } >= 0).collect();
         let nulls = (0..3).all(|fd| target(fd) == "/dev/null");
         let input_on_3 = target(INPUT_FD).ends_with("/victim.mp4");
         let facts = format!(
-            "socket_before={} nulls={} input_on_3={} before={} reopened={} direct={} readable={} signalled_before={} signalled={} chmod_before={} chmod={} times_before={} times={} xattr_errno={} ioctl_errno={} fds={:?} cpu={} as={}",
+            "socket_before={} nulls={} input_on_3={} before={} reopened={} direct={} readable={} signalled_before={} signalled={} chmod_before={} chmod={} times_before={} times={} xattr_errno={} ioctl_errno={} fork_before={} fork_errno={} thread={} fds={:?} cpu={} as={}",
             socket_before,
             nulls,
             input_on_3,
@@ -595,6 +690,9 @@ mod tests {
             times,
             xattr,
             ioctl_errno,
+            fork_before,
+            fork_errno,
+            thread,
             open,
             soft_limit(RLIMIT_CPU),
             soft_limit(RLIMIT_AS)
@@ -624,10 +722,11 @@ mod tests {
                 return;
             }
             let scoped = landlock_abi().is_some_and(|abi| abi >= LANDLOCK_SCOPE_SIGNAL_ABI);
-            // The *_before facts are the negative controls: unconfined, the same process holds a socket on 0, writes, signals, chmods and sets times.
+            // The *_before facts are the negative controls: unconfined, the same process holds a socket on 0, writes, signals, chmods, sets times and forks.
             let expected = format!(
-                "socket_before=true nulls=true input_on_3=true before=true reopened=false direct=false readable=true signalled_before=true signalled={} chmod_before=true chmod=false times_before=true times=false xattr_errno={} ioctl_errno={} fds=[0, 1, 2, 3, 4] cpu={} as={}",
+                "socket_before=true nulls=true input_on_3=true before=true reopened=false direct=false readable=true signalled_before=true signalled={} chmod_before=true chmod=false times_before=true times=false xattr_errno={} ioctl_errno={} fork_before=true fork_errno={} thread=true fds=[0, 1, 2, 3, 4] cpu={} as={}",
                 !scoped,
+                EPERM,
                 EPERM,
                 EPERM,
                 sandbox::CPU_SECONDS,
