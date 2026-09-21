@@ -16,8 +16,8 @@ ShellRoot {
         implicitHeight: 600
         // The launcher hands over the theme's background, and the fallback is ui/Theme.qml's own.
         color: Quickshell.env("FLEA_FIRST_PAINT") || "#101315"
-        // A first frame came 28 to 49 ms after completion here, cold or warm, so this is an order of
-        // magnitude clear of it and only a window that never draws is given its body by this.
+        // A first frame came 28 to 49 ms after completion here, so this sits an order of magnitude
+        // clear; it serves a window that never draws, and a frame later than this would lose the split.
         readonly property int bodyBackstopMs: 1000
         property bool rendererFallbackStarted: false
 

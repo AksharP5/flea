@@ -51,6 +51,9 @@ stop_wait_s=10
 # How many composited frames the edge check samples, and how far apart, before it calls the edge missing.
 edge_shots=10
 edge_shot_gap_s=0.3
+# How often group_gone looks, and how long a KILLed group may take to go before the run gives up.
+group_poll_s=0.1
+kill_wait_s=2
 # True once no live member of process group $1 remains, polled for at most $2 seconds.
 group_gone() {
     local deadline=$((SECONDS + $2)) pid alive
@@ -62,7 +65,7 @@ group_gone() {
         done
         [ "$alive" = 0 ] && return 0
         (( SECONDS < deadline )) || return 1
-        sleep 0.1
+        sleep "$group_poll_s"
     done
 }
 # The next theme must not overlap this one: a path-addressed ipc answers from the oldest instance.
@@ -72,7 +75,7 @@ stop() {
     if ! group_gone "$launched" "$stop_wait_s"; then
         fail "the candidate outlived TERM by $stop_wait_s s, so it was killed"
         kill -KILL -- "-$launched" 2>/dev/null
-        group_gone "$launched" 2 || { printf 'FAIL the candidate group %s survived KILL\n' "$launched"; exit 1; }
+        group_gone "$launched" "$kill_wait_s" || { printf 'FAIL the candidate group %s survived KILL\n' "$launched"; exit 1; }
     fi
     wait "$launched" 2>/dev/null
     launched=""
@@ -159,7 +162,6 @@ pixel_at() {
 }
 # A screenshot is not bit exact: measured over all 22 themes the compositor's own round trip moves a
 # role by up to three steps a channel, so a role matches within role_steps and never by string.
-# near or off: within role_steps per channel of the wanted colour, the rule every role check uses.
 near_colour() {
     python3 -c '
 import sys
