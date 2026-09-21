@@ -2836,18 +2836,18 @@ entry; the freedesktop spec makes the key optional and Flea's cache reads only `
 probed, mp4, mkv, webm, avi, mov, ts, mpg, flv, 3gp, wmv, m4v, ogv, m2ts, raw h264 and vob.
 
 **One worker for the pool, started lazily.** The first job that qualifies spawns it under the pool's
-own bwrap flags from `sandbox::wrap_worker`: every namespace flag, `--clearenv`, read-only `/usr` and
-`/etc`, and the flea executable itself bound read-only, and no input or output bind at all. There is
-no `prlimit` around it, because the limits are per job and every child sets its own after the
-fork. A cap on the worker would be inherited by every child anyway, and the 30 s `RLIMIT_CPU` would
-also count the worker's own CPU for the whole session, which `RLIMIT_CPU` accumulates and which
-never includes its reaped children: measured on minipc at 9 ticks for 60 videos, about 1.5 ms a job,
-so such a cap would end the worker after roughly 20,000 videos. Pool threads meeting their first
-video together start one worker between them,
-because it is spawned under the link's lock. **It stays resident for the rest of the backend's
-life**, and that is its cost: about 20 MB of PSS for the worker, 37.5 MB resident, and a third of a
-megabyte for its two `bwrap` processes, against the backend's 2.5 MB, in one sample on minipc after
-one video. The libraries it keeps linked are that number; nothing else in Flea maps them.
+own bwrap flags from `sandbox::wrap_worker`: every namespace flag, `--clearenv`, read-only `/usr`
+and `/etc`, and the flea executable itself bound read-only, and no input or output bind at all.
+There is no `prlimit` around it, because the limits are per job and every child sets its own after
+the fork. A cap on the worker would be inherited by every child anyway, and the 30 s `RLIMIT_CPU`
+would also count the worker's own CPU for the whole session, which `RLIMIT_CPU` accumulates and
+which never includes its reaped children: measured on minipc at 9 ticks for 60 videos, about 1.5 ms
+a job, so such a cap would end the worker after roughly 20,000 videos. Pool threads meeting their
+first video together start one worker between them, because it is spawned under the link's lock.
+**It stays resident for the rest of the backend's life**, and that is its cost: about 20 MB of PSS
+for the worker, 37.5 MB resident, and a third of a megabyte for its two `bwrap` processes, against
+the backend's 2.5 MB, in one sample on minipc after one video. The libraries it keeps linked are
+that number; nothing else in Flea maps them.
 
 **One job sees one file, and can write nothing else or signal anyone.** The backend opens the
 input read-only and the pre-created temp write-only and passes both, with a reply socket, over the
@@ -2867,19 +2867,18 @@ file: measured inside this exact bwrap, a child holding one reopened `/proc/self
 and could have rewritten the operator's video, which the exec path's `--ro-bind` makes impossible.
 With the ruleset the same reopen is `EACCES`, a direct open of the path is refused too, the read
 reopen still works and the file is untouched. `thumbworker::tests::
-a_confined_child_holds_only_its_job_and_can_write_or_signal_nothing` plants a socket on
-descriptor 0, where the worker's request socket sits, runs `confine()` itself in a copy of the test
-binary and reports through descriptor 4, the way a job writes its PNG, that exactly descriptors 0
-to 4 are open, 0 to 2 are `/dev/null`, both limits are set, neither the input nor its path opens for
-writing, the input still reads and the parent can no longer be signalled; `socket_before=true`,
-`before=true` and `signalled_before=true` are the negative controls. **The signal scope is what
-lets the children share one PID namespace**: every exec-path job had a namespace of its own, and
-without the scope a decoder compromised by one video could kill a sibling mid-decode, or the
-worker. corner: a kernel between Landlock ABI 1 and 5 still gets the worker, without that scope.
-A kernel without Landlock
+a_confined_child_holds_only_its_job_and_can_write_or_signal_nothing` plants a socket on descriptor
+0, where the worker's request socket sits, runs `confine()` itself in a copy of the test binary and
+reports through descriptor 4, the way a job writes its PNG, that exactly descriptors 0 to 4 are
+open, 0 to 2 are `/dev/null`, both limits are set, neither the input nor its path opens for writing,
+the input still reads and the parent can no longer be signalled; `socket_before=true`, `before=true`
+and `signalled_before=true` are the negative controls. **The signal scope is what lets the children
+share one PID namespace**: every exec-path job had a namespace of its own, and without the scope a
+decoder compromised by one video could kill a sibling mid-decode, or the worker. corner: a kernel
+between Landlock ABI 1 and 5 still gets the worker, without that scope. A kernel without Landlock
 gets no worker at all: the worker answers `K` and the exec path takes every video. The worker is
-also not dumpable, which children inherit, so no process of the same user can ptrace it or read
-its descriptors.
+also not dumpable, which children inherit, so no process of the same user can ptrace it or read its
+descriptors.
 
 **The worker's only final verdict is a thumbnail.** It reaps each child through a pidfd, kills one
 still running at `JOB_TIMEOUT`, and writes one byte on that job's reply socket: `S` for exit 0, `F`
@@ -2889,8 +2888,8 @@ sends the job down the exec path, which judges the file exactly as it always has
 thumbnailer program ever writes a `fail/` marker: the worker's child is more confined than the
 program, with no writable `/tmp`, and a file only the worker failed must not be recorded broken on
 its word. `N` retires the worker, as below. corner: a video that hangs the decoder costs two
-deadlines, one in the worker and one on the exec path, and costs them once, because the exec
-path's failure records the marker. `workerlink::tests::
+deadlines, one in the worker and one on the exec path, and costs them once, because the exec path's
+failure records the marker. `workerlink::tests::
 only_a_thumbnail_is_final_and_a_machine_failure_retires_the_worker` answers one request each way
 from a stand-in worker and pins all three arms. The child never holds its reply socket, so a reply
 that closes with no byte can only mean the worker died.
