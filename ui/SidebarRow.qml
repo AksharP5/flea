@@ -117,9 +117,8 @@ Item {
         textFormat: Text.PlainText
     }
 
-    // Same slot as the label above; only one of the two is ever visible. ui/RenameField.qml is the
-    // one editor in the product, so the rail gets rail type, an accent hairline frame and stem-only
-    // preselection where the stock control brought body type, its own 30 px height and a filled ground.
+    // The label's slot. ui/RenameField.qml is the product's one editor, here in rail type with a hairline
+    // frame and stem-only preselection, where the stock control had body type, 30 px and a filled ground.
     Loader {
         id: renameLoader
         active: root.renaming

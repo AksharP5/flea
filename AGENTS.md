@@ -1885,7 +1885,7 @@ waits for its consumer.
   **A TUI row's leaf holds its terminal too**: the run launches kitty and kitty starts the TUI, so that
   bracket's column includes the terminal's own drawing, the same kitty for every TUI entrant, where the
   old column, rooted at the TUI process, never counted it.
-- **`thumbs_by_format` is a newer column at the END of each row**, and it is why a count can be
+- **`thumbs_by_format` was the newest column at the END of each row when it landed**, and it is why a count can be
   compared at all. A thumbnailer with no plugin registered for a MIME type never attempts the file
   and writes no failure marker, so a silent skip and work-not-done are the same zero in a total.
   The column reads `jpg=601;png=189;webp=0;heic=0;unknown=0`, one entry per extension the fixture
