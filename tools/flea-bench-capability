@@ -446,6 +446,15 @@ fi
 
 FIXTURE="$SB/files"
 mkdir -p "$FIXTURE" || fail "could not make $FIXTURE"
+# Flea's state sits in the sandbox, as tools/flea-field-bench gives it one, so the operator's own ui.json neither decides nor records anything.
+FLEA_STATE="$SB/flea-state"
+mkdir -p "$FLEA_STATE/flea" || fail "could not make $FLEA_STATE/flea"
+operator_ui="${XDG_STATE_HOME:-$HOME/.local/state}/flea/ui.json"
+if [ -f "$operator_ui" ]; then
+  cp "$operator_ui" "$FLEA_STATE/flea/ui.json" || fail "could not copy $operator_ui"
+fi
+XDG_STATE_HOME="$FLEA_STATE" "$FLEA_BIN" --ui-state '{"sort":{"key":"name","reverse":false}}' >/dev/null \
+  || fail "flea --ui-state refused to set name sort in the capability pass's copy of $operator_ui"
 
 # One file per format the media fixture holds, taken from the fixture itself so the samples are the
 # same bytes the field bench uses rather than something generated here.
@@ -553,17 +562,19 @@ mkdir -p "$(dirname "$OUT")"
 # The entrant rows come from the field bench's own table, so the two cannot name different fields.
 # The whole list first: this loop launches programs, and one of them reading stdin would eat the
 # next entrant's row.
-# corner: one multi-statement sed, expanding the four variables the bench's command field uses. A
-# pipeline of four would be four processes to say the same thing.
+# corner: one multi-statement sed, expanding the five variables the bench's command field uses. A
+# pipeline of five would be five processes to say the same thing.
 mapfile -t CAP_ROWS < <(sed -n '/^declare -a ENTRANTS=(/,/^)/p' "$FLEA_REPO/tools/flea-field-bench" \
   | grep '^  "' | tr -d '"' \
-  | sed "s|\$FIXTURE|$FIXTURE|g; s|\$FLEA_UI|$FLEA_UI|g; s|\$FLEA_BIN|$FLEA_BIN|g; s|\$STRATA_BIN|$STRATA_BIN|g")
+  | sed "s|\$FIXTURE|$FIXTURE|g; s|\$FLEA_UI|$FLEA_UI|g; s|\$FLEA_BIN|$FLEA_BIN|g; s|\$STRATA_BIN|$STRATA_BIN|g; s|\$FLEA_STATE|$FLEA_STATE|g")
 [ ${#CAP_ROWS[@]} -gt 0 ] || fail "no entrant rows were read out of tools/flea-field-bench"
 
 for cap_row in "${CAP_ROWS[@]}"; do
   IFS='|' read -r id kind class comm token helper_comm helper_token cmd <<< "$cap_row"
   id=${id//[[:space:]]/}
   [ "$kind" = gui ] || continue
+  # A variable the bench table gained and this pass does not expand would run empty, so it stops the pass instead.
+  case $cmd in *'$'*) fail "entrant $id's command still names an unexpanded variable: $cmd" ;; esac
   [ -z "$CAP_ONLY" ] || [ "$id" = "$CAP_ONLY" ] || continue
   if [ "$id" = strata ]; then
     [ -x "$STRATA_BIN" ] || { printf 'SKIP: strata is not built at %s\n' "$STRATA_BIN" >&2; continue; }
