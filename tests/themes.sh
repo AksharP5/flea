@@ -46,10 +46,33 @@ sandbox_make "$shots"
 # Only what this run launched: the candidate is started with setsid, so its own process group holds
 # it and the qs it spawns, and nothing the operator started is signalled.
 launched=""
+# How long a stopped candidate may take to leave before this run refuses to launch the next one.
+stop_wait_s=10
+# True once no live member of process group $1 remains, polled for at most $2 seconds.
+group_gone() {
+    local deadline=$((SECONDS + $2)) pid alive
+    while :; do
+        alive=0
+        for pid in $(pgrep -g "$1"); do
+            # Sample input, ps -o stat=: "Sl", and a leading Z is a dead member nobody has reaped yet.
+            [ "$(ps -o stat= -p "$pid" | cut -c1)" = Z ] || alive=1
+        done
+        [ "$alive" = 0 ] && return 0
+        (( SECONDS < deadline )) || return 1
+        sleep 0.1
+    done
+}
+# The next theme must not overlap this one: a path-addressed ipc answers from the oldest instance.
 stop() {
-    [ -n "$launched" ] && kill -TERM -- "-$launched" 2>/dev/null
+    [ -n "$launched" ] || return 0
+    kill -TERM -- "-$launched" 2>/dev/null
+    if ! group_gone "$launched" "$stop_wait_s"; then
+        fail "the candidate outlived TERM by $stop_wait_s s, so it was killed"
+        kill -KILL -- "-$launched" 2>/dev/null
+        group_gone "$launched" 2 || { printf 'FAIL the candidate group %s survived KILL\n' "$launched"; exit 1; }
+    fi
+    wait "$launched" 2>/dev/null
     launched=""
-    sleep 1
 }
 cleanup() {
     stop
