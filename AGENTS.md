@@ -1423,6 +1423,14 @@ drive a hybrid tree this box cannot produce. The file has one subject, which is 
 asked for on this machine, and splitting the fake-tree tests away from the function they pin would
 make the seam the test harness rather than the subject.
 
+`src/backend/thumbworker.rs` is 0.3.2's second recorded exception, at 858 lines: 507 before its
+`#[cfg(test)]` line and 351 from it. The file is one job's confinement, the descriptor hand-off, the
+limits, Landlock, the seccomp call filter and the reap, and its walk test checks the filter's tables
+against `asm/unistd_64.h` and `linux/sched.h` beside the tables themselves. The same release moved
+three recorded ceilings: `src/backend/thumbs.rs` 432 to 441 for routing a video to the worker,
+`ui/Row.qml` 410 to 421 for the row diet's `Loader`s, and `ui/Ipc.qml` 762 to 778 for the three
+readers of a dual pane's path. Each count is `wc -l` on the file at the commit that recorded it.
+
 `src/backend/ops.rs` split to `src/backend/renamecompat.rs` at 455: composing PR 35's safe rclone
 rename into the release tree put the rename exception over the 400-line hard cap, so the exception
 and its tests moved to the module that already owned classifying which rename failures need it.
