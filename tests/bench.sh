@@ -265,9 +265,8 @@ else
   echo "FAIL the TUI terminal derived to '$tui_term', which is not an installed program"; fail=1
 fi
 
-# The harness's control-group helpers, pulled out whole the way the table is: otherwise only a field
-# run executes them, and it measured thunar as gone and died at yazi before anything named either.
-eval "$(sed -n '/^pids_for() {/,/^}/p; /^cpu_ticks() {/,/^}/p; /^find_helper() {/,/^}/p; /^settle_ticks() {/,/^}/p; /^entrant_cg() {/,/^}/p; /^cg_empty() {/,/^}/p; /^sweep_cg() {/,/^}/p' "$bench")"
+# The harness's control-group helpers, pulled out whole: only a field run executed them before, and it lost thunar and yazi.
+eval "$(sed -n '/^pids_for() {/,/^}/p; /^cpu_ticks() {/,/^}/p; /^find_helper() {/,/^}/p; /^settle_ticks() {/,/^}/p; /^entrant_cg() {/,/^}/p; /^cg_empty() {/,/^}/p; /^sweep_cg() {/,/^}/p; /^release_run_cg() {/,/^}/p' "$bench")"
 eval "$(grep -m1 '^HELPER_SEARCH_POLLS=' "$bench")"
 declare -A WATCHED=()
 own_cg="/sys/fs/cgroup$(cut -d: -f3 /proc/self/cgroup)"
@@ -277,6 +276,9 @@ cp "$(command -v sleep)" "$scratch/fbhelper" && cp "$(command -v sleep)" "$scrat
 # Longer than sweep_cg can wait, so an unswept stand-in is still alive when the check reads it.
 stand_in_s=120
 "$scratch/fbhelper" "$stand_in_s" & helper=$!
+# Until the forked child has exec'd, its comm is still bash and pgrep -x cannot see it.
+exec_polls=50
+for _ in $(seq "$exec_polls"); do [ "$(cat "/proc/$helper/comm" 2>/dev/null)" = fbhelper ] && break; sleep 0.1; done
 
 # tumblerd's shape: a helper outside the leaf, found on the first poll, while the entrant is alive.
 RUN_CG=$not_a_leaf HELPER_COMM=fbhelper HELPER_TOKEN="" HELPER_PID="" HELPER_POLLS_LEFT=0 HELPER_SIDE=""
@@ -301,19 +303,25 @@ scope_cg="/sys/fs/cgroup$(cut -d: -f3 "/proc/$tui/cgroup" 2>/dev/null)"
 # Only a group proved to be this scope is swept: an empty read would make it the root group.
 case $scope_cg in
   */kitty-$$-7.scope)
-    entrant_cg "$tui" tui
-    check "a TUI in the scope of a kitty inside the leaf counts" 0 $?
-    check "and that scope is the one swept at the end of the run" "$scope_cg" "$ENTRANT_SCOPE"
     entrant_cg "$tui" gui
     check "a GUI entrant is never taken from a kitty scope" 1 $?
-    RUN_CG=$not_a_leaf
+    RUN_CG=$not_a_leaf ENTRANT_SCOPE=""
     entrant_cg "$tui" tui
     check "a kitty scope whose kitty is outside the leaf does not count" 1 $?
-    sweep_cg "$scope_cg" 2> "$scratch/sweep.err"
+    check "and is never recorded for the sweep, which would end an operator's own kitty" "" "$ENTRANT_SCOPE"
+    RUN_CG=$own_cg
+    entrant_cg "$tui" tui
+    check "a TUI in the scope of a kitty inside the leaf counts" 0 $?
+    check "and that scope is recorded for the sweep" "$scope_cg" "$ENTRANT_SCOPE"
+    # A plain directory stands in for the leaf, so the kitty scope is the only group holding a process.
+    BENCH_CG=$scratch RUN_CG="$scratch/run-bench"
+    mkdir "$RUN_CG"
+    release_run_cg 2> "$scratch/sweep.err"
     # Sample input: /proc/<pid>/stat "4242 (fbtui) S 4241 ...", state third; Z or no file is ended.
     state=$(cut -d' ' -f3 "/proc/$tui/stat" 2>/dev/null)
     case $state in ''|Z) state=ended ;; esac
-    check "sweep_cg ends what is left in a kitty scope" ended "$state"
+    check "release_run_cg ends what is left in the kitty scope" ended "$state"
+    check "and forgets the scope once it is swept" "" "$ENTRANT_SCOPE"
     kill -9 "$tui" 2>/dev/null; wait "$tui" 2>/dev/null
     holds "and names it as a leftover" "LEFTOVER: pid $tui (fbtui)" "$scratch/sweep.err"
     ;;
