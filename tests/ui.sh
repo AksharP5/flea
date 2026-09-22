@@ -1812,7 +1812,7 @@ case_click() {
     qs_pid=$(flea_pid)
     # Sample input: /proc/<pid>/cmdline "/usr/bin/flea\0--backend\0"; ViewState's writer is a flea child too, run as --ui-state.
     for pid in $(pgrep -P "$qs_pid" -x flea); do
-        tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null | grep -Fq -- ' --backend ' && held_pid="$held_pid $pid"
+        tr '\0' ' ' 2>/dev/null < "/proc/$pid/cmdline" | grep -Fq -- ' --backend ' && held_pid="$held_pid $pid"
     done
     held_pid=${held_pid# }
     [[ "$held_pid" =~ ^[0-9]+$ ]] || fail "click: expected one flea --backend child of qs $qs_pid to hold, found '$held_pid'"
