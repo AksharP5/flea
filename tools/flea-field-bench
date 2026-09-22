@@ -397,7 +397,8 @@ settle_ticks() {
     # Sample input: /proc/456/cgroup "0::/user.slice/user-1000.slice/user@1000.service/app.slice/flea-field-bench-123.scope/run-flea-1"
     if [ -z "$HELPER_SIDE" ]; then
       HELPER_SIDE=outside
-      grep -qx "0::${RUN_CG#/sys/fs/cgroup}" "/proc/$HELPER_PID/cgroup" 2>/dev/null && HELPER_SIDE=inside
+      # An if and not an &&: this is the function's last command, and an && list's false for tumblerd read as thunar gone.
+      if grep -qx "0::${RUN_CG#/sys/fs/cgroup}" "/proc/$HELPER_PID/cgroup" 2>/dev/null; then HELPER_SIDE=inside; fi
     fi
   fi
 }
@@ -411,6 +412,21 @@ cgroup_usage_usec() {
     [ "$key" = usage_usec ] && { CG_USEC=$value; return 0; }
   done < "$1/cpu.stat"
   return 1
+}
+
+# Sample input: /proc/456/cgroup "0::/user.slice/user-1000.slice/user@1000.service/app.slice/kitty-455-1.scope"
+# kitty moves each child into a scope named for kitty's pid (/usr/lib/kitty/kitty/child.py), so a TUI entrant counts there if that kitty is in the leaf.
+entrant_cg() {
+  local pid=$1 kind=$2 line name kitty_pid
+  read -r line < "/proc/$pid/cgroup" 2>/dev/null || return 1
+  ENTRANT_CG=/sys/fs/cgroup${line#0::}
+  [ "$ENTRANT_CG" = "$RUN_CG" ] && return 0
+  [ "$kind" = tui ] || return 1
+  name=${ENTRANT_CG##*/}
+  case "$name" in kitty-*-*.scope) ;; *) return 1 ;; esac
+  kitty_pid=${name#kitty-}
+  kitty_pid=${kitty_pid%%-*}
+  grep -qx "0::${RUN_CG#/sys/fs/cgroup}" "/proc/$kitty_pid/cgroup" 2>/dev/null
 }
 
 # cgroupfs reports every file as size 0, so emptiness is a read and never test -s.
@@ -767,7 +783,7 @@ run_one() {
 
   wait_for_pid "$comm" "$token" "$deadline" || { watch_kill; printf '%s,%s,ERROR,no-process\n' "$id" "$RUN_INDEX"; clean_bench; release_run_cg; return 1; }
   pid=$ENTRANT_PID
-  grep -qx "0::${RUN_CG#/sys/fs/cgroup}" "/proc/$pid/cgroup" 2>/dev/null \
+  entrant_cg "$pid" "$kind" \
     || fail "$id pid $pid is not in its control group $RUN_CG, so its CPU column would count nothing"
 
   while :; do
@@ -809,8 +825,17 @@ run_one() {
   # The old reading, kept so a table from before the leaf can still be compared: a sandboxed decode never reaches it, see AGENTS.md "Testing".
   cpu_reaped_s=$(awk -v t="$last_tree" -v hz="$ticks_per_second" 'BEGIN { printf "%.2f", t / hz }')
   cgroup_usage_usec "$RUN_CG" || fail "no usage_usec in $RUN_CG/cpu.stat, so this row has no CPU column"
+  local run_usec=$CG_USEC
+  # Read at settle and not at launch: kitty's move can land after the launch check, and its scope leaves with the child.
+  if [ "$kind" = tui ]; then
+    entrant_cg "$pid" "$kind" || fail "$id pid $pid is in no control group of this run at settle, so its CPU column would lose its own share"
+    if [ "$ENTRANT_CG" != "$RUN_CG" ]; then
+      cgroup_usage_usec "$ENTRANT_CG" || fail "no usage_usec in $ENTRANT_CG/cpu.stat, so this row has no CPU column"
+      run_usec=$(( run_usec + CG_USEC ))
+    fi
+  fi
   [ "$HELPER_SIDE" = outside ] && helper_add=$last_helper
-  cpu_tree_s=$(awk -v u="$CG_USEC" -v us="$usec_per_second" -v t="$helper_add" -v hz="$ticks_per_second" 'BEGIN { printf "%.2f", u / us + t / hz }')
+  cpu_tree_s=$(awk -v u="$run_usec" -v us="$usec_per_second" -v t="$helper_add" -v hz="$ticks_per_second" 'BEGIN { printf "%.2f", u / us + t / hz }')
   # Evidence that the media run actually exercised thumbnail generation, not just a warm cache.
   if [ "$DROP_THUMBS" = yes ]; then
     count_thumbs

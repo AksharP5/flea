@@ -1901,7 +1901,9 @@ waits for its consumer.
   holding a process after the kill list ran names it as `LEFTOVER` and ends it by `cgroup.kill`.
   **A TUI row's leaf holds its terminal too**: the run launches kitty and kitty starts the TUI, so that
   bracket's column includes the terminal's own drawing, the same kitty for every TUI entrant, where the
-  old column, rooted at the TUI process, never counted it.
+  old column, rooted at the TUI process, never counted it. kitty 0.48 then moves the TUI into a scope
+  of its own, `kitty-<kitty pid>-<n>.scope` (`/usr/lib/kitty/kitty/child.py`), so the row adds that
+  scope's `usage_usec`, read at settle, once the scope's kitty pid is proved to be in the run's leaf.
 - **`thumbs_by_format` was the newest column at the END of each row when it landed**, and it is why a count can be
   compared at all. A thumbnailer with no plugin registered for a MIME type never attempts the file
   and writes no failure marker, so a silent skip and work-not-done are the same zero in a total.
