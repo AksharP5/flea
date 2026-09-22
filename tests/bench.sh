@@ -274,7 +274,8 @@ own_cg="/sys/fs/cgroup$(cut -d: -f3 /proc/self/cgroup)"
 not_a_leaf="$scratch/not-a-leaf"
 # Named copies of sleep, so pgrep -x finds this suite's stand-ins and nothing else on the box.
 cp "$(command -v sleep)" "$scratch/fbhelper" && cp "$(command -v sleep)" "$scratch/fbtui" || exit 1
-stand_in_s=30
+# Longer than sweep_cg can wait, so an unswept stand-in is still alive when the check reads it.
+stand_in_s=120
 "$scratch/fbhelper" "$stand_in_s" & helper=$!
 
 # tumblerd's shape: a helper outside the leaf, found on the first poll, while the entrant is alive.
@@ -309,9 +310,11 @@ case $scope_cg in
     entrant_cg "$tui" tui
     check "a kitty scope whose kitty is outside the leaf does not count" 1 $?
     sweep_cg "$scope_cg" 2> "$scratch/sweep.err"
-    wait "$tui" 2>/dev/null
-    cg_empty "$scope_cg"
-    check "sweep_cg ends what is left in a kitty scope" 0 $?
+    # Sample input: /proc/<pid>/stat "4242 (fbtui) S 4241 ...", state third; Z or no file is ended.
+    state=$(cut -d' ' -f3 "/proc/$tui/stat" 2>/dev/null)
+    case $state in ''|Z) state=ended ;; esac
+    check "sweep_cg ends what is left in a kitty scope" ended "$state"
+    kill -9 "$tui" 2>/dev/null; wait "$tui" 2>/dev/null
     holds "and names it as a leftover" "LEFTOVER: pid $tui (fbtui)" "$scratch/sweep.err"
     ;;
   *) echo "FAIL the stand-in's group read as '$scope_cg', so the scope checks did not run"; fail=1; kill "$tui" 2>/dev/null ;;
