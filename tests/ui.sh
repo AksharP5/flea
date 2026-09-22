@@ -1702,8 +1702,7 @@ case_click() {
     # unchanged too and would satisfy both assertions below without pressing anything.
     omarchy-drive click "$((ex + wx))" "$((ey + wy))" >/dev/null \
         || fail "click: omarchy-drive refused the press on the elision marker"
-    # A crumb's single tap is deferred until the double-tap interval expires, see ui/ChromeBar.qml
-    # "exclusiveSignals", so the reading is taken well after the click rather than on top of it.
+    # Two settles, so a press that navigated after all would have landed before the reading.
     settle
     settle
     printf 'CLICK elision path=%q barOpen=%s\n' "$(ipc path)" "$(ipc pathBarOpen)"
@@ -1711,10 +1710,10 @@ case_click() {
     [[ "$(ipc path)" == "$deep" ]] || fail "click: a tap on the elision marker navigated to $(ipc path)"
     [[ "$(ipc pathBarOpen)" == "false" ]] || fail "click: a tap on the elision marker opened the path bar"
 
-    # keys.toml's chrome/left x2/any row is the whole strip, and the chrome is the window's own top item, so its band is y 0 to chromeHeight - 1.
+    # keys.toml's chrome/left x2/leaf row is the current folder's own segment, and the chrome is the window's own top item, so its band is y 0 to chromeHeight - 1.
     local chrome_h band_crumb band_x band
     chrome_h=$(ipc chromeHeight)
-    band_crumb=$(( $(ipc crumbCount) - 2 ))
+    band_crumb=$(( $(ipc crumbCount) - 1 ))
     read -r band_x _band_y <<< "$(ipc crumbCentre "$band_crumb")"
     [[ -n "$band_x" ]] || fail "click: crumb $band_crumb has no on-screen centre, so no band of the strip can be pressed over one"
     for band in "$chrome_band_inset" "$(( chrome_h - 1 - chrome_band_inset ))"; do
@@ -1789,6 +1788,24 @@ case_click() {
     settle
     printf 'CLICK back-climb path=%q\n' "$(ipc path)"
     [[ "$(ipc path)" == "$up" ]] || fail "click: the back button with no history left went to $(ipc path), not $up"
+
+    # GM's ruling of 2026-09-22: a parent answers on the first tap, so a double click on one is two taps and never types the path.
+    crumbs=$(ipc crumbCount)
+    target=$((crumbs - 2))
+    centre=$(ipc crumbCentre "$target")
+    [[ -n "$centre" ]] || fail "click: crumb $target has no on-screen centre for the double click"
+    read -r cx cy <<< "$centre"
+    omarchy-drive click "$((cx + wx))" "$((cy + wy))" --double >/dev/null \
+        || fail "click: omarchy-drive refused the double click on crumb $target"
+    settle
+    settle
+    printf 'CLICK crumb-double=%s path=%q barOpen=%s\n' "$target" "$(ipc path)" "$(ipc pathBarOpen)"
+    shot click-crumb-double
+    [[ "$(ipc pathBarOpen)" == "false" ]] || fail "click: a double click on a parent crumb typed the path instead of opening it"
+    case "$up" in
+        "$(ipc path)"/*) ;;
+        *) fail "click: a double click on a parent crumb went to $(ipc path), which is not above $up" ;;
+    esac
     kill_flea
 }
 
@@ -7722,7 +7739,7 @@ case_dual() {
     read -r wx wy _ww _wh < <(window_box) || fail "native window coordinates unavailable"
     omarchy-drive click "$((cx + wx))" "$((cy + wy))" >/dev/null \
         || fail "dual: omarchy-drive refused the press on left crumb $target"
-    # A crumb's single tap waits out the double-tap interval, so the reading is taken well after the click.
+    # Two settles, so the reading lands after the tap's navigation has had time to reach both panes.
     settle
     settle
     shot dual-crumb
@@ -7730,15 +7747,15 @@ case_dual() {
         '.focused == 0 and .panes[0].path == $left and .panes[1].path == $right' >/dev/null \
         || fail "dual: a tap on the left pane's parent crumb left $(ipc dualState | jq -c '[.focused, .panes[0].path, .panes[1].path]')"
     [[ "$(ipc pathBarOpen)" == "false" ]] || fail "dual: a single tap on a pane crumb opened the path bar"
-    # A double click types the path wherever it lands on the strip: the padding before the first crumb, the space after the last, then a crumb.
+    # A double click types the path wherever a tap opens nothing: the padding before the first crumb, the space after the last, the current folder's own crumb.
     local strip sx sy sw sh press_x press_y crumb_inset
     read -r sx sy sw sh <<< "$(ipc panePathRect 0)"
     [[ -n "$sh" ]] || fail "dual: the left pane path has no on-screen box"
     # The crumbs start rowPaddingX in and fit inside it at the far end, so a press nearer either edge is on the strip's own area.
     crumb_inset=$(ipc metrics | cut -d' ' -f3)
     (( chrome_band_inset < crumb_inset )) || fail "dual: a press $chrome_band_inset px in would land on a crumb, which starts $crumb_inset px in"
-    # The tap moved the pane up one level, so the parent is the second-last crumb of the new path.
-    target=$(( $(ipc paneCrumbCount 0) - 2 ))
+    # The last crumb is the pane's own folder, the one crumb a tap cannot open.
+    target=$(( $(ipc paneCrumbCount 0) - 1 ))
     centre=$(ipc paneCrumbCentre 0 "$target")
     [[ -n "$centre" ]] || fail "dual: left crumb $target has no on-screen centre after the tap"
     read -r cx cy <<< "$centre"

@@ -1743,11 +1743,13 @@ after the crumb press it parks the pointer over a listing row with `omarchy-driv
 branch and the climb branch of `mouseBack` are each pressed through the shipped tree. The crumb half
 is pressed the same way, from `crumbCentre`, which is the seam `ui/Ipc.qml` grew for it.
 
-A crumb click costs the platform's own double-click interval before anything happens, and that is
-inherent rather than a defect: `ui/Crumb.qml`'s `exclusiveSignals: TapHandler.SingleTap |
-TapHandler.DoubleTap` is what makes the tap count decide, and `singleTapped` cannot fire until the
-interval has expired. One target cannot host both gestures and answer the first one early, so the
-alternative is not a faster click, it is losing the double click that opens the path for editing.
+A crumb click answers on the first tap, GM's ruling of 2026-09-22. `ui/Crumb.qml` used to carry
+`exclusiveSignals: TapHandler.SingleTap | TapHandler.DoubleTap`, which makes the tap count decide by
+holding `singleTapped` until the double-click interval expires: measured on this box, 392 to 433 ms
+after the press against Qt's 400 ms interval, on every crumb click. Nobody double-clicks a
+breadcrumb, so a parent now opens at once, a double click on a parent is simply two taps, and the
+double click that types the path lives only where a single tap opens nothing: the leaf segment, the
+collapsed marker and the strip beside the crumbs. Ctrl+L and `:` still open the bar anywhere.
 
 Its effect field is `does` and not `action`, and that is load bearing. `tools/flea-acceptance`
 derives its whole key checklist with one `sed` for `^action = ` over this file, with no table

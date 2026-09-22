@@ -24,13 +24,13 @@ Text {
         cursorShape: crumb.modelData.last || crumb.modelData.elided ? Qt.IBeamCursor : Qt.PointingHandCursor
     }
 
-    // Both flags, measured on Qt 6.11.2: only the pair lets the tap count decide, so a double click types the path and never also navigates.
+    // No exclusiveSignals, GM's ruling of 2026-09-22: the pair held every tap for the whole double-click interval, about 400 ms.
     // The gesture sits on the crumb because a TapHandler on a parent takes the second tap from the child under the pointer.
     TapHandler {
         acceptedButtons: Qt.LeftButton
-        exclusiveSignals: TapHandler.SingleTap | TapHandler.DoubleTap
         // The collapsed marker names no directory, so a press on it opens nothing rather than whichever crumb it stands for.
         onSingleTapped: if (!crumb.modelData.last && !crumb.modelData.elided) crumb.chosen(crumb.modelData.path)
-        onDoubleTapped: crumb.editRequested()
+        // Only where a tap opens nothing does a double click type the path; on a parent it is two taps.
+        onDoubleTapped: if (crumb.modelData.last || crumb.modelData.elided) crumb.editRequested()
     }
 }

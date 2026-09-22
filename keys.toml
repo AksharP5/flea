@@ -729,7 +729,7 @@ label = "keys"
 #        chrome     ui/ChromeBar.qml's path above the listing and a dual pane's own path, ui/PanePath.qml,
 #                   whose segments are their own targets, both drawn by ui/Crumb.qml
 # press  the button, then any modifier before it, then "x2" for the second tap of a double click
-# row    which rows the line covers: any, dir, file, parent, renaming or result
+# row    which rows the line covers: any, dir, file, parent, leaf, renaming or result
 # does   backOrParent commitRename extendSelect goToCrumb menu nothing open pathBar reveal selectOnly toggleSelect
 #
 # Enter opens and is in the [[code]] table above, not here: this is the pointer's half only. The rail
@@ -872,22 +872,23 @@ label = "a peeked row has no menu"
 # leaf opens its own directory on one tap, through the same pathEntered route the typed bar uses; the
 # leaf is the directory already listed, so it has nowhere of its own to go, and the frozen List view
 # board draws it in the foreground role while every segment above it is muted. The row column reads
-# "parent" for that reason: a row saying "crumb" would promise a press the leaf never answers. The
-# double click that opens the bar is declared beside it because the crumb answers that press too:
-# the tap count alone decides between them, and neither runs with the other, measured on the box.
+# "parent" for that reason: a row saying "crumb" would promise a press the leaf never answers. A
+# parent answers on the first tap (GM, 2026-09-22), because waiting to rule out a double click held
+# every crumb click for the whole double-click interval, so the double click that opens the bar
+# lives only where a tap opens nothing: the leaf, the collapsed marker and the strip around them.
 [[pointer]]
 where = "chrome"
 press = "left"
 row = "parent"
 does = "goToCrumb"
-label = "open the directory that segment of the path names"
+label = "open the directory that segment of the path names, on the first tap"
 
 [[pointer]]
 where = "chrome"
 press = "left x2"
-row = "any"
+row = "leaf"
 does = "pathBar"
-label = "type the path instead of clicking it"
+label = "type the path: the current folder's own segment, or the strip beside the path"
 
 # Issue 20: the mouse's extra button. It belongs to the window rather than to a row, so it is the one
 # line here with no listing under it; ui/js/Nav.js mouseBack decides, and ui/shell.qml refuses it
