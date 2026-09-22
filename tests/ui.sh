@@ -8910,7 +8910,7 @@ click_row_beside_menu() {
     [[ -n "$rh" ]] || fail "click_row_beside_menu: row $1 has no box"
     read -r mx my mw mh <<< "$(ipc contextMenuRect)"
     [[ -n "$mh" ]] || fail "click_row_beside_menu: no open menu to press beside"
-    # Sample input: ipc metrics "13 11 14 37", the body and caption sizes, rowPaddingX, then the board's rowHeight.
+    # Sample input: ipc metrics "13 12 14 37", the body and caption sizes, rowPaddingX, then the board's rowHeight.
     inset=$(ipc metrics | cut -d' ' -f3)
     [[ "$inset" =~ ^[0-9]+$ ]] || fail "click_row_beside_menu: ipc metrics gave no rowPaddingX, got [$inset]"
     px=$((rx + inset)) py=$((ry + rh / 2))
@@ -8968,7 +8968,6 @@ case_overlays() {
         key -k Home >/dev/null
         settle
         n=$(( $(ipc visibleRows) - 3 ))
-        [[ "$mode" == "columns" ]] && n=8
         [[ -n "$(ipc rowRect "$n")" ]] || fail "$mode: row $n has no box, the reader answers nothing here"
         hover_row "$n"
         settle
