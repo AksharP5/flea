@@ -1904,9 +1904,9 @@ waits for its consumer.
   kitty for every TUI entrant, where the old column, rooted at the TUI process, never counted it.
   kitty 0.48 then moves the TUI into a scope of its own, `kitty-<kitty pid>-<n>.scope`
   (`/usr/lib/kitty/kitty/child.py`), so the row adds that scope's `usage_usec`, read at settle, once
-  the scope's kitty pid is proved to be in the run's leaf. `tests/bench.sh` drives `settle_ticks`,
-  `entrant_cg` and `release_run_cg` against a real kitty-named scope; the settle-time sum itself runs
-  only inside a field run.
+  the scope's kitty pid is proved to be in the run's leaf. `tests/bench.sh` drives `settle_ticks`
+  with a helper outside the leaf, and `entrant_cg` and `release_run_cg` against a real kitty-named
+  scope; the settle-time sum itself runs only inside a field run.
 - **`thumbs_by_format` was the newest column at the END of each row when it landed**, and it is why a count can be
   compared at all. A thumbnailer with no plugin registered for a MIME type never attempts the file
   and writes no failure marker, so a silent skip and work-not-done are the same zero in a total.
