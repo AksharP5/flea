@@ -1728,7 +1728,7 @@ both report as derived and undriven in that battery; `tests/js/tap.js` holds the
 neither, because both are QML bindings rather than `Tap.js` calls, and **`tests/js` is structurally
 unable to press either one**. `tests/ui.sh` case `click` is what presses them at the real window,
 and case `dual` presses a pane's crumb from `paneCrumbCentre`, then double clicks that pane's path
-in its padding, past its last crumb and on a crumb from `panePathRect`. A pane's path builds no crumbs while it is hidden,
+in its padding, past its last crumb and on its own folder's crumb from `panePathRect`. A pane's path builds no crumbs while it is hidden,
 because the single view keeps it at height 0 and rule 6 is exactly that cost.
 
 The `Qt.BackButton` binding is now driven at the product, and the probe that used to stand in for it
