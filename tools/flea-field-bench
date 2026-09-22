@@ -125,6 +125,7 @@ fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 BENCH_CG="/sys/fs/cgroup$(cut -d: -f3 /proc/self/cgroup)"
 [ -w "$BENCH_CG" ] || fail "the bench scope $BENCH_CG is not writable, so no run could be given a control group of its own"
 RUN_CG=""
+ENTRANT_SCOPE=""
 HELPER_TICKS=0
 HELPER_SIDE=""
 
@@ -418,7 +419,8 @@ cgroup_usage_usec() {
 # kitty moves each child into a scope named for kitty's pid (/usr/lib/kitty/kitty/child.py), so a TUI entrant counts there if that kitty is in the leaf.
 entrant_cg() {
   local pid=$1 kind=$2 line name kitty_pid
-  read -r line < "/proc/$pid/cgroup" 2>/dev/null || return 1
+  # The 2>/dev/null goes first: a redirect that fails is reported before any redirect after it applies.
+  read -r line 2>/dev/null < "/proc/$pid/cgroup" || return 1
   ENTRANT_CG=/sys/fs/cgroup${line#0::}
   [ "$ENTRANT_CG" = "$RUN_CG" ] && return 0
   [ "$kind" = tui ] || return 1
@@ -426,34 +428,43 @@ entrant_cg() {
   case "$name" in kitty-*-*.scope) ;; *) return 1 ;; esac
   kitty_pid=${name#kitty-}
   kitty_pid=${kitty_pid%%-*}
-  grep -qx "0::${RUN_CG#/sys/fs/cgroup}" "/proc/$kitty_pid/cgroup" 2>/dev/null
+  grep -qx "0::${RUN_CG#/sys/fs/cgroup}" "/proc/$kitty_pid/cgroup" 2>/dev/null || return 1
+  ENTRANT_SCOPE=$ENTRANT_CG
 }
 
 # cgroupfs reports every file as size 0, so emptiness is a read and never test -s.
-leaf_empty() {
+cg_empty() {
   local pid
-  read -r pid < "$RUN_CG/cgroup.procs" && return 1
+  read -r pid 2>/dev/null < "$1/cgroup.procs" && return 1
   return 0
 }
 
-# Anything left in the leaf after clean_bench outlived the kill list, so it is named and ended by the group rather than left resident through the next entrant.
-release_run_cg() {
-  local pid n=0 polls=0
-  # In tenths of a second: the launcher shell still exiting when clean_bench returns is not a leftover, and the group kill gets ten seconds.
+# Anything still in control group $1 after its grace outlived the kill list, so it is named and ended by the group rather than left resident through the next entrant.
+sweep_cg() {
+  local cg=$1 pid n=0 polls=0
+  # In tenths of a second: a process still exiting when clean_bench returns is not a leftover, and the group kill gets ten seconds.
   local grace_polls=10 kill_polls=100
+  while ! cg_empty "$cg" && [ "$polls" -lt "$grace_polls" ]; do sleep 0.1; polls=$(( polls + 1 )); done
+  [ -r "$cg/cgroup.procs" ] || return 0
+  while read -r pid; do
+    printf 'LEFTOVER: pid %s (%s) outlived the kill list in %s\n' "$pid" "$(cat "/proc/$pid/comm" 2>/dev/null)" "$cg" >&2
+    n=$(( n + 1 ))
+  done < "$cg/cgroup.procs"
+  [ "$n" -gt 0 ] && echo 1 > "$cg/cgroup.kill"
+  polls=0
+  while ! cg_empty "$cg" && [ "$polls" -lt "$kill_polls" ]; do sleep 0.1; polls=$(( polls + 1 )); done
+}
+
+# The leaf, and a TUI's kitty scope beside it, are swept; systemd removes the scope once it is empty, and the leaf is ours to remove.
+release_run_cg() {
   [ -n "$RUN_CG" ] || return 0
   case "$RUN_CG" in
     "$BENCH_CG"/run-*) ;;
     *) printf 'WARNING: not removing control group %s, it is not a run leaf of this bench\n' "$RUN_CG" >&2; return 1 ;;
   esac
-  while ! leaf_empty && [ "$polls" -lt "$grace_polls" ]; do sleep 0.1; polls=$(( polls + 1 )); done
-  while read -r pid; do
-    printf 'LEFTOVER: pid %s (%s) outlived the kill list in %s\n' "$pid" "$(cat "/proc/$pid/comm" 2>/dev/null)" "$RUN_CG" >&2
-    n=$(( n + 1 ))
-  done < "$RUN_CG/cgroup.procs"
-  [ "$n" -gt 0 ] && echo 1 > "$RUN_CG/cgroup.kill"
-  polls=0
-  while ! leaf_empty && [ "$polls" -lt "$kill_polls" ]; do sleep 0.1; polls=$(( polls + 1 )); done
+  sweep_cg "$RUN_CG"
+  [ -n "$ENTRANT_SCOPE" ] && sweep_cg "$ENTRANT_SCOPE"
+  ENTRANT_SCOPE=""
   rmdir "$RUN_CG" 2>/dev/null || printf 'WARNING: control group %s could not be removed\n' "$RUN_CG" >&2
   RUN_CG=""
 }

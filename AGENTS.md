@@ -1897,13 +1897,14 @@ waits for its consumer.
   `cpu.stat` `usage_usec`. The same ten sandboxed decodes read 1.02 s there. A declared helper
   outside the leaf, which is `tumblerd` since it is D-Bus activated, is added from its ticks; Flea's
   backend is inside the leaf and is not added twice. The old figure stays as `cpu_reaped_s` at the
-  END of each row, so a table from before this change is compared against like, and a leaf still
-  holding a process after the kill list ran names it as `LEFTOVER` and ends it by `cgroup.kill`.
-  **A TUI row's leaf holds its terminal too**: the run launches kitty and kitty starts the TUI, so that
-  bracket's column includes the terminal's own drawing, the same kitty for every TUI entrant, where the
-  old column, rooted at the TUI process, never counted it. kitty 0.48 then moves the TUI into a scope
-  of its own, `kitty-<kitty pid>-<n>.scope` (`/usr/lib/kitty/kitty/child.py`), so the row adds that
-  scope's `usage_usec`, read at settle, once the scope's kitty pid is proved to be in the run's leaf.
+  END of each row, so a table from before this change is compared against like, and a leaf, or a
+  TUI's kitty scope below, still holding a process after the kill list ran names it as `LEFTOVER`
+  and ends it by `cgroup.kill`. **A TUI row's leaf holds its terminal too**: the run launches kitty
+  and kitty starts the TUI, so that bracket's column includes the terminal's own drawing, the same
+  kitty for every TUI entrant, where the old column, rooted at the TUI process, never counted it.
+  kitty 0.48 then moves the TUI into a scope of its own, `kitty-<kitty pid>-<n>.scope`
+  (`/usr/lib/kitty/kitty/child.py`), so the row adds that scope's `usage_usec`, read at settle, once
+  the scope's kitty pid is proved to be in the run's leaf, and `tests/bench.sh` drives both halves.
 - **`thumbs_by_format` was the newest column at the END of each row when it landed**, and it is why a count can be
   compared at all. A thumbnailer with no plugin registered for a MIME type never attempts the file
   and writes no failure marker, so a silent skip and work-not-done are the same zero in a total.
@@ -2166,7 +2167,8 @@ waits for its consumer.
   `$REPO/../flea-canvas/` on the box and the failure names it rather than skipping the group.
 - `./tests/bench.sh` gates `tools/flea-bench-manifest`, the version and environment record the
   field bench writes beside its CSV, and the two values the harness derives from its own entrant
-  table to feed it. It launches nothing and builds its fixture in a `mktemp -d`. It exists because
+  table to feed it. It launches no entrant, only two named copies of `sleep`, one in a systemd scope
+  named the way kitty names its own, and builds its fixture in a `mktemp -d`. It exists because
   the field bench had no gate at all, and its first check is the defect that found: an entrant row
   arriving indented missed its own case arm, so Flea reported itself as `quickshell 0.3.1`, which
   is what `pacman -Qo` says about its launcher.

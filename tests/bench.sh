@@ -265,4 +265,56 @@ else
   echo "FAIL the TUI terminal derived to '$tui_term', which is not an installed program"; fail=1
 fi
 
+# The harness's control-group helpers, pulled out whole the way the table is: otherwise only a field
+# run executes them, and it measured thunar as gone and died at yazi before anything named either.
+eval "$(sed -n '/^pids_for() {/,/^}/p; /^cpu_ticks() {/,/^}/p; /^find_helper() {/,/^}/p; /^settle_ticks() {/,/^}/p; /^entrant_cg() {/,/^}/p; /^cg_empty() {/,/^}/p; /^sweep_cg() {/,/^}/p' "$bench")"
+eval "$(grep -m1 '^HELPER_SEARCH_POLLS=' "$bench")"
+declare -A WATCHED=()
+own_cg="/sys/fs/cgroup$(cut -d: -f3 /proc/self/cgroup)"
+not_a_leaf="$scratch/not-a-leaf"
+# Named copies of sleep, so pgrep -x finds this suite's stand-ins and nothing else on the box.
+cp "$(command -v sleep)" "$scratch/fbhelper" && cp "$(command -v sleep)" "$scratch/fbtui" || exit 1
+stand_in_s=30
+"$scratch/fbhelper" "$stand_in_s" & helper=$!
+
+# tumblerd's shape: a helper outside the leaf, found on the first poll, while the entrant is alive.
+RUN_CG=$not_a_leaf HELPER_COMM=fbhelper HELPER_TOKEN="" HELPER_PID="" HELPER_POLLS_LEFT=0 HELPER_SIDE=""
+settle_ticks $$
+check "a helper outside the leaf leaves settle_ticks true, as tumblerd beside thunar" 0 $?
+check "and that helper is recorded as outside" outside "$HELPER_SIDE"
+kill "$helper"; wait "$helper" 2>/dev/null
+
+RUN_CG=$own_cg ENTRANT_SCOPE=""
+entrant_cg $$ gui
+check "an entrant in the run's own group is in its group" 0 $?
+# systemd-run execs the stand-in in a scope named the way kitty 0.48 names its own, after this shell.
+systemd-run --user --scope -q --unit="kitty-$$-7" "$scratch/fbtui" "$stand_in_s" & tui=$!
+placed=no
+placement_polls=50
+for _ in $(seq "$placement_polls"); do
+  case "$(cut -d: -f3 "/proc/$tui/cgroup" 2>/dev/null)" in */kitty-$$-7.scope) placed=yes; break ;; esac
+  sleep 0.1
+done
+check "systemd placed the stand-in TUI in kitty-$$-7.scope" yes "$placed"
+scope_cg="/sys/fs/cgroup$(cut -d: -f3 "/proc/$tui/cgroup" 2>/dev/null)"
+# Only a group proved to be this scope is swept: an empty read would make it the root group.
+case $scope_cg in
+  */kitty-$$-7.scope)
+    entrant_cg "$tui" tui
+    check "a TUI in the scope of a kitty inside the leaf counts" 0 $?
+    check "and that scope is the one swept at the end of the run" "$scope_cg" "$ENTRANT_SCOPE"
+    entrant_cg "$tui" gui
+    check "a GUI entrant is never taken from a kitty scope" 1 $?
+    RUN_CG=$not_a_leaf
+    entrant_cg "$tui" tui
+    check "a kitty scope whose kitty is outside the leaf does not count" 1 $?
+    sweep_cg "$scope_cg" 2> "$scratch/sweep.err"
+    wait "$tui" 2>/dev/null
+    cg_empty "$scope_cg"
+    check "sweep_cg ends what is left in a kitty scope" 0 $?
+    holds "and names it as a leftover" "LEFTOVER: pid $tui (fbtui)" "$scratch/sweep.err"
+    ;;
+  *) echo "FAIL the stand-in's group read as '$scope_cg', so the scope checks did not run"; fail=1; kill "$tui" 2>/dev/null ;;
+esac
+
 exit $fail
