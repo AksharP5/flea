@@ -8904,6 +8904,19 @@ rect_is() {
 }
 
 # A click at row i's height just right of the settings card: on the ground, and inside the row in every view (the middle column runs 200 px past the card).
+# Presses row $1 beside the open menu: in columns the menu covers the row's centre, and a press there picks a menu row.
+click_row_beside_menu() {
+    local rx ry rw rh mx my mw mh px wx wy
+    read -r rx ry rw rh <<< "$(ipc rowRect "$1")"
+    [[ -n "$rh" ]] || fail "click_row_beside_menu: row $1 has no box"
+    read -r mx my mw mh <<< "$(ipc contextMenuRect)"
+    [[ -n "$mh" ]] || fail "click_row_beside_menu: no open menu to press beside"
+    px=$((rx + $(ipc metrics | cut -d' ' -f3)))
+    (( px < mx || px > mx + mw )) || fail "click_row_beside_menu: row $1 starts at x $rx, under the menu from $mx to $((mx + mw))"
+    read -r wx wy _ww _wh < <(window_box) || fail "native window coordinates unavailable"
+    omarchy-drive click "$((wx + px))" "$((wy + ry + rh / 2))" "$2" >/dev/null
+}
+
 click_row_edge() {
     local rx ry rw rh cx cy cw ch wx wy
     read -r rx ry rw rh <<< "$(ipc rowRect "$1")"
@@ -8941,9 +8954,7 @@ views_fixture() {
 # and scrolling under an open menu or card, a click outside the menu selecting the row beneath, and
 # a right click on a card running on to the row under it. Every check runs in all three views.
 case_overlays() {
-    local dir="$fixture_root/overlays" mode n cx cy wx wy board_row file_row
-    # corner: columns row 8 was measured clear of the open menu at the board's row height, which the menu keeps at every density.
-    local columns_clear_row=8
+    local dir="$fixture_root/overlays" mode n cx cy wx wy
     views_fixture "$dir"
     launch "$dir"
     wait_listing 406
@@ -8952,8 +8963,7 @@ case_overlays() {
         key -k Home >/dev/null
         settle
         n=$(( $(ipc visibleRows) - 3 ))
-        board_row=$(ipc metrics | cut -d' ' -f4) file_row=$(ipc fileRowHeight)
-        [[ "$mode" == "columns" ]] && n=$(( (columns_clear_row * board_row + file_row - 1) / file_row ))
+        [[ "$mode" == "columns" ]] && n=8
         [[ -n "$(ipc rowRect "$n")" ]] || fail "$mode: row $n has no box, the reader answers nothing here"
         hover_row "$n"
         settle
@@ -8973,7 +8983,7 @@ case_overlays() {
         omarchy-drive scroll down 3 >/dev/null
         settle
         [[ "$(ipc viewContentY)" == "0" && "$(ipc contextMenuVisible)" == "true" ]] || fail "$mode: the wheel under the menu moved the view to $(ipc viewContentY) (menu $(ipc contextMenuVisible))"
-        click_row "$n" left
+        click_row_beside_menu "$n" left
         settle
         [[ "$(ipc contextMenuVisible)" == "false" && "$(ipc cursor)" == "2" ]] || fail "$mode: the click outside the menu left it $(ipc contextMenuVisible) and moved the cursor to $(ipc cursor)"
         key -k Home >/dev/null
