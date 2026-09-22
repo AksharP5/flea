@@ -1749,7 +1749,11 @@ holding `singleTapped` until the double-click interval expires: measured on this
 after the press against Qt's 400 ms interval, on every crumb click. Nobody double-clicks a
 breadcrumb, so a parent now opens at once, a double click on a parent is simply two taps, and the
 double click that types the path lives only where a single tap opens nothing: the leaf segment, the
-collapsed marker and the strip beside the crumbs. Ctrl+L and `:` still open the bar anywhere.
+collapsed marker and the strip beside the crumbs, which `keys.toml` calls `inert`. Ctrl+L and `:` still
+open the bar anywhere. `tests/ui.sh` case `click` double clicks a parent with the backend stopped,
+because the path is written only when a listing answers: a listing landing between the two taps
+rebuilds the crumbs and hands the second tap to a fresh delegate, which would pass with the guard in
+`onDoubleTapped` deleted. The same case double clicks the collapsed marker, the guard's other arm.
 
 Its effect field is `does` and not `action`, and that is load bearing. `tools/flea-acceptance`
 derives its whole key checklist with one `sed` for `^action = ` over this file, with no table

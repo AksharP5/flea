@@ -729,7 +729,7 @@ label = "keys"
 #        chrome     ui/ChromeBar.qml's path above the listing and a dual pane's own path, ui/PanePath.qml,
 #                   whose segments are their own targets, both drawn by ui/Crumb.qml
 # press  the button, then any modifier before it, then "x2" for the second tap of a double click
-# row    which rows the line covers: any, dir, file, parent, leaf, renaming or result
+# row    which rows the line covers: any, dir, file, parent, inert, renaming or result
 # does   backOrParent commitRename extendSelect goToCrumb menu nothing open pathBar reveal selectOnly toggleSelect
 #
 # Enter opens and is in the [[code]] table above, not here: this is the pointer's half only. The rail
@@ -875,7 +875,8 @@ label = "a peeked row has no menu"
 # "parent" for that reason: a row saying "crumb" would promise a press the leaf never answers. A
 # parent answers on the first tap (GM, 2026-09-22), because waiting to rule out a double click held
 # every crumb click for the whole double-click interval, so the double click that opens the bar
-# lives only where a tap opens nothing: the leaf, the collapsed marker and the strip around them.
+# lives only where a tap opens nothing: the leaf, the collapsed marker and the strip around them,
+# which the second row calls "inert".
 [[pointer]]
 where = "chrome"
 press = "left"
@@ -886,9 +887,9 @@ label = "open the directory that segment of the path names, on the first tap"
 [[pointer]]
 where = "chrome"
 press = "left x2"
-row = "leaf"
+row = "inert"
 does = "pathBar"
-label = "type the path: the current folder's own segment, or the strip beside the path"
+label = "type the path: the current folder's own segment, the collapsed marker or the strip beside the path"
 
 # Issue 20: the mouse's extra button. It belongs to the window rather than to a row, so it is the one
 # line here with no listing under it; ui/js/Nav.js mouseBack decides, and ui/shell.qml refuses it

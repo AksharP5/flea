@@ -1710,7 +1710,20 @@ case_click() {
     [[ "$(ipc path)" == "$deep" ]] || fail "click: a tap on the elision marker navigated to $(ipc path)"
     [[ "$(ipc pathBarOpen)" == "false" ]] || fail "click: a tap on the elision marker opened the path bar"
 
-    # keys.toml's chrome/left x2/leaf row is the current folder's own segment, and the chrome is the window's own top item, so its band is y 0 to chromeHeight - 1.
+    # The marker is one of keys.toml's inert segments, so the double click a tap on it never answers types the path.
+    omarchy-drive click "$((ex + wx))" "$((ey + wy))" --double >/dev/null \
+        || fail "click: omarchy-drive refused the double click on the elision marker"
+    settle
+    settle
+    printf 'CLICK elision-double path=%q barOpen=%s\n' "$(ipc path)" "$(ipc pathBarOpen)"
+    shot click-elision-double
+    [[ "$(ipc pathBarOpen)" == "true" ]] || fail "click: a double click on the elision marker did not open the path bar"
+    [[ "$(ipc path)" == "$deep" ]] || fail "click: the double click on the elision marker navigated to $(ipc path)"
+    key -k Escape >/dev/null
+    settle
+    [[ "$(ipc pathBarOpen)" == "false" ]] || fail "click: Escape did not close the path bar the elision marker opened"
+
+    # keys.toml's chrome/left x2/inert row covers the current folder's own segment, and the chrome is the window's own top item, so its band is y 0 to chromeHeight - 1.
     local chrome_h band_crumb band_x band
     chrome_h=$(ipc chromeHeight)
     band_crumb=$(( $(ipc crumbCount) - 1 ))
@@ -1795,17 +1808,27 @@ case_click() {
     centre=$(ipc crumbCentre "$target")
     [[ -n "$centre" ]] || fail "click: crumb $target has no on-screen centre for the double click"
     read -r cx cy <<< "$centre"
-    omarchy-drive click "$((cx + wx))" "$((cy + wy))" --double >/dev/null \
-        || fail "click: omarchy-drive refused the double click on crumb $target"
+    local qs_pid held_pid click_status held_path held_bar
+    qs_pid=$(flea_pid)
+    held_pid=$(pgrep -P "$qs_pid" -x flea)
+    [[ -n "$held_pid" ]] || fail "click: no flea backend child of qs $qs_pid to hold for the double click"
+    # The path is written only when a listing answers, so a held backend keeps one crumb delegate under both taps.
+    kill -STOP "$held_pid"
+    omarchy-drive click "$((cx + wx))" "$((cy + wy))" --double >/dev/null
+    click_status=$?
     settle
-    settle
-    printf 'CLICK crumb-double=%s path=%q barOpen=%s\n' "$target" "$(ipc path)" "$(ipc pathBarOpen)"
+    held_path=$(ipc path)
+    held_bar=$(ipc pathBarOpen)
+    kill -CONT "$held_pid"
+    (( click_status == 0 )) || fail "click: omarchy-drive refused the double click on crumb $target"
+    printf 'CLICK crumb-double=%s held path=%q barOpen=%s\n' "$target" "$held_path" "$held_bar"
     shot click-crumb-double
-    [[ "$(ipc pathBarOpen)" == "false" ]] || fail "click: a double click on a parent crumb typed the path instead of opening it"
-    case "$up" in
-        "$(ipc path)"/*) ;;
-        *) fail "click: a double click on a parent crumb went to $(ipc path), which is not above $up" ;;
-    esac
+    [[ "$held_path" == "$up" ]] || fail "click: the path moved to $held_path with the backend held, so the two taps did not meet one crumb"
+    [[ "$held_bar" == "false" ]] || fail "click: a double click on a parent crumb typed the path instead of opening it"
+    settle
+    settle
+    printf 'CLICK crumb-double released path=%q\n' "$(ipc path)"
+    [[ "$(ipc path)" == "$(dirname "$up")" ]] || fail "click: a double click on a parent crumb went to $(ipc path), not the one directory it names"
     kill_flea
 }
 
