@@ -8903,7 +8903,6 @@ rect_is() {
     done
 }
 
-# A click at row i's height just right of the settings card: on the ground, and inside the row in every view (the middle column runs 200 px past the card).
 # Presses row $1 beside the open menu: in columns the menu covers the row's centre, and a press there picks a menu row.
 click_row_beside_menu() {
     local rx ry rw rh mx my mw mh px wx wy
@@ -8917,6 +8916,7 @@ click_row_beside_menu() {
     omarchy-drive click "$((wx + px))" "$((wy + ry + rh / 2))" "$2" >/dev/null
 }
 
+# A click at row i's height just right of the settings card: on the ground, and inside the row in every view (the middle column runs 200 px past the card).
 click_row_edge() {
     local rx ry rw rh cx cy cw ch wx wy
     read -r rx ry rw rh <<< "$(ipc rowRect "$1")"
