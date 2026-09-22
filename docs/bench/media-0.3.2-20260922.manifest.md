@@ -282,4 +282,4 @@ safe direction, and it is not a reason to leave the number out.
 
 PREWARM one launch through flea --gui for /home/gm/Work/claude/flea-032-20260919/fw-f2
 TRANSIENT_ID=none: strata v0.19.0 writes the shared cache, so it is counted from the cache like every other entrant.
-Provenance: product tree 6d45d57a, the 0.3.2 candidate, run by the harness at 5a5245f8. The release commits after it change the harness cleanup, its tests, docs and the path crumb tap, none of which is on a measured path.
+Provenance: product tree 6d45d57a, the 0.3.2 candidate, run by the harness at 5a5245f8. The release commits after it change the harness cleanup, its tests, docs and the path crumb tap, none of which is on a measured path. The release's contributor-credit rewrite changed commit names and no tree, so 5a5245f8 is published as 781f9a1a and 6d45d57a as 4e136346.

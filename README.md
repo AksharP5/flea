@@ -150,6 +150,24 @@ thumbnails, and Flea settled in 1.92 s against 2.87 s on less CPU.
 | Strata | 557 ms | 2.87 s | 73.8 MiB | 7.13 s | 42 |
 | Thunar | 536 ms | 12.81 s | 38.8 MiB | 20.58 s | 221 |
 
+### 1,700 matched files
+
+The same set less HEIC and MKV, the two formats some of these apps decline, so none of them
+finishes sooner by skipping a format. Work still differs by app, so the same rule holds. Nemo left
+nothing in the thumbnail cache on this set, so its work was not measured and its time is not a
+result. Flea and Strata again made the same work, and Flea settled in 1.93 s against 2.93 s. One
+of Flea's three runs mapped in 3.7 s, and three more, Flea alone, mapped in 267 to 329 ms.
+
+| File manager | First window | Settled | Window PSS | CPU | Thumbnails |
+|---|---:|---:|---:|---:|---:|
+| **Flea** | 296 ms | 1.93 s | 82.0 MiB | 6.39 s | 43 |
+| Dolphin | 695 ms | 14.18 s | 92.9 MiB | 65.20 s | 500 |
+| Nautilus | 945 ms | 18.88 s | 179.8 MiB | 115.52 s | 641 |
+| Nemo | 814 ms | 1.74 s | 46.4 MiB | 1.58 s | not measured |
+| PCManFM | 421 ms | 113.50 s | 41.5 MiB | 178.95 s | 700 |
+| Strata | 570 ms | 2.93 s | 74.1 MiB | 7.15 s | 42 |
+| Thunar | 551 ms | 13.25 s | 40.5 MiB | 20.79 s | 221 |
+
 "First window" records compositor registration. "Settled" means 500 ms without process-tree
 CPU activity; neither measures input readiness.
 PSS covers the window process, excluding helpers and GPU memory. Flea's separate backend used a
@@ -162,6 +180,8 @@ PCManFM did not settle in any media run. Results describe this machine and workl
 [Scale manifest](docs/bench/scale-0.3.2-20260922.manifest.md) ·
 [Media CSV](docs/bench/media-0.3.2-20260922.csv) ·
 [Media manifest](docs/bench/media-0.3.2-20260922.manifest.md) ·
+[Matched CSV](docs/bench/matched-0.3.2-20260922.csv) ·
+[Matched manifest](docs/bench/matched-0.3.2-20260922.manifest.md) ·
 [0.1.6 run and TUI results](docs/bench/results-0.1.6.md)
 
 ## Keyboard

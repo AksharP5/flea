@@ -4,37 +4,42 @@ Written by tools/flea-bench-manifest. Every line below is read off the installed
 
 ## Run
 
-- date: 2026-09-22T01:55:47-04:00
+- date: 2026-09-22T03:01:07-04:00
 - host: minipc, kernel 7.2.5-3-omarchy
-- fixture: /home/flea-sandbox/flea-bench-btrfs
-- fixture payload: 100000 visible entries, filesystem btrfs
+- fixture: /home/flea-sandbox/flea-matched-btrfs
+- fixture payload: 1700 visible entries, filesystem btrfs
 - TUI terminal: kitty 0.48.2-1
-- flea launch line: FLEA_BIN=/home/gm/Work/claude/flea-032-20260919/fw-f2/target/release/flea FLEA_UI=/home/gm/Work/claude/flea-032-20260919/fw-f2/ui XDG_STATE_HOME=/tmp/flea-bench-state.XgHQCF setsid nohup /home/gm/Work/claude/flea-032-20260919/fw-f2/target/release/flea --gui /home/flea-sandbox/flea-bench-btrfs
-- load average at start: 0.49 1.71 1.58
-- waited 130 seconds for the box to go idle before starting
-- TUI preview target: not recorded by the caller
-- fixture payload assertion: PASSED, 100000 visible entries against the expected 100000
+- flea launch line: FLEA_BIN=/home/gm/Work/claude/flea-032-20260919/fw-f2/target/release/flea FLEA_UI=/home/gm/Work/claude/flea-032-20260919/fw-f2/ui XDG_STATE_HOME=/tmp/flea-bench-state.VHvz5r setsid nohup /home/gm/Work/claude/flea-032-20260919/fw-f2/target/release/flea --gui /home/flea-sandbox/flea-matched-btrfs
+- load average at start: 0.47 0.56 0.45
+- waited 60 seconds for the box to go idle before starting
+- TUI preview target: /home/flea-sandbox/flea-matched-btrfs/photo_0.jpg
+- fixture payload assertion: PASSED, 1700 visible entries against the expected 1700
 
 ## Fixture by extension
 
 ```
- 100000 txt
+    600 jpg
+    400 mp4
+    200 webp
+    200 txt
+    200 png
+    100 webm
       0 no extension
 ```
 
-- excluded from the denominator: 100000 .txt files, which no thumbnailer attempts
-- thumbnailable denominator: 0, from 100000 visible entries less the 100000 above
+- excluded from the denominator: 200 .txt files, which no thumbnailer attempts
+- thumbnailable denominator: 1500, from 1700 visible entries less the 200 above
 
 ## Package freshness
 
 - last full system upgrade: [2026-09-15T23:38:58-0400] [PACMAN] starting full system upgrade
-- age at run time: 146 hours
+- age at run time: 147 hours
 - WARNING: this run is more than 24 hours past the last upgrade, so the packaged entrants are not necessarily current
 
 ## Entrants
 
 ```
-flea       gui  source 5a5245f (clean), release binary built 2026-09-22T00:59:42-04:00, 2604512 bytes
+flea       gui  source af93be8 (clean), release binary built 2026-09-22T02:59:59-04:00, 2604736 bytes
 nautilus   gui  nautilus 50.3.1-1
 thunar     gui  thunar 4.20.9-1
 pcmanfm    gui  pcmanfm 1.4.0-2
@@ -138,8 +143,8 @@ kitten icat --clear --stdin no --transfer-mode file </dev/null >/dev/tty
 # lf ships no image preview at all: its own lfrc.example at /usr/share/doc/lf/lfrc.example has no
 # preview lines in it. AUTHORED HERE, so lf's row carries that caveat. The shape is lf's documented
 # previewer hook, with kitty's own icat kitten as the image path.
-set previewer /tmp/tmp.39t4COu15x/lf/previewer.sh
-set cleaner /tmp/tmp.39t4COu15x/lf/cleaner.sh
+set previewer /tmp/tmp.Qu6QeMfDKH/lf/previewer.sh
+set cleaner /tmp/tmp.Qu6QeMfDKH/lf/cleaner.sh
 ```
 
 ### lf/previewer.sh
@@ -190,8 +195,8 @@ ueberzugpp             2.9.10-1
 
 ## Run close
 
-- ended: 2026-09-22T02:07:19-04:00
-- load average at end: 2.14 1.82 1.70
+- ended: 2026-09-22T03:15:46-04:00
+- load average at end: 2.10 2.68 2.02
 
 ## Formats produced, refused, and never attempted
 
@@ -201,11 +206,26 @@ failure marker the thumbnailer left. Never attempted is neither, which on this f
 means the entrant settled before reaching those names: they sort by format, clip before image
 before notes before photo. **A never-attempted count is not a capability claim.**
 
-- no key map for this run, so no format was classified
+- flea produced mp4 35, webm 8; refused nothing; never attempted jpg 600, mp4 365, png 200, txt 200, webm 92, webp 200
+- nautilus produced mp4 400, png 71, webm 100, webp 70; refused nothing; never attempted jpg 600, png 129, txt 200, webp 130
+- thunar produced mp4 177, webm 44; refused nothing; never attempted jpg 600, mp4 223, png 200, txt 200, webm 56, webp 200
+- pcmanfm produced mp4 400, png 200, webm 100; refused nothing; never attempted jpg 600, txt 200, webp 200
+- nemo: nothing reached the thumbnail cache, so this run makes no format claim about it either way; tools/flea-bench-capability is the instrument that answers what it can draw
+- dolphin produced jpg 224, mp4 360, webm 90; refused nothing; never attempted jpg 376, mp4 40, png 200, txt 200, webm 10, webp 200
+- strata produced mp4 34, webm 8; refused nothing; never attempted jpg 600, mp4 366, png 200, txt 200, webm 92, webp 200
+- yazi: a TUI previews the cursor file and fills no grid, so it writes no thumbnails at all
+- mc: a TUI previews the cursor file and fills no grid, so it writes no thumbnails at all
+- broot: a TUI previews the cursor file and fills no grid, so it writes no thumbnails at all
+- nnn: a TUI previews the cursor file and fills no grid, so it writes no thumbnails at all
+- lf: a TUI previews the cursor file and fills no grid, so it writes no thumbnails at all
+- ranger: a TUI previews the cursor file and fills no grid, so it writes no thumbnails at all
+- xplr: a TUI previews the cursor file and fills no grid, so it writes no thumbnails at all
+- superfile: a TUI previews the cursor file and fills no grid, so it writes no thumbnails at all
 
 ## The TUI bracket's preview timing
 
-- every TUI entrant in this run produced a preview, or none was timed
+- mc, broot, xplr: no image preview feature at all, so nothing was there to time. The -1 in
+  preview_ms is that fact and not a slow preview.
 
 ## The equal-work column
 
@@ -230,10 +250,37 @@ safe direction, and it is not a reason to leave the number out.
 
 ## Rank refusals
 
-- none: every row in this run is comparable
+- nemo run 1: unranked: nothing reached the thumbnail cache so its work was not measured
+- yazi run 1: n/a: tui in kitty
+- mc run 1: n/a: tui in kitty
+- broot run 1: n/a: tui in kitty
+- nnn run 1: n/a: tui in kitty
+- lf run 1: n/a: tui in kitty
+- ranger run 1: n/a: tui in kitty
+- xplr run 1: n/a: tui in kitty
+- superfile run 1: n/a: tui in kitty
+- nemo run 2: unranked: nothing reached the thumbnail cache so its work was not measured
+- yazi run 2: n/a: tui in kitty
+- mc run 2: n/a: tui in kitty
+- broot run 2: n/a: tui in kitty
+- nnn run 2: n/a: tui in kitty
+- lf run 2: n/a: tui in kitty
+- ranger run 2: n/a: tui in kitty
+- xplr run 2: n/a: tui in kitty
+- superfile run 2: n/a: tui in kitty
+- nemo run 3: unranked: nothing reached the thumbnail cache so its work was not measured
+- yazi run 3: n/a: tui in kitty
+- mc run 3: n/a: tui in kitty
+- broot run 3: n/a: tui in kitty
+- nnn run 3: n/a: tui in kitty
+- lf run 3: n/a: tui in kitty
+- ranger run 3: n/a: tui in kitty
+- xplr run 3: n/a: tui in kitty
+- superfile run 3: n/a: tui in kitty
+- the ranked rows differ in thumbnail work by 16x, from 42 to 700, so their settle times are not ranked against each other
 
 ## Notes
 
 PREWARM one launch through flea --gui for /home/gm/Work/claude/flea-032-20260919/fw-f2
 TRANSIENT_ID=none: strata v0.19.0 writes the shared cache, so it is counted from the cache like every other entrant.
-Provenance: product tree 6d45d57a, the 0.3.2 candidate, run by the harness at 5a5245f8. The release commits after it change the harness cleanup, its tests, docs and the path crumb tap, none of which is on a measured path. The release's contributor-credit rewrite changed commit names and no tree, so 5a5245f8 is published as 781f9a1a and 6d45d57a as 4e136346.
+Provenance: product and harness tree af93be86, the 0.3.2 release tree, published as 97ec6b90 after the release's contributor-credit rewrite, which changed commit names and no tree. Flea's first run here mapped in 3669 ms and settled in 5346 ms, with nothing in the kernel log at that minute. A batch of three more, Flea alone after one prewarm, mapped in 267 to 329 ms and settled in 1859 to 1988 ms.
