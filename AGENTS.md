@@ -2220,8 +2220,8 @@ waits for its consumer.
   - `icons` catches removing the icon slot from `ui/Row.qml` or its theme fallback. Every row
     must answer a non-empty source, a directory and a symlink to a directory must both draw a
     folder, a `.jpg` must draw the image icon, a `.pem` must not draw as an executable, and
-    the rendered row pitch read off `itemRect` must still equal `Theme.rowHeight`, so a slot
-    that grows its row reddens.
+    the rendered row pitch read off `itemRect` must still equal `Theme.fileRowHeight`, the row
+    the stored density asks for, so a slot that grows its row reddens.
   - `thumbs` catches turning the settle timer into a request per scrolled frame. One screen
     of 200 hard-linked jpegs must cost exactly one request, row 0 must end up drawing a
     `file://` URL out of the cache, the first row past the requested screen must exist and
@@ -4393,7 +4393,8 @@ by construction the row's own text line box, `Math.round(font.bodySmall * lineBo
 23 px at this box's text size, from a `rowHeight` of 37 and a `rowPaddingY` of 7, and it moves
 with `omarchy display text size` because every term in it does. No pixel constant appears
 anywhere on the path, which is why `tests/ui.sh icons` asserts the rendered pitch off `itemRect`
-against `Theme.rowHeight` rather than against a number.
+against `Theme.fileRowHeight`, the text line box with its padding scaled by density, rather than
+against a number.
 
 Qt keys the pixmap cache by source URL, so the column is bounded by the number of distinct
 names a directory produces and not by the row count. Measured at 256 px against a window
