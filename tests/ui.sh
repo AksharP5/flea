@@ -1808,18 +1808,22 @@ case_click() {
     centre=$(ipc crumbCentre "$target")
     [[ -n "$centre" ]] || fail "click: crumb $target has no on-screen centre for the double click"
     read -r cx cy <<< "$centre"
-    local qs_pid held_pid click_status held_path held_bar
+    local qs_pid pid held_pid="" click_status held_path held_bar
     qs_pid=$(flea_pid)
-    held_pid=$(pgrep -P "$qs_pid" -x flea)
-    [[ -n "$held_pid" ]] || fail "click: no flea backend child of qs $qs_pid to hold for the double click"
+    # Sample input: /proc/<pid>/cmdline "/usr/bin/flea\0--backend\0"; ViewState's writer is a flea child too, run as --ui-state.
+    for pid in $(pgrep -P "$qs_pid" -x flea); do
+        tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null | grep -Fq -- ' --backend ' && held_pid="$held_pid $pid"
+    done
+    held_pid=${held_pid# }
+    [[ "$held_pid" =~ ^[0-9]+$ ]] || fail "click: expected one flea --backend child of qs $qs_pid to hold, found '$held_pid'"
     # The path is written only when a listing answers, so a held backend keeps one crumb delegate under both taps.
-    kill -STOP "$held_pid"
+    kill -STOP "$held_pid" || fail "click: could not stop backend $held_pid, so the double click would run unheld"
     omarchy-drive click "$((cx + wx))" "$((cy + wy))" --double >/dev/null
     click_status=$?
     settle
     held_path=$(ipc path)
     held_bar=$(ipc pathBarOpen)
-    kill -CONT "$held_pid"
+    kill -CONT "$held_pid" || fail "click: could not resume backend $held_pid after the double click"
     (( click_status == 0 )) || fail "click: omarchy-drive refused the double click on crumb $target"
     printf 'CLICK crumb-double=%s held path=%q barOpen=%s\n' "$target" "$held_path" "$held_bar"
     shot click-crumb-double
