@@ -8905,15 +8905,20 @@ rect_is() {
 
 # Presses row $1 beside the open menu: in columns the menu covers the row's centre, and a press there picks a menu row.
 click_row_beside_menu() {
-    local rx ry rw rh mx my mw mh px wx wy
+    local rx ry rw rh mx my mw mh inset px py wx wy
     read -r rx ry rw rh <<< "$(ipc rowRect "$1")"
     [[ -n "$rh" ]] || fail "click_row_beside_menu: row $1 has no box"
     read -r mx my mw mh <<< "$(ipc contextMenuRect)"
     [[ -n "$mh" ]] || fail "click_row_beside_menu: no open menu to press beside"
-    px=$((rx + $(ipc metrics | cut -d' ' -f3)))
-    (( px < mx || px > mx + mw )) || fail "click_row_beside_menu: row $1 starts at x $rx, under the menu from $mx to $((mx + mw))"
+    # Sample input: ipc metrics "13 11 14 37", the body and caption sizes, rowPaddingX, then the board's rowHeight.
+    inset=$(ipc metrics | cut -d' ' -f3)
+    [[ "$inset" =~ ^[0-9]+$ ]] || fail "click_row_beside_menu: ipc metrics gave no rowPaddingX, got [$inset]"
+    px=$((rx + inset)) py=$((ry + rh / 2))
+    (( px < rx + rw )) || fail "click_row_beside_menu: a press $inset px into row $1 falls past its $rw px width"
+    (( px < mx || px > mx + mw || py < my || py > my + mh )) \
+        || fail "click_row_beside_menu: the press at $px,$py on row $1 is under the menu at $mx $my $mw $mh"
     read -r wx wy _ww _wh < <(window_box) || fail "native window coordinates unavailable"
-    omarchy-drive click "$((wx + px))" "$((wy + ry + rh / 2))" "$2" >/dev/null
+    omarchy-drive click "$((wx + px))" "$((wy + py))" "$2" >/dev/null
 }
 
 # A click at row i's height just right of the settings card: on the ground, and inside the row in every view (the middle column runs 200 px past the card).
