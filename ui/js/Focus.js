@@ -122,13 +122,7 @@ function act(action, root, menuId, paths) {
     case "trashArm": Trash.arm(root); return
     case "copy": Ops.clip(root, false, paths); return
     case "copydirpath": root.copyDirPath(); return
-    case "copypath":
-        var targets = Ops.targetIndices(root)
-        if (targets.length === 0) return Ops.sayNoTarget(root)
-        var row = root.rowFor(targets[0])
-        if (!row) { root.message("That selected row has not loaded yet.", false); return }
-        root.performMenu(action, 0, [root.join(root.path, row.n)])
-        return
+    case "copypath": root.menuActions.copyPath(); return
     case "cut": Ops.clip(root, true, paths); return
     case "paste": Ops.paste(root); return
     case "movePaste":

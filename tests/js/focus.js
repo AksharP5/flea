@@ -326,21 +326,10 @@ function run(check) {
           "duplicate:42|trash:42|extract:42|dropbox:42|convert:42|/d/captured.txt,/d/second.txt:42")
 
     var pathPane = listPane(true)
-    pathPane.path = "/d"
-    pathPane.cursorIndex = 2
-    pathPane.shown = null
-    pathPane.selectedIndices = function () { return [7] }
-    pathPane.rowFor = function (index) { return {n: index === 7 ? "picked.txt" : "cursor.txt"} }
-    pathPane.join = function (parent, name) { return parent + "/" + name }
-    pathPane.performMenu = function (action, id, paths) { this.copied = action + ":" + paths[0] }
+    pathPane.requests = 0
+    pathPane.menuActions = {copyPath: function () { pathPane.requests += 1 }}
     Focus.act("copypath", pathPane)
-    check("copy path uses the selected file and the existing menu action", pathPane.copied, "copypath:/d/picked.txt")
-    pathPane.selectedIndices = function () { return [] }
-    Focus.act("copypath", pathPane)
-    check("copy path falls back to the cursor row", pathPane.copied, "copypath:/d/cursor.txt")
-    pathPane.cursorIndex = -1
-    Focus.act("copypath", pathPane)
-    check("copy path has no target in an empty listing", pathPane.said, "There is nothing to act on.")
+    check("copy path delegates selection resolution to the menu backend", pathPane.requests, 1)
 
     // Y copies root.path, the same thing Ctrl+T opens a terminal on, so it answers from the rail
     // too; without the interception RailKeys.act ate it and the key did nothing and said nothing.
