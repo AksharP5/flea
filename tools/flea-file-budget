@@ -46,7 +46,7 @@ src/uistate.rs 625
 src/uistore.rs 540
 src/vulkan.rs 728
 tests/js/columns.js 618
-tests/js/focus.js 456
+tests/js/focus.js 462
 tests/js/mounts.js 383
 tests/js/network.js 306
 tests/js/ops.js 390
@@ -64,7 +64,7 @@ ui/NetworkDialog.qml 449
 ui/NetworkMounts.qml 838
 ui/OpenWithDialog.qml 592
 ui/Pane.qml 735
-ui/PaneMenuActions.qml 407
+ui/PaneMenuActions.qml 460
 ui/PaneWire.qml 468
 ui/PermissionsDialog.qml 432
 ui/PickerWindow.qml 706
@@ -79,8 +79,8 @@ ui/Theme.qml 415
 ui/TrashView.qml 475
 ui/WindowBody.qml 547
 ui/js/Filter.js 253
-ui/js/Focus.js 373
-ui/js/Keymap.js 314
+ui/js/Focus.js 374
+ui/js/Keymap.js 315
 ui/js/Menu.js 337
 ui/js/Ops.js 371
 ui/js/Settings.js 432"
