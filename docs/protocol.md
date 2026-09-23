@@ -17,7 +17,7 @@ escaper in `src/json.rs`, dispatched by `src/backend/run.rs`.
    altered by another program. It can land between any request and its reply, so a
    client that counts lines rather than reading their `t` field will misread the wire.
 4. A row index means a file only in the numbering it was read from. Every `rows` line
-   names that numbering as `listing`, and a `trash`, `transfer`, `paths` or `menuaction`
+   names that numbering as `listing`, and a `trash`, `transfer`, `paths`, `collisions` or `menuaction`
    that names an older one is refused before anything resolves; see "listing" below.
 
 ## Requests
@@ -32,9 +32,9 @@ The backend numbers its rows, and the number moves whenever what an index names 
 successful `list` or `listpaths`, a `search`, an accepted `sort`, and a walk's ranking. Every `rows`
 line carries the numbering it was written in as its last field, `"listing":<uint>`, and the first
 listing a backend makes is 1. A client names the numbering of the rows it read an index from on any
-request that carries `rows`. A `trash`, `transfer`, `paths` or `menuaction` whose `listing` is not
-the numbering in force is refused before a single index is resolved: `trash`, `transfer` and `paths`
-answer `{"t":"error","where":"stale","path":"<the command>","msg":"..."}` and nothing else, and a
+request that carries `rows`. A `trash`, `transfer`, `paths`, `collisions` or `menuaction` whose `listing` is not
+the numbering in force is refused before a single index is resolved: `trash`, `transfer`, `paths`
+and `collisions` answer `{"t":"error","where":"stale","path":"<the command>","msg":"..."}` and nothing else, and a
 `menuaction` answers its own reply with `"ok":false` and an `error` sentence. Nothing was done in
 either case, so a client that wants the action reads the new rows and asks again.
 

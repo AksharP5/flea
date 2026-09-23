@@ -73,6 +73,11 @@ function run(check) {
     check("and so does an open card", Collide.refusal(true, byPath), Collide.WAITING)
     check("even with nothing waiting behind it", Collide.refusal(true, null), Collide.WAITING)
     check("with nothing waiting a question may go", Collide.refusal(false, null), "")
+    // A refused question ends the wait the same way an answered one does: the card never opens.
+    check("a refused collisions question drops the wait, so the next paste may ask again",
+          Collide.droppedPending("stale", "collisions"), true)
+    check("any other refusal holds nothing of the card's",
+          Collide.droppedPending("stale", "transfer") + "|" + Collide.droppedPending("scan", "collisions"), "false|false")
 
     // ui/CollideHost.qml ask() stamps rows read under listing 4; a rows line in listing 5 lands before the choice sends them.
     var captured = Collide.waiting(byRows, 4)

@@ -93,6 +93,11 @@ function swallows(inFlight, action) {
     return inFlight === true && action.length > 0 && ANSWERED_WHILE_LISTING.indexOf(action) < 0
 }
 
+// A re-sort renumbers every row without a new list, so a selection made while it was in flight names other files once the new numbering lands.
+function clearsSelection(oldHeld, listing) {
+    return oldHeld > 0 && listing > 0 && listing !== oldHeld
+}
+
 // A frame drawn empty while a listing is out: "blank" before the cap is the defect, "loading" after it is allowed.
 function frameKind(inFlight, listingState, fellBack) {
     if (inFlight !== true || listingState !== "loading") {

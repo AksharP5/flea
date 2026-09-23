@@ -5,7 +5,7 @@ use crate::error::FleaError;
 use crate::json::{field_str, field_usize};
 
 // The requests whose rows resolve to files something then acts on; thumb, dirsize, meta and window only read.
-const GUARDED: [&str; 4] = ["trash", "transfer", "paths", "menuaction"];
+const GUARDED: [&str; 5] = ["trash", "transfer", "paths", "menuaction", "collisions"];
 
 // The numbering a backend's first listing answers in, which State::new starts one below and a prewarm file stands in for.
 pub const FIRST_LISTING: u64 = 1;
@@ -67,6 +67,14 @@ mod tests {
         assert_eq!(field_str(&refused, "t").as_deref(), Some("menuaction"));
         assert_eq!(field_usize(&refused, "id"), Some(9));
         assert!(refused.contains(r#""ok":false"#));
+    }
+
+    #[test]
+    fn a_stale_collisions_question_is_refused_like_any_other_row_request() {
+        let refused = refusal(r#"{"c":"collisions","id":7,"rows":[0],"dest":"/b","listing":4}"#, 5).expect("refused");
+        assert_eq!(field_str(&refused, "t").as_deref(), Some("error"));
+        assert_eq!(field_str(&refused, "where").as_deref(), Some("stale"));
+        assert_eq!(field_str(&refused, "path").as_deref(), Some("collisions"));
     }
 
     #[test]

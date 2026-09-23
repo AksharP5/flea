@@ -52,6 +52,9 @@ Item {
         var action = Swap.onRows(root.phase, root.pane.listInFlight, root.pane.listedSeen)
         if (action === Swap.DROP)
             return
+        // A re-sort renumbers every row, so a selection made while it was in flight names other files under the new numbering.
+        if (Swap.clearsSelection(root.pane.backend.heldListing, listing) && root.pane.selectionCount() > 0)
+            root.pane.clearSelection()
         root.pane.backend.heldListing = listing
         if (action === Swap.LAND) {
             root.land(start, items, kinds)

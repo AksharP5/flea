@@ -64,6 +64,11 @@ function refusal(opened, pending) {
     return opened || pending !== null ? WAITING : ""
 }
 
+// A refused question ends the wait the same way an answered one does: the card never opens, so nothing stays waiting.
+function droppedPending(where, input) {
+    return where === "stale" && input === "collisions"
+}
+
 // The question names the same sources the transfer will, in the backend's order: a shelf drag's paths, a menu's selection, paths, rows.
 function question(request, probe, id) {
     var asked = { c: "collisions", id: id, dest: request.dest }

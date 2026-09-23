@@ -336,8 +336,8 @@ row drag stamps its rows at the lift (`ui/FileDrag.qml dragListing`), so a watch
 that lands before the choice or the drop gets that transfer refused rather than resolved in the new
 numbering onto another file. The watched re-read also waits while a transfer waits on the card, so the
 usual case keeps its rows. `src/backend/rowguard.rs` refuses a `trash`,
-`transfer`, `paths` or `menuaction` whose `listing` is not the one in force, before anything resolves:
-an `error` line with `where` `stale` for the first three, which `ui/PaneWire.qml onFailed` reports
+`transfer`, `paths`, `collisions` or `menuaction` whose `listing` is not the one in force, before anything resolves:
+an `error` line with `where` `stale` for the first four, which `ui/PaneWire.qml onFailed` reports
 without ending the listing that is out, and a failed `menuaction` reply for a snapshot, the shape the
 menu already waits for. A request that names no numbering is resolved as before, which is every
 older client, the picker and `tests/protocol.sh`'s own lines; `thumb`, `dirsize`, `meta` and `window`
@@ -1589,7 +1589,7 @@ failure fails the check rather than passing it.
 - `backend/proto.rs` the wire types, the request dispatch and the one-line responses.
 - `backend/rows.rs` serialises one window of rows and its per-response Kind dictionary.
 - `backend/rowguard.rs` stamps each rows line with its listing's numbering and refuses a trash,
-  transfer, paths or menu snapshot that names an older one, see "The listing swap".
+  transfer, paths, collisions or menu snapshot that names an older one, see "The listing swap".
 - `backend/thumbreq.rs` the thumbnail request policy: cache lookup, queueing, cancel and
   result reporting, see "Thumbnail requests".
 - `backend/run.rs` the command loop, see "Thumbnail requests". stdin is read on its own

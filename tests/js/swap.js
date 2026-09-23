@@ -271,4 +271,8 @@ function run(check) {
     check("a second listing while one is out asks the swap nothing and sends nothing",
           busy.holds + "|" + busy.sent.length + "|" + busy.said.join(""), "0|0|A directory is already loading.")
     check("and forgets nothing", snapshot(busy), UNTOUCHED)
+    // A selection made between a sort key and its rows lands on other files, so the new numbering clears it.
+    check("a new listing number clears a selection the old one named", Swap.clearsSelection(4, 5), true)
+    check("a later window in the same numbering clears nothing", Swap.clearsSelection(5, 5), false)
+    check("and nothing held yet means nothing to clear", Swap.clearsSelection(0, 5), false)
 }
