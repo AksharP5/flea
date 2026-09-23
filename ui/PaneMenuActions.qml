@@ -182,6 +182,12 @@ Loader {
         if (opened) return
         if (action === "rename" && pane.renamePending) { pane.message("Rename is still finishing.", false); return }
         if (deleting || survivorId) { pane.message("The deletion is still finishing.", false); return }
+        // Another action cannot reuse the keyboard copy's single-row snapshot.
+        if (copyingPath) {
+            copyingPath = false
+            ready = false
+            identity = ""
+        }
         if (action === "newFile") {
             requestId++
             folder = pane.path

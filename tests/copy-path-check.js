@@ -14,6 +14,7 @@ function qmlFunction(name, indent) {
 
 const requests = [];
 const copied = [];
+const opened = [];
 const pane = {
     path: '/fixture', cursorIndex: 2, picked: [7], menuSelectionIdentity: 'listing-1',
     rowFor() { return null; },
@@ -25,6 +26,7 @@ const pane = {
 const actions = {
     pane, requestId: 0, deleting: false, survivorId: 0, opened: false,
     finishProviders() {},
+    show(action) { opened.push(action); },
     Ops: {
         targetIndices(pane) { return pane.picked.length ? pane.picked : pane.cursorIndex < 0 ? [] : [pane.cursorIndex]; },
         sayNoTarget(pane) { pane.message('There is nothing to act on.'); }
@@ -32,7 +34,7 @@ const actions = {
 };
 actions.root = actions;
 const context = vm.createContext(actions);
-for (const [name, indent] of [['snapshot', 4], ['copyPath', 4], ['onMenuResult', 8]])
+for (const [name, indent] of [['snapshot', 4], ['copyPath', 4], ['open', 4], ['onMenuResult', 8]])
     vm.runInContext('root.' + name + ' = ' + qmlFunction(name, indent), context);
 
 actions.copyPath();
@@ -63,4 +65,21 @@ actions.onMenuResult({id: 4, op: 'snapshot', ok: true});
 pane.menuSelectionIdentity = 'listing-3';
 actions.onMenuResult({id: 4, op: 'activate', ok: true, action: 'copypath', paths: ['/fixture/picked.txt']});
 assert.equal(copied.length, 1, 'a changed selection cannot copy after activation either');
-console.log('copy path: 10 checks, 0 failed');
+
+const requestsBeforeOpen = requests.length;
+actions.copyPath();
+const copyId = actions.requestId;
+actions.open('properties', 0);
+assert.equal(actions.requestId, copyId + 1, 'opening an action supersedes a pending copy');
+actions.onMenuResult({id: copyId, op: 'snapshot', ok: true});
+assert.equal(requests.length, requestsBeforeOpen + 2, 'a superseded copy cannot activate');
+actions.onMenuResult({id: copyId + 1, op: 'snapshot', ok: true});
+assert.deepEqual(opened, ['properties'], 'the new action opens after its own snapshot');
+
+actions.copyPath();
+const nextCopyId = actions.requestId;
+actions.open('newFile', 0);
+assert.equal(actions.copyingPath, false, 'a new-file dialog also supersedes the copy');
+actions.onMenuResult({id: nextCopyId, op: 'snapshot', ok: true});
+assert.deepEqual(opened, ['properties', 'newFile'], 'a stale copy reply cannot interrupt the dialog');
+console.log('copy path: 15 checks, 0 failed');
