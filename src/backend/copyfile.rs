@@ -22,6 +22,8 @@ pub struct Progress<'a> {
     // stays on disk, because removing it would destroy data on a transient error, and the caller
     // journals it so undo removes it as one step. A cancel never sets it: the cancel path removes.
     pub partial: Option<PathBuf>,
+    // Where a tree copy records every path it creates; a finished copy drops it unread.
+    pub manifest: Option<super::copymanifest::Writer>,
 }
 
 pub fn cancelled(p: &Progress) -> bool {
@@ -74,13 +76,13 @@ fn copy_file_at(src: At, dst: At, total: u64, p: &mut Progress) -> Result<(), Fl
         }
         let n = match r.read(&mut buf) {
             Ok(n) => n,
-            Err(e) => return Err(left_partial(p, dst.named, from_io("copy", &src.named.to_string_lossy(), &e))),
+            Err(e) => return Err(left_half_written(p, dst, &w, from_io("copy", &src.named.to_string_lossy(), &e))),
         };
         if n == 0 {
             break;
         }
         if let Err(e) = w.write_all(&buf[..n]) {
-            return Err(left_partial(p, dst.named, from_io("copy", &dst.named.to_string_lossy(), &e)));
+            return Err(left_half_written(p, dst, &w, from_io("copy", &dst.named.to_string_lossy(), &e)));
         }
         done += n as u64;
         let (reported, against) = match p.tree {
@@ -90,11 +92,12 @@ fn copy_file_at(src: At, dst: At, total: u64, p: &mut Progress) -> Result<(), Fl
         (p.on_bytes)(reported, against);
     }
     if let Err(e) = w.flush() {
-        return Err(left_partial(p, dst.named, from_io("copy", &dst.named.to_string_lossy(), &e)));
+        return Err(left_half_written(p, dst, &w, from_io("copy", &dst.named.to_string_lossy(), &e)));
     }
     if let Some(carried) = p.tree.as_mut() {
         *carried += done;
     }
+    record_open(p, dst.named, &w);
     Ok(())
 }
 
@@ -127,10 +130,30 @@ fn left_partial(p: &mut Progress, dst: &Path, e: FleaError) -> FleaError {
     e
 }
 
+// A failure mid-file leaves a half-written file, which undo removes only if the manifest names it.
+fn left_half_written(p: &mut Progress, dst: At, w: &std::fs::File, e: FleaError) -> FleaError {
+    record_open(p, dst.named, w);
+    left_partial(p, dst.named, e)
+}
+
+// The identity is fstat'd off the still-open descriptor, so undo verifies what is on disk without a later sweep.
+fn record_open(p: &mut Progress, named: &Path, w: &std::fs::File) {
+    if let Some(writer) = p.manifest.as_mut() {
+        match w.metadata() {
+            Ok(meta) => writer.record(named, &meta),
+            Err(_) => writer.overflow(),
+        }
+    }
+}
+
 // A symlink is copied as a symlink and never followed, matching cp -a and every rival in the parity audit.
-fn copy_symlink_at(src: At, dst: At) -> Result<(), FleaError> {
+fn copy_symlink_at(src: At, dst: At, p: &mut Progress) -> Result<(), FleaError> {
     let target = std::fs::read_link(src.at).map_err(|e| from_io("copy", &src.named.to_string_lossy(), &e))?;
-    std::os::unix::fs::symlink(&target, dst.at).map_err(|e| from_io("copy", &dst.named.to_string_lossy(), &e))
+    std::os::unix::fs::symlink(&target, dst.at).map_err(|e| from_io("copy", &dst.named.to_string_lossy(), &e))?;
+    if let Some(writer) = p.manifest.as_mut() {
+        writer.record_stat(dst.at, dst.named);
+    }
+    Ok(())
 }
 
 // Copies a file, a symlink, a whole directory tree, or any other node by recreating it. The
@@ -145,7 +168,7 @@ fn copy_at(src: At, dst: At, p: &mut Progress) -> Result<(), FleaError> {
         .symlink_metadata()
         .map_err(|e| from_io("copy", &src.named.to_string_lossy(), &e))?;
     if meta.file_type().is_symlink() {
-        return copy_symlink_at(src, dst);
+        return copy_symlink_at(src, dst, p);
     }
     if meta.is_dir() {
         return copy_dir_at(src, dst, p);
@@ -155,7 +178,11 @@ fn copy_at(src: At, dst: At, p: &mut Progress) -> Result<(), FleaError> {
     }
     // A fifo, a socket and a device node are the rest, and none of them has contents copy_file could
     // stream: the fifo's open waits, the socket's fails, and the device's would never end.
-    crate::backend::copynode::copy_node(&meta, dst.at)
+    crate::backend::copynode::copy_node(&meta, dst.at)?;
+    if let Some(writer) = p.manifest.as_mut() {
+        writer.record_stat(dst.at, dst.named);
+    }
+    Ok(())
 }
 
 fn copy_dir_at(src: At, dst: At, p: &mut Progress) -> Result<(), FleaError> {
@@ -171,6 +198,12 @@ fn copy_dir_at(src: At, dst: At, p: &mut Progress) -> Result<(), FleaError> {
     std::fs::DirBuilder::new().mode(keep.unwrap_or(0o700) | 0o700).create(dst.at)
         .map_err(|e| from_io("copy", &dst.named.to_string_lossy(), &e))?;
     let into = open_dir(dst.at).map_err(|e| from_io("copy", &dst.named.to_string_lossy(), &e))?;
+    if let Some(writer) = p.manifest.as_mut() {
+        match into.metadata() {
+            Ok(meta) => writer.record(dst.named, &meta),
+            Err(_) => writer.overflow(),
+        }
+    }
     let (from_held, into_held) = (held_path(&from), held_path(&into));
     // Set once at the top of the tree, so a directory inside it goes on counting rather than starting again.
     if p.tree.is_none() {

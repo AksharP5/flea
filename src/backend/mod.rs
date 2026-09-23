@@ -66,6 +66,7 @@ pub mod workerlink;
 pub mod collide;
 pub mod convert;
 pub mod copyfile;
+pub mod copymanifest;
 pub mod copynode;
 pub mod ops;
 pub mod opscancel;
@@ -78,6 +79,9 @@ pub mod undo;
 pub mod redo;
 // The open listing's directory, watched so an outside change reaches the client; see docs/protocol.md "changed".
 pub mod watch;
+// Test-only: the failing-first manifest behaviour for undo of a failed tree copy.
+#[cfg(test)]
+mod undomanifest_tests;
 // Test-only: hard rule 9's sandbox root, so no destructive test names a path outside one.
 #[cfg(test)]
 pub mod testdir;

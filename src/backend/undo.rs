@@ -40,7 +40,7 @@ pub enum Step {
     // that drive undo's own ladder are what construct it.
     #[cfg_attr(not(test), allow(dead_code))]
     Created { path: PathBuf },
-    Copied { from: PathBuf, to: PathBuf, source: ItemIdentity, created: ItemIdentity },
+    Copied { from: PathBuf, to: PathBuf, source: ItemIdentity, created: ItemIdentity, manifest: Option<super::copymanifest::Handle> },
     // This operation made the empty directory `path`; reversing it removes it only while it is still
     // empty, because anything inside it now was put there by someone else, never by this operation.
     MadeDir { path: PathBuf, identity: ItemIdentity },
@@ -162,7 +162,13 @@ pub fn move_back(to: &std::path::Path, from: &std::path::Path) -> Result<(), Fle
 }
 
 pub fn copied(from: &std::path::Path, to: &std::path::Path, source: ItemIdentity) -> Result<Step, FleaError> {
-    Ok(Step::Copied { from: from.to_path_buf(), to: to.to_path_buf(), source, created: ItemIdentity::inspect(to)? })
+    Ok(Step::Copied { from: from.to_path_buf(), to: to.to_path_buf(), source, created: ItemIdentity::inspect(to)?, manifest: None })
+}
+
+// A failed or cancelled tree copy carries what it managed to create, so undo
+// removes exactly those paths; a success keeps the plain step above unchanged.
+pub fn copied_partial(from: &std::path::Path, to: &std::path::Path, source: ItemIdentity, manifest: Option<super::copymanifest::Handle>) -> Result<Step, FleaError> {
+    Ok(Step::Copied { from: from.to_path_buf(), to: to.to_path_buf(), source, created: ItemIdentity::inspect(to)?, manifest })
 }
 
 pub fn moved(from: &std::path::Path, to: &std::path::Path, before: ItemIdentity) -> Result<Step, FleaError> {
@@ -181,16 +187,22 @@ fn reverse(step: &Step) -> Result<Option<(ItemIdentity, ItemIdentity)>, FleaErro
             return Ok(if current == *after { Some((current, ItemIdentity::inspect(from)?)) } else { None });
         }
         Step::Created { path } => remove(path)?,
-        Step::Copied { to, created, .. } => {
-            if ItemIdentity::inspect(to)? != *created {
-                return Err(FleaError { where_: "undo".into(), path: to.to_string_lossy().into(),
-                    msg: "the copied item changed since this operation, so undo left it in place".into() });
+        Step::Copied { to, created, manifest, .. } => {
+            if let Some(handle) = manifest {
+                // The manifest names only what the copy made, so the coarse whole-tree
+                // checks below are skipped: a stray's creation bumps the root's own
+                // ctime and would refuse the removal its own files are owed.
+                match super::copymanifest::remove_owned(handle) {
+                    super::copymanifest::Outcome::Done(report) if report.kept.is_empty() => {}
+                    super::copymanifest::Outcome::Done(report) => {
+                        return Err(super::copymanifest::undo_err(to, super::copymanifest::summarize(&report)));
+                    }
+                    // Unreadable before anything went: today's check, never a wider delete.
+                    super::copymanifest::Outcome::Fallback => return remove_copied(to, created),
+                }
+            } else {
+                return remove_copied(to, created);
             }
-            if let Some(newer) = newer_inside(to, created.changed)? {
-                return Err(FleaError { where_: "undo".into(), path: newer.to_string_lossy().into(),
-                    msg: "something inside the copied folder changed since this operation, so undo left it in place".into() });
-            }
-            remove(to)?
         }
         Step::MadeDir { path, identity } => {
             if !identity.same_item(&ItemIdentity::inspect(path)?) {
@@ -201,6 +213,20 @@ fn reverse(step: &Step) -> Result<Option<(ItemIdentity, ItemIdentity)>, FleaErro
         Step::MadeFile { path, identity } => remove_new_file(path, identity)?,
         Step::Trashed(entry) => trash::restore(entry)?,
     }
+    Ok(None)
+}
+
+// Today's whole-tree check, kept for successes and for a manifest that never verified a record.
+fn remove_copied(to: &PathBuf, created: &ItemIdentity) -> Result<Option<(ItemIdentity, ItemIdentity)>, FleaError> {
+    if ItemIdentity::inspect(to)? != *created {
+        return Err(FleaError { where_: "undo".into(), path: to.to_string_lossy().into(),
+            msg: "the copied item changed since this operation, so undo left it in place".into() });
+    }
+    if let Some(newer) = newer_inside(to, created.changed)? {
+        return Err(FleaError { where_: "undo".into(), path: newer.to_string_lossy().into(),
+            msg: "something inside the copied folder changed since this operation, so undo left it in place".into() });
+    }
+    remove(to)?;
     Ok(None)
 }
 

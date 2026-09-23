@@ -324,7 +324,8 @@ fn a_copy_that_fails_short_of_a_cancel_records_the_partial_tree_and_undo_removes
     assert_eq!((ok, failed, cancelled), (0, 1, false));
     let partial = dest.join("tree");
     assert!(partial.is_dir(), "a failure that is not a cancel leaves what it copied");
-    assert_eq!(entry.steps, vec![undo::copied(&src, &partial, ItemIdentity::inspect(&src).unwrap()).unwrap()], "the partial tree is journaled");
+    assert!(matches!(&entry.steps[..], [Step::Copied { from, to, manifest: Some(_), .. }] if from == &src && to == &partial),
+        "the partial tree is journaled with what it created: {:?}", entry.steps);
     let mut j = Journal::new();
     j.push(entry);
     assert_eq!(j.undo().expect("undo"), "copy");

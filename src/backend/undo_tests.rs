@@ -66,7 +66,7 @@ fn undoing_a_copied_folder_refuses_once_anything_inside_it_has_changed() {
         let copy = d.join("copy");
         let flag = std::sync::atomic::AtomicBool::new(false);
         let mut sink = |_: u64, _: u64| {};
-        let mut p = crate::backend::copyfile::Progress { cancel: &flag, on_bytes: &mut sink, tree: None, partial: None };
+        let mut p = crate::backend::copyfile::Progress { cancel: &flag, on_bytes: &mut sink, tree: None, partial: None, manifest: None };
         crate::backend::copyfile::copy_any(&source, &copy, &mut p).expect("the copy this undo reverses");
         let step = copied(&source, &copy, ItemIdentity::inspect(&source).unwrap()).unwrap();
         // Measured: /tmp is tmpfs, whose timestamps are coarser than this test is fast, so the copy and
@@ -117,7 +117,7 @@ fn undoing_a_failed_copy_keeps_a_file_something_else_put_inside_it() {
         let other = if copy.join("nested/a.bin").exists() { "b.bin" } else { "a.bin" };
         std::fs::write(copy.join("nested").join(other), "stray").unwrap();
     };
-    let mut p = crate::backend::copyfile::Progress { cancel: &flag, on_bytes: &mut sink, tree: None, partial: None };
+    let mut p = crate::backend::copyfile::Progress { cancel: &flag, on_bytes: &mut sink, tree: None, partial: None, manifest: None };
     crate::backend::copyfile::copy_any(&source, &copy, &mut p).expect_err("the stray takes the second file's name");
     assert_eq!(p.partial, Some(copy.clone()), "the tree is the partial the journal records");
     let mut j = Journal::new();
@@ -137,7 +137,7 @@ fn undoing_a_copied_folder_nobody_touched_still_removes_it() {
     let copy = d.join("copy");
     let flag = std::sync::atomic::AtomicBool::new(false);
     let mut sink = |_: u64, _: u64| {};
-    let mut p = crate::backend::copyfile::Progress { cancel: &flag, on_bytes: &mut sink, tree: None, partial: None };
+    let mut p = crate::backend::copyfile::Progress { cancel: &flag, on_bytes: &mut sink, tree: None, partial: None, manifest: None };
     crate::backend::copyfile::copy_any(&source, &copy, &mut p).expect("copy");
     let step = copied(&source, &copy, ItemIdentity::inspect(&source).unwrap()).unwrap();
     let mut j = Journal::new();
@@ -160,7 +160,7 @@ fn a_copy_leaves_no_descendant_newer_than_the_root_it_records() {
     let copy = d.join("copy");
     let flag = std::sync::atomic::AtomicBool::new(false);
     let mut sink = |_: u64, _: u64| {};
-    let mut p = crate::backend::copyfile::Progress { cancel: &flag, on_bytes: &mut sink, tree: None, partial: None };
+    let mut p = crate::backend::copyfile::Progress { cancel: &flag, on_bytes: &mut sink, tree: None, partial: None, manifest: None };
     crate::backend::copyfile::copy_any(&source, &copy, &mut p).expect("copy");
     let root = ItemIdentity::inspect(&copy).unwrap().changed;
     assert_eq!(newer_inside(&copy, root).unwrap(), None, "the copy's own tree is never newer than its root");

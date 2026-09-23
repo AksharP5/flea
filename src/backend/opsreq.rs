@@ -340,7 +340,7 @@ fn one_item(
             scanned: settled.load(Ordering::Relaxed),
         });
     };
-    let mut p = Progress { cancel, on_bytes: &mut sink, partial: None, tree: None };
+    let mut p = Progress { cancel, on_bytes: &mut sink, partial: None, tree: None, manifest: super::copymanifest::writer_for(src, dst) };
     let outcome = if moving { move_any(src, dst, &mut p) } else { copy_any(src, dst, &mut p) };
     match &outcome {
         Ok(()) if moving => steps.push(undo::moved(src, dst, source)?),
@@ -348,7 +348,8 @@ fn one_item(
         // The partial is this operation's, so it is journaled and undo removes it like any created path.
         Err(_) => {
             if let Some(path) = p.partial.take() {
-                steps.push(undo::copied(src, &path, source)?);
+                let manifest = p.manifest.take().and_then(|writer| writer.finish());
+                steps.push(undo::copied_partial(src, &path, source, manifest)?);
             }
         }
     }
