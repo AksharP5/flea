@@ -256,7 +256,7 @@ Item {
                     height: pdfFlick.contentHeight
                     active: root.visible && root.rowState === Facts.PDF
                     source: "PreviewPdf.qml"
-                    onLoaded: { item.path = Qt.binding(function () { return root.path }); item.active = true }
+                    onLoaded: { item.path = Qt.binding(function () { return root.path }); item.viewport = pdfFlick; item.active = true }
                 }
             }
 
@@ -322,7 +322,7 @@ Item {
                 id: pageLabel
                 height: pagePrev.height
                 verticalAlignment: Text.AlignVCenter
-                text: (root.pdfPage() + 1) + " / " + root.pdfPages
+                text: (pdfLoader.item ? pdfLoader.item.drawnPage + 1 : 1) + " / " + root.pdfPages
                 color: Theme.color.muted
                 font.family: Theme.font.family
                 font.pixelSize: Theme.font.caption
@@ -455,7 +455,7 @@ Item {
         case Facts.LOADING:
             return false
         case Facts.PDF:
-            return root.pdfPages <= 0
+            return !pdfLoader.item || pdfLoader.item.shownPage < 0
         case Facts.TEXT:
         case Facts.CODE:
             return lines.blank

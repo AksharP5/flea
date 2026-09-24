@@ -151,7 +151,7 @@ Item {
                 id: counter
                 height: previous.implicitHeight
                 verticalAlignment: Text.AlignVCenter
-                text: (root.page + 1) + " / " + root.pageCount
+                text: (pdf.drawnPage + 1) + " / " + root.pageCount
                 color: Theme.color.foreground
                 font.family: Theme.font.family
                 font.pixelSize: Theme.font.caption
@@ -255,6 +255,7 @@ Item {
                 id: pdf
                 anchors.fill: parent
                 anchors.margins: 2 * Theme.spacing.rowPaddingX
+                viewport: pageFlick
                 path: root.path
                 active: root.active
             }
