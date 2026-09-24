@@ -19,6 +19,12 @@ var BONUS_BASENAME = 4
 var PENALTY_GAP = 1
 var MAX_STARTS = 16
 
+// Past its first character a match has to earn, on average, what one character of a folder's own name
+// earns. A run or a word start anywhere clears it, and "src" scattered through ~/Documents/claude/omarchy
+// does not, so a stray favourite or zoxide row never buries the folder the name was typed for. One
+// character always clears it, which keeps the board's query o listing every folder with an o in it.
+var MIN_SCORE_PER_CHARACTER = BONUS_BASENAME
+
 // A line that starts the way a path does is typed as one, as it was before the jump: Enter resolves it
 // and Tab completes it. The bar opens holding the whole path, so the dropdown waits for a name.
 // Sample input: "o" and "flea" are queries; "/usr/share", "~/Work", "../x" and "file:///etc" are paths.
@@ -169,6 +175,7 @@ function run(positions) {
 
 // The dropdown's entries. Each source keeps its own order and is cut at SOURCE_ROWS, a separator stands
 // between two sources that both matched, and a source that matched nothing draws nothing, separator and all.
+// A match scattered below MIN_SCORE_PER_CHARACTER is no match.
 // Sample sources: { favourites: ["/home/gm/Projects"], zoxide: ["/home/gm/Documents"], recent: [] }
 function rows(sources, line, home) {
     var out = []
@@ -182,7 +189,7 @@ function rows(sources, line, home) {
         for (var i = 0; i < paths.length && group.length < SOURCE_ROWS; i++) {
             var text = display(paths[i], home)
             var found = match(text, query)
-            if (found === null) {
+            if (found === null || found.score < (query.length - 1) * MIN_SCORE_PER_CHARACTER) {
                 continue
             }
             var wash = run(found.positions)

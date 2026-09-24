@@ -67,6 +67,18 @@ function run(check) {
     check("a source is cut at its fifth match", Jump.rows(many, "x", HOME).length, Jump.SOURCE_ROWS)
     check("the cut keeps the source's head", Jump.rows(many, "x", HOME)[4].path, "/a/x5")
 
+    // A scattered match is dropped, so an earlier source cannot bury the folder the name was typed for.
+    var scattered = { favourites: ["/home/gm/Documents/claude/omarchy"], zoxide: ["/home/gm/Work/claude/flea-013/src"] }
+    check("src scattered through a favourite's parents is dropped", drawn(Jump.rows(scattered, "src", HOME)),
+          "~/Work/claude/flea-013/[src]")
+    var buried = { zoxide: ["/home/gm/Projects/homelab/nix"], recent: ["/home/gm/Documents/tax"] }
+    check("a scattered zoxide row does not bury a recent folder", drawn(Jump.rows(buried, "tax", HOME)), "~/Documents/[tax]")
+    var abbreviated = { favourites: ["/home/gm/Documents/claude/flea"], zoxide: ["/home/gm/Downloads"] }
+    check("an abbreviation on word starts still matches", drawn(Jump.rows(abbreviated, "dl", HOME)), "~/[D]ownloads")
+    check("a run through a parent is not scattered", drawn(Jump.rows({ zoxide: ["/home/gm/Documents/claude/flea"] }, "claude", HOME)),
+          "~/Documents/[claude]/flea")
+    check("one character is never scattered", Jump.rows({ zoxide: ["/home/gm/Work/field"] }, "o", HOME).length, 1)
+
     // The search scorer's own cases, src/backend/fuzzy.rs tests, so the jump matches what search matches.
     check("the operator's dwnhelp crosses the separator", score("downloads/helper.txt", "dwnhelp") !== null, true)
     check("a query out of order is not a match", score("helper.txt", "pleh"), null)
