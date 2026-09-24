@@ -93,6 +93,40 @@ else
         printf 'FAIL package helper could not be extracted as an executable file\n'
         failed=$((failed + 1))
     fi
+
+    # Issue 173: the removal note is a tracked alpm hook, never a scriptlet, so it is a member like any other.
+    hook_path=usr/share/libalpm/hooks/flea.hook
+    # bsdtar -tvf: -rw-r--r--  0 root root 612 Sep 24 12:00 usr/share/libalpm/hooks/flea.hook
+    hook_metadata=$(bsdtar -tvf "$package_file" 2>/dev/null | grep -F " $hook_path" || true)
+    if [[ "$hook_metadata" =~ ^-rw-r--r--[[:space:]]+[0-9]+[[:space:]]+root[[:space:]]+root[[:space:]].*[[:space:]]$hook_path$ ]]; then
+        printf 'PASS package removal hook %s root:root 0644\n' "$hook_path"
+    else
+        printf 'FAIL package removal hook %s is absent or not root:root 0644\n' "$hook_path"
+        failed=$((failed + 1))
+    fi
+    # Sample input, packaging/flea.hook's own lines: [Trigger], Operation = Remove, Target = flea-bin, When = PreTransaction.
+    if bsdtar -xf "$package_file" -C "$extract_root" "$hook_path" 2>/dev/null && [ -f "$extract_root/$hook_path" ]; then
+        for hook_line in '[Trigger]' 'Type = Package' 'Operation = Remove' 'Target = flea' 'Target = flea-bin' \
+                         'Target = flea-git' '[Action]' 'When = PreTransaction'; do
+            if grep -Fxq -- "$hook_line" "$extract_root/$hook_path"; then
+                printf 'PASS package removal hook has %s\n' "$hook_line"
+            else
+                printf 'FAIL package removal hook lacks %s\n' "$hook_line"
+                failed=$((failed + 1))
+            fi
+        done
+        # Sample input: Exec = /usr/bin/printf %s\n "Flea: ..." "Flea: ...", whose first word pacman executes.
+        hook_program=$(sed -n 's/^Exec = \([^ ]*\).*$/\1/p' "$extract_root/$hook_path")
+        if [ -n "$hook_program" ] && [ "${hook_program#/}" != "$hook_program" ] && [ -x "$hook_program" ]; then
+            printf 'PASS package removal hook runs %s, which is here\n' "$hook_program"
+        else
+            printf "FAIL package removal hook's Exec program '%s' is not an absolute executable\n" "$hook_program"
+            failed=$((failed + 1))
+        fi
+    else
+        printf 'FAIL package removal hook could not be extracted\n'
+        failed=$((failed + 1))
+    fi
     if cleanup_extract; then
         extract_root=
     else

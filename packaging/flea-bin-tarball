@@ -57,7 +57,8 @@ install -Dm644 "$repo/packaging/flea.portal" \
   "$repo/packaging/org.freedesktop.impl.portal.desktop.flea.service" \
   "$repo/packaging/com.thisisgm.flea.FileManager1.service" \
   "$repo/packaging/com.thisisgm.flea.desktop" \
-  "$repo/packaging/com.thisisgm.flea.svg" -t "$root/packaging"
+  "$repo/packaging/com.thisisgm.flea.svg" \
+  "$repo/packaging/flea.hook" -t "$root/packaging"
 install -Dm644 "$repo/ui/qmldir" "$repo"/ui/*.qml -t "$root/ui"
 install -Dm644 "$repo"/ui/js/*.js -t "$root/ui/js"
 install -Dm644 "$repo/ui/boot/shell.qml" "$repo/ui/boot/picker.qml" -t "$root/ui/boot"

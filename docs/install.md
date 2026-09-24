@@ -82,6 +82,7 @@ uncommitted edits are what gets packaged.
 | `/usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.flea.service` | what D-Bus activates it with |
 | `/usr/share/applications/com.thisisgm.flea.desktop` | the desktop entry |
 | `/usr/share/icons/hicolor/scalable/apps/com.thisisgm.flea.svg` | the icon |
+| `/usr/share/libalpm/hooks/flea.hook` | the removal note, which prints the per-user undo commands below |
 | `/usr/share/licenses/flea/LICENSE` | the licence |
 
 The count is whatever the built archive declares, not a number written down here: the UI grows a file
@@ -101,6 +102,13 @@ directories the install created. The package carries no `.INSTALL` scriptlet, so
 created outside the file list pacman tracks, and the desktop and icon caches are re-indexed by
 Arch's own `update-desktop-database` and `gtk-update-icon-cache` hooks, which fire on Remove as
 well as on Install.
+
+Removal also runs Flea's own `flea.hook`, before any file goes. It prints `flea --default off` and
+`flea --picker off`, because what those two commands undo lives in each user's home, where pacman
+never reaches. Run them before the removal; once Flea is gone, the two "What `pacman -Rns flea`
+leaves behind" sections below name each file to delete by hand. Swapping `flea-bin` for `flea` or
+`flea-git` removes one package too, so the note appears then as well; its first line says it only
+matters when Flea is leaving for good.
 
 ## Make Flea the default
 
@@ -347,7 +355,9 @@ xdg-desktop-portal again and the previous chooser is back.
 `~/.config/xdg-desktop-portal/portals.conf` is per-user state like `mimeapps.list` above, so it stays.
 With no `flea.portal` installed, xdg-desktop-portal logs that the requested backend does not exist and
 takes the next name on the line, which is `gtk`, so the desktop keeps a working chooser either way.
-The clean order is `flea --picker off` before `sudo pacman -Rns flea`.
+The same goes for `hyprland-portals.conf` when Flea's line went there. The `flea --picker` block in
+`~/.config/hypr/bindings.lua` stays too, inert with no Flea window to match: delete it and run
+`hyprctl reload`. The clean order is `flea --picker off` before `sudo pacman -Rns flea`.
 
 ## Why the Exec line reads `flea --gui %f`
 

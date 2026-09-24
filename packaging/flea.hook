@@ -1,0 +1,13 @@
+# Issue 173: pacman cannot reach what flea --default and flea --picker wrote into each user's home, so it says how.
+[Trigger]
+Type = Package
+Operation = Remove
+Target = flea
+Target = flea-bin
+Target = flea-git
+
+[Action]
+Description = Noting what Flea leaves in each user's config
+# Pre, because pacman reads its hooks again after the transaction, when this file is already gone.
+When = PreTransaction
+Exec = /usr/bin/printf %s\n "Flea: if you are removing Flea for good, its per-user settings from flea --default and flea --picker stay behind." "Flea: then each user undoes them with flea --default off and flea --picker off, which need Flea installed." "Flea: once Flea is gone, delete by hand what github.com/thisisgm/flea/blob/main/docs/install.md says pacman leaves behind."
