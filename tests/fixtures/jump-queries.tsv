@@ -1,0 +1,63 @@
+# The folder jump's quality sets: set, query, the folder that should come first (relative to the fixture home).
+# The fixture home is the jump-036 field home: a fixed zoxide visit history, six recent files and three
+# favourites (Projects, Documents/claude/flea, Documents/claude/omarchy); see the jump-036 report.
+# tuned: the 20 queries the first scattered-match floor was tuned on, so a score on them is not evidence.
+# heldout1: 12 queries frozen before that floor, and scored after it.
+# heldout2: frozen 2026-09-24 before the one-list ranking was written, and built without looking at any
+# result: the fixture's folders in the order its script first names them, system paths left out, keeping
+# only leaf names no other fixture folder shares; the first 20 give their first 3, 4, 5, 3, 4, 5... letters,
+# lowercased; the 21st loses its second letter and the 22nd swaps its second and third, the two typo cases.
+tuned	field	Work/field
+tuned	shots	Pictures/screenshots
+tuned	hypr	.config/hypr
+tuned	omarchy	Documents/claude/omarchy
+tuned	down	Downloads
+tuned	strata	Work/strata
+tuned	tax	Documents/tax
+tuned	raw	Pictures/raw
+tuned	albums	Music/albums
+tuned	nix	Projects/homelab/nix
+tuned	homelab	Projects/homelab
+tuned	wall	Pictures/wallpapers
+tuned	notes	Documents/notes
+tuned	src	Work/claude/flea-013/src
+tuned	ui	Work/claude/flea-013/ui
+tuned	tests	Work/claude/flea-013/tests
+tuned	release	Documents/claude/flea-release
+tuned	music	Music
+tuned	bench	Work/bench
+tuned	dl	Downloads
+heldout1	screen	Pictures/screenshots
+heldout1	wallp	Pictures/wallpapers
+heldout1	flea-r	Documents/claude/flea-release
+heldout1	holi	Pictures/holiday
+heldout1	vid	Videos
+heldout1	proj	Projects
+heldout1	docu	Documents
+heldout1	hyp	.config/hypr
+heldout1	downl	Downloads
+heldout1	stra	Work/strata
+heldout1	alb	Music/albums
+heldout1	tst	Work/claude/flea-013/tests
+heldout2	doc	Documents
+heldout2	down	Downloads
+heldout2	music	Music
+heldout2	pic	Pictures
+heldout2	proj	Projects
+heldout2	video	Videos
+heldout2	wor	Work
+heldout2	holi	Pictures/holiday
+heldout2	phone	Pictures/phone
+heldout2	tri	Pictures/trip
+heldout2	scra	Documents/scratch
+heldout2	tax	Documents/tax
+heldout2	raw	Pictures/raw
+heldout2	albu	Music/albums
+heldout2	flea-	Work/claude/flea-013
+heldout2	fle	Documents/claude/flea
+heldout2	flea	Documents/claude/flea-release
+heldout2	ui	Work/claude/flea-013/ui
+heldout2	hyp	.config/hypr
+heldout2	src	Work/claude/flea-013/src
+heldout2	hmelab	Projects/homelab
+heldout2	srtata	Work/strata
