@@ -24,6 +24,10 @@ half-installed.
 | `flea`, Omarchy's repository | the same tagged release | Omarchy's build host, signed; nothing compiles on your machine | `omarchy pkg add flea` | `omarchy update`; a release arrives a day or more after it ships, once Omarchy has reviewed and built it |
 | `flea-git`, AUR | current `main`, unreleased fixes included, for testers | your machine, with `cargo` | `yay -S flea-git` | `yay -Sua --devel` follows `main`; `omarchy update` rebuilds it only when its AUR PKGBUILD changes |
 
+The AUR also carries a `flea` that compiles the tagged release on your machine. Omarchy's repository
+package shares its name, so `omarchy update` replaces it with the repository build; use `flea-bin`
+instead.
+
 **Switching.** From `flea` to `flea-bin`, run the interactive command and answer `y` when pacman
 asks whether to remove `flea`:
 

@@ -51,13 +51,14 @@ Install Flea and make it your default file manager, file chooser and the app ope
 omarchy pkg aur add flea-bin && flea --default
 ```
 
-`flea-bin` is the tagged release, prebuilt, and it reaches you minutes after it ships. Or instead,
-from Omarchy's own repository, a day or more behind; install one of the two, never both (see
-**Which package?** below):
+`flea-bin` is the tagged release, prebuilt for x86_64 and aarch64, and it reaches you minutes after it
+ships. To let Omarchy's own repository review, build and sign it instead, a day or more behind:
 
 ```bash
 omarchy pkg add flea && flea --default
 ```
+
+Install one of the two, never both.
 
 Run it at a terminal inside your session: `flea --default` restarts xdg-desktop-portal itself there,
 so file dialogs follow at once. To only try Flea, run the install alone and leave your defaults as
@@ -69,15 +70,6 @@ Update through Omarchy:
 ```bash
 omarchy update
 ```
-
-**Which package?** Install one of these, never two:
-
-| Install | Use it when | Updates |
-|---|---|---|
-| `omarchy pkg aur add flea-bin` | You want each release as it ships. Recommended: prebuilt for x86_64 and aarch64 by Flea's release workflow. | `omarchy update`, minutes after a release |
-| `omarchy pkg add flea` | You would rather wait for Omarchy's repository to review, build and sign it. | `omarchy update`, a day or more after a release |
-| `yay -S flea-git` | You want to test fixes on `main` before they ship. Compiles on your machine. | `yay -Sua --devel` |
-| `yay -S aur/flea` | Rarely: it compiles the release on your machine, but Omarchy's `flea` shares its name, so updates come from the repository. | `omarchy update`, once the repository has it |
 
 Already on `flea` from Omarchy's repository? Switch to `flea-bin` with the interactive command and
 answer `y` when pacman asks to remove `flea`:
@@ -98,11 +90,14 @@ Use Flea for portal Open/Save dialogs without changing your default file manager
 flea --picker
 ```
 
-For the rolling development build, answering `y` if pacman asks to remove an installed Flea:
+For the development build, which follows `main` and compiles on your machine, answer `y` if pacman
+asks to remove an installed Flea:
 
 ```bash
 yay -S flea-git
 ```
+
+It updates with `yay -Sua --devel`.
 
 Before removing Flea, undo its desktop integration, then drop whichever package you installed:
 
