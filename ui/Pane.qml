@@ -579,7 +579,8 @@ FocusScope {
         focusOwner: root.listArea
         showHidden: root.showHidden
         providersRefreshing: menuActions.providersRefreshing
-        taildropPeers: (root.cursorRow && !root.cursorRow.d) ? wire.taildrop.peers : []
+        taildropPeers: wire.taildrop.peers
+        rowIsFile: root.cursorRow !== null && !root.cursorRow.d
         taildropInstalled: !root.backend.providers.taildrop || root.backend.providers.taildrop.installed !== false
         taildropReason: root.cursorRow && root.cursorRow.d ? "Taildrop sends files only" : wire.taildrop.reason
         archiveFormats: root.backend.archiveFormats
@@ -600,7 +601,7 @@ FocusScope {
         rowIsImage: root.cursorRow !== null && root.cursorRow.i === "image-x-generic"
         dropboxInstalled: !root.backend.providers.dropbox || root.backend.providers.dropbox.installed !== false
         localSend: ({ installed: (root.backend.providers.localsend || {}).installed === true, checking: menuActions.localSend.checking,
-                      peers: (root.cursorRow && !root.cursorRow.d) ? menuActions.localSend.peers : [] })
+                      peers: (root.cursorRow && !root.cursorRow.d) ? menuActions.localSend.peers : [], answeredOnce: menuActions.localSend.answeredOnce })
         dropboxPath: root.dropboxService && root.dropboxService.dropboxReady ? root.dropboxService.dropboxPath : ""
         dropboxReason: root.dropboxService ? root.dropboxService.dropboxReason : "Dropbox service unavailable"
         rowInDropbox: root.dropboxService && root.cursorRow

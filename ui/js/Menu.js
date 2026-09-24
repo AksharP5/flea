@@ -134,10 +134,10 @@ function availableEntry(e, p, kind) {
         e.mark = "tailscale"
         delete e.glyph
         e.submenu = p.taildropPeers || []
-        e.disabled = p.providersRefreshing === true || !e.submenu.length
+        e.disabled = p.taildropRefreshing === true || !e.submenu.length
         // The row says it cannot answer by being red, not by carrying the reason: a sentence here
         // widened the menu past its own frame while the providers were still being read.
-        if (e.disabled && p.providersRefreshing !== true) e.errored = true
+        if (e.disabled && p.taildropRefreshing !== true) e.errored = true
     }
     if (e.action === "addToShelf") { e.mark = "flea"; delete e.glyph }
     // Absent rather than greyed when nothing is installed, the Menu board's rule for a row whose
@@ -153,9 +153,9 @@ function availableEntry(e, p, kind) {
     }
     if (e.action === "dropbox" || e.action === "sharelink") {
         if (!p.dropboxInstalled || (e.action === "dropbox" ? p.rowInDropbox : !p.rowInDropbox)) return false
-        e.disabled = p.providersRefreshing === true || !p.dropboxPath
+        e.disabled = p.dropboxRefreshing === true || !p.dropboxPath
         if (e.action === "dropbox") { e.mark = "dropbox"; delete e.glyph }
-        if (e.disabled && p.providersRefreshing !== true) e.errored = true
+        if (e.disabled && p.dropboxRefreshing !== true) e.errored = true
     }
     if (e.action === "sort") e.submenu = sortEntries()
     // Present only while a check has found a newer build, whose version rides the hint slot beside the status square.

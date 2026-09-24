@@ -81,9 +81,10 @@ function run(check) {
     check("offline installed Taildrop remains disabled", offline.disabled, true)
     check("offline Taildrop reads as an error, with no sentence beside it", offline.errored + "|" + offline.hint, "true|undefined")
     check("offline Taildrop offers no stale peers", offline.submenu.length, 0)
-    check("fresh status disables a cached Taildrop target", entry(Menu.listingEntries(state({providersRefreshing: true})), "taildrop").disabled, true)
-    check("a provider still being read is dimmed, not errored", String(entry(Menu.listingEntries(state({providersRefreshing: true})), "taildrop").errored), "undefined")
-    check("fresh status disables a cached Dropbox directory", entry(Menu.listingEntries(state({providersRefreshing: true})), "dropbox").disabled, true)
+    check("fresh status disables a cached Taildrop target", entry(Menu.listingEntries(state({taildropRefreshing: true})), "taildrop").disabled, true)
+    check("a provider still being read is dimmed, not errored", String(entry(Menu.listingEntries(state({taildropRefreshing: true})), "taildrop").errored), "undefined")
+    check("fresh status disables a cached Dropbox directory", entry(Menu.listingEntries(state({dropboxRefreshing: true})), "dropbox").disabled, true)
+    check("a Taildrop still being read leaves Dropbox as it was answered", entry(Menu.listingEntries(state({taildropRefreshing: true})), "dropbox").disabled, false)
     check("installed signed-out provider reads as an error", entry(Menu.listingEntries(state({taildropPeers: [], taildropReason: "signed out"})), "taildrop").errored, true)
     var absent = Menu.listingEntries(state({taildropInstalled: false, dropboxInstalled: false}))
     var available = Menu.listingEntries(state({}))
@@ -137,4 +138,57 @@ function run(check) {
     check("missing entry has no submenu", Menu.hasSubmenu(undefined), false)
     check("header keeps required Name column outside toggles", actions(Menu.headerEntries([], false)), "col:mode,col:size,col:date,col:kind,toggleHidden")
     check("sort submenu uses real backend order ids", Menu.sortEntries().map(function (r) { return r.id }).join(","), "name,size,mtime,kind")
+    providerRefresh(check)
+}
+
+function merged(base, changes) {
+    var out = {}
+    for (var key in base) out[key] = base[key]
+    for (key in changes) out[key] = changes[key]
+    return out
+}
+
+// The rows a file menu draws from one set of provider inputs, through ui/js/MenuRefresh.js the way ui/ContextMenu.qml builds them.
+function drawn(known, live) {
+    var view = MenuRefresh.providerView(known, live)
+    return Menu.listingEntries(state({ taildropPeers: view.taildropPeers, taildropRefreshing: view.taildropRefreshing,
+        dropboxPath: view.dropboxPath, dropboxRefreshing: view.dropboxRefreshing, localSendInstalled: true,
+        localSendPeers: [{ id: "Phone", label: "Phone" }], localSendChecking: view.localSendChecking }))
+}
+
+// An open refreshes its providers behind the menu; the last answer stands in, so only a changed answer rebuilds rows.
+function providerRefresh(check) {
+    check("the menu keeps the last provider answer", typeof MenuRefresh.settle + "|" + typeof MenuRefresh.providerView, "function|function")
+    if (typeof MenuRefresh.settle !== "function") return
+    var answer = { refreshing: false, taildropInstalled: true, taildropPeers: [{ id: "box", label: "Box" }],
+        dropboxInstalled: true, dropboxPath: "/tmp/Dropbox", localSendChecking: false, localSendAnswered: true }
+    var known = MenuRefresh.settle(answer)
+    var before = drawn(known, answer)
+    // While the status helpers run, Taildrop has cleared its peers, Dropbox is not ready and LocalSend is looking again.
+    var reading = merged(answer, { refreshing: true, taildropPeers: [], dropboxPath: "", localSendChecking: true })
+    var during = drawn(known, reading)
+    check("a refresh behind the open menu builds exactly the rows drawn", MenuRefresh.unchanged(before, during), true)
+    check("so Taildrop keeps its peer and stays live", entry(during, "taildrop").disabled + "|" + entry(during, "taildrop").submenu.length, "false|1")
+    check("Dropbox keeps its folder", entry(during, "dropbox").disabled, false)
+    check("and LocalSend stays live while it looks again", entry(during, "localsend").disabled, false)
+    known = MenuRefresh.settle(answer)
+    check("the same answer landing rebuilds nothing", MenuRefresh.unchanged(before, drawn(known, answer)), true)
+    var more = merged(answer, { taildropPeers: [{ id: "box", label: "Box" }, { id: "laptop", label: "Laptop" }] })
+    known = MenuRefresh.settle(more)
+    var after = drawn(known, more)
+    check("a changed answer is a change", MenuRefresh.unchanged(before, after), false)
+    check("and it moves only the Taildrop row", before.map(function (row, i) {
+        return JSON.stringify(row) === JSON.stringify(after[i]) ? "" : row.action }).filter(String).join(","), "taildrop")
+    check("which now offers both peers", entry(after, "taildrop").submenu.map(function (peer) { return peer.id }).join(","), "box,laptop")
+    var gone = merged(answer, { dropboxPath: "" })
+    after = drawn(MenuRefresh.settle(gone), gone)
+    check("a Dropbox that stopped answering reads red, and only its row moves", before.map(function (row, i) {
+        return JSON.stringify(row) === JSON.stringify(after[i]) ? "" : row.action }).filter(String).join(",") + "|" + entry(after, "dropbox").errored, "dropbox|true")
+    var first = drawn(null, merged(reading, { localSendAnswered: false }))
+    check("with nothing answered yet the first refresh dims Taildrop, as it always did", entry(first, "taildrop").disabled + "|" + String(entry(first, "taildrop").errored), "true|undefined")
+    check("and Dropbox", entry(first, "dropbox").disabled + "|" + String(entry(first, "dropbox").errored), "true|undefined")
+    check("and LocalSend", entry(first, "localsend").disabled + "|" + String(entry(first, "localsend").errored), "true|undefined")
+    var reinstalled = drawn(MenuRefresh.settle(merged(answer, { taildropInstalled: false, taildropPeers: [] })), reading)
+    check("a provider installed since its last answer is read afresh, dimmed rather than red",
+          entry(reinstalled, "taildrop").disabled + "|" + String(entry(reinstalled, "taildrop").errored), "true|undefined")
 }

@@ -12,6 +12,8 @@ Item {
     property var peers: []
     property string reason: "checking"
     property bool checking: false
+    // Whether this install has answered once: until then a look in flight dims the row, afterwards the last answer stands.
+    property bool answeredOnce: false
     signal refreshed()
     signal completed(bool ok, string reason)
 
@@ -23,6 +25,7 @@ Item {
     function refresh(installed) {
         if (!installed) {
             root.peers = []
+            root.answeredOnce = false
             root.reason = "localsend-cli is not installed"
             return true
         }
@@ -42,6 +45,7 @@ Item {
     function answered(list, why) {
         root._askedAt = Date.now()
         root.checking = false
+        root.answeredOnce = true
         var rows = []
         for (var i = 0; i < list.length; i++)
             rows.push({ id: String(list[i].name), label: String(list[i].name) })

@@ -25,12 +25,14 @@ Item {
     property var localSend: ({ installed: false, peers: [], checking: false })
     property string taildropReason: ""
     property bool providersRefreshing: false
+    property var lastProviderAnswer: null
     // The archive formats this box actually probed, and whether a converter is installed at all.
     property var archiveFormats: []
     property bool canConvert: false
     property bool canExtract: false
     property bool clipboardAvailable: false
-    // Whether the cursor row is an archive, and whether it is an image; both decided client-side.
+    // Whether the cursor row is a file, an archive, an image; all decided client-side. Only a file row takes send peers.
+    property bool rowIsFile: false
     property bool rowIsArchive: false
     property bool rowIsImage: false
     property int rowMode: 0
@@ -116,17 +118,18 @@ Item {
             return root.railEntries
         if (root.forHeader)
             return Menu.headerEntries(ViewState.hiddenCols, root.showHidden)
+        var view = MenuRefresh.providerView(root.lastProviderAnswer, MenuRefresh.live(root))
         return Menu.listingEntries({
             showHidden: root.showHidden,
             hasRow: root.hasRow,
             rowInDropbox: root.rowInDropbox,
-            dropboxPath: root.dropboxPath,
+            dropboxPath: view.dropboxPath,
             dropboxInstalled: root.dropboxInstalled,
             dropboxReason: root.dropboxReason,
-            taildropPeers: root.taildropPeers,
+            taildropPeers: root.rowIsFile ? view.taildropPeers : [],
             taildropInstalled: root.taildropInstalled,
             taildropReason: root.taildropReason,
-            providersRefreshing: root.providersRefreshing,
+            taildropRefreshing: view.taildropRefreshing, dropboxRefreshing: view.dropboxRefreshing,
             archiveFormats: root.archiveFormats,
             rowIsArchive: root.rowIsArchive,
             rowIsImage: root.rowIsImage,
@@ -137,7 +140,7 @@ Item {
             openWithApps: root.openWithApps,
             openWithLoaded: root.openWithLoaded,
             rowMode: root.rowMode, selectionCount: root.selectionCount,
-            scripts: Flea.Scripts.entries, localSendInstalled: root.localSend.installed, localSendPeers: root.localSend.peers, localSendChecking: root.localSend.checking,
+            scripts: Flea.Scripts.entries, localSendInstalled: root.localSend.installed, localSendPeers: root.localSend.peers, localSendChecking: view.localSendChecking,
             // The Menus settings section's stored set; ui/js/Menu.js applyHidden is what reads it.
             hiddenActions: ViewState.menuHidden,
             updateVersion: UpdateCheck.menuVersion
@@ -300,12 +303,19 @@ Item {
     function refreshProviderRows() {
         if (!root.opened || root.forRail || root.forHeader) return
         var next = root.buildEntries()
+        // An answer that changed nothing drawn leaves every row standing: no model reset, no cursor move.
+        if (MenuRefresh.unchanged(root.entries, next)) return
         var selection = MenuRefresh.refreshedCursor(root.entries, next, root.cursor, root.openSubmenuRow, root.submenuCursor)
         root.entries = next
         root.cursor = selection.cursor
         root.openSubmenuRow = selection.submenuRow
         root.submenuCursor = selection.submenuCursor
         Qt.callLater(function() { if (root.opened) scroll.reveal(menuRows.itemAt(root.cursor)) })
+    }
+    // A finished refresh: its answer is what later opens draw while their own refresh runs behind them, see ui/js/MenuRefresh.js.
+    function providersSettled() {
+        root.lastProviderAnswer = MenuRefresh.settle(MenuRefresh.live(root))
+        root.refreshProviderRows()
     }
 
     // Rebuild only to validate; rows stay fixed while the menu is open under the pointer.

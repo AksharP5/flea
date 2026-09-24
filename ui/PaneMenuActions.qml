@@ -141,7 +141,7 @@ Loader {
     }
     function providersFinished() {
         providersRefreshing = false
-        pane.contextMenu().refreshProviderRows()
+        pane.contextMenu().providersSettled()
         if (pendingActivation && providerAction(pendingAction)) {
             providerValidated = true
             validateActivation()

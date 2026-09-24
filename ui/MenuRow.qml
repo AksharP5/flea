@@ -1,3 +1,6 @@
+// Bound: the brand-mark Components below read this row's root, and are only ever built by this row's own Loaders.
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import Quickshell
 import qs.Commons
@@ -135,34 +138,52 @@ Item {
             asynchronous: true
         }
 
-        Flea.TailscaleMark {
+        // Each brand mark is built only on the row whose entry names it: carried hidden by every row, the
+        // four were most of a menu's build, and a Loader has no pointer semantics to lose (rows stay eager).
+        Loader {
             anchors.centerIn: parent
-            visible: root.entry.mark === "tailscale"
-            iconSize: root.slotSize
-            color: root.markColor
+            active: root.entry.mark === "tailscale"
+            sourceComponent: Component {
+                Flea.TailscaleMark {
+                    iconSize: root.slotSize
+                    color: root.markColor
+                }
+            }
         }
 
-        Flea.DropboxMark {
+        Loader {
             anchors.centerIn: parent
-            visible: root.entry.mark === "dropbox"
-            iconSize: root.slotSize
-            color: root.markColor
+            active: root.entry.mark === "dropbox"
+            sourceComponent: Component {
+                Flea.DropboxMark {
+                    iconSize: root.slotSize
+                    color: root.markColor
+                }
+            }
         }
 
-        Flea.LocalSendMark {
+        Loader {
             anchors.centerIn: parent
-            visible: root.entry.mark === "localsend"
-            iconSize: root.slotSize
-            color: root.markColor
+            active: root.entry.mark === "localsend"
+            sourceComponent: Component {
+                Flea.LocalSendMark {
+                    iconSize: root.slotSize
+                    color: root.markColor
+                }
+            }
         }
 
         // The shelf is Flea's own destination, so it carries Flea's own mark rather than a cut glyph.
-        Flea.FleaMark {
+        Loader {
             anchors.centerIn: parent
-            visible: root.entry.mark === "flea"
-            width: root.slotSize
-            height: root.slotSize
-            color: root.markColor
+            active: root.entry.mark === "flea"
+            sourceComponent: Component {
+                Flea.FleaMark {
+                    width: root.slotSize
+                    height: root.slotSize
+                    color: root.markColor
+                }
+            }
         }
     }
 
