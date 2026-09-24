@@ -226,6 +226,11 @@ pub fn key(model: &mut Model, key: &Key, map: &Map, wire: &mut Wire) -> io::Resu
         return Ok(());
     }
     let mut action = map.action(key, &model.preset);
+    // Issue 133: every trash key refuses on a mount gio cannot trash, before d arms and before the backend fails.
+    if matches!(action.as_str(), "trash" | "trashArm") && !super::mounts::trashable(&model.path) {
+        model.fail(super::mounts::NO_TRASH.into());
+        return Ok(());
+    }
     if matches!(
         action.as_str(),
         "copyArm" | "cutArm" | "pasteArm" | "cursorFirstArm" | "trashArm"

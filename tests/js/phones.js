@@ -140,12 +140,18 @@ function run(check) {
     check("and it is a phone row in every other respect",
           lensRows[0].group + "|" + lensRows[0].kind + "|" + lensRows[0].uri, "device|phone|gphoto2://usb%3A001%2C014/")
 
-    // Issue 133 (mfilm77): gio trash has nowhere to put a file on either mount, so neither the menu
+    // Issue 133 (mfilm77): gio trash has nowhere to put a file on any GVFS mount, so neither the menu
     // row nor the key is offered there. The FUSE folder is what names the scheme that reached it.
     check("an MTP folder cannot trash", Mounts.trashable("/run/user/1000/gvfs/mtp:host=SAMSUNG_RQGL705T0NR/DCIM"), false)
     check("a PTP folder cannot trash", Mounts.trashable("/run/user/1000/gvfs/gphoto2:host=usb%3A001%2C014/store"), false)
-    check("a share folder still can", Mounts.trashable("/run/user/1000/gvfs/smb-share:server=nas,share=media"), true)
-    check("and so does every ordinary path", Mounts.trashable("/home/gm/Downloads"), true)
+    // Measured on the box at 0.3.4: gio trash on its SMB share answers "Operation not supported", and gio
+    // info says access::can-trash FALSE, the same as the reporter's sftp and MTP.
+    check("a share folder cannot trash either", Mounts.trashable("/run/user/1000/gvfs/smb-share:server=192.168.21.25,share=data"), false)
+    check("nor an sftp one", Mounts.trashable("/run/user/1000/gvfs/sftp:host=box,user=gm/home/gm"), false)
+    check("nor the iPhone's AFC files", Mounts.trashable("/run/user/1000/gvfs/afc:host=00008130-001641411883401C/DCIM"), false)
+    check("nor WebDAV", Mounts.trashable("/run/user/1000/gvfs/dav:host=slot,ssl=true/notes"), false)
+    check("every ordinary path still can", Mounts.trashable("/home/gm/Downloads"), true)
+    check("a checkout of gvfs itself included", Mounts.trashable("/home/gm/src/gvfs/daemon"), true)
 
     // Directive 44, captured on the box with GM's iPhone on USB (iOS 26.6.2, 2026-09-14). It answers
     // on two monitors at once: GPhoto2 for the camera store, which lists zero folders on this iOS

@@ -231,6 +231,13 @@ function run(check) {
         check(preset + " Grid PDF Right keeps page navigation", Focus.lookup(right, pane(pdfOpen(), "grid")), "seekForward")
     }
     Keymap.setPreset("default")
+    // Issue 133: the key follows the menu row, so Delete on an SMB share asks gio for no trash it can only refuse.
+    var onShare = pane(closed())
+    onShare.path = "/run/user/1000/gvfs/smb-share:server=192.168.21.25,share=data"
+    check("Delete in an SMB share folder moves nothing to Trash", Focus.lookup(key(Qt.Key_Delete, "", none), onShare), "")
+    var onDisk = pane(closed())
+    onDisk.path = "/home/gm/Downloads"
+    check("while Delete in a local folder still does", Focus.lookup(key(Qt.Key_Delete, "", none), onDisk), "trash")
     check("bare a adds a network place from the list too", Focus.lookup(key(Qt.Key_A, "a", none), pane(closed())), "addNetwork")
     var dialled = listPane(true)
     dialled.sidebar = { asked: 0, addRequested: function () { this.asked += 1 } }

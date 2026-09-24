@@ -1,6 +1,7 @@
 .import "../../ui/js/Menu.js" as Menu
 .import "../../ui/js/MenuRefresh.js" as MenuRefresh
 .import "../../ui/js/Icons.js" as Icons
+.import "../../ui/js/Mounts.js" as Mounts
 
 function state(changes) {
     var value = { hasRow: true, selectionCount: 1, rowMode: 0o100644, clipboardAvailable: false,
@@ -59,6 +60,12 @@ function run(check) {
     check("stored delete id reaches permanent deletion action", entry(all, "deletePermanently").id, "delete")
     check("all optional file controls exist", ["openWith", "moveTo", "copyTo", "properties", "permissions", "copypath", "openTerminal"].every(function (a) { return !!entry(all, a).action }), true)
     check("permanent deletion carries danger role", entry(all, "deletePermanently").danger, true)
+    // Issue 133: ui/Pane.qml hands the menu Mounts.trashable of the folder, and on a share the row that would fail is absent.
+    var onShare = Menu.listingEntries(state({ hiddenActions: [], canTrash: Mounts.trashable("/run/user/1000/gvfs/smb-share:server=192.168.21.25,share=data") }))
+    check("a file on an SMB share is not offered Move to Trash", entry(onShare, "trash").action, undefined)
+    check("while Delete permanently, which the share can do, stays and stays enabled",
+          entry(onShare, "deletePermanently").action + "|" + entry(onShare, "deletePermanently").disabled, "deletePermanently|undefined")
+    check("and a local file keeps Move to Trash", entry(Menu.listingEntries(state({ canTrash: Mounts.trashable("/home/gm/Downloads") })), "trash").action, "trash")
     check("single-item actions stay present but disabled on multi-selection", ["openWith", "properties", "rename", "duplicate", "permissions"].every(function (a) {
         return entry(Menu.listingEntries(state({ hiddenActions: [], selectionCount: 2 })), a).disabled === true
     }), true)

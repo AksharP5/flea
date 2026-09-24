@@ -81,6 +81,11 @@ pub fn flag(value: &Json, key: &str) -> bool {
 #[path = "sort_tests.rs"]
 mod sort_tests;
 
+// Issue 133's key battery, which drives the same echo wire.
+#[cfg(test)]
+#[path = "trash_tests.rs"]
+mod trash_tests;
+
 #[cfg(test)]
 mod tests {
     use super::*;

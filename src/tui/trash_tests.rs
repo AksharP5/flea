@@ -1,0 +1,82 @@
+// Issue 133 through the real key path: on a GVFS mount every preset's trash keys reach no backend and say why.
+use super::sort_tests::{drain, echo_wire, finish, press, requests};
+use super::*;
+use crate::tui::input::Key;
+use crate::tui::keymap::Map;
+use crate::tui::model::Model;
+use std::path::PathBuf;
+
+// The box's own SMB share and a phone, as gvfs names their FUSE folders; gio trash refuses both.
+const SHARE: &str = "/run/user/1000/gvfs/smb-share:server=192.168.21.25,share=data";
+const PHONE: &str = "/run/user/1000/gvfs/mtp:host=SAMSUNG_RQGL705T0NR/DCIM";
+const REFUSAL: &str = "This location has no Trash; Shift+Delete deletes permanently";
+
+fn key(name: &str, text: &str, mods: &str) -> Key {
+    Key { name: name.into(), text: text.into(), mods: mods.into(), pointer: None }
+}
+
+// Every shipped way to trash, per preset, checked against the shipped map: dd, Delete, vim's D,
+// Windows' Ctrl+D and the Mac's Ctrl+Delete.
+fn trash_keys() -> Vec<(&'static str, Key)> {
+    let keys = vec![
+        ("default", key("d", "d", "")),
+        ("default", key("Delete", "", "")),
+        ("vim", key("D", "D", "")),
+        ("windows", key("D", "", "ctrl")),
+        ("mac", key("Delete", "", "ctrl")),
+    ];
+    for (preset, pressed) in &keys {
+        let action = Map::load().action(pressed, preset);
+        assert!(matches!(action.as_str(), "trash" | "trashArm"), "{preset} {} is a shipped trash key, not {action:?}", pressed.name);
+    }
+    keys
+}
+
+// One file listed under dir through the real receive path, with the cursor on it.
+fn listing(dir: &str, preset: &str, wire: &mut Wire) -> Model {
+    let mut model = Model::new(PathBuf::from(dir), &Json::Null);
+    model.preset = preset.into();
+    model.open(model.path.clone(), wire).unwrap();
+    drain(wire);
+    let listed = format!(r#"{{"t":"listed","n":1,"read":0.0,"sort":0.0,"v":1,"path":"{dir}"}}"#);
+    model.receive(jsondoc::parse(&listed).unwrap(), wire).unwrap();
+    drain(wire);
+    model.receive(jsondoc::parse(r#"{"t":"rows","start":0,"rows":[{"n":"photo.jpg"}]}"#).unwrap(), wire).unwrap();
+    drain(wire);
+    model
+}
+
+#[test]
+fn trash_keys_on_a_share_or_a_phone_send_nothing_and_say_why() {
+    for dir in [SHARE, PHONE] {
+        for (preset, pressed) in trash_keys() {
+            let (mut wire, reader) = echo_wire();
+            let mut model = listing(dir, preset, &mut wire);
+            // Twice, so dd's second press is covered as well as a single-press key pressed again.
+            for _ in 0..2 {
+                press(&mut model, &mut wire, &pressed);
+                assert!(requests(&drain(&mut wire), "trash").is_empty(), "{preset} {} in {dir} asks for no trash", pressed.name);
+                assert_eq!(model.key_arm, "", "{preset} {} in {dir} arms nothing", pressed.name);
+            }
+            assert_eq!(model.error, REFUSAL, "{preset}: the status line names the failure and the way out");
+            // The way out it names is real: Shift+Delete still asks to delete permanently here.
+            press(&mut model, &mut wire, &key("Delete", "", "shift"));
+            let sent = drain(&mut wire);
+            assert_eq!(requests(&sent, "menuaction").len(), 1, "{preset} Shift+Delete in {dir} starts permanent deletion");
+            finish(wire, reader);
+        }
+    }
+}
+
+#[test]
+fn trash_keys_in_a_local_folder_still_trash() {
+    for (preset, pressed) in trash_keys() {
+        let (mut wire, reader) = echo_wire();
+        let mut model = listing("/listing", preset, &mut wire);
+        press(&mut model, &mut wire, &pressed);
+        press(&mut model, &mut wire, &pressed);
+        assert!(!requests(&drain(&mut wire), "trash").is_empty(), "{preset} {} trashes a local file", pressed.name);
+        assert_eq!(model.error, "", "{preset}: nothing is refused");
+        finish(wire, reader);
+    }
+}

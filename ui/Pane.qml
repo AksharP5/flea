@@ -605,7 +605,7 @@ FocusScope {
         dropboxReason: root.dropboxService ? root.dropboxService.dropboxReason : "Dropbox service unavailable"
         rowInDropbox: root.dropboxService && root.cursorRow
             && Dropbox.contains(root.dropboxService.dropboxPath, root.join(root.path, root.cursorRow.n))
-        // Issue 133: an MTP or PTP mount has no trash of its own, so the row is not offered there.
+        // Issue 133: no GVFS mount, share or phone, has a trash of its own, so the row is not offered there.
         canTrash: Mounts.trashable(root.path)
         onChosen: function (action) {
             menuActions.activate(action, menu.hasRow && !menu.forHeader)

@@ -43,11 +43,10 @@ function localPath(body) {
     return ""
 }
 
-// Issue 133 (mfilm77): gio trash refuses a location with no trash directory of its own, so Move to
-// Trash on a phone fails every time it is offered. The FUSE folder names the scheme that reached it,
-// which is what says so without a round trip; every other location keeps the row it always had.
+// Issue 133 (mfilm77): no GVFS backend implements trash, so gio trash refuses every path under its FUSE folder.
+// Sample input: /run/user/1000/gvfs/smb-share:server=192.168.21.25,share=data/photos, where "smb-share:" names the mount.
 function trashable(path) {
-    return !/\/gvfs\/(mtp|gphoto2):/i.test(String(path || ""))
+    return !/\/gvfs\/[a-z0-9-]+:/i.test(String(path || ""))
 }
 
 // Sample input: the operator's real bookmarks file, ui/js/Places.js "bookmarks" reads the same lines.

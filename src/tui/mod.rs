@@ -9,6 +9,7 @@ mod job;
 mod keymap;
 mod media;
 mod model;
+mod mounts;
 mod pdf;
 mod preview;
 mod render;

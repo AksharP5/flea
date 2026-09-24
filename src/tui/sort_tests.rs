@@ -5,7 +5,7 @@ use crate::tui::{actions, input::Key, keymap::Map};
 use std::path::PathBuf;
 use std::time::Duration;
 
-fn echo_wire() -> (Wire, std::thread::JoinHandle<()>) {
+pub(super) fn echo_wire() -> (Wire, std::thread::JoinHandle<()>) {
     let quit = jsondoc::render(&Json::Obj(vec![("c".into(), word("quit"))])).replace('\n', "");
     let mut child = Command::new("sh").args(["-c",
         r#"while IFS= read -r line; do [ "$line" = "$1" ] && exit 0; printf '%s\n' "$line"; done"#,
@@ -26,7 +26,7 @@ fn echo_wire() -> (Wire, std::thread::JoinHandle<()>) {
     (Wire { child, input, events }, reader)
 }
 
-fn finish(mut wire: Wire, reader: std::thread::JoinHandle<()>) {
+pub(super) fn finish(mut wire: Wire, reader: std::thread::JoinHandle<()>) {
     wire.send(vec![("c", word("quit"))]).unwrap();
     assert!(wire.child.wait().unwrap().success(), "TUI test wire child did not exit cleanly");
     reader.join().unwrap();
@@ -36,7 +36,7 @@ fn finish(mut wire: Wire, reader: std::thread::JoinHandle<()>) {
 const FENCE_WAIT: Duration = Duration::from_secs(10);
 
 // Everything the model has sent: the echo returns a fence line after it, so no quiet window can cut it short.
-fn drain(wire: &mut Wire) -> Vec<Json> {
+pub(super) fn drain(wire: &mut Wire) -> Vec<Json> {
     wire.send(vec![("c", word("fence"))]).unwrap();
     let mut out = Vec::new();
     loop {
@@ -49,11 +49,11 @@ fn drain(wire: &mut Wire) -> Vec<Json> {
     }
 }
 
-fn requests<'a>(sent: &'a [Json], command: &str) -> Vec<&'a Json> {
+pub(super) fn requests<'a>(sent: &'a [Json], command: &str) -> Vec<&'a Json> {
     sent.iter().filter(|value| text(value, "c") == command).collect()
 }
 
-fn press(model: &mut Model, wire: &mut Wire, key: &Key) {
+pub(super) fn press(model: &mut Model, wire: &mut Wire, key: &Key) {
     actions::key(model, key, &Map::load(), wire).unwrap();
 }
 
