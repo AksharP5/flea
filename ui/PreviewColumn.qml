@@ -5,6 +5,7 @@ import "js/Facts.js" as Facts
 import "js/Format.js" as Format
 import "js/Icons.js" as Icons
 import "js/PreviewKeys.js" as PreviewKeys
+import "js/Thumbs.js" as Thumbs
 
 // The columns view's last pane when a file is picked. One anatomy for all twelve states the canvas
 // draws: a frame, an optional transport, the name, and a caption-type table of facts under it.
@@ -74,6 +75,8 @@ Item {
 
     // The canvas's frame is 16 by 10, which is the one proportion every state shares.
     readonly property real frameRatio: 10 / 16
+    // Stretch renders a vector to the whole box, so the frame's pictures keep Fit for an SVG alone.
+    readonly property bool vectorPath: /\.svgz?$/i.test(root.path)
 
     // The states that draw a picture of the file itself. A PDF draws its own page, loading draws the
     // crawl, and a multi-selection is a summary and never the cursor row's own picture.
@@ -116,37 +119,56 @@ Item {
 
             // The thumbnail subsystem's own surface: a real thumbnail when there is one, the kind's
             // mark when there is not, which is what the canvas means by "the glyph stands in here".
+            // Sized the way ui/PreviewImage.qml sizes its picture, and for its reasons: the exact fit, never enlarged in the decode.
             Image {
                 id: frameThumb
-                anchors.fill: parent
-                anchors.margins: Theme.spacing.hairline
+                readonly property real boxWidth: parent.width - 2 * Theme.spacing.hairline
+                readonly property real boxHeight: parent.height - 2 * Theme.spacing.hairline
+                readonly property bool vector: root.thumb.length === 0 && root.vectorPath
+                // The fallback is the original, so never enlarged; a cache file up to the original's own size.
+                readonly property real fit: Thumbs.fitScale(boxWidth, boxHeight, implicitWidth, implicitHeight, root.thumb.length === 0 ? 1
+                    : Thumbs.thumbLimit(implicitWidth, implicitHeight, root.meta ? root.meta.w : 0, root.meta ? root.meta.h : 0))
+                x: vector ? Theme.spacing.hairline : Math.round((parent.width - width) / 2)
+                y: vector ? Theme.spacing.hairline : Math.round((parent.height - height) / 2)
+                width: vector ? boxWidth : implicitWidth * fit
+                height: vector ? boxHeight : implicitHeight * fit
                 visible: root.thumbShown && !playerLoader.visible
                 source: root.frameSource()
-                fillMode: Image.PreserveAspectFit
+                fillMode: vector ? Image.PreserveAspectFit : Image.Stretch
+                // The fallback is the camera file itself, whose EXIF turn Qt applies only when asked.
+                autoTransform: true
                 asynchronous: true
                 cache: false
                 // Zero is unbounded to Qt, which is what the small cache PNG wants; only the fallback,
                 // which can be the whole camera file, takes the ceiling ui/PreviewImage.qml sets.
-                sourceSize.width: root.thumb.length > 0 ? 0 : Math.max(1, Math.round(width))
-                sourceSize.height: root.thumb.length > 0 ? 0 : Math.max(1, Math.round(height))
+                sourceSize.width: root.thumb.length > 0 ? 0 : Math.max(1, Math.round(boxWidth))
+                sourceSize.height: root.thumb.length > 0 ? 0 : Math.max(1, Math.round(boxHeight))
             }
 
             // The cache file is 256 px and this frame is a third of the window, so an image the cache file
             // would stretch decodes itself at the frame's size, ui/PreviewImage.qml's ceiling, over it; the
             // cache file stays on screen until this is Ready, so a cursor move never draws an empty frame.
+            // It takes frameThumb's exact-fit sizing and EXIF turn, or a phone photo's upright thumbnail would give way to a sideways original.
             Image {
                 id: frameSharp
-                anchors.fill: frameThumb
+                readonly property real fit: Thumbs.fitScale(frameThumb.boxWidth, frameThumb.boxHeight, implicitWidth, implicitHeight, 1)
+                x: root.vectorPath ? Theme.spacing.hairline : Math.round((parent.width - width) / 2)
+                y: root.vectorPath ? Theme.spacing.hairline : Math.round((parent.height - height) / 2)
+                width: root.vectorPath ? frameThumb.boxWidth : implicitWidth * fit
+                height: root.vectorPath ? frameThumb.boxHeight : implicitHeight * fit
                 visible: frameThumb.visible && frameSharp.status === Image.Ready
                 source: root.readsOriginal && root.previewState === Facts.IMAGE && root.thumb.length > 0
                         && frameThumb.status === Image.Ready && frameThumb.paintedWidth > frameThumb.implicitWidth
                         ? Format.fileUri(root.path) : ""
-                fillMode: Image.PreserveAspectFit
+                fillMode: root.vectorPath ? Image.PreserveAspectFit : Image.Stretch
+                autoTransform: true
                 asynchronous: true
                 cache: false
-                sourceSize.width: Math.max(1, Math.round(width))
-                sourceSize.height: Math.max(1, Math.round(height))
+                sourceSize.width: Math.max(1, Math.round(frameThumb.boxWidth))
+                sourceSize.height: Math.max(1, Math.round(frameThumb.boxHeight))
             }
+            // A transparent picture showed the stretched thumbnail through itself, 272 pixels on the fixture logo, so the thumbnail goes.
+            Binding { target: frameThumb; property: "opacity"; value: frameSharp.status === Image.Ready ? 0 : 1 }
 
             // The player, in the frame it paints into; built by the first press of play and not before, and by source rather than type, because QtMultimedia costs 20 MB on import alone.
             Loader {

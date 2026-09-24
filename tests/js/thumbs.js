@@ -109,4 +109,19 @@ function run(check) {
     check("nor a folder whose statfs failed", Thumbs.decodesOriginal(here, here, ""), false)
     check("nor one whose statfs is still the previous folder's", Thumbs.decodesOriginal("/home/gm", here, "btrfs"), false)
     check("nor one with no statfs yet", Thumbs.decodesOriginal("", here, "btrfs"), false)
+
+    // GM, 2026-09-24: a small original draws at its own size, centred, and is never enlarged to the frame.
+    function drawn(scale, w, h) { return Math.round(w * scale) + "x" + Math.round(h * scale) }
+    check("a 120x68 original in the 754x471 frame draws at its own size", drawn(Thumbs.fitScale(754, 471, 120, 68, 1), 120, 68), "120x68")
+    check("an original decoded to fit is drawn as decoded", drawn(Thumbs.fitScale(754, 471, 707, 471, 1), 707, 471), "707x471")
+    check("so is one that fits the width", drawn(Thumbs.fitScale(2099, 1156, 2099, 700, 1), 2099, 700), "2099x700")
+    check("a full-size cache file of a photo whose size is not known yet fills the frame",
+          drawn(Thumbs.fitScale(754, 471, 256, 171, Thumbs.thumbLimit(256, 171, 0, 0)), 256, 171), "705x471")
+    check("of a 6000x4000 photo too", drawn(Thumbs.fitScale(754, 471, 256, 171, Thumbs.thumbLimit(256, 171, 6000, 4000)), 256, 171), "705x471")
+    check("of a 300x200 picture only up to its own size, where the original will draw",
+          drawn(Thumbs.fitScale(754, 471, 256, 171, Thumbs.thumbLimit(256, 171, 300, 200)), 256, 171), "300x200")
+    check("and an EXIF-turned one by its longest side", drawn(Thumbs.fitScale(754, 471, 171, 256, Thumbs.thumbLimit(171, 256, 300, 200)), 171, 256), "200x300")
+    check("a cache file smaller than the cache size is the original's own size, never enlarged",
+          drawn(Thumbs.fitScale(754, 471, 64, 48, Thumbs.thumbLimit(64, 48, 0, 0)), 64, 48), "64x48")
+    check("a frame smaller than the picture still shrinks it", drawn(Thumbs.fitScale(200, 125, 256, 171, Thumbs.thumbLimit(256, 171, 6000, 4000)), 256, 171), "187x125")
 }

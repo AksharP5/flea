@@ -96,6 +96,26 @@ function decodesOriginal(fsPath, path, fsName) {
     return String(fsPath || "").length > 0 && fsPath === path && LOCAL_FILESYSTEMS.indexOf(String(fsName || "")) >= 0
 }
 
+// src/backend/thumbs.rs THUMB_SIZE: the longest side of a cache file made from a larger original.
+var CACHE_SIZE = 256
+
+// How much a picture may be enlarged to fit its box, and never past limit: 1 for an original, which
+// draws at its own size when it is smaller than the box (GM, 2026-09-24). Sample input: (754, 471, 120, 68, 1) is 1.
+function fitScale(boxWidth, boxHeight, width, height, limit) {
+    return Math.min(limit, boxWidth / Math.max(1, width), boxHeight / Math.max(1, height))
+}
+
+// A cache file stands in for its original, so it is enlarged at most to the original's own size. The
+// longest side is compared because EXIF can turn either one. Unknown dimensions leave a full-size cache
+// file free to fill the box, while a smaller one already is the original. Sample input: (256, 171, 300, 200) is 300/256.
+function thumbLimit(thumbWidth, thumbHeight, originalWidth, originalHeight) {
+    var thumbLongest = Math.max(1, thumbWidth, thumbHeight)
+    var originalLongest = Math.max(Number(originalWidth) || 0, Number(originalHeight) || 0)
+    if (originalLongest > 0)
+        return originalLongest / thumbLongest
+    return thumbLongest < CACHE_SIZE ? 1 : Infinity
+}
+
 // Backend icon identity distinguishes image thumbnails from video without opening any extra file.
 function allowed(row, mode) {
     if (!row || !row.t || mode === "off") return false

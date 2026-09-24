@@ -2,6 +2,7 @@ import QtQuick
 import qs.Commons
 import "." as Flea
 import "js/Format.js" as Format
+import "js/Thumbs.js" as Thumbs
 
 // The Quick Look's image pane, reached only through Preview.qml's Loader. It draws the file itself:
 // the 256 px cache file the column draws would be an eightfold upscale on a surface this size.
@@ -25,13 +26,23 @@ Item {
         color: Theme.color.background
     }
 
+    // Stretch, in an item sized to the fit of what was decoded: Qt then decodes the exact fit and never enlarges
+    // in the decode, where Fit decoded a covering size (2099x3149 for a portrait photo, 34680x1156 for a 3000x100
+    // banner, measured). A small picture draws at its own size, centred; only an SVG keeps Fit, which Stretch would distort.
+    readonly property bool vector: /\.svgz?$/i.test(root.path)
     Image {
         id: picture
-        anchors.fill: parent
+        readonly property real fit: Thumbs.fitScale(root.width, root.height, implicitWidth, implicitHeight, 1)
+        x: root.vector ? 0 : Math.round((root.width - width) / 2)
+        y: root.vector ? 0 : Math.round((root.height - height) / 2)
+        width: root.vector ? root.width : implicitWidth * fit
+        height: root.vector ? root.height : implicitHeight * fit
         visible: picture.status === Image.Ready
         // Format.fileUri, not a concatenation: a # or a ? in the name would truncate a hand-built URI.
         source: root.path.length > 0 ? Format.fileUri(root.path) : ""
-        fillMode: Image.PreserveAspectFit
+        fillMode: root.vector ? Image.PreserveAspectFit : Image.Stretch
+        // A phone keeps a portrait photo's turn in EXIF, and Qt leaves it unapplied unless asked.
+        autoTransform: true
         asynchronous: true
         cache: false
         // Decoded no larger than the surface: the same 6016x3900 PNG is 94 MB of texture at full size
