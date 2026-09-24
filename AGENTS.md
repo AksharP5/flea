@@ -1648,6 +1648,13 @@ failure fails the check rather than passing it.
 - `ui/TabBar.qml` is the window's tab strip, hidden with no height until a second tab exists.
 - `ui/ChromeBar.qml` renders the top chrome, and owns the path bar: the same strip typed into
   rather than drawn, opened by `:`, `Ctrl+L` or a double click on the path.
+- `ui/PathJump.qml` is the path bar's folder jump, the Jump board: a name typed into the bar lists
+  matching folders from Flea's favourites, zoxide's ranking and `recently-used.xbel` in a dropdown
+  under the field, and Enter opens the cursor row. `ui/JumpPath.qml` draws one row's path, and
+  `ui/js/Jump.js` decides the rows, with a port of `backend/fuzzy.rs` that `tests/js/jump.js` holds
+  to the Rust tests' own cases. `backend/jump.rs` answers the three sources once per open of the bar,
+  see docs/protocol.md "jump". A line that starts like a path (`/`, `~`, `.`, `file://`) is typed as
+  one, exactly as before the jump, and so is a name that matches nothing.
 - `keys.toml` is the one key table, and `tools/flea-keymap-gen` turns it into `Keymap.js`.
 - `ui/js/Keymap.js` is the generated key-to-action lookup and imports no QML.
 - `ui/js/Format.js` is the pure size, date and permission formatter.
@@ -1951,6 +1958,13 @@ handler query with it (110 to 103). `tests/js/settingsabout.js` went from 187 to
 soft budget and not the hard cap. The row spends the last line of `ui/SettingsPanel.qml`'s ceiling on its route, 542 of 542, and
 raises `ui/SettingsRow.qml`'s from 409 to 410 for the note that elides on one line instead of wrapping. `src/update.rs` is 301 lines with its tests in `src/update_tests.rs`, over the soft budget and
 not the hard cap; the seam if it needs one is the six parsers of what each command printed.
+
+0.3.6's folder jump records three ceilings, each re-derived with `wc -l` at the commit that recorded
+it. `ui/ChromeBar.qml` 421 to 437 for the jump's request signal and alias, the strip's rise over the
+listing while the dropdown shows, the field's `Keys.forwardTo` and the `PathJump` it owns; the dropdown,
+its sources and its keys are all `ui/PathJump.qml`. `ui/WindowBody.qml` 484 to 486 for carrying the
+request to the pane's backend and its answer back, the two lines Tab's peek already spends.
+`src/backend/run.rs` 427 to 428 for the `jump` arm, whose work is all `src/backend/jump.rs`.
 
 `src/backend/ops.rs` split to `src/backend/renamecompat.rs` at 455: composing PR 35's safe rclone
 rename into the release tree put the rename exception over the 400-line hard cap, so the exception

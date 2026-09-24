@@ -20,6 +20,7 @@ import "focus-lines.js" as FocusLinesSuite
 import "focus-wrap.js" as FocusWrapSuite
 import "format.js" as FormatSuite
 import "icons.js" as IconsSuite
+import "jump.js" as JumpSuite
 import "keymap.js" as KeymapSuite
 import "localsend.js" as LocalSendSuite
 import "marks.js" as MarksSuite
@@ -95,7 +96,7 @@ Item {
             ["gridgeometry", GridGeometrySuite],
             ["focus-lines", FocusLinesSuite], ["focus-wrap", FocusWrapSuite],
             ["format", FormatSuite], ["icons", IconsSuite],
-            ["keymap", KeymapSuite], ["localsend", LocalSendSuite], ["match", MatchSuite], ["menu", MenuSuite],
+            ["jump", JumpSuite], ["keymap", KeymapSuite], ["localsend", LocalSendSuite], ["match", MatchSuite], ["menu", MenuSuite],
             ["marks", MarksSuite], ["mounts", MountsSuite], ["nav", NavSuite], ["crumbs", CrumbsSuite], ["devices", DevicesSuite], ["network", NetworkSuite],
             ["openwith", OpenWithSuite], ["ops", OpsSuite], ["opstrash", OpsTrashSuite],
             ["palette", PaletteSuite], ["pathbar", PathBarSuite], ["places", PlacesSuite], ["placemenu", PlaceMenuSuite], ["rail", RailSuite], ["scripts", ScriptsSuite],

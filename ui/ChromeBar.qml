@@ -36,6 +36,11 @@ Item {
     signal editClosed()
     signal completeRequested(string dir, bool hidden)
     signal said(string text)
+    // The folder jump's one read per open, carried to the pane's backend like Tab's peek; see ui/PathJump.qml.
+    signal jumpRequested(var favourites, var recent)
+    readonly property alias jump: jump
+    // Its dropdown hangs below the strip, so the strip rises over the tab bar and the listing while it shows.
+    z: jump.shown ? 1 : 0
     // The settings panel's pointer door, beside the comma key; see ui/shell.qml for the third.
     signal settingsRequested()
 
@@ -322,6 +327,8 @@ Item {
             font.family: Theme.font.family
             font.pixelSize: Theme.font.caption
             clip: true
+            // The jump's dropdown takes the arrows and Enter first, and only while it is showing rows.
+            Keys.forwardTo: [jump]
 
             // Every one of these is handled and accepted here, for the reason ui/RenameField.qml
             // gives: an unaccepted key goes on to the pane's own handler, which would read Return as
@@ -346,6 +353,16 @@ Item {
             // Losing the keyboard closes the bar, the rule the rename editor already follows: a bar
             // left standing over a window that has moved on would commit against the wrong directory.
             onActiveFocusChanged: if (!activeFocus && root.editing) root.closeEdit()
+        }
+
+        // The Jump board's dropdown, which places itself flush under this field and at its width.
+        Flea.PathJump {
+            id: jump
+            editing: root.editing
+            query: field.text
+            home: root.home
+            onRequested: function (favourites, recent) { root.jumpRequested(favourites, recent) }
+            onChosen: function (path) { root.closeEdit(); if (path !== root.path) root.pathEntered(path) }
         }
     }
 

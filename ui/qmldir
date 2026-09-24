@@ -57,6 +57,8 @@ Header 1.0 Header.qml
 Ipc 1.0 Ipc.qml
 List 1.0 List.qml
 MatchText 1.0 MatchText.qml
+PathJump 1.0 PathJump.qml
+JumpPath 1.0 JumpPath.qml
 LoadingState 1.0 LoadingState.qml
 NetworkDialog 1.0 NetworkDialog.qml
 NetworkForm 1.0 NetworkForm.qml

@@ -21,6 +21,8 @@ pub mod listpaths;
 pub mod events;
 pub mod scan;
 pub mod fuzzy;
+// The path bar's folder jump; see docs/protocol.md "jump".
+pub mod jump;
 pub mod search;
 pub mod searchreq;
 pub mod sort;

@@ -222,7 +222,7 @@ Press **?** for the full keymap, or **,** to change settings.
 | Rename / trash / undo | `r` or `F2` / `dd` or `Delete` / `z` |
 | New folder | `Ctrl+Shift+N` |
 | Search / filter the list | `f` / `/` |
-| Enter a path | `:` or `Ctrl+L` |
+| Enter a path, or jump to a folder by name | `:` or `Ctrl+L`, then a path or a name |
 | List / columns / grid | `Ctrl+1` / `Ctrl+2` / `Ctrl+3` |
 | New tab / close tab / switch tab | `t` / `w` / `1`–`9` |
 | Open terminal / context menu | `Ctrl+T` / `m` |

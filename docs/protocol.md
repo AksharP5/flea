@@ -730,6 +730,25 @@ there. The steps of one operation reverse
 newest first, and a step that fails stops the rest rather than leaving the operation half-reversed with
 nothing recording which half.
 
+### jump
+
+`{"c":"jump","favourites":[<string>,...],"recent":[<string>,...]}`
+
+Example: `{"c":"jump","favourites":["/home/gm/Projects"],"recent":["/home/gm/Pictures/screenshots/shot.png"]}`
+
+The path bar's folder jump, asked **once per open of the bar**, never per keystroke: the client filters
+the answer itself as the line changes. `favourites` are Flea's own favourites in their rail order, and
+`recent` is the desktop's `recently-used.xbel` newest first, which the client reads with Qt's XML reader
+because the backend has none. The backend adds the third source, zoxide's ranking, from one
+`zoxide query --list --all`, and answers one `jumped` line from a thread, because zoxide is a subprocess
+and a stat can block on a network mount.
+
+**Nothing is written.** `--all` is what keeps zoxide from pruning its own database on a query Flea made:
+without it zoxide deletes entries missing for 90 days and saves. zoxide is optional: absent, it is an
+empty source and says nothing. A zoxide that runs past 2 s is killed and draws nothing, and its answer is
+read up to 1 MiB and its first 1,000 rows. Every existence check shares one 1 s budget, so a folder whose
+stat has not answered by then is dropped with the rows after it rather than holding the whole answer.
+
 ### quit
 
 `{"c":"quit"}`
@@ -1150,6 +1169,18 @@ Example: `{"t":"undone","op":"move","ok":true}`
 
 `op` is the kind of operation that was reversed, one of `rename`, `duplicate`, `mkdir`, `trash`, `copy`
 or `move`, which is what lets the status bar say what it just put back.
+
+### jumped
+
+`{"t":"jumped","favourites":[<string>,...],"zoxide":[<string>,...],"recent":[<string>,...],"ms":<float>}`
+
+Example: `{"t":"jumped","favourites":["/home/gm/Projects"],"zoxide":["/home/gm/Documents"],"recent":["/home/gm/Pictures/screenshots"],"ms":4.210}`
+
+The answer to one `jump`: the folders of each source that exist now, each source in its own order.
+A favourite or a zoxide row must itself be a directory; a recent entry stands for the folder it sits in,
+unless it is a folder itself. A folder appears once, in the first source that names it, so a favourite
+zoxide also ranks is drawn as the favourite. Anything that is not an absolute path is dropped. `ms` is
+the whole answer's time, zoxide and the existence checks together.
 
 ### changed
 

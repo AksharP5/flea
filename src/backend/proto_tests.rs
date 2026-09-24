@@ -255,3 +255,11 @@ fn emits_an_error_line_naming_operation_and_path() {
         r#"{"t":"error","where":"scan","path":"/root","msg":"permission denied"}"#
     );
 }
+
+#[test]
+fn a_jump_request_carries_both_client_sources_and_a_bare_one_carries_none() {
+    assert!(matches!(parse_request(r#"{"c":"jump","favourites":["/home/gm/Projects"],"recent":["/home/gm/a, b.txt"]}"#),
+        Request::Jump { favourites, recent } if favourites == ["/home/gm/Projects"] && recent == ["/home/gm/a, b.txt"]));
+    assert!(matches!(parse_request(r#"{"c":"jump"}"#),
+        Request::Jump { favourites, recent } if favourites.is_empty() && recent.is_empty()));
+}

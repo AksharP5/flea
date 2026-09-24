@@ -344,6 +344,7 @@ fn handle_line(
             if error.is_some() { matches.clear(); }
             say(out, &super::proto::located_many_line(&st.base.to_string_lossy(), id, transfer_id, &matches, error.as_deref()));
         }
+        Request::Jump { favourites, recent } => super::jump::request(favourites, recent, ops.tx.clone()),
         Request::Quit => return Control::Quit,
         // corner: an unrecognised line is answered with silence, see AGENTS.md.
         Request::Unknown => {}

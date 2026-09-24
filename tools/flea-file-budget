@@ -18,7 +18,7 @@ src/backend/metareq.rs 404
 src/backend/opsdispatch.rs 536
 src/backend/opsreq/tests.rs 424
 src/backend/proto.rs 466
-src/backend/run.rs 427
+src/backend/run.rs 428
 src/backend/thumbs.rs 441
 src/backend/thumbworker.rs 953
 src/backend/trashbrowse.rs 698
@@ -34,7 +34,7 @@ tests/js/focus.js 374
 tests/js/mounts.js 383
 tests/js/ops.js 384
 ui/Backend.qml 435
-ui/ChromeBar.qml 421
+ui/ChromeBar.qml 437
 ui/ContextMenu.qml 534
 ui/ConvertDialog.qml 440
 ui/Ipc.qml 791
@@ -52,7 +52,7 @@ ui/SettingsPanel.qml 542
 ui/SettingsRow.qml 410
 ui/Sidebar.qml 543
 ui/TrashView.qml 466
-ui/WindowBody.qml 485
+ui/WindowBody.qml 487
 ui/js/Filter.js 301
 ui/js/Focus.js 341
 ui/js/Keymap.js 313
