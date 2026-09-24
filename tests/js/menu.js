@@ -107,7 +107,17 @@ function run(check) {
     check("hidden files toggle uses inverse wording", Menu.hiddenRow(true).label, "Hide hidden files")
     check("permissions accepts ordinary file", Menu.permissionsEntry(0o100644, 1).disabled, false)
     check("permissions accepts directory", Menu.permissionsEntry(0o040755, 1).disabled, false)
-    check("permissions rejects symlink", Menu.permissionsEntry(0o120777, 1).hint, "Symlink target not changed")
+    // Issue 193: a row that cannot act reads red with no sentence beside it, never "Unavailable" (GM, 2026-09-24).
+    function refusal(e) { return e.disabled + "|" + e.errored + "|" + e.hint }
+    check("permissions on a symlink reads as an error with no sentence", refusal(Menu.permissionsEntry(0o120777, 1)), "true|true|undefined")
+    check("permissions on a row whose mode could not be read does too", refusal(Menu.permissionsEntry(0, 1)), "true|true|undefined")
+    check("and a file's row can act, so it is not red", refusal(Menu.permissionsEntry(0o100644, 1)), "false|false|undefined")
+    var perms = function (changes) { return entry(Menu.listingEntries(state(changes)), "permissions") }
+    check("the menu row under a parent without execute reads red with no sentence",
+          refusal(perms({ hiddenActions: [], rowMode: 0 })), "true|true|undefined")
+    check("the menu row for a multi-selection reads the same way", refusal(perms({ hiddenActions: [], selectionCount: 2 })), "true|true|undefined")
+    check("the menu row for a symlink reads the same way", refusal(perms({ hiddenActions: [], rowMode: 0o120777 })), "true|true|undefined")
+    check("the menu row for a folder it can change is plain", refusal(perms({ hiddenActions: [], rowMode: 0o040755 })), "false|undefined|undefined")
     check("permissions rejects missing metadata", Menu.permissionsEntry(undefined, 1).disabled, true)
     check("permissions rejects fifo", Menu.permissionsEntry(0o010644, 1).disabled, true)
     check("permissions allows read-only inspection of special bits", Menu.permissionsEntry(0o104755, 1).disabled, false)

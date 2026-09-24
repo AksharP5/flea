@@ -275,4 +275,21 @@ function run(check) {
     Nav.parent(busyUp)
     check("a refused climb sends nothing", busyUp.opened.length, 0)
     check("and plants no select", busyUp.pendingSelect, "")
+
+    // Issue 193, measured on the box at 0.3.4: Backspace on a refused hop's Locked tile climbed past the
+    // folder the breadcrumb names, a whole listing away from the refused folder's own Permissions row.
+    function lockedUp(path, asked) {
+        var p = pane()
+        p.path = path
+        p.listingPath = asked
+        p.listingState = "locked"
+        p.opened = []
+        p.open = function (to) { p.opened.push(to) }
+        Nav.parent(p)
+        return p.opened.join("") + " " + p.pendingSelect
+    }
+    check("up from a refused hop's Locked tile goes back to the folder the breadcrumb names, on the refused one",
+          lockedUp("/home/gm/Downloads", "/home/gm/Downloads/locked"), "/home/gm/Downloads /home/gm/Downloads/locked")
+    check("while a folder refused on its own re-read has no row there to return to, so it still climbs",
+          lockedUp("/home/gm/Work", "/home/gm/Work"), "/home/gm /home/gm/Work")
 }

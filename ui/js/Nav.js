@@ -216,6 +216,13 @@ function parent(pane) {
         pane.message("A directory is already loading.", false)
         return
     }
+    // Issue 193: a refused hop keeps the breadcrumb on the folder it left and draws the child's Locked
+    // tile over it, so up from that tile is that folder again, on the row whose Permissions can fix it.
+    if (pane.listingState === "locked" && pane.listingPath !== pane.path && parentOf(pane.listingPath) === pane.path) {
+        pane.pendingSelect = pane.listingPath
+        pane.open(pane.path)
+        return
+    }
     if (pane.path === "/") {
         return
     }

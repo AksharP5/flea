@@ -99,7 +99,7 @@ function availableEntry(e, p, kind) {
     if (e.action === "permissions") {
         var permission = permissionsEntry(p.rowMode, count)
         e.disabled = permission.disabled
-        e.hint = permission.hint
+        if (permission.errored) e.errored = true
     }
     if (e.action === "runScript") {
         if (!(p.scripts || []).length) return false
@@ -175,13 +175,11 @@ function availableEntry(e, p, kind) {
 }
 
 // The mode describes the selected object itself, so a symlink never grants access to its unseen target.
+// Issue 193, GM's ruling of 2026-09-24: a row that cannot act reads red with no sentence, as a provider does.
 function permissionsEntry(mode, count) {
     var kind = (Number(mode) || 0) & 0o170000
-    var single = count === 1
-    var allowed = single && (kind === 0o100000 || kind === 0o040000)
-    return { label: "Permissions", action: "permissions", glyph: "lock", disabled: !allowed,
-             hint: !single ? "Unavailable" : kind === 0o120000 ? "Symlink target not changed" : allowed ? "" : "Unavailable",
-             hintWrap: true }
+    var allowed = count === 1 && (kind === 0o100000 || kind === 0o040000)
+    return { label: "Permissions", action: "permissions", glyph: "lock", disabled: !allowed, errored: !allowed }
 }
 
 

@@ -460,8 +460,8 @@ permissions_eligibility() {
     permissions_expect selectionCount 2
     click_row "$first" right
     permissions_expect contextMenuVisible true
-    ipc contextMenuModel | jq -e 'any(.[]; .action == "permissions" and .disabled and .hint == "Unavailable")' >/dev/null \
-        || fail "permissions: multi-selection does not show the specified disabled entry"
+    ipc contextMenuModel | jq -e 'any(.[]; .action == "permissions" and .disabled and .errored and .hint == null)' >/dev/null \
+        || fail "permissions: multi-selection does not read red with no sentence"
     shot "permissions-$permissions_group-multiselection"
     index=$(menu_row_index Permissions)
     permissions_point "$(ipc contextMenuRowCentre "$index")"
@@ -471,8 +471,8 @@ permissions_eligibility() {
     before=$(stat -c '%d:%i:%u:%g:%a:%s' "$permissions_listing/notes.md")
     click_row "$(row_index_of link)" right
     permissions_expect contextMenuVisible true
-    ipc contextMenuModel | jq -e 'any(.[]; .action == "permissions" and .disabled and .hint == "Symlink target not changed")' >/dev/null \
-        || fail "permissions: symlink entry lacks its specific refusal"
+    ipc contextMenuModel | jq -e 'any(.[]; .action == "permissions" and .disabled and .errored and .hint == null)' >/dev/null \
+        || fail "permissions: symlink entry does not read red with no sentence"
     shot "permissions-$permissions_group-symlink"
     index=$(menu_row_index Permissions)
     permissions_point "$(ipc contextMenuRowCentre "$index")"
