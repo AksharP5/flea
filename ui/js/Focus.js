@@ -17,6 +17,11 @@
 var LIST = "list"
 var RAIL = "rail"
 
+// Refusal where gio has no Trash: the place in the primary, the key that still works in the secondary.
+var NO_TRASH = "This location has no Trash"
+function noTrashHint() { return Keymap.hintFor("deletePermanently") + " deletes" }
+function noTrashLine() { return NO_TRASH + " · " + noTrashHint() }
+
 // Tab is the only thing that moves focus between views, so the rule lives in one function.
 function next(current, sidebar) {
     // RailAdditions rule 4: a hidden rail is not a place the keyboard can go, so Tab stays in the list. Directive 77: one that auto-hide withdrew is, because arriving there is what reveals it.
@@ -63,10 +68,9 @@ function lookup(event, root) {
         var row = root.rowFor(root.cursorIndex)
         return row && (row.d || (Format.isSymlink(row.p) && row.i === "folder")) ? "open" : (row ? "preview" : "")
     }
-    // Issue 133: the key follows the row. A mount gio cannot trash into offers neither, rather than
-    // arming a d that can only fail; ui/js/Mounts.js trashable is the same reader the menu uses.
+    // The key follows the row: where gio has no Trash the refusal names trashRefused, never arming a d that can only fail.
     if ((action === "trashArm" || action === "trash") && !Mounts.trashable(root.path))
-        return ""
+        return "trashRefused"
     // reveal only means something on a search result, so o is discarded everywhere else.
     if (action === "reveal" && root.searchMode !== Search.RESULTS)
         return ""
@@ -121,6 +125,8 @@ function act(action, root, menuId, paths) {
     case "duplicate": Ops.duplicate(root, menuId); return
     case "trash": Ops.trash(root, menuId); return
     case "trashArm": Trash.arm(root); return
+    // A trash key where there is no Trash refuses in the error role, hinting the key that still works.
+    case "trashRefused": root.message(noTrashLine(), true); return
     case "copy": Ops.clip(root, false, paths); return
     case "copydirpath": root.copyDirPath(); return
     case "cut": Ops.clip(root, true, paths); return

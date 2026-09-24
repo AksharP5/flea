@@ -1,0 +1,119 @@
+#!/bin/bash
+# The preview column's sharp original, driven through the real ui/SelectionPreview.qml offscreen:
+# a sweep of 50 cursor moves at key-repeat rate must open no original, and a rest on a 6016x3900
+# PNG must decode it exactly once. Decodes are counted from outside the column, as open events on
+# the fixture directory between touch sentinel files the harness drops at each phase boundary, so
+# windows follow the event stream's own order instead of comparing two clocks, and one decode is
+# one rest event with at least one open of the original: Qt opens an image more than once per
+# decode. The same instrument runs on the base commit too: this pins the product path, it is not a
+# fix. Offscreen, so it needs no display and no lock.
+set -u
+cd "$(dirname "$0")/.." || exit 1
+
+pass=0
+fail=0
+ok()  { printf 'ok   %s\n' "$*"; pass=$((pass+1)); }
+bad() { printf 'FAIL %s\n' "$*"; fail=$((fail+1)); }
+
+for tool in qs magick inotifywait; do
+    command -v "$tool" >/dev/null || { echo "sharp-decode.sh: $tool is not installed"; exit 1; }
+done
+
+. "$PWD/tools/flea-sandbox-guard"
+sandbox_root_ok
+test_root="$SANDBOX_ROOT/flea-sharp-decode-$$"
+sandbox_make "$test_root"
+cleanup() {
+    local result=$?
+    trap - EXIT
+    [ -n "${watcher:-}" ] && kill "$watcher" 2>/dev/null
+    sandbox_remove "$test_root"
+    exit "$result"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+cfg="$test_root/config"
+photos="$test_root/photos"
+runtime="$test_root/runtime"
+log="$test_root/sharp.log"
+watchlog="$test_root/watch.log"
+mkdir -p "$cfg" "$photos" "$runtime" || exit 1
+chmod 700 "$runtime" || exit 1
+ln -s "$PWD/tests/sharp-decode.qml" "$cfg/shell.qml" || exit 1
+ln -s /usr/share/omarchy/shell/Commons "$cfg/Commons" || exit 1
+ln -s /usr/share/omarchy/shell/Ui "$cfg/Ui" || exit 1
+
+# Fifty sweep photos as copies of two seeds, one shared 256 px thumbnail each, the 6016x3900 PNG
+# rest row, and a text row the initial selection loads so nothing image-like opens before the
+# sweep. Content is irrelevant: only open events are counted, never pixels.
+printf 'sharp decode rest row, not an image\n' > "$photos/note.txt" \
+    || { echo "sharp-decode.sh: text fixture generation failed"; exit 1; }
+magick -size 640x480 plasma:fractal -seed 3 "$photos/seed0.jpg" \
+    || { echo "sharp-decode.sh: seed generation failed"; exit 1; }
+magick -size 640x480 plasma:fractal -seed 11 "$photos/seed1.jpg" \
+    || { echo "sharp-decode.sh: seed generation failed"; exit 1; }
+magick "$photos/seed0.jpg" -resize 256x "$photos/thumb.png" \
+    || { echo "sharp-decode.sh: thumbnail generation failed"; exit 1; }
+magick -size 6016x3900 xc:gray50 -fill black -draw 'rectangle 0,0 3007,3899' "$photos/big.png" \
+    || { echo "sharp-decode.sh: rest-row generation failed"; exit 1; }
+for i in $(seq 0 49); do
+    cp "$photos/seed$((i % 2)).jpg" "$photos/s$i.jpg" || exit 1
+    cp "$photos/thumb.png" "$photos/t$i.png" || exit 1
+done
+cp "$photos/thumb.png" "$photos/t50.png" || exit 1
+
+# Sample input: 'OPEN|s12.jpg'. Thumbnails start with t, sentinels with sentinel-, and note.txt is
+# the text row the preview reads as text, so only an s photo or big.png is a sharp decode.
+inotifywait -m -e open -e create --format '%e|%f' "$photos" > "$watchlog" 2>&1 &
+watcher=$!
+
+( env -u DISPLAY -u WAYLAND_DISPLAY -u HYPRLAND_INSTANCE_SIGNATURE \
+    HOME="$test_root" XDG_RUNTIME_DIR="$runtime" TMPDIR="$test_root" \
+    XDG_CONFIG_HOME="$test_root/.config" XDG_STATE_HOME="$test_root/.local/state" XDG_CACHE_HOME="$test_root/.cache" \
+    QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software QT_QPA_UPDATE_IDLE_TIME=1 \
+    QT_FORCE_STDERR_LOGGING=1 \
+    SHARP_UI="$PWD/ui" SHARP_PHOTOS="$photos" \
+    timeout 120 qs -p "$cfg" > "$log" 2>&1 )
+status=$?
+# The watch is killed only once qs is gone, plus a breath so its last events flush: nothing after
+# the done sentinel can enter a window, and nothing before it is still unread.
+sleep 1
+kill "$watcher" 2>/dev/null
+watcher=""
+wait 2>/dev/null
+
+if grep -q 'SHARP FAIL' "$log" || ! grep -q 'SHARP DONE' "$log"; then
+    bad "the harness did not finish (qs exit $status): $(grep -a 'SHARP FAIL' "$log" | head -1) (log $log)"
+else
+    # The three sentinels in order open the sweep and rest windows; delivery is causal, so every
+    # event of a window is already in the log once its closing sentinel is read.
+    read -r got_sweep got_rest got_done sweep_opens rest_big rest_sweep < <(awk -F'|' '
+        $1 ~ /CREATE/ && $2 == "sentinel-sweep" { phase = 1; s0 = 1; next }
+        $1 ~ /CREATE/ && $2 == "sentinel-rest" { if (phase == 1) phase = 2; s1 = 1; next }
+        $1 ~ /CREATE/ && $2 == "sentinel-done" { if (phase == 2) phase = 3; s3 = 1; next }
+        $1 ~ /OPEN/ && ($2 ~ /^s[0-9]+\.jpg$/ || $2 == "big.png") {
+            if (phase == 1) sweep++
+            else if (phase == 2 && $2 == "big.png") big++
+            else if (phase == 2) rest_sweep++
+        }
+        END { print s0 + 0, s1 + 0, s3 + 0, sweep + 0, big + 0, rest_sweep + 0 }' "$watchlog")
+    if [[ "$got_sweep" != 1 || "$got_rest" != 1 || "$got_done" != 1 ]]; then
+        bad "a phase sentinel never arrived (sweep=$got_sweep rest=$got_rest done=$got_done) (log $log)"
+    else
+        if [[ "$sweep_opens" = 0 ]]; then
+            ok "50 moves at key-repeat rate opened no original"
+        else
+            bad "the sweep opened $sweep_opens original(s) (log $log)"
+        fi
+        if [[ "$rest_big" -ge 1 && "$rest_sweep" = 0 ]]; then
+            ok "a rest decoded exactly the rested original ($rest_big open event(s) for one decode)"
+        else
+            bad "the rest opened big.png $rest_big time(s) and sweep rows $rest_sweep time(s) (log $log)"
+        fi
+    fi
+fi
+
+printf 'sharp-decode: %s check(s), %s failed\n' "$((pass + fail))" "$fail"
+[ "$fail" -eq 0 ]

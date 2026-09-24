@@ -196,9 +196,16 @@ function openCursor(pane, opener) {
 }
 
 // The path helpers the columns view needs. A root has no parent and no leaf of its own.
+function trimSlash(path) {
+    // A bookmark can carry one trailing slash, which no row name ever has; "/" alone keeps its own.
+    var text = String(path)
+    return text.length > 1 && text.charAt(text.length - 1) === "/" ? text.substring(0, text.length - 1) : text
+}
+
 function parentOf(path) {
-    var cut = String(path).lastIndexOf("/")
-    return cut <= 0 ? "/" : String(path).substring(0, cut)
+    var text = trimSlash(path)
+    var cut = text.lastIndexOf("/")
+    return cut <= 0 ? "/" : text.substring(0, cut)
 }
 
 function leafOf(path) {
@@ -216,11 +223,10 @@ function parent(pane) {
         pane.message("A directory is already loading.", false)
         return
     }
-    // Issue 193: a refused hop keeps the breadcrumb on the folder it left and draws the child's Locked
-    // tile over it, so up from that tile is that folder again, on the row whose Permissions can fix it.
-    if (pane.listingState === "locked" && pane.listingPath !== pane.path && parentOf(pane.listingPath) === pane.path) {
-        pane.pendingSelect = pane.listingPath
-        pane.open(pane.path)
+    // Issue 193: a refused hop climbs from the folder it asked for, trailing slash trimmed, selecting the refused row.
+    if (pane.listingState === "locked" && pane.listingPath !== pane.path) {
+        pane.pendingSelect = trimSlash(pane.listingPath)
+        pane.open(parentOf(pane.listingPath))
         return
     }
     if (pane.path === "/") {

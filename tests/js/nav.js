@@ -292,4 +292,8 @@ function run(check) {
           lockedUp("/home/gm/Downloads", "/home/gm/Downloads/locked"), "/home/gm/Downloads /home/gm/Downloads/locked")
     check("while a folder refused on its own re-read has no row there to return to, so it still climbs",
           lockedUp("/home/gm/Work", "/home/gm/Work"), "/home/gm /home/gm/Work")
+    check("up from a Locked tile of a refused sidebar hop opens the refused folder's own parent, on the refused row",
+          lockedUp("/home/gm/Downloads", "/root"), "/ /root")
+    check("up from a Locked tile of a bookmark with a trailing slash trims it first",
+          lockedUp("/home/gm/Downloads", "/root/"), "/ /root")
 }

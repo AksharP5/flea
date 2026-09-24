@@ -58,13 +58,15 @@ Item {
     readonly property real ruleOpacity: 0.12
     // The hint a result carries: the primary drops it and the secondary draws it, so no sentence on
     // this strip ends in advice. ui/js/Status.js owns the two of them.
-    readonly property string noticeHint: root.transientIsError || root.stickyHere || root.searching
-                                         ? "" : Status.hintOf(root.notice)
+    readonly property string noticeHint: root.stickyHere || root.searching
+                                         ? "" : Status.hintOf(root.transient_)
     readonly property bool hasUndo: root.noticeHint === Status.UNDO_HINT
     // Round two, StatusBar rule 4: a refusal is drawn alone. When the strip's error is the pane's own
     // state sentence, the block under it is already saying so and the key is not information.
     readonly property string keyHint: root.transientIsError
-        ? (root.pane && root.errors[0].text === root.pane.stateMessage ? "" : "esc dismisses")
+        ? [root.pane && root.errors[0].text === root.pane.stateMessage ? "" : "esc dismisses",
+           root.noticeHint.length > 0 ? Status.hintKey(root.noticeHint) : ""]
+            .filter(function (s) { return s.length > 0 }).join(" · ")
         : root.noticeHint.length > 0 ? Status.hintKey(root.noticeHint) : ""
     readonly property string secondaryText: [root.keyHint,
         root.transientIsError && root.stickyHere ? root.sticky : "",

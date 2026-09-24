@@ -1,18 +1,32 @@
 .pragma library
 
 .import "DirSizes.js" as DirSizes
+.import "Keymap.js" as Keymap
 
 // A finished operation names its own reversal and the clipboard names the key that spends it. The
 // strip draws either in its secondary, so no sentence it shows ends in advice of its own.
-var UNDO_HINT = " \u00b7 z undoes"
-var PASTE_HINT = " \u00b7 p pastes"
+var UNDO_HINT = " · z undoes"
+var PASTE_HINT = " · p pastes"
+
+// The key that still removes the rows where there is no Trash, drawn in the secondary lane.
+function trashHint() {
+    var key = Keymap.hintFor("deletePermanently")
+    return key.length > 0 ? " · " + key + " deletes" : ""
+}
 
 // Which hint a result carries, if any.
 function hintOf(notice) {
     if (notice.indexOf(UNDO_HINT) >= 0) {
         return UNDO_HINT
     }
-    return notice.indexOf(PASTE_HINT) >= 0 ? PASTE_HINT : ""
+    if (notice.indexOf(PASTE_HINT) >= 0) {
+        return PASTE_HINT
+    }
+    var trash = trashHint()
+    if (trash.length > 0 && notice.indexOf(trash) >= 0) {
+        return trash
+    }
+    return ""
 }
 
 // The key it names. ui/StatusBar.qml draws the separator itself, so the key arrives without one.

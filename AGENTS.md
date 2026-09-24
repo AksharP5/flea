@@ -1966,6 +1966,10 @@ the caller that needs it. Re-derived with `wc -l` after the move and the test it
 its tests to the arm each names and took the rename module to 346, so the parser is under both
 budgets and the rename module is under the hard cap and over the soft one.
 
+`ui/PreviewColumn.qml` is back at 504: the sharp settle, the mtime-keyed cache identity and the
+three decode counters `tests/sharp-decode.sh` read were reverted under review, and the replacement
+sharp test pins the product path from outside the column instead of from inside it.
+
 **Every count in this section is a SNAPSHOT, not a live figure, and eleven of the eighteen had
 drifted by 2026-09-01: `src/heap.rs` was claimed at 15 and is 100, `ui/Row.qml` at 166 and is 310,
 `ui/Theme.qml` at 264 and is 187.** Nothing was over the hard cap when that was checked; only the

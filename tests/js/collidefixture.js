@@ -20,8 +20,10 @@ function built(file, parent, properties) {
 }
 
 // ui/Backend.qml as the card and the drag reach it: the two replies CollideHost hears, and send() naming rows as it does.
+// The failed signal carries production's four arguments (ui/Backend.qml), because CollideHost reads
+// the second: the error line's path, "collisions" for a refused question.
 var BACKEND = "import QtQuick\nimport \"../../ui/js/Swap.js\" as Swap\nQtObject {\n"
-    + "    signal collisions(int id, int total, var names)\n    signal failed(string where)\n"
+    + "    signal collisions(int id, int total, var names)\n    signal failed(string where, string input, string message, int mode)\n"
     + "    property real heldListing: 0\n    property var sent: []\n"
     + "    function send(object) { sent.push(Swap.named(object, heldListing)) }\n}\n"
 

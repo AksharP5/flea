@@ -48,8 +48,9 @@ function listPane(hasRow) {
     var p = pane(closed())
     p.opened = 0
     p.said = ""
+    p.isError = false
     p.openCursorMenu = function () { p.opened += 1; return hasRow }
-    p.message = function (text, isError) { p.said = text }
+    p.message = function (text, isError) { p.said = text; p.isError = isError }
     return p
 }
 
@@ -234,7 +235,17 @@ function run(check) {
     // Issue 133: the key follows the menu row, so Delete on an SMB share asks gio for no trash it can only refuse.
     var onShare = pane(closed())
     onShare.path = "/run/user/1000/gvfs/smb-share:server=192.168.21.25,share=data"
-    check("Delete in an SMB share folder moves nothing to Trash", Focus.lookup(key(Qt.Key_Delete, "", none), onShare), "")
+    check("Delete in an SMB share folder names the refusal instead of silence",
+          Focus.lookup(key(Qt.Key_Delete, "", none), onShare), "trashRefused")
+    check("and so does the first d of the pair", Focus.lookup(key(Qt.Key_D, "d", none), onShare), "trashRefused")
+    var refused = listPane(true)
+    refused.path = "/run/user/1000/gvfs/smb-share:server=192.168.21.25,share=data"
+    Focus.act("trashRefused", refused)
+    check("and the refusal names the place with the key that still removes the rows",
+          refused.said, Focus.noTrashLine())
+    check("and it takes the error role with its hint from the live keymap",
+          refused.isError + "|" + Focus.noTrashHint(),
+          true + "|" + Keymap.hintFor("deletePermanently") + " deletes")
     var onDisk = pane(closed())
     onDisk.path = "/home/gm/Downloads"
     check("while Delete in a local folder still does", Focus.lookup(key(Qt.Key_Delete, "", none), onDisk), "trash")

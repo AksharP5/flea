@@ -78,6 +78,7 @@ function run(check) {
           Collide.droppedPending("stale", "collisions"), true)
     check("any other refusal holds nothing of the card's",
           Collide.droppedPending("stale", "transfer") + "|" + Collide.droppedPending("scan", "collisions"), "false|false")
+    check("and a refusal with the path absent holds it too", Collide.droppedPending("stale", undefined), false)
 
     // ui/CollideHost.qml ask() stamps rows read under listing 4; a rows line in listing 5 lands before the choice sends them.
     var captured = Collide.waiting(byRows, 4)
@@ -127,6 +128,25 @@ function run(check) {
           Collide.waiting(lifted, 8).listing + "|" + Collide.question(Collide.waiting(lifted, 8), null, 10).listing, "7|7")
 
     wired(check)
+    failedClears(check)
+}
+
+// ui/CollideHost.qml onFailed clears the wait only for the production refusal shape: the Backend
+// failed signal's second argument is the error line's path (ui/js/Messages.js routes message.path
+// there, and src/backend/rowguard.rs refuses a stale collisions question with path "collisions").
+// A second argument that is absent, or names another command, must hold the wait.
+function failedClears(check) {
+    var at = Fixture.scene(7)
+    var backend = at.backend, p = at.pane
+    p.collide.ask({ c: "transfer", op: "copy", paths: ["/s/a.txt"], dest: "/d" }, null, false)
+    check("a question asked leaves a transfer waiting", p.collide.pending !== null, true)
+    backend.failed("stale", "collisions", "the listing changed before that arrived, so nothing was done.", 0)
+    check("a refused collisions question clears the wait, so the next paste may ask again",
+          p.collide.pending === null, true)
+    p.collide.ask({ c: "transfer", op: "copy", paths: ["/s/a.txt"], dest: "/d" }, null, false)
+    backend.failed("stale", "transfer", "the listing changed before that arrived, so nothing was done.", 0)
+    check("while a refusal naming another command holds the card's wait", p.collide.pending !== null, true)
+    at.parent.destroy()
 }
 
 // The real ui/FileDrag.qml, ui/RowDrag.qml and ui/CollideHost.qml: a row lifted in 7, a re-list to 8 while it is up, the drop, Replace.

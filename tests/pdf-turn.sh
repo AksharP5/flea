@@ -32,6 +32,13 @@ cleanup() {
     trap - EXIT
     # sandbox_remove verifies an absolute, non-empty path contained in this run's marked root before rm.
     sandbox_remove "$turn_work"
+    # A failed run keeps its root, so the log path each FAIL line prints still points at a file.
+    [ "$result" -ne 0 ] && exit "$result"
+    # The marker goes last, because it is what stands between this directory and rm.
+    sandbox_remove "$turn_root/column.log"
+    sandbox_remove "$turn_root/quicklook.log"
+    sandbox_remove "$turn_root/$SANDBOX_MARKER"
+    [ -z "$(ls -A "$turn_root")" ] && rmdir "$turn_root"
     exit "$result"
 }
 trap cleanup EXIT
@@ -80,7 +87,7 @@ run_surface() {
         timeout 90 qs -p "$turn_work/config" > "$log" 2>&1; exit $? ) 2>/dev/null
     status=$?
     if grep -q 'PDFTURN FAIL' "$log" || ! grep -q 'PDFTURN DONE' "$log"; then
-        bad "$surface: the harness did not finish (qs exit $status): $(grep -a 'PDFTURN FAIL' "$log" | head -1)"
+        bad "$surface: the harness did not finish (qs exit $status): $(grep -a 'PDFTURN FAIL' "$log" | head -1) (log $log)"
         return
     fi
     judge "$surface" "$out" "$log"
@@ -95,7 +102,7 @@ judge() {
     local surface="$1" out="$2" log="$3" shares step frames last old new t share kind line
     local blank=0 held_late=0 dropped_early=0 heavy_landed=0 heavy_after_cap=0 landed_ms=none
     local left_old=0 old_after_gap=0 other_landed=0 level earlier conflicts
-    shares=$(black_shares "$out") || { bad "$surface: magick could not read the frames"; return; }
+    shares=$(black_shares "$out") || { bad "$surface: magick could not read the frames (log $log)"; return; }
     declare -A share_of settled
     while read -r file share; do share_of[$file]=$share; done <<< "$shares"
     # Sample input: 'PDFTURN FRAME 2 41 17', the step, the frame's sequence and its milliseconds into the step.
@@ -104,7 +111,7 @@ judge() {
         frames_of[$step]+="$seq:$t "
     done < <(grep -a 'PDFTURN FRAME' "$log" | sed 's/.*PDFTURN/PDFTURN/')
     for step in 0 1 2 3 4 5 6 7; do
-        [[ -n "${frames_of[$step]:-}" ]] || { bad "$surface: step $step drew no frame"; return; }
+        [[ -n "${frames_of[$step]:-}" ]] || { bad "$surface: step $step drew no frame (log $log)"; return; }
         last=${frames_of[$step]% }
         last=${last##* }
         settled[$step]=${share_of[f-$step-$(printf '%05d' "${last%%:*}").png]}
@@ -151,20 +158,20 @@ judge() {
         elif (( left_old )); then old_after_gap=$((old_after_gap + 1)); fi
     done
     if [[ $blank -eq 0 ]]; then ok "$surface: five turns drew only the old page or the new one, never a blank"
-    else bad "$surface: five turns drew $blank frame(s) with neither page on them"; fi
+    else bad "$surface: five turns drew $blank frame(s) with neither page on them (log $log)"; fi
     if [[ $dropped_early -eq 0 ]]; then ok "$surface: a slow render held the old page until the cap"
-    else bad "$surface: a slow render drew $dropped_early frame(s) without the old page before the cap"; fi
+    else bad "$surface: a slow render drew $dropped_early frame(s) without the old page before the cap (log $log)"; fi
     if [[ $held_late -eq 0 && $heavy_after_cap -gt 0 ]]; then ok "$surface: past the cap the old page gave way to the loading state"
-    else bad "$surface: past the cap $held_late frame(s) still held the old page, $heavy_after_cap drew the loading state"; fi
+    else bad "$surface: past the cap $held_late frame(s) still held the old page, $heavy_after_cap drew the loading state (log $log)"; fi
     if [[ $heavy_landed -eq 1 ]]; then ok "$surface: the slow page landed after $landed_ms ms"
-    else bad "$surface: the slow page never landed"; fi
+    else bad "$surface: the slow page never landed (log $log)"; fi
     if [[ $other_landed -eq 1 && $old_after_gap -eq 0 ]]; then ok "$surface: the next document replaced the last one without it coming back"
-    else bad "$surface: opening the next document drew the last one $old_after_gap more frame(s) after it had gone, landed=$other_landed"; fi
+    else bad "$surface: opening the next document drew the last one $old_after_gap more frame(s) after it had gone, landed=$other_landed (log $log)"; fi
     # Sample input: 'WARN scene: QML PdfPageImage at file:///.../PreviewPdf.qml[105:5]: document and source
     # properties in conflict: preferring document source QUrl("file:///.../other.pdf")', which tests/ui.sh's log gate fails on.
     conflicts=$(sed -n '/PDFTURN STEP 7 /,$p' "$log" | grep -ac 'document and source properties in conflict')
     if [[ $conflicts -eq 0 ]]; then ok "$surface: opening the next document logged no source conflict"
-    else bad "$surface: opening the next document logged $conflicts document and source conflict warning(s)"; fi
+    else bad "$surface: opening the next document logged $conflicts document and source conflict warning(s) (log $log)"; fi
 }
 
 run_surface column

@@ -149,6 +149,7 @@ function run(check) {
         return row.action === "trash"
     })[0].keys.split(" / ").indexOf("d"), -1)
     check("menu-only actions invent no shortcut", Keymap.hintFor("emptyTrash"), "")
+    check("a shift chord fills an action no plain key names", Keymap.hintFor("deletePermanently"), "shift-delete")
     check("sheet is populated from effective current bindings", Keymap.sheetFor(Keymap.preset, "gui").length > 30, true)
     // One cap names one key. Joining every spelling an action answers to produced caps of 40
     // characters on Default and 78 on Mac, wider than the card, and they drew over the next column.

@@ -92,6 +92,10 @@ function run(check) {
     check("an undoable result carries the undo hint", Status.hintOf("Moved 4 items to Trash · z undoes"), " · z undoes")
     check("a clipboard result carries the paste hint", Status.hintOf("Copied 1 item · p pastes"), " · p pastes")
     check("a plain result carries neither", Status.hintOf("Renamed to notes.txt"), "")
+    // A refusal where gio has no Trash carries its key hint the same way, so the strip draws the
+    // place in the primary and the key beside it, and a failure without one carries neither.
+    check("a trash refusal carries its key hint", Status.hintOf("This location has no Trash · shift-delete deletes"), " · shift-delete deletes")
+    check("and the secondary is handed the key alone", Status.hintKey(Status.trashHint()), "shift-delete deletes")
     check("and the secondary is handed the key alone, because it draws its own separator",
           Status.hintKey(Status.UNDO_HINT) + "|" + Status.hintKey(Status.PASTE_HINT), "z undoes|p pastes")
 
