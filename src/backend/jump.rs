@@ -2,11 +2,12 @@
 // bar; see docs/protocol.md "jump". Nothing here writes, to zoxide's database or anywhere else.
 use crate::backend::opsreq::OpMsg;
 use crate::json::escape;
-use std::collections::{BTreeSet, HashSet};
+use crate::backend::mountinfo::{enclosing, mounts_in};
+use std::collections::{BTreeMap, HashSet};
 use std::io::Read;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{channel, Sender};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -20,10 +21,13 @@ const ZOXIDE_ROWS: usize = 1000;
 // One budget for every existence check, so a stat wedged on a dead network mount costs its own source's
 // rows from that one on, never the other sources and never the whole answer.
 const CHECK_LIMIT: Duration = Duration::from_secs(1);
-// A zoxide still running, and the paths whose stat has not come back, from any earlier open: the next
-// open skips them, so a wedged mount holds one thread for good rather than one more per open.
+// One zoxide at a time, and every existence check in flight from any open with that open's deadline: a
+// check its own open has given up on is wedged, and the next open skips its key rather than wedge behind it.
 static ZOXIDE_RUNNING: AtomicBool = AtomicBool::new(false);
-static CHECKING: Mutex<BTreeSet<String>> = Mutex::new(BTreeSet::new());
+static CHECKING: Mutex<BTreeMap<String, Vec<(u64, Instant)>>> = Mutex::new(BTreeMap::new());
+static TICKETS: AtomicU64 = AtomicU64::new(0);
+// Where the mount table is read, once per answer, and never through the filesystems it lists.
+const MOUNTINFO: &str = "/proc/self/mountinfo";
 
 // Where a candidate came from, in the order the dropdown draws the sources.
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -54,7 +58,8 @@ pub fn request(id: usize, favourites: Vec<String>, recent: Vec<String>, replies:
 fn answer(program: &str, id: usize, favourites: &[String], recent: &[String]) -> String {
     let started = Instant::now();
     let ranked = zoxide(program, ZOXIDE_LIMIT);
-    let found = existing(candidates(favourites, &ranked, recent), CHECK_LIMIT, folder);
+    let mounts = mounts_in(&std::fs::read_to_string(MOUNTINFO).unwrap_or_default());
+    let found = existing(candidates(favourites, &ranked, recent), CHECK_LIMIT, folder, &mounts);
     jumped_line(id, &found, started.elapsed().as_secs_f64() * 1000.0)
 }
 
@@ -141,35 +146,69 @@ fn folder(candidate: &Candidate) -> Option<String> {
     parent.is_dir().then(|| parent.to_string_lossy().into_owned())
 }
 
-// One check, unless an earlier open's check of the same path has still not come back.
-fn checked(candidate: &Candidate, check: fn(&Candidate) -> Option<String>) -> Option<String> {
-    if !CHECKING.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).insert(candidate.path.clone()) {
-        return None;
+// A filesystem that answers over the network or through FUSE, the kind whose stat can wedge for good.
+fn remote(kind: &str) -> bool {
+    matches!(kind, "nfs" | "nfs4" | "cifs" | "smb3" | "smbfs" | "9p" | "ceph" | "afs" | "fuse") || kind.starts_with("fuse.")
+}
+
+// What a check is known by: on a remote mount, the mount, because one wedged stat there means every path
+// there wedges; anywhere else the path itself. Lexical, so it never touches the filesystem it names.
+fn key_for(path: &str, mounts: &[(PathBuf, String)]) -> String {
+    match enclosing(Path::new(path), mounts) {
+        Some((point, kind)) if remote(kind) => format!("mount {}", point.display()),
+        _ => path.to_string(),
+    }
+}
+
+fn checking() -> std::sync::MutexGuard<'static, BTreeMap<String, Vec<(u64, Instant)>>> {
+    CHECKING.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+// One check, unless a check on the same key is still running past the deadline of the open that started it:
+// that one is wedged and this one would only wedge behind it. One inside its deadline is merely slow, so
+// this checks again rather than skip a row the earlier open may still answer.
+fn checked(candidate: &Candidate, key: &str, deadline: Instant, check: fn(&Candidate) -> Option<String>) -> Option<String> {
+    let ticket = TICKETS.fetch_add(1, Ordering::SeqCst);
+    {
+        let mut table = checking();
+        let running = table.entry(key.to_string()).or_default();
+        if running.iter().any(|(_, given_up)| Instant::now() >= *given_up) {
+            return None;
+        }
+        running.push((ticket, deadline));
     }
     let answer = check(candidate);
-    CHECKING.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).remove(&candidate.path);
+    let mut table = checking();
+    if let Some(running) = table.get_mut(key) {
+        running.retain(|(own, _)| *own != ticket);
+        if running.is_empty() {
+            table.remove(key);
+        }
+    }
     answer
 }
 
 // Each source is checked on a thread of its own, in its own order, and whatever has not answered by the
 // limit is dropped: a blocked stat cannot be cancelled, so it finishes later into a closed channel.
-fn existing(candidates: Vec<Candidate>, limit: Duration, check: fn(&Candidate) -> Option<String>) -> Vec<(Source, String)> {
+fn existing(candidates: Vec<Candidate>, limit: Duration, check: fn(&Candidate) -> Option<String>, mounts: &[(PathBuf, String)]) -> Vec<(Source, String)> {
     let total = candidates.len();
+    let deadline = Instant::now() + limit;
     let (tx, rx) = channel();
     for source in SOURCES {
-        let own: Vec<(usize, Candidate)> =
-            candidates.iter().cloned().enumerate().filter(|(_, candidate)| candidate.source == source).collect();
+        let own: Vec<(usize, Candidate, String)> = candidates.iter().enumerate()
+            .filter(|(_, candidate)| candidate.source == source)
+            .map(|(index, candidate)| (index, candidate.clone(), key_for(&candidate.path, mounts)))
+            .collect();
         let tx = tx.clone();
         std::thread::spawn(move || {
-            for (index, candidate) in own {
-                if tx.send((index, candidate.source, checked(&candidate, check))).is_err() {
+            for (index, candidate, key) in own {
+                if tx.send((index, candidate.source, checked(&candidate, &key, deadline, check))).is_err() {
                     return;
                 }
             }
         });
     }
     drop(tx);
-    let deadline = Instant::now() + limit;
     let mut found: Vec<Option<(Source, String)>> = vec![None; total];
     // Ends at the limit, or as soon as every source's thread has finished and dropped its sender.
     while let Ok((index, source, resolved)) = rx.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
@@ -177,6 +216,7 @@ fn existing(candidates: Vec<Candidate>, limit: Duration, check: fn(&Candidate) -
     }
     found.into_iter().flatten().collect()
 }
+
 
 // A folder appears once, in the first source that names it, the same first-position rule Places.favorites follows.
 fn jumped_line(id: usize, found: &[(Source, String)], ms: f64) -> String {

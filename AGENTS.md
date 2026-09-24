@@ -1654,10 +1654,11 @@ failure fails the check rather than passing it.
   `ui/js/Jump.js` decides the rows, with a port of `backend/fuzzy.rs` whose exact scores
   `tests/js/jump.js` and the Rust test `the_exact_scores_the_jump_port_mirrors` share, value for value.
   `backend/jump.rs` answers the three sources once per open of the bar, see docs/protocol.md "jump".
-  A line with a slash in it, or starting with `~` or `.`, is typed as a path exactly as before the
-  jump, so "Wo", Tab, Enter still opens `./Work`; so is a name that matches nothing. A name's Enter
-  before the backend has answered is held for the answer, and each open's answer carries its own id,
-  so the same keys open the same folder however fast they come. `tests/jump-ui.sh` drives all of
+  A line with a slash in it, starting with `~`, or `.` or `..` alone, is typed as a path exactly as
+  before the jump, and so is every line once Tab has completed it, so "Wo", Tab, Enter still opens
+  `./Work`; so is a name that matches nothing. A name's Enter before the backend has answered is held
+  for the answer, the keys after it are not typed, and each open's answer carries its own id, so the
+  same keys open the same folder however fast they come. `tests/jump-ui.sh` drives all of
   this through the real bar, offscreen.
 - `keys.toml` is the one key table, and `tools/flea-keymap-gen` turns it into `Keymap.js`.
 - `ui/js/Keymap.js` is the generated key-to-action lookup and imports no QML.

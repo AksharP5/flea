@@ -2,6 +2,7 @@ use super::*;
 use crate::backend::testdir::TestDir;
 use std::os::unix::fs::PermissionsExt;
 use std::sync::atomic::AtomicUsize;
+use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard};
 
 // zoxide is one process at a time by design, so the tests that run one take turns, and each waits for the
@@ -99,7 +100,7 @@ fn missing_folders_are_dropped_and_a_recent_file_stands_for_its_folder() {
     let favourites = strings(&[&format!("{}/kept", root), &format!("{}/gone", root), "relative"]);
     let ranked = strings(&[&format!("{}/gone-too", root), &root, &format!("{}/kept", root)]);
     let recent = strings(&[&format!("{}/kept/note.txt", root), &format!("{}/gone/file.txt", root), &format!("{}/kept/deleted.txt", root)]);
-    let found = existing(candidates(&favourites, &ranked, &recent), CHECK_LIMIT, folder);
+    let found = existing(candidates(&favourites, &ranked, &recent), CHECK_LIMIT, folder, &[]);
     assert_eq!(found, vec![
         (Source::Favourite, format!("{}/kept", root)),
         (Source::Zoxide, root.clone()),
@@ -130,11 +131,11 @@ fn a_stuck_favourite_costs_its_own_source_and_never_the_other_two() {
     let recent = strings(&[&format!("{}/recent", root)]);
     let limit = Duration::from_millis(300);
     let started = Instant::now();
-    let found = existing(candidates(&favourites, &ranked, &recent), limit, stuck_check);
+    let found = existing(candidates(&favourites, &ranked, &recent), limit, stuck_check, &[]);
     assert!(started.elapsed() < STUCK_FOR, "the budget answers, took {:?}", started.elapsed());
     assert_eq!(found, vec![(Source::Zoxide, format!("{}/ranked", root)), (Source::Recent, format!("{}/recent", root))]);
     // The next open does not queue a second check behind the first one, which is still blocked.
-    let again = existing(candidates(&favourites, &ranked, &recent), limit, stuck_check);
+    let again = existing(candidates(&favourites, &ranked, &recent), limit, stuck_check, &[]);
     assert_eq!(STUCK_CALLS.load(Ordering::SeqCst), 1, "the stuck path was checked once across two opens");
     assert_eq!(again, vec![
         (Source::Favourite, format!("{}/after", root)),
@@ -176,4 +177,68 @@ fn one_answer_joins_the_three_sources_in_order() {
     // The recent file's folder is already zoxide's row and its second file's is the favourite, so recent draws nothing.
     let expected = format!(r#"{{"t":"jumped","id":3,"favourites":["{}"],"zoxide":["{}/ranked"],"recent":[],"ms":"#, root, root);
     assert!(line.starts_with(&expected), "{}", line);
+}
+
+// Blocks on every path under a /wedged folder, the shape of a remote mount that stopped answering.
+static WEDGED_CALLS: AtomicUsize = AtomicUsize::new(0);
+
+fn wedged_check(candidate: &Candidate) -> Option<String> {
+    if candidate.path.contains("/wedged/") {
+        WEDGED_CALLS.fetch_add(1, Ordering::SeqCst);
+        std::thread::sleep(STUCK_FOR);
+    }
+    Some(candidate.path.clone())
+}
+
+#[test]
+fn a_wedged_remote_mount_is_skipped_whole_so_no_open_stacks_a_thread_on_it() {
+    let dir = TestDir::new("jump-mount");
+    let root = dir.path().to_string_lossy().into_owned();
+    let wedged = format!("{}/wedged", root);
+    let mounts = vec![(PathBuf::from("/"), "ext4".to_string()), (PathBuf::from(&wedged), "fuse.sshfs".to_string())];
+    let favourites = strings(&[&format!("{}/a", wedged), &format!("{}/b", wedged)]);
+    let ranked = strings(&[&format!("{}/c", wedged), &format!("{}/local", root)]);
+    let limit = Duration::from_millis(300);
+    let first = existing(candidates(&favourites, &ranked, &[]), limit, wedged_check, &mounts);
+    assert!(first.is_empty(), "both sources are behind the wedged mount first: {:?}", first);
+    let calls = WEDGED_CALLS.load(Ordering::SeqCst);
+    assert_eq!(calls, 2, "one wedged check per source thread");
+    let again = existing(candidates(&favourites, &ranked, &[]), limit, wedged_check, &mounts);
+    assert_eq!(WEDGED_CALLS.load(Ordering::SeqCst), calls, "the next open checks nothing on that mount");
+    assert_eq!(again, vec![(Source::Zoxide, format!("{}/local", root))]);
+}
+
+static SLOW_CALLS: AtomicUsize = AtomicUsize::new(0);
+const SLOW_FOR: Duration = Duration::from_millis(250);
+
+fn slow_check(candidate: &Candidate) -> Option<String> {
+    SLOW_CALLS.fetch_add(1, Ordering::SeqCst);
+    std::thread::sleep(SLOW_FOR);
+    Some(candidate.path.clone())
+}
+
+#[test]
+fn a_check_still_inside_its_budget_is_slow_not_wedged_so_the_next_open_checks_again() {
+    let dir = TestDir::new("jump-slow");
+    let slow = format!("{}/slow", dir.path().display());
+    let favourites = strings(&[&slow]);
+    let first_favourites = favourites.clone();
+    let earlier = std::thread::spawn(move || existing(candidates(&first_favourites, &[], &[]), CHECK_LIMIT, slow_check, &[]));
+    std::thread::sleep(SLOW_FOR / 5);
+    let later = existing(candidates(&favourites, &[], &[]), CHECK_LIMIT, slow_check, &[]);
+    assert_eq!(later, vec![(Source::Favourite, slow.clone())], "an open racing a slow one still gets its row");
+    assert_eq!(earlier.join().unwrap(), vec![(Source::Favourite, slow)]);
+    assert_eq!(SLOW_CALLS.load(Ordering::SeqCst), 2);
+}
+
+#[test]
+fn a_remote_filesystem_is_keyed_by_its_mount_and_a_local_one_by_its_path() {
+    let mounts = vec![(PathBuf::from("/"), "ext4".to_string()),
+                      (PathBuf::from("/mnt/nas"), "cifs".to_string()),
+                      (PathBuf::from("/run/user/1000/gvfs"), "fuse.gvfsd-fuse".to_string())];
+    assert_eq!(key_for("/mnt/nas/a/b", &mounts), "mount /mnt/nas");
+    assert_eq!(key_for("/run/user/1000/gvfs/smb-share:server=nas,share=x/y", &mounts), "mount /run/user/1000/gvfs");
+    assert_eq!(key_for("/home/gm/Work", &mounts), "/home/gm/Work");
+    assert_eq!(key_for("/mnt/nasty", &mounts), "/mnt/nasty");
+    assert_eq!(key_for("/anything", &[]), "/anything");
 }

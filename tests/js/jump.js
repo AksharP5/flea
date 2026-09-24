@@ -34,6 +34,12 @@ function run(check) {
     check("a slash anywhere makes the line a path", Jump.isQuery("cl/fl"), false)
     check("a Tab that completed one name ends in a slash, so Enter opens it", Jump.isQuery("Work/"), false)
     check("home alone is a path", Jump.isQuery("~"), false)
+    check("the parent is a path", Jump.isQuery(".."), false)
+    check("this folder is a path", Jump.isQuery("."), false)
+    check("a dotted name is a name", Jump.isQuery(".config"), true)
+    check("a dot inside a name is a name", Jump.isQuery("v1.2"), true)
+    check("a dotted name lists its folder", drawn(Jump.rows({ zoxide: ["/home/gm/.config/hypr", "/home/gm/Work"] }, ".config", HOME)),
+          "~/[.config]/hypr")
     check("an absolute path is typed as one", Jump.isQuery("/usr/share"), false)
     check("a home path is typed as one", Jump.isQuery("~/Work"), false)
     check("a relative climb is typed as one", Jump.isQuery("../x"), false)

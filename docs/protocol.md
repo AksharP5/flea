@@ -750,8 +750,11 @@ empty source and says nothing. A zoxide that runs past 2 s is killed and draws n
 read up to 1 MiB and its first 1,000 rows. Only one zoxide runs at a time: an open while an earlier one is
 still being reaped draws no zoxide rather than starting a second. Each source is checked on a thread of its
 own against one shared 1 s budget, so a stat wedged on a dead mount drops that source's rows from that one on
-and never the other sources; a path whose earlier check has still not come back is skipped, not queued
-behind it, so a dead mount holds one thread and not one more per open.
+and never the other sources. A check still running past the budget of the open that started it is wedged, and
+the next open skips what it names rather than wedge behind it: its whole mount when that mount is NFS, SMB,
+9p, Ceph, AFS or FUSE (read lexically from `/proc/self/mountinfo`, never through the mount), its own path
+anywhere else. A dead share therefore holds at most one thread per source for good, not more per open, and a
+check merely slow inside its budget is run again rather than skipped.
 
 ### quit
 

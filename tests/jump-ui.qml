@@ -123,10 +123,38 @@ ShellRoot {
         },
         function () { return root.asked.length === 6 },
         function () {
+            root.type("o")
+            root.press(Qt.Key_Return)
+            root.type("x")
+            root.check("a key typed behind a held Enter is not typed", chrome.editText, "o")
+            root.answer(0)
+            root.check("so the answer opens what the line held when Enter went down", root.entered[5], root.home + "/Projects")
+            chrome.startEdit()
+            return true
+        },
+        function () { return root.asked.length === 7 },
+        function () {
+            root.answer(0)
+            root.type("Wo")
+            root.check("Wo lists folders before Tab", chrome.jump.shown, true)
+            root.press(Qt.Key_Tab)
+            return root.peeked.length === 2
+        },
+        function () {
+            chrome.completeWith(root.peeked[1].dir, root.peeked[1].hidden, [{ n: "Work", d: true }, { n: "Workshop", d: true }])
+            root.check("two children stop Tab at their shared prefix, with no slash", chrome.editText, "Work")
+            root.check("and a line Tab has touched lists nothing", chrome.jump.shown, false)
+            root.press(Qt.Key_Return)
+            root.check("so Enter opens ./Work as it always has", root.entered[6], root.here + "/Work")
+            chrome.startEdit()
+            return true
+        },
+        function () { return root.asked.length === 8 },
+        function () {
             root.answer(0)
             root.type("o")
             root.press(Qt.Key_Escape)
-            root.check("esc closes the dropdown with the bar and opens nothing", [chrome.editing, chrome.jump.shown, root.entered.length], [false, false, 5])
+            root.check("esc closes the dropdown with the bar and opens nothing", [chrome.editing, chrome.jump.shown, root.entered.length], [false, false, 7])
             return true
         }
     ]

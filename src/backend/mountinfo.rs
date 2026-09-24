@@ -17,28 +17,46 @@ pub(crate) struct MountEntry {
 // Sample: the line above answers fstype "fuse.rclone" and majmin "0:9".
 pub(crate) fn mount_entry_in(path: &Path, body: &str) -> Option<MountEntry> {
     let mut best: Option<(usize, MountEntry)> = None;
-    for line in body.lines() {
-        let fields: Vec<&str> = line.split_whitespace().collect();
-        let split = match fields.iter().position(|field| *field == "-") {
-            Some(value) => value,
-            None => continue,
-        };
-        if fields.len() <= split + 1 || fields.len() < 5 {
-            continue;
-        }
-        let mount = PathBuf::from(OsString::from_vec(unescape(fields[4])));
+    for (mount, fstype, majmin) in body.lines().filter_map(parse_line) {
         if !path.starts_with(&mount) {
             continue;
         }
         let depth = mount.components().count();
         if best.as_ref().map(|(old, _)| depth >= *old).unwrap_or(true) {
-            best = Some((
-                depth,
-                MountEntry { fstype: fields[split + 1].to_string(), majmin: fields[2].to_string() },
-            ));
+            best = Some((depth, MountEntry { fstype, majmin }));
         }
     }
     best.map(|(_, entry)| entry)
+}
+
+// Every mount point and its filesystem type, in file order, read once for a caller that asks about many paths.
+pub(crate) fn mounts_in(body: &str) -> Vec<(PathBuf, String)> {
+    body.lines().filter_map(parse_line).map(|(mount, fstype, _)| (mount, fstype)).collect()
+}
+
+// The deepest mount holding path, the later line winning a tie as the kernel's own stacking order does.
+pub(crate) fn enclosing<'a>(path: &Path, mounts: &'a [(PathBuf, String)]) -> Option<&'a (PathBuf, String)> {
+    let mut best: Option<(usize, &(PathBuf, String))> = None;
+    for mount in mounts {
+        if !path.starts_with(&mount.0) {
+            continue;
+        }
+        let depth = mount.0.components().count();
+        if best.map(|(old, _)| depth >= old).unwrap_or(true) {
+            best = Some((depth, mount));
+        }
+    }
+    best.map(|(_, mount)| mount)
+}
+
+// Sample line as above: mount point, fstype and major:minor, or None for a line with no "-" or too few fields.
+fn parse_line(line: &str) -> Option<(PathBuf, String, String)> {
+    let fields: Vec<&str> = line.split_whitespace().collect();
+    let split = fields.iter().position(|field| *field == "-")?;
+    if fields.len() <= split + 1 || fields.len() < 5 {
+        return None;
+    }
+    Some((PathBuf::from(OsString::from_vec(unescape(fields[4]))), fields[split + 1].to_string(), fields[2].to_string()))
 }
 
 fn unescape(field: &str) -> Vec<u8> {

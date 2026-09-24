@@ -21,7 +21,10 @@ Item {
     // The backend's answer for this open, { favourites, zoxide, recent }, empty until it arrives.
     property var sources: ({})
     readonly property bool answered: root.sources.favourites !== undefined
-    readonly property var entries: root.editing ? Jump.rows(root.sources, root.query, root.home) : []
+    // Tab is the path bar's own completion, so a line it has touched is a path for the rest of the edit:
+    // with two children sharing a prefix it stops short of the slash, and Enter still means ./that.
+    property bool pathTyped: false
+    readonly property var entries: root.editing && !root.pathTyped ? Jump.rows(root.sources, root.query, root.home) : []
     property int cursor: -1
     readonly property bool shown: root.entries.length > 0
     // Every open asks with a new id and takes only the answer carrying it, so a slow answer to an earlier
@@ -52,6 +55,7 @@ Item {
     onEditingChanged: {
         root.sources = ({})
         root.enterWaiting = false
+        root.pathTyped = false
         root.asked += 1
         if (root.editing) {
             // Read afresh on every open, because every other application appends to the history.
@@ -121,6 +125,16 @@ Item {
     }
 
     Keys.onPressed: function (event) {
+        // A held Enter stands for the line as it was, so nothing typed after it changes what it opens; esc still closes.
+        if (root.enterWaiting && event.key !== Qt.Key_Escape) {
+            event.accepted = true
+            return
+        }
+        if (event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab) {
+            root.pathTyped = true
+            event.accepted = false
+            return
+        }
         if (root.shown && (event.key === Qt.Key_Down || event.key === Qt.Key_Up)) {
             root.cursor = Jump.step(root.entries, root.cursor, event.key === Qt.Key_Down ? 1 : -1)
             event.accepted = true
@@ -132,7 +146,7 @@ Item {
                 event.accepted = true
                 return
             }
-            if (!root.answered && Jump.isQuery(root.query)) {
+            if (!root.answered && !root.pathTyped && Jump.isQuery(root.query)) {
                 root.enterWaiting = true
                 event.accepted = true
                 return
