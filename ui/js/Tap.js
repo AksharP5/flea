@@ -81,6 +81,14 @@ function tappedMenu(index, eventPoint, root, menu) {
     menu.openAt(eventPoint.scenePosition)
 }
 
+// A right click that landed on no row raises the directory's own menu, in all three views and the
+// Trash; a row's own TapHandler has already answered for a row. A TapHandler declared inside a
+// ListView or GridView belongs to its contentItem, so its position is already the content coordinate
+// indexAt takes: adding contentY again read every row past the first screenful as empty space.
+function onBackground(view, eventPoint) {
+    return view.indexAt(eventPoint.position.x, eventPoint.position.y) < 0
+}
+
 // A neighbour column in the columns view is a peek with no cursor of its own, so its rows answer a
 // verb rather than acting. One tap on a directory makes it the pane's listing, which is the column
 // view's own reveal and not an open; only a second tap opens a file. A peeked row belongs to another

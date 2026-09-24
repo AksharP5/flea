@@ -184,8 +184,7 @@ Item {
         TapHandler {
             acceptedButtons: Qt.RightButton
             onTapped: function (eventPoint) {
-                if (root.pane !== null
-                        && view.indexAt(view.contentX + eventPoint.position.x, view.contentY + eventPoint.position.y) < 0)
+                if (root.pane !== null && Tap.onBackground(view, eventPoint))
                     root.backgroundMenuRequested(eventPoint)
             }
         }

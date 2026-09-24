@@ -2636,6 +2636,32 @@ case_background() {
         key -k Escape >/dev/null
         settle
     done
+
+    # Issue 195 (@muellan): past the first screenful a row's right click raised this background menu
+    # instead of the row's, in every view, because the handler added contentY to a point that was
+    # already in content coordinates. Measured on 0.3.4: 52 of 52 scrolled rows. 150 rows overflow any window.
+    local scrolled="$fixture_root/background-scrolled" i last
+    sandbox_scratch "$scrolled"
+    mkdir -p "$scrolled"
+    for i in $(seq -w 1 150); do : > "$scrolled/f$i.txt"; done
+    launch "$scrolled"
+    wait_listing 150
+    for view in list grid columns; do
+        key -M ctrl -k "$(case "$view" in list) echo 1 ;; columns) echo 2 ;; grid) echo 3 ;; esac)" -m ctrl >/dev/null
+        settle
+        [[ "$(ipc viewMode)" == "$view" ]] || fail "background: the $view view did not come up over 150 rows"
+        key -k End >/dev/null
+        settle
+        last=$(( $(ipc total) - 1 ))
+        (( $(ipc viewContentY) > 0 )) || fail "background: End left the $view view unscrolled"
+        click_row "$last" right
+        settle
+        printf 'BACKGROUND scrolled %s contentY=%s row=%s entries=%s\n' "$view" "$(ipc viewContentY)" "$last" "$(ipc contextMenuEntries)"
+        [[ "$(ipc contextMenuEntries)" == Open\|* ]] \
+            || fail "background: a right click on the last row of the scrolled $view view opened $(ipc contextMenuEntries)"
+        key -k Escape >/dev/null
+        settle
+    done
     if [[ -n "$real_state" ]]; then export XDG_STATE_HOME="$real_state"; else unset XDG_STATE_HOME; fi
 }
 

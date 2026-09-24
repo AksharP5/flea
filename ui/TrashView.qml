@@ -5,6 +5,7 @@ import "." as Flea
 import "js/Format.js" as Format
 import "js/Icons.js" as Icons
 import "js/Keymap.js" as Keymap
+import "js/Tap.js" as Tap
 import "js/TrashDates.js" as Trash
 import "js/Trash.js" as TrashKeys
 
@@ -414,8 +415,8 @@ FocusScope {
             TapHandler {
                 acceptedButtons: Qt.RightButton
                 onTapped: function(point) {
-                    if (listing.indexAt(point.position.x, point.position.y + listing.contentY) >= 0) return
-                    var at = root.mapFromItem(listing, point.position.x, point.position.y)
+                    if (!Tap.onBackground(listing, point)) return
+                    var at = root.mapFromItem(listing.contentItem, point.position.x, point.position.y)
                     root.contextRequested(at.x, at.y, root.selectedCount > 0)
                 }
             }
