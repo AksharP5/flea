@@ -3,7 +3,7 @@
 use crate::backend::opsreq::OpMsg;
 use crate::json::escape;
 use crate::backend::mountinfo::{enclosing, mounts_in};
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -58,19 +58,21 @@ pub fn request(id: usize, favourites: Vec<String>, recent: Vec<String>, replies:
 fn answer(program: &str, id: usize, favourites: &[String], recent: &[String]) -> String {
     let started = Instant::now();
     let ranked = zoxide(program, ZOXIDE_LIMIT);
+    let paths: Vec<String> = ranked.iter().map(|(path, _)| path.clone()).collect();
     let mounts = mounts_in(&std::fs::read_to_string(MOUNTINFO).unwrap_or_default());
-    let found = existing(candidates(favourites, &ranked, recent), CHECK_LIMIT, folder, &mounts);
-    jumped_line(id, &found, started.elapsed().as_secs_f64() * 1000.0)
+    let found = existing(candidates(favourites, &paths, recent), CHECK_LIMIT, folder, &mounts);
+    jumped_line(id, &found, &ranked, started.elapsed().as_secs_f64() * 1000.0)
 }
 
 // --all lists missing folders too, which is what keeps zoxide from pruning its own database on a query Flea made;
-// the existence check below drops them instead. A zoxide that is not installed is an empty source and says nothing.
-fn zoxide(program: &str, limit: Duration) -> Vec<String> {
+// the existence check below drops them instead. --score is the frecency the client ranks by, and a zoxide
+// that is not installed is an empty source and says nothing.
+fn zoxide(program: &str, limit: Duration) -> Vec<(String, f64)> {
     if ZOXIDE_RUNNING.swap(true, Ordering::SeqCst) {
         return Vec::new();
     }
     let spawned = Command::new(program)
-        .args(["query", "--list", "--all"])
+        .args(["query", "--list", "--all", "--score"])
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -105,16 +107,31 @@ fn zoxide(program: &str, limit: Duration) -> Vec<String> {
     ranked_paths(&String::from_utf8_lossy(&text), whole)
 }
 
-// Sample input, one folder per line, best ranked first:
-//   /home/gm/Documents
-//   /home/gm/Work/field
-// A cut read can end halfway through a path, so its last line is dropped; anything not absolute is not a folder.
-fn ranked_paths(text: &str, whole: bool) -> Vec<String> {
+// Sample input, `zoxide query --list --all --score`, one folder per line, best ranked first:
+//     80.0 /home/gm/Documents
+//      0.2 /home/gm/Work/field
+// A cut read can end halfway through a line, so its last line is dropped. A line is a row only when its
+// score is a finite number and its path is absolute; the path is everything after the score's one space.
+fn ranked_paths(text: &str, whole: bool) -> Vec<(String, f64)> {
     let mut lines: Vec<&str> = text.lines().collect();
     if !whole {
         lines.pop();
     }
-    lines.into_iter().filter(|line| line.starts_with('/')).take(ZOXIDE_ROWS).map(String::from).collect()
+    let mut out = Vec::new();
+    for line in lines {
+        let (score, path) = match line.trim_start().split_once(' ') {
+            Some(pair) => pair,
+            None => continue,
+        };
+        match score.parse::<f64>() {
+            Ok(score) if score.is_finite() && path.starts_with('/') => out.push((path.to_string(), score)),
+            _ => continue,
+        }
+        if out.len() == ZOXIDE_ROWS {
+            break;
+        }
+    }
+    out
 }
 
 // Favourites, then zoxide's ranking, then the recent history, each in its own order. A path named twice is
@@ -218,18 +235,25 @@ fn existing(candidates: Vec<Candidate>, limit: Duration, check: fn(&Candidate) -
 }
 
 
-// A folder appears once, in the first source that names it, the same first-position rule Places.favorites follows.
-fn jumped_line(id: usize, found: &[(Source, String)], ms: f64) -> String {
+// A folder appears once, in the first source that names it, the same first-position rule Places.favorites
+// follows. frecency carries zoxide's score for each folder answered that zoxide ranks, whichever source
+// draws it, which is what the client ranks by after the match itself.
+fn jumped_line(id: usize, found: &[(Source, String)], scores: &[(String, f64)], ms: f64) -> String {
+    let ranked: HashMap<&str, f64> = scores.iter().map(|(path, score)| (path.as_str(), *score)).collect();
     let mut seen = HashSet::new();
     let mut lists: [Vec<String>; 3] = [Vec::new(), Vec::new(), Vec::new()];
+    let mut frecency = Vec::new();
     for (source, folder) in found {
         if seen.insert(folder.as_str()) {
             lists[*source as usize].push(format!("\"{}\"", escape(folder)));
+            if let Some(score) = ranked.get(folder.as_str()) {
+                frecency.push(format!("\"{}\":{}", escape(folder), score));
+            }
         }
     }
     format!(
-        r#"{{"t":"jumped","id":{},"favourites":[{}],"zoxide":[{}],"recent":[{}],"ms":{:.3}}}"#,
-        id, lists[0].join(","), lists[1].join(","), lists[2].join(","), ms
+        r#"{{"t":"jumped","id":{},"favourites":[{}],"zoxide":[{}],"recent":[{}],"frecency":{{{}}},"ms":{:.3}}}"#,
+        id, lists[0].join(","), lists[1].join(","), lists[2].join(","), frecency.join(","), ms
     )
 }
 

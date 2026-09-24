@@ -1,6 +1,7 @@
 import QtQuick
 import QtTest
 import Quickshell
+import Quickshell.Io
 import "flea" as Flea
 
 // The folder jump's wiring through the real ui/ChromeBar.qml and ui/PathJump.qml, keys delivered by
@@ -70,16 +71,16 @@ ShellRoot {
         function () {
             root.answer(0)
             root.type("o")
-            root.check("query o lists the board's rows in the board's order", root.rows(), [
-                root.home + "/Projects", root.home + "/Documents/claude/flea", root.home + "/Documents/claude/omarchy",
-                root.home + "/Documents", root.home + "/Downloads", root.home + "/Pictures/screenshots", root.home + "/Work/field"])
+            // No frecency in this answer, so the own-name matches go favourites first, then zoxide, then recent.
+            root.check("query o lists one ranked list", root.rows(), [
+                root.home + "/Projects", root.home + "/Documents/claude/omarchy", root.home + "/Documents",
+                root.home + "/Downloads", root.home + "/Pictures/screenshots", root.home + "/Documents/claude/flea", root.home + "/Work/field"])
             root.check("the cursor opens on the first row", chrome.jump.cursor, 0)
             root.press(Qt.Key_Down); root.press(Qt.Key_Down); root.press(Qt.Key_Down)
-            root.check("three downs step over the separator", chrome.jump.cursor, 4)
+            root.check("three downs move three rows", chrome.jump.cursor, 3)
             root.press(Qt.Key_Down); root.press(Qt.Key_Up); root.press(Qt.Key_Down)
             root.press(Qt.Key_Return)
-            // Row 4 is ~/Documents, the folder the bar is on, which Enter leaves alone as a typed path does; row 5 is not.
-            root.check("Enter opens the row under the cursor", root.entered[1], root.home + "/Downloads")
+            root.check("Enter opens the row under the cursor", root.entered[1], root.home + "/Pictures/screenshots")
             chrome.startEdit()
             return true
         },
@@ -155,9 +156,45 @@ ShellRoot {
             root.type("o")
             root.press(Qt.Key_Escape)
             root.check("esc closes the dropdown with the bar and opens nothing", [chrome.editing, chrome.jump.shown, root.entered.length], [false, false, 7])
+            // The recent history is read once and kept: every open so far read nothing more.
+            var before = root.asked.length
+            chrome.startEdit()
+            root.check("an open with the history unchanged asks at once, from what it kept", root.asked.length, before + 1)
+            root.check("so the history was read once, by the first open", chrome.jump.historyReads, 1)
+            root.press(Qt.Key_Escape)
+            history.command = ["sh", "-c", root.rewrite, "sh", root.xbel, root.home]
+            history.running = true
+            return true
+        },
+        // The desktop replaces the file, the way GTK writes it: a temp and a rename.
+        function () { return !history.running && Date.now() - root.stepStarted > root.settleMs },
+        function () { chrome.startEdit(); return true },
+        function () { return root.asked.length === 10 },
+        function () {
+            root.check("the next open reads the replaced history, once", chrome.jump.historyReads, 2)
+            root.check("and asks with its newest file first", root.asked[9].recent[0], root.home + "/Music/new.flac")
+            root.press(Qt.Key_Escape)
+            history.command = ["sh", "-c", "rm -f -- \"$1\"", "sh", root.xbel]
+            history.running = true
+            return true
+        },
+        function () { return !history.running && Date.now() - root.stepStarted > root.settleMs },
+        function () { chrome.startEdit(); return true },
+        function () { return root.asked.length === 11 },
+        function () {
+            root.check("a history that is gone is read as empty", [root.asked[10].recent, chrome.jump.historyReads], [[], 3])
+            root.press(Qt.Key_Escape)
             return true
         }
     ]
+
+    // Where the history lives for this run, and one newer bookmark written over it by a temp and a rename.
+    readonly property string xbel: Quickshell.env("XDG_DATA_HOME") + "/recently-used.xbel"
+    readonly property string rewrite: "printf '<?xml version=\"1.0\"?><xbel version=\"1.0\"><bookmark href=\"file://%s/Music/new.flac\" "
+        + "visited=\"2026-09-24T10:00:00Z\"/></xbel>' \"$2\" > \"$1.new\" && mv -- \"$1.new\" \"$1\""
+    // Long enough for the change to reach the watcher, which inotify delivers within milliseconds.
+    readonly property int settleMs: 300
+    Process { id: history }
 
     FloatingWindow {
         implicitWidth: 900

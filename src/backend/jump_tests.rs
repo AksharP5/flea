@@ -43,8 +43,8 @@ fn a_zoxide_that_is_not_installed_is_an_empty_source() {
 fn zoxide_is_asked_for_every_folder_and_its_ranking_is_kept() {
     let _turn = serial();
     let dir = TestDir::new("jump-zoxide");
-    let fake = script(&dir, "zoxide", r#"[ "$*" = "query --list --all" ] || exit 3; printf '/b\nrelative\n/a\n'"#);
-    assert_eq!(zoxide(&fake, ZOXIDE_LIMIT), strings(&["/b", "/a"]));
+    let fake = script(&dir, "zoxide", r#"[ "$*" = "query --list --all --score" ] || exit 3; printf '  12.5 /b\n   1.0 relative\n   nan /c\n   3.0 /a\n'"#);
+    assert_eq!(zoxide(&fake, ZOXIDE_LIMIT), vec![("/b".to_string(), 12.5), ("/a".to_string(), 3.0)]);
 }
 
 #[test]
@@ -61,14 +61,14 @@ fn a_wedged_zoxide_is_ended_at_the_limit_and_draws_nothing() {
 fn a_second_open_while_zoxide_is_still_wedged_starts_no_second_one() {
     let _turn = serial();
     let dir = TestDir::new("jump-second");
-    let counted = script(&dir, "counted", &format!("printf x >> '{}/spawned'; printf '/a\\n'", dir.path().display()));
+    let counted = script(&dir, "counted", &format!("printf x >> '{}/spawned'; printf '   2.0 /a\\n'", dir.path().display()));
     ZOXIDE_RUNNING.store(true, Ordering::SeqCst);
     let taken = zoxide(&counted, ZOXIDE_LIMIT);
     // Released before any assert, so a failure here cannot hold the slot for the tests after it.
     ZOXIDE_RUNNING.store(false, Ordering::SeqCst);
     assert!(taken.is_empty(), "the slot was taken, so this open draws no zoxide");
     assert!(!dir.path().join("spawned").exists(), "and it spawned nothing");
-    assert_eq!(zoxide(&counted, ZOXIDE_LIMIT), strings(&["/a"]), "a free slot runs it");
+    assert_eq!(zoxide(&counted, ZOXIDE_LIMIT), vec![("/a".to_string(), 2.0)], "a free slot runs it");
     assert!(dir.path().join("spawned").exists());
 }
 
@@ -77,7 +77,7 @@ fn a_database_past_the_byte_cap_is_cut_at_its_ranked_head() {
     let _turn = serial();
     let dir = TestDir::new("jump-cap");
     // One process that never stops writing, so the cap and not the pipe's end is what stops the read.
-    let fake = script(&dir, "zoxide", "exec yes /home/gm/a-folder-name");
+    let fake = script(&dir, "zoxide", "exec yes '   1.0 /home/gm/a-folder-name'");
     let started = Instant::now();
     let rows = zoxide(&fake, ZOXIDE_LIMIT);
     assert_eq!(rows.len(), ZOXIDE_ROWS);
@@ -86,8 +86,11 @@ fn a_database_past_the_byte_cap_is_cut_at_its_ranked_head() {
 
 #[test]
 fn a_cut_read_drops_its_last_line_and_a_whole_one_keeps_it() {
-    assert_eq!(ranked_paths("/a\n/b\n/half", false), strings(&["/a", "/b"]));
-    assert_eq!(ranked_paths("/a\n/b\n", true), strings(&["/a", "/b"]));
+    let scored = |pairs: &[(&str, f64)]| pairs.iter().map(|(path, score)| (path.to_string(), *score)).collect::<Vec<_>>();
+    assert_eq!(ranked_paths("  4.0 /a\n  2.0 /b\n  1.0 /ha", false), scored(&[("/a", 4.0), ("/b", 2.0)]));
+    assert_eq!(ranked_paths("  4.0 /a\n  2.0 /b\n", true), scored(&[("/a", 4.0), ("/b", 2.0)]));
+    // A path with a space keeps it, a score that is not a number and a line with no path are not rows.
+    assert_eq!(ranked_paths("  1.5 /a b\n  x /c\n  2.0\ninf /d\n", true), scored(&[("/a b", 1.5)]));
     assert!(ranked_paths("", true).is_empty());
 }
 
@@ -160,9 +163,11 @@ fn a_folder_is_answered_once_in_the_first_source_that_names_it() {
         (Source::Recent, "/b \"q\"".to_string()),
         (Source::Recent, "/c".to_string()),
     ];
-    assert_eq!(jumped_line(7, &found, 1.5),
-        r#"{"t":"jumped","id":7,"favourites":["/a"],"zoxide":["/b \"q\""],"recent":["/c"],"ms":1.500}"#);
-    assert_eq!(jumped_line(0, &[], 0.0), r#"{"t":"jumped","id":0,"favourites":[],"zoxide":[],"recent":[],"ms":0.000}"#);
+    // zoxide ranks /a, drawn as the favourite, and /b "q"; /c it never ranked, so it carries no frecency.
+    let scores = [("/a".to_string(), 12.5), ("/b \"q\"".to_string(), 3.0), ("/gone".to_string(), 9.0)];
+    assert_eq!(jumped_line(7, &found, &scores, 1.5),
+        r#"{"t":"jumped","id":7,"favourites":["/a"],"zoxide":["/b \"q\""],"recent":["/c"],"frecency":{"/a":12.5,"/b \"q\"":3},"ms":1.500}"#);
+    assert_eq!(jumped_line(0, &[], &[], 0.0), r#"{"t":"jumped","id":0,"favourites":[],"zoxide":[],"recent":[],"frecency":{},"ms":0.000}"#);
 }
 
 #[test]
@@ -171,11 +176,11 @@ fn one_answer_joins_the_three_sources_in_order() {
     let dir = TestDir::new("jump-answer");
     let root = dir.path().to_string_lossy().into_owned();
     std::fs::create_dir(dir.path().join("ranked")).unwrap();
-    let fake = script(&dir, "zoxide", &format!("printf '%s\\n' '{}/ranked' '{}'", root, root));
+    let fake = script(&dir, "zoxide", &format!("printf '  %s %s\\n' 8.0 '{}/ranked' 2.5 '{}'", root, root));
     let recent = strings(&[&format!("{}/ranked/file.txt", root), &format!("{}/other.txt", root)]);
     let line = answer(&fake, 3, &strings(&[&root]), &recent);
     // The recent file's folder is already zoxide's row and its second file's is the favourite, so recent draws nothing.
-    let expected = format!(r#"{{"t":"jumped","id":3,"favourites":["{}"],"zoxide":["{}/ranked"],"recent":[],"ms":"#, root, root);
+    let expected = format!(r#"{{"t":"jumped","id":3,"favourites":["{}"],"zoxide":["{}/ranked"],"recent":[],"frecency":{{"{}":2.5,"{}/ranked":8}},"ms":"#, root, root, root, root);
     assert!(line.starts_with(&expected), "{}", line);
 }
 

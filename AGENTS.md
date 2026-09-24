@@ -1649,10 +1649,13 @@ failure fails the check rather than passing it.
 - `ui/ChromeBar.qml` renders the top chrome, and owns the path bar: the same strip typed into
   rather than drawn, opened by `:`, `Ctrl+L` or a double click on the path.
 - `ui/PathJump.qml` is the path bar's folder jump, the Jump board: a name typed into the bar lists
-  matching folders from Flea's favourites, zoxide's ranking and `recently-used.xbel` in a dropdown
-  under the field, and Enter opens the cursor row. `ui/JumpPath.qml` draws one row's path, and
-  `ui/js/Jump.js` decides the rows, with a port of `backend/fuzzy.rs` whose exact scores
-  `tests/js/jump.js` and the Rust test `the_exact_scores_the_jump_port_mirrors` share, value for value.
+  matching folders from Flea's favourites, zoxide's ranking and `recently-used.xbel` in one ranked
+  dropdown under the field, and Enter opens the cursor row. `ui/JumpPath.qml` draws one row's path.
+  `ui/js/Jump.js` ranks the rows by the controller's ruling: a match on the folder's own name, then the
+  more contiguous match, then zoxide's frecency, a favourite winning a tie, five rows a source.
+  `ui/js/Fuzzy.js` ports `backend/fuzzy.rs`, whose exact scores `tests/js/jump.js` and the Rust test
+  `the_exact_scores_the_jump_port_mirrors` share, value for value. The history is read once and kept,
+  and a `FileView` that never loads it re-reads it only after the file changes.
   `backend/jump.rs` answers the three sources once per open of the bar, see docs/protocol.md "jump".
   A line with a slash in it, starting with `~`, or `.` or `..` alone, is typed as a path exactly as
   before the jump, and so is every line once Tab has completed it, so "Wo", Tab, Enter still opens

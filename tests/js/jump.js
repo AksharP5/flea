@@ -1,22 +1,23 @@
 .import "../../ui/js/Jump.js" as Jump
+.import "../../ui/js/Fuzzy.js" as Fuzzy
 
-// The folder jump's rows are the whole feature: which folders a name lists, in what order, under which
-// separator and with which run washed. The Jump board's own fixture is asserted row for row, and the
-// scorer is held to the cases src/backend/fuzzy.rs holds the search scorer to, so the two cannot drift.
+// The folder jump's rows are the whole feature: which folders a name lists, in what order and with which
+// run washed. The ranking is the controller's ruling (canvas DECISIONS): one list, a match on the folder's
+// own name first, then the most contiguous match, then frecency, a favourite winning a tie, five rows a
+// source. The scorer is held to src/backend/fuzzy.rs's own cases, so the two cannot drift.
 
 var HOME = "/home/gm"
-// lib.FAVORITES, the board's FREQUENT and RECENT, as the backend answers them: absolute and existing.
+// lib.FAVORITES, the board's FREQUENT and RECENT, as the backend answers them, with the board fixture's
+// zoxide scores: ~/Documents ranked 20 an hour ago and ~/Downloads 10 two hours ago.
 var BOARD = {
     favourites: ["/home/gm/Projects", "/home/gm/Documents/claude/flea", "/home/gm/Documents/claude/omarchy"],
     zoxide: ["/home/gm/Documents", "/home/gm/Downloads"],
-    recent: ["/home/gm/Pictures/screenshots", "/home/gm/Work/field"]
+    recent: ["/home/gm/Pictures/screenshots", "/home/gm/Work/field"],
+    frecency: { "/home/gm/Documents": 80, "/home/gm/Downloads": 20 }
 }
 
 function drawn(rows) {
     return rows.map(function (row) {
-        if (row.separator) {
-            return "--"
-        }
         var t = row.text
         return row.washLength > 0
             ? t.substring(0, row.washStart) + "[" + t.substr(row.washStart, row.washLength) + "]" + t.substring(row.washStart + row.washLength)
@@ -25,7 +26,7 @@ function drawn(rows) {
 }
 
 function score(hay, query) {
-    var found = Jump.match(hay, query)
+    var found = Fuzzy.match(hay, query)
     return found === null ? null : found.score
 }
 
@@ -52,28 +53,39 @@ function run(check) {
     check("a sibling of home keeps its path", Jump.display("/home/gmx/a", HOME), "/home/gmx/a")
     check("no home, no tilde", Jump.display("/home/gm/a", ""), "/home/gm/a")
 
-    // The board, query o: three sources in order, one separator each, and the washes exactly as drawn.
+    // The board, query o, under the ruling: own-name matches by frecency, then the favourites that tie at
+    // none, then the recent folder, then the two whose o is only in a parent, the favourite first.
     check("the board's query o", drawn(Jump.rows(BOARD, "o", HOME)),
-          "~/Pr[o]jects ~/D[o]cuments/claude/flea ~/Documents/claude/[o]marchy -- ~/D[o]cuments ~/D[o]wnloads -- ~/Pictures/screensh[o]ts ~/W[o]rk/field")
+          "~/D[o]cuments ~/D[o]wnloads ~/Pr[o]jects ~/Documents/claude/[o]marchy ~/Pictures/screensh[o]ts ~/D[o]cuments/claude/flea ~/W[o]rk/field")
     check("the cursor opens on the first row", Jump.step(Jump.rows(BOARD, "o", HOME), -1, 1), 0)
-    var noZoxide = { favourites: BOARD.favourites, zoxide: [], recent: BOARD.recent }
-    check("zoxide with no folders takes its separator with it", drawn(Jump.rows(noZoxide, "o", HOME)),
-          "~/Pr[o]jects ~/D[o]cuments/claude/flea ~/Documents/claude/[o]marchy -- ~/Pictures/screensh[o]ts ~/W[o]rk/field")
+    check("one list has no separators", Jump.rows(BOARD, "o", HOME).filter(function (r) { return r.path === undefined }).length, 0)
     check("a source with no match draws nothing", drawn(Jump.rows(BOARD, "shots", HOME)), "~/Pictures/screen[shots]")
     check("a missing source is an empty one", drawn(Jump.rows({ recent: BOARD.recent }, "field", HOME)), "~/Work/[field]")
     check("no source at all draws nothing", Jump.rows({}, "o", HOME).length, 0)
     check("a path line lists nothing", Jump.rows(BOARD, "/home/gm", HOME).length, 0)
     check("the query is trimmed", drawn(Jump.rows(BOARD, " field ", HOME)), "~/Work/[field]")
 
-    // Each source keeps its own order: zoxide's first row stays first though the second scores higher.
-    var ranked = { zoxide: ["/home/gm/Work/mynotes", "/home/gm/notes"] }
-    check("a source keeps its own order over the score", drawn(Jump.rows(ranked, "notes", HOME)),
-          "~/Work/my[notes] ~/[notes]")
-    check("the second row does score higher, which is what the order ignores",
-          score("~/notes", "notes") > score("~/Work/mynotes", "notes"), true)
-    var many = { zoxide: ["/a/x1", "/a/x2", "/a/x3", "/a/x4", "/a/x5", "/a/x6", "/a/x7"] }
-    check("a source is cut at its fifth match", Jump.rows(many, "x", HOME).length, Jump.SOURCE_ROWS)
-    check("the cut keeps the source's head", Jump.rows(many, "x", HOME)[4].path, "/a/x5")
+    // The ruling, one clause at a time, each against the clause below it.
+    var own = { zoxide: ["/home/gm/notes/archive", "/home/gm/Work/notes"], frecency: { "/home/gm/notes/archive": 90 } }
+    check("a match on the folder's own name beats a match on a parent's, whatever the frecency",
+          drawn(Jump.rows(own, "notes", HOME)), "~/Work/[notes] ~/[notes]/archive")
+    var contiguous = { zoxide: ["/home/gm/t-a-x", "/home/gm/Documents/tax"], frecency: { "/home/gm/t-a-x": 90 } }
+    check("then the more contiguous match, whatever the frecency", drawn(Jump.rows(contiguous, "tax", HOME)),
+          "~/Documents/[tax] ~/[t]-a-x")
+    var frecent = { zoxide: ["/home/gm/a/work", "/home/gm/b/work"], frecency: { "/home/gm/a/work": 2, "/home/gm/b/work": 9 } }
+    check("then frecency", drawn(Jump.rows(frecent, "work", HOME)), "~/b/[work] ~/a/[work]")
+    var tie = { favourites: ["/home/gm/a/work"], zoxide: ["/home/gm/b/work"], recent: ["/home/gm/c/work"] }
+    check("a favourite wins a tie", drawn(Jump.rows(tie, "work", HOME)), "~/a/[work] ~/b/[work] ~/c/[work]")
+    var beaten = { favourites: ["/home/gm/a/work"], zoxide: ["/home/gm/b/work"], frecency: { "/home/gm/b/work": 1 } }
+    check("but not a folder with more frecency", drawn(Jump.rows(beaten, "work", HOME)), "~/b/[work] ~/a/[work]")
+    var scoredFavourite = { favourites: ["/home/gm/a/work"], zoxide: ["/home/gm/b/work"],
+                            frecency: { "/home/gm/a/work": 5, "/home/gm/b/work": 1 } }
+    check("a favourite zoxide also ranks carries zoxide's frecency", drawn(Jump.rows(scoredFavourite, "work", HOME)),
+          "~/a/[work] ~/b/[work]")
+    var many = { favourites: ["/f/x1", "/f/x2"], zoxide: ["/a/x1", "/a/x2", "/a/x3", "/a/x4", "/a/x5", "/a/x6", "/a/x7"] }
+    check("each source gives at most five rows", Jump.rows(many, "x", HOME).length, 2 + Jump.SOURCE_ROWS)
+    check("and its five are its best ranked", Jump.rows(many, "x", HOME).map(function (r) { return r.path }).join(" "),
+          "/f/x1 /f/x2 /a/x1 /a/x2 /a/x3 /a/x4 /a/x5")
 
     // A scattered match is dropped, so an earlier source cannot bury the folder the name was typed for.
     var scattered = { favourites: ["/home/gm/Documents/claude/omarchy"], zoxide: ["/home/gm/Work/claude/flea-013/src"] }
@@ -118,27 +130,25 @@ function run(check) {
 
     // The wash is the best alignment's longest run, and it lands where the scorer's bonuses put it.
     check("the leaf's word start wins the wash over a letter inside a parent",
-          Jump.match("~/Documents/claude/omarchy", "o").positions[0], 19)
-    check("a scattered match washes its longest run", JSON.stringify(Jump.run([2, 5, 6, 7, 9])), '{"start":5,"length":3}')
-    check("a tie washes the first run", JSON.stringify(Jump.run([1, 2, 5, 6])), '{"start":1,"length":2}')
-    check("no positions wash nothing", Jump.run([]).start, -1)
+          Fuzzy.match("~/Documents/claude/omarchy", "o").positions[0], 19)
+    check("a scattered match washes its longest run", JSON.stringify(Fuzzy.run([2, 5, 6, 7, 9])), '{"start":5,"length":3}')
+    check("a tie washes the first run", JSON.stringify(Fuzzy.run([1, 2, 5, 6])), '{"start":1,"length":2}')
+    check("no positions wash nothing", Fuzzy.run([]).start, -1)
 
     // The label: muted parent, foreground leaf, and the wash cut out wherever it falls.
-    var omarchy = Jump.rows(BOARD, "o", HOME)[2]
+    var omarchy = Jump.rows(BOARD, "o", HOME)[3]
     check("a wash in the leaf splits the leaf", JSON.stringify(Jump.segments(omarchy)),
           '[{"text":"~/Documents/claude/","leaf":false,"wash":false},{"text":"o","leaf":true,"wash":true},{"text":"marchy","leaf":true,"wash":false}]')
-    var flea = Jump.rows(BOARD, "o", HOME)[1]
+    var flea = Jump.rows(BOARD, "o", HOME)[5]
     check("a wash in the parent keeps the parent muted", JSON.stringify(Jump.segments(flea)),
           '[{"text":"~/D","leaf":false,"wash":false},{"text":"o","leaf":false,"wash":true},{"text":"cuments/claude/","leaf":false,"wash":false},{"text":"flea","leaf":true,"wash":false}]')
     var across = { text: "/w/claude/flea", leafStart: 10, washStart: 8, washLength: 3 }
     check("a wash across the last slash is cut in two", JSON.stringify(Jump.segments(across).map(function (s) { return s.text + (s.leaf ? "L" : "") + (s.wash ? "W" : "") })),
           '["/w/claud","e/W","fLW","leaL"]')
-    check("a separator has no label", Jump.segments({ separator: true }).length, 0)
 
-    // The cursor skips separators and stays put at either end, as the menu's own does.
+    // The cursor stays put at either end, as the menu's own does.
     var rows = Jump.rows(BOARD, "o", HOME)
-    check("down from the third row crosses the separator", Jump.step(rows, 2, 1), 4)
-    check("up from after a separator crosses it", Jump.step(rows, 4, -1), 2)
+    check("down moves one row", Jump.step(rows, 2, 1), 3)
     check("down from the last row stays", Jump.step(rows, rows.length - 1, 1), rows.length - 1)
     check("up from the first row stays", Jump.step(rows, 0, -1), 0)
     check("an empty dropdown has no cursor", Jump.step([], -1, 1), -1)

@@ -1,29 +1,23 @@
 .pragma library
+.import "Fuzzy.js" as Fuzzy
 
 // The path bar's folder jump, and nothing about the field or the dropdown that draw it: ui/ChromeBar.qml
 // owns the field and ui/PathJump.qml the dropdown. Pure, so tests/js/jump.js drives all of it with no
 // window. The backend answers the three sources once per open (docs/protocol.md "jump"); everything a
 // keystroke changes is worked out here, in the window's own thread and with no round trip.
 
-// The sources in the order the dropdown draws them, each one a field of the backend's "jumped" line.
+// The sources, each one a field of the backend's "jumped" line, in the order a tie between them goes.
 var SOURCES = ["favourites", "zoxide", "recent"]
 
 // A source past its fifth match is a query one letter short, and the next keystroke narrows it; the cap
-// also keeps three sources inside a window's height, where every row stays one arrow press away.
+// also keeps the list inside a window's height, where every row stays a few arrow presses away.
 var SOURCE_ROWS = 5
-
-// src/backend/fuzzy.rs, weight for weight, so the jump and search agree on what matched and where.
-var BONUS_CONSECUTIVE = 8
-var BONUS_BOUNDARY = 6
-var BONUS_BASENAME = 4
-var PENALTY_GAP = 1
-var MAX_STARTS = 16
 
 // Past its first character a match has to earn, on average, what one character of a folder's own name
 // earns. A run or a word start anywhere clears it, and "src" scattered through ~/Documents/claude/omarchy
-// does not, so a stray favourite or zoxide row never buries the folder the name was typed for. One
+// does not, so a folder the name only scatters through is not listed at all. One
 // character always clears it, which keeps the board's query o listing every folder with an o in it.
-var MIN_SCORE_PER_CHARACTER = BONUS_BASENAME
+var MIN_SCORE_PER_CHARACTER = Fuzzy.BONUS_BASENAME
 
 // A line with a slash in it, one that starts at home, and "." and ".." are typed as a path, exactly as
 // before the jump: Enter resolves it and Tab completes it. The bar opens holding the whole path, and a Tab
@@ -53,157 +47,87 @@ function leafStart(text) {
     return String(text).lastIndexOf("/") + 1
 }
 
-function isSeparator(c) {
-    return c === "/" || c === "-" || c === "_" || c === "." || c === " "
-}
-
-// corner: a character whose lowercase form is longer keeps its first unit, the corner fuzzy.rs documents,
-// and a character outside the basic plane counts as two here where Rust counts one, which moves only a gap charge.
-function fold(text) {
-    var out = []
-    for (var i = 0; i < text.length; i++) {
-        var c = text.charAt(i)
-        var lower = c.toLowerCase().charAt(0)
-        out.push({ lower: lower, upper: lower !== c })
-    }
-    return out
-}
-
-function baseStart(hay) {
-    var start = 0
-    for (var i = 0; i < hay.length; i++) {
-        if (hay[i].lower === "/") {
-            start = i + 1
+// How many separate runs a match is made of: 1 is the query typed as one unbroken stretch.
+function runsIn(positions) {
+    var runs = positions.length > 0 ? 1 : 0
+    for (var i = 1; i < positions.length; i++) {
+        if (positions[i] !== positions[i - 1] + 1) {
+            runs++
         }
     }
-    return start
+    return runs
 }
 
-function startsAWord(hay, at) {
-    if (at === 0) {
-        return true
+// One folder's row, or null when the query misses it or only scatters through it below the floor. own is
+// whether the query matches the folder's own name alone; the wash and the runs come from that match when
+// it does, and from the whole path's otherwise.
+function ranked(path, query, home) {
+    var text = display(path, home)
+    var whole = Fuzzy.match(text, query)
+    if (whole === null || whole.score < (query.length - 1) * MIN_SCORE_PER_CHARACTER) {
+        return null
     }
-    var before = hay[at - 1]
-    return isSeparator(before.lower) || (hay[at].upper && !before.upper)
+    var leaf = leafStart(text)
+    var named = Fuzzy.match(text.substring(leaf), query)
+    var positions = whole.positions
+    if (named !== null) {
+        positions = named.positions.map(function (at) { return at + leaf })
+    }
+    var wash = Fuzzy.run(positions)
+    return { path: path, text: text, leafStart: leaf, washStart: wash.start, washLength: wash.length,
+             own: named !== null, runs: runsIn(positions) }
 }
 
-// What one matched character is worth: a run, a boundary and the base name each add, and the
-// characters skipped to reach it are charged back.
-function characterScore(hay, at, base, previous) {
-    var score = 0
-    if (previous >= 0) {
-        score += at === previous + 1 ? BONUS_CONSECUTIVE : -PENALTY_GAP * (at - previous - 1)
+// The controller's ruling, in order: the folder's own name, then contiguity, then frecency, then a favourite
+// over the others, and the sources' own orders last so one answer always draws in one order.
+function before(a, b) {
+    if (a.own !== b.own) {
+        return a.own ? -1 : 1
     }
-    if (startsAWord(hay, at)) {
-        score += BONUS_BOUNDARY
+    if (a.runs !== b.runs) {
+        return a.runs - b.runs
     }
-    if (at >= base) {
-        score += BONUS_BASENAME
+    if (a.frecency !== b.frecency) {
+        return b.frecency - a.frecency
     }
-    return score
+    if (a.source !== b.source) {
+        return a.source - b.source
+    }
+    return a.at - b.at
 }
 
-// Greedy from one start: every query character takes the next candidate character that matches it.
-function alignFrom(hay, needle, start, base) {
-    var total = 0
-    var at = start
-    var previous = -1
-    var positions = []
-    for (var k = 0; k < needle.length; k++) {
-        if (k > 0) {
-            at++
-            while (at < hay.length && hay[at].lower !== needle.charAt(k)) {
-                at++
-            }
-            if (at === hay.length) {
-                return null
-            }
-        }
-        total += characterScore(hay, at, base, previous)
-        positions.push(at)
-        previous = at
-    }
-    return { score: total, positions: positions }
-}
-
-// null when the query is not a subsequence of the candidate; otherwise the best alignment's score and
-// the positions it matched, which is what the wash is drawn from.
-function match(candidate, query) {
-    var needle = String(query).toLowerCase()
-    if (needle.length === 0) {
-        return { score: 0, positions: [] }
-    }
-    var hay = fold(String(candidate))
-    var base = baseStart(hay)
-    var best = null
-    var starts = 0
-    for (var i = 0; i < hay.length; i++) {
-        if (hay[i].lower !== needle.charAt(0)) {
-            continue
-        }
-        var found = alignFrom(hay, needle, i, base)
-        // A start that cannot finish means no later start can either, the greedy scan's own guarantee.
-        if (found === null) {
-            return best
-        }
-        if (best === null || found.score > best.score) {
-            best = found
-        }
-        starts++
-        if (starts === MAX_STARTS) {
-            break
-        }
-    }
-    return best
-}
-
-// The one run the row washes: the longest stretch of consecutive matched positions, the first on a tie.
-function run(positions) {
-    var best = { start: -1, length: 0 }
-    var i = 0
-    while (i < positions.length) {
-        var j = i
-        while (j + 1 < positions.length && positions[j + 1] === positions[j] + 1) {
-            j++
-        }
-        if (j - i + 1 > best.length) {
-            best = { start: positions[i], length: j - i + 1 }
-        }
-        i = j + 1
-    }
-    return best
-}
-
-// The dropdown's entries. Each source keeps its own order and is cut at SOURCE_ROWS, a separator stands
-// between two sources that both matched, and a source that matched nothing draws nothing, separator and all.
-// A match scattered below MIN_SCORE_PER_CHARACTER is no match.
-// Sample sources: { favourites: ["/home/gm/Projects"], zoxide: ["/home/gm/Documents"], recent: [] }
+// The dropdown's rows: every source's matches in one ranked list, a source giving at most SOURCE_ROWS of
+// its best. frecency is zoxide's score for any folder it ranks, whichever source draws that folder.
+// Sample sources: { favourites: ["/home/gm/Projects"], zoxide: ["/home/gm/Documents"], recent: [],
+//                   frecency: { "/home/gm/Documents": 80 } }
 function rows(sources, line, home) {
-    var out = []
     if (!isQuery(line)) {
-        return out
+        return []
     }
     var query = String(line).trim()
+    var given = sources || {}
+    var frecency = given.frecency || {}
+    var found = []
     for (var s = 0; s < SOURCES.length; s++) {
-        var paths = (sources || {})[SOURCES[s]] || []
-        var group = []
-        for (var i = 0; i < paths.length && group.length < SOURCE_ROWS; i++) {
-            var text = display(paths[i], home)
-            var found = match(text, query)
-            if (found === null || found.score < (query.length - 1) * MIN_SCORE_PER_CHARACTER) {
-                continue
+        var paths = given[SOURCES[s]] || []
+        for (var i = 0; i < paths.length; i++) {
+            var row = ranked(String(paths[i]), query, home)
+            if (row !== null) {
+                row.source = s
+                row.at = i
+                row.frecency = Number(frecency[row.path]) || 0
+                found.push(row)
             }
-            var wash = run(found.positions)
-            group.push({ path: String(paths[i]), text: text, leafStart: leafStart(text),
-                         washStart: wash.start, washLength: wash.length })
         }
-        if (group.length === 0) {
-            continue
+    }
+    found.sort(before)
+    var out = []
+    var taken = [0, 0, 0]
+    for (var j = 0; j < found.length; j++) {
+        if (taken[found[j].source] < SOURCE_ROWS) {
+            taken[found[j].source]++
+            out.push(found[j])
         }
-        if (out.length > 0) {
-            out.push({ separator: true })
-        }
-        out = out.concat(group)
     }
     return out
 }
@@ -233,15 +157,11 @@ function segments(row) {
     return out
 }
 
-// The cursor's next row, skipping separators and staying put at either end, as the menu's own cursor does.
-// step(entries, -1, 1) is the first row, and -1 when there is none.
+// The cursor's next row, staying put at either end as the menu's own cursor does; step(rows, -1, 1) is the
+// first row, and -1 when there is none.
 function step(entries, from, delta) {
-    var i = from + delta
-    while (i >= 0 && i < entries.length) {
-        if (entries[i].separator !== true) {
-            return i
-        }
-        i += delta
+    if (entries.length === 0) {
+        return -1
     }
-    return from
+    return Math.max(0, Math.min(entries.length - 1, from + delta))
 }

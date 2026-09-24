@@ -1,7 +1,10 @@
 import QtQuick
+import Quickshell
+import Quickshell.Io
 import qs.Commons
 import "." as Flea
 import "js/Jump.js" as Jump
+import "js/Recent.js" as Recent
 
 // The path bar's folder jump, the Jump board: a name typed into the bar lists matching folders from
 // Flea's favourites, zoxide's ranking and the desktop's recent history in a dropdown flush under the
@@ -57,19 +60,54 @@ Item {
         root.enterWaiting = false
         root.pathTyped = false
         root.asked += 1
-        if (root.editing) {
-            // Read afresh on every open, because every other application appends to the history.
-            recent.active = true
-            recent.item.refresh()
+        if (!root.editing) {
+            return
+        }
+        if (root.historyKept && root.historyReadAt === root.historyChanges) {
+            root.ask()
+        } else {
+            root.readHistory()
         }
     }
 
+    // The recent history, read once and kept until the file changes, so an open with it unchanged asks at
+    // once: re-reading 5,000 bookmarks on every open cost the dropdown some 70 ms, measured.
+    property var recentPaths: []
+    property bool historyKept: false
+    property bool historyReading: false
+    // Every change the watcher has reported, and the count the kept paths were read at.
+    property int historyChanges: 0
+    property int historyReadAt: -1
+    // How many times the history has been parsed; tests/jump-ui.sh reads it.
+    property int historyReads: 0
+
+    function ask() {
+        root.requested(root.asked, root.favouritePaths(), root.recentPaths)
+    }
+
+    // The watch starts before the read, so a change landing while it runs is counted and read next time.
+    function readHistory() {
+        root.historyReading = true
+        root.historyReadAt = root.historyChanges
+        watcher.path = Recent.historyPath(Quickshell.env("XDG_DATA_HOME"), Quickshell.env("HOME"))
+        recent.active = true
+        recent.item.refresh()
+    }
+
+    // Watching only: it never loads the file, and it reports a rename over it, a delete and a re-create alike.
+    FileView {
+        id: watcher
+        preload: false
+        watchChanges: true
+        onFileChanged: root.historyChanges += 1
+    }
+
     // The backend's jumped line; one for another open, or landing after the bar closed, is dropped.
-    function take(id, favourites, zoxide, recentFolders) {
+    function take(id, favourites, zoxide, recentFolders, frecency) {
         if (!root.editing || id !== root.asked) {
             return
         }
-        root.sources = { favourites: favourites, zoxide: zoxide, recent: recentFolders }
+        root.sources = { favourites: favourites, zoxide: zoxide, recent: recentFolders, frecency: frecency || ({}) }
         if (root.enterWaiting) {
             root.enterWaiting = false
             root.enter()
@@ -94,8 +132,8 @@ Item {
         return out
     }
 
-    // The picker's own reader of recently-used.xbel, built by the first open so a window whose bar is
-    // never typed into loads no XML module at all.
+    // The picker's own reader of recently-used.xbel, built for a read and dropped after it, so a window whose
+    // bar is never typed into loads no XML module at all.
     Loader {
         id: recent
         active: false
@@ -105,8 +143,15 @@ Item {
     Connections {
         target: recent.item
         function onRefreshed() {
+            root.recentPaths = recent.item.paths
+            root.historyKept = true
+            root.historyReading = false
+            root.historyReads += 1
+            // The parsed model goes once its newest paths are kept, which bounds what stays in memory at
+            // Recent.LIMIT paths; later, because the reader is the one emitting this signal.
+            Qt.callLater(function () { if (!root.historyReading) recent.active = false })
             if (root.editing) {
-                root.requested(root.asked, root.favouritePaths(), recent.item.paths)
+                root.ask()
             }
         }
     }
@@ -186,14 +231,14 @@ Item {
                 Repeater {
                     id: rowItems
                     model: root.entries
-                    // The menu's own row, so the lift, the mark slot, the pointer rules and the separator are
-                    // the context menu's; the label is the path the chrome would draw, laid over its empty one.
+                    // The menu's own row, so the lift, the mark slot and the pointer rules are the context menu's;
+                    // the label is the path the chrome would draw, laid over its empty one.
                     delegate: Flea.MenuRow {
                         id: row
                         required property var modelData
                         required property int index
                         width: rows.width
-                        entry: row.modelData.separator === true ? row.modelData : ({ glyph: "folder", label: "", hint: "" })
+                        entry: ({ glyph: "folder", label: "", hint: "" })
                         current: root.cursor === row.index
                         lastPointerGlobal: root.pointerGlobal
                         onPointerSeen: function (at) { root.pointerGlobal = at }
@@ -201,7 +246,6 @@ Item {
                         onActivated: root.chosen(row.modelData.path)
 
                         Flea.JumpPath {
-                            visible: !row.isSeparator
                             entry: row.modelData
                             anchors.left: parent.left
                             anchors.leftMargin: Theme.spacing.rowPaddingX + row.slotSize + Theme.spacing.gap

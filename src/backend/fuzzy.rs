@@ -245,7 +245,7 @@ mod tests {
         assert_eq!(rank_order(4, "a.txt", 4, "a.txt"), Ordering::Equal);
     }
 
-    // The same table, value for value, is SCORES in tests/js/jump.js: ui/js/Jump.js ports this scorer, so a
+    // The same table, value for value, is SCORES in tests/js/jump.js: ui/js/Fuzzy.js ports this scorer, so a
     // weight changed here fails this test until the port and its table are changed with it.
     #[test]
     fn the_exact_scores_the_jump_port_mirrors() {

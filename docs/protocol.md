@@ -739,8 +739,8 @@ Example: `{"c":"jump","id":3,"favourites":["/home/gm/Projects"],"recent":["/home
 The path bar's folder jump, asked **once per open of the bar**, never per keystroke: the client filters
 the answer itself as the line changes. `favourites` are Flea's own favourites in their rail order, and
 `recent` is the desktop's `recently-used.xbel` newest first, which the client reads with Qt's XML reader
-because the backend has none. The backend adds the third source, zoxide's ranking, from one
-`zoxide query --list --all`, and answers one `jumped` line from a thread, because zoxide is a subprocess
+because the backend has none, and keeps until the file changes. The backend adds the third source,
+zoxide's ranking, from one `zoxide query --list --all --score`, and answers one `jumped` line from a thread, because zoxide is a subprocess
 and a stat can block on a network mount. `id` is the client's own number for this open and comes back
 on the answer, so an answer to an earlier open is told apart from this one's.
 
@@ -1179,14 +1179,16 @@ or `move`, which is what lets the status bar say what it just put back.
 
 ### jumped
 
-`{"t":"jumped","id":<uint>,"favourites":[<string>,...],"zoxide":[<string>,...],"recent":[<string>,...],"ms":<float>}`
+`{"t":"jumped","id":<uint>,"favourites":[<string>,...],"zoxide":[<string>,...],"recent":[<string>,...],"frecency":{<string>:<float>,...},"ms":<float>}`
 
-Example: `{"t":"jumped","id":3,"favourites":["/home/gm/Projects"],"zoxide":["/home/gm/Documents"],"recent":["/home/gm/Pictures/screenshots"],"ms":4.210}`
+Example: `{"t":"jumped","id":3,"favourites":["/home/gm/Projects"],"zoxide":["/home/gm/Documents"],"recent":["/home/gm/Pictures/screenshots"],"frecency":{"/home/gm/Documents":80},"ms":4.210}`
 
 The answer to one `jump`: the folders of each source that exist now, each source in its own order.
 A favourite or a zoxide row must itself be a directory; a recent entry stands for the folder it sits in,
 unless it is a folder itself. A folder appears once, in the first source that names it, so a favourite
-zoxide also ranks is drawn as the favourite. Anything that is not an absolute path is dropped. `ms` is
+zoxide also ranks is drawn as the favourite. `frecency` is zoxide's score for every folder answered that
+zoxide ranks, whichever source draws it, and the client ranks the one list by it after the match itself.
+Anything that is not an absolute path is dropped, and so is a score that is not a finite number. `ms` is
 the whole answer's time, zoxide and the existence checks together.
 
 ### changed

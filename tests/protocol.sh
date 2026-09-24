@@ -905,14 +905,15 @@ sandbox_remove "$ASYNC_SB"
 
 # The folder jump through the real binary, with a zoxide of this suite's own first on PATH, so the
 # operator's database is never read. The missing favourite and zoxide row are dropped, the recent file
-# stands for its folder, and each folder is answered once, in the first source that names it.
+# stands for its folder, each folder is answered once, in the first source that names it, and zoxide's
+# score rides along for every folder it ranks, the favourite it also ranks included.
 JUMP_BIN="$SB/jump-bin"
 NO_ZOXIDE="$SB/no-zoxide"
 mkdir -p "$JUMP_BIN" "$NO_ZOXIDE" "$D/ranked"
 cat > "$JUMP_BIN/zoxide" <<EOF
 #!/bin/sh
-[ "\$*" = "query --list --all" ] || exit 3
-printf '%s\n' '$D/ranked' '$D/gone' '$D/sub'
+[ "\$*" = "query --list --all --score" ] || exit 3
+printf '  %s %s\n' 9.5 '$D/ranked' 4.0 '$D/gone' 2.0 '$D/sub'
 EOF
 chmod +x "$JUMP_BIN/zoxide"
 jump_run() {
@@ -921,10 +922,10 @@ jump_run() {
     printf '{"c":"quit"}\n' ) | PATH="$1" $BIN --backend 2>/dev/null | grep '"t":"jumped"' | sed 's/,"ms":[0-9.]*}$//'
 }
 check "jump answers each source's existing folders once, in order" \
-  "{\"t\":\"jumped\",\"id\":7,\"favourites\":[\"$D/sub\"],\"zoxide\":[\"$D/ranked\"],\"recent\":[\"$D\"]" \
+  "{\"t\":\"jumped\",\"id\":7,\"favourites\":[\"$D/sub\"],\"zoxide\":[\"$D/ranked\"],\"recent\":[\"$D\"],\"frecency\":{\"$D/sub\":2,\"$D/ranked\":9.5}" \
   "$(jump_run "$JUMP_BIN:$PATH")"
 check "with no zoxide installed its source is empty and nothing else changes" \
-  "{\"t\":\"jumped\",\"id\":7,\"favourites\":[\"$D/sub\"],\"zoxide\":[],\"recent\":[\"$D\"]" \
+  "{\"t\":\"jumped\",\"id\":7,\"favourites\":[\"$D/sub\"],\"zoxide\":[],\"recent\":[\"$D\"],\"frecency\":{}" \
   "$(jump_run "$NO_ZOXIDE")"
 
 # No per-key cleanup: the cache is inside the sandbox, so it goes when the sandbox does.
