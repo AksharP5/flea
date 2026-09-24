@@ -67,6 +67,7 @@ pub mod collide;
 pub mod convert;
 pub mod copyfile;
 pub mod copymanifest;
+pub mod manifestdir;
 pub mod copynode;
 pub mod ops;
 pub mod opscancel;

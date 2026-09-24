@@ -2,7 +2,7 @@
 use crate::backend::trashmanifest::{Manifest, Records};
 use crate::error::FleaError;
 use std::os::unix::ffi::OsStrExt;
-use std::os::unix::fs::{DirBuilderExt, MetadataExt};
+use std::os::unix::fs::MetadataExt;
 use std::path::{Component, Path, PathBuf};
 
 // Twice the largest tree this product is benched against; past it the copy still runs, but undo falls back to the whole-tree check rather than recording more.
@@ -11,30 +11,6 @@ const MAX_ENTRIES: usize = 200_000;
 const MAX_BYTES: u64 = 32 * 1024 * 1024;
 // dev(8) + ino(8) + kind(4) + len(8) + mtime sec(8) + mtime nsec(8).
 const HEADER: usize = 44;
-// Owner-only manifest directory, so a planted symlink cannot redirect the anonymous file.
-const MANIFEST_MODE: u32 = 0o700;
-
-extern "C" {
-    fn getuid() -> u32;
-}
-
-// Runtime filesystem for the manifest, never the copy source or destination, so a full destination cannot fail the append and the fd pins no mount the user ejects.
-fn manifest_dir() -> Result<PathBuf, String> {
-    let uid = unsafe { getuid() };
-    let mut candidates: Vec<PathBuf> = Vec::new();
-    if let Some(runtime) = crate::userfile::env_dir("XDG_RUNTIME_DIR") {
-        candidates.push(runtime.join("flea"));
-    }
-    candidates.push(PathBuf::from(format!("/run/user/{uid}/flea")));
-    candidates.push(PathBuf::from(format!("/dev/shm/flea-{uid}")));
-    candidates.push(std::env::temp_dir().join("flea"));
-    for dir in candidates {
-        if std::fs::DirBuilder::new().recursive(true).mode(MANIFEST_MODE).create(&dir).is_ok() {
-            return Ok(dir);
-        }
-    }
-    Err("no writable runtime directory for the copy manifest".into())
-}
 
 // Recorded while the copy runs, one path per created file in one arena, so a 100,000-file tree never sits in memory whole; dropped unread when the copy succeeds.
 pub struct Writer {
@@ -96,7 +72,14 @@ pub fn writer_for(src: &Path, dst: &Path) -> Option<Writer> {
     if meta.file_type().is_symlink() || !meta.is_dir() || !dst.is_absolute() {
         return None;
     }
-    Writer::create(dst).ok()
+    match Writer::create_for(src, dst) {
+        // No off-copy filesystem still copies, but never silently: undo falls back to the whole-tree check.
+        Err(e) => {
+            eprintln!("flea: copy manifest unavailable for {}: {e}", dst.display());
+            None
+        }
+        Ok(writer) => Some(writer),
+    }
 }
 
 // A same-filesystem move is a plain rename with no copy, so no manifest is opened at all.
@@ -109,7 +92,14 @@ pub fn writer_for_move(src: &Path, dst: &Path) -> Option<Writer> {
     if same_dev(src, parent) {
         return None;
     }
-    Writer::create(dst).ok()
+    match Writer::create_for(src, dst) {
+        // Same fallback as a copy: the move still runs, and the operator is told the manifest did not.
+        Err(e) => {
+            eprintln!("flea: copy manifest unavailable for {}: {e}", dst.display());
+            None
+        }
+        Ok(writer) => Some(writer),
+    }
 }
 
 // Finish a failed copy loud: Ok manifest or None, plus a loud error when the append itself failed.
@@ -132,11 +122,30 @@ fn same_dev(a: &Path, b: &Path) -> bool {
 }
 
 impl Writer {
-    fn create(root: &Path) -> Result<Self, String> {
+    fn create_for(src: &Path, root: &Path) -> Result<Self, String> {
+        use crate::backend::manifestdir::{candidate_dirs, current_uid, forbid_for, qualifying_dirs};
         if !root.is_absolute() {
             return Err("a manifest root must be absolute".into());
         }
-        Ok(Self { inner: Manifest::new(&manifest_dir()?)?, root: root.to_path_buf(), count: 0, overflow: false, failed: None, arena: Vec::new(), ends: Vec::new() })
+        let uid = current_uid();
+        let forbid = forbid_for(src, root);
+        let mut last = "no runtime directory for the copy manifest lives off the copy's own filesystems".to_string();
+        for dir in qualifying_dirs(&candidate_dirs(uid), &forbid, uid) {
+            // A directory that qualifies can still refuse an anonymous file, so each one is tried in turn.
+            match Manifest::new(&dir) {
+                Ok(inner) => {
+                    return Ok(Self { inner, root: root.to_path_buf(), count: 0, overflow: false, failed: None, arena: Vec::new(), ends: Vec::new() })
+                }
+                Err(e) => last = e,
+            }
+        }
+        Err(last)
+    }
+
+    // Tests record under their own sandbox, which names both ends; production names the real copy.
+    #[cfg(test)]
+    fn create(root: &Path) -> Result<Self, String> {
+        Self::create_for(root, root)
     }
 
     // Full paths only, no prefix check and no stat, so a success drops its arena having paid no syscall and no parse for it.
@@ -166,6 +175,7 @@ impl Writer {
         self.record(named);
     }
 
+    #[cfg(test)]
     pub fn overflow(&mut self) {
         self.overflow = true;
     }

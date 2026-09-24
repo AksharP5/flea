@@ -130,6 +130,7 @@ impl Manifest {
 impl Records {
     pub fn start(&self) -> u64 { self.start }
     pub fn end(&self) -> u64 { self.end }
+    #[cfg(test)]
     pub(crate) fn file_raw(&self) -> i32 { self.file.as_raw_fd() }
     fn length(&self, offset: u64) -> Result<u64, String> {
         let mut bytes = [0; LENGTH_BYTES as usize];
