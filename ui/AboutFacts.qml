@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import "js/SettingsAbout.js" as About
 
 // Installed facts are read only when About is shown; each failed query keeps an explicit unknown.
 QtObject {
@@ -50,54 +51,28 @@ QtObject {
         // Sample output: flea
         onExited: function (code) {
             if (code !== 0 || owner.answer.length === 0) {
-                root.setFact("source", "Unpackaged candidate")
+                root.setFact("source", About.installedFrom("", false))
                 root.setFact("package", "Not owned by a package")
                 return
             }
             packageVersion.command = ["pacman", "-Qi", owner.answer]
             packageVersion.running = true
-            repository.command = ["pacman", "-Si", owner.answer]
-            repository.running = true
         }
     }
     // -Qi rather than -Q: the same query carries the build date, and the Built row had nothing
     // setting it at all, so every box read "Not recorded in this build" whatever it was running.
-    // Sample output: "Name            : flea", "Version         : 0.1.6-1", "Build Date      : Tue Sep  8 01:52:54 2026".
+    // Its Validated By line is the signature src/update.rs tells OPR's flea from a local build by.
     property var packageQuery: Process {
         id: packageVersion
         environment: ({ LC_ALL: "C" })
         property string answer: ""
         stdout: StdioCollector { onStreamFinished: packageVersion.answer = this.text }
         onExited: function (code) {
-            if (code !== 0) return
-            var lines = packageVersion.answer.split("\n"), name = "", built = ""
-            for (var i = 0; i < lines.length; i++) {
-                var cut = lines[i].indexOf(":")
-                if (cut < 0) continue
-                var key = lines[i].substring(0, cut).trim(), value = lines[i].substring(cut + 1).trim()
-                if (key === "Name") name = value
-                else if (key === "Version") name = name.length > 0 ? name + " " + value : value
-                else if (key === "Build Date") built = value
-            }
-            if (name.length > 0) root.setFact("package", name)
-            if (built.length > 0) root.setFact("built", built)
-        }
-    }
-    property var repositoryQuery: Process {
-        id: repository
-        environment: ({ LC_ALL: "C" })
-        property string answer: ""
-        stdout: StdioCollector { onStreamFinished: repository.answer = this.text }
-        // Sample output: Repository      : omarchy
-        onExited: function (code) {
-            if (code !== 0) { root.setFact("source", "Local package"); return }
-            var lines = repository.answer.split("\n")
-            for (var i = 0; i < lines.length; i++) {
-                if (lines[i].indexOf("Repository") !== 0) continue
-                var name = lines[i].substring(lines[i].indexOf(":") + 1).trim()
-                root.setFact("source", name === "omarchy" ? "Omarchy Package Repository" : name)
-                return
-            }
+            // A package pacman cannot describe reads as unsigned, the way src/update.rs reads it.
+            var facts = About.packageFacts(code === 0 ? packageVersion.answer : "")
+            root.setFact("source", About.installedFrom(owner.answer, facts.signed))
+            if (facts.package.length > 0) root.setFact("package", facts.package)
+            if (facts.built.length > 0) root.setFact("built", facts.built)
         }
     }
 }

@@ -1,6 +1,7 @@
 .import "../../ui/js/Settings.js" as Settings
 .import "../../ui/js/Update.js" as Update
 .import "../../ui/js/MakeDefault.js" as MakeDefault
+.import "../../ui/js/SettingsAbout.js" as SettingsAbout
 
 // The About section's Updates group: the Update Flea row, the switch that governs the automatic checks, and the note line; then This box's Make Flea the default row.
 
@@ -64,6 +65,7 @@ function run(check) {
           "https://github.com/thisisgm/flea/issues|https://github.com/sponsors/thisisgm")
     check("and no other row does", rows.filter(function (r) { return r.url !== undefined }).length, 2)
     runDefault(check)
+    runInstalled(check)
 }
 
 var FLEA = "com.thisisgm.flea.desktop"
@@ -252,4 +254,39 @@ function runDefault(check) {
     check("each path is its own argument, never part of the script, which tests each one quoted and stops at the first",
           JSON.stringify(MakeDefault.probeCommand(["/a b/x.desktop", "$(y)"])),
           JSON.stringify(["sh", "-c", "for f; do [ -f \"$f\" ] && exit 0; done; exit 1", "sh", "/a b/x.desktop", "$(y)"]))
+}
+
+// pacman -Qi flea-bin under LC_ALL=C on minipc, 2026-09-24, trimmed to the fields About reads; pacman -Si flea-bin exits 1 there.
+var FLEA_BIN_QI = "Name            : flea-bin\nVersion         : 0.3.4-1\nPackager        : Unknown Packager\n"
+    + "Build Date      : Wed Sep 23 12:40:50 2026\nInstall Script  : No\nValidated By    : None\n"
+
+// Installed from is the kind src/update.rs derives from the same two pacman answers, so it and the Update Flea row agree.
+function runInstalled(check) {
+    var update = source("src/update.rs")
+    // Sample input: const AUR_PACKAGE: &str = "flea-bin";
+    function named(constant) { return (update.match(new RegExp("const " + constant + ": &str = \"([^\"]*)\";")) || [])[1] }
+    check("the three package names are src/update.rs's own", [SettingsAbout.PACKAGES.opr, SettingsAbout.PACKAGES.aur, SettingsAbout.PACKAGES.git].join("|"),
+          [named("OPR_PACKAGE"), named("AUR_PACKAGE"), named("GIT_PACKAGE")].join("|"))
+    // Sample input: Kind::Aur => "aur",
+    var words = (update.match(/Kind::[A-Za-z]+ => "[a-z]+"/g) || []).map(function (arm) { return arm.split("\"")[1] })
+    check("one sentence for each kind word flea --update check prints, and no other",
+          Object.keys(SettingsAbout.SOURCES).sort().join("|"), words.sort().join("|"))
+
+    var bin = SettingsAbout.packageFacts(FLEA_BIN_QI)
+    check("flea-bin's own -Qi reads as its package, its build date and no signature",
+          [bin.package, bin.built, bin.signed].join("|"), "flea-bin 0.3.4-1|Wed Sep 23 12:40:50 2026|false")
+    check("so an AUR flea-bin says so, where 0.3.4 read Local package", SettingsAbout.installedFrom("flea-bin", bin.signed), "AUR, flea-bin")
+    check("the kind the Update Flea row reads from the check line is the same one",
+          answered("current aur 0.3.4-1 0.3.4-1").kind + "|" + SettingsAbout.installKind("flea-bin", bin.signed), "aur|aur")
+    check("OPR's signed flea keeps the board's words", SettingsAbout.installedFrom("flea", true), "Omarchy Package Repository")
+    check("the same name unsigned is a local makepkg build", SettingsAbout.installedFrom("flea", false), "Local package")
+    check("flea-git is the AUR's rolling build", SettingsAbout.installedFrom("flea-git", false), "AUR, flea-git")
+    check("any other owner is somebody's own package, signed or not", SettingsAbout.installedFrom("flea-custom", true), "Local package")
+    check("no owner is a cargo build", SettingsAbout.installedFrom("", false), "Unpackaged candidate")
+    check("Validated By is read as src/update.rs reads it",
+          [SettingsAbout.packageFacts("Validated By    : SHA-256 Sum  Signature\n").signed,
+           SettingsAbout.packageFacts("Validated By    : SHA-256 Sum\n").signed,
+           SettingsAbout.packageFacts("Description     : Signature\nValidated By    : None\n").signed].join("|"), "true|false|false")
+    check("a query that failed is an empty answer", JSON.stringify(SettingsAbout.packageFacts("")), '{"package":"","built":"","signed":false}')
+    check("and About asks pacman -Si nothing, which cannot see an AUR package", source("ui/AboutFacts.qml").indexOf("\"-Si\""), -1)
 }
