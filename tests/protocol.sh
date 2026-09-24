@@ -916,15 +916,15 @@ printf '%s\n' '$D/ranked' '$D/gone' '$D/sub'
 EOF
 chmod +x "$JUMP_BIN/zoxide"
 jump_run() {
-  ( printf '{"c":"jump","favourites":["%s/sub","%s/nope"],"recent":["%s/three.txt"]}\n' "$D" "$D" "$D"
+  ( printf '{"c":"jump","id":7,"favourites":["%s/sub","%s/nope"],"recent":["%s/three.txt"]}\n' "$D" "$D" "$D"
     sleep 1
     printf '{"c":"quit"}\n' ) | PATH="$1" $BIN --backend 2>/dev/null | grep '"t":"jumped"' | sed 's/,"ms":[0-9.]*}$//'
 }
 check "jump answers each source's existing folders once, in order" \
-  "{\"t\":\"jumped\",\"favourites\":[\"$D/sub\"],\"zoxide\":[\"$D/ranked\"],\"recent\":[\"$D\"]" \
+  "{\"t\":\"jumped\",\"id\":7,\"favourites\":[\"$D/sub\"],\"zoxide\":[\"$D/ranked\"],\"recent\":[\"$D\"]" \
   "$(jump_run "$JUMP_BIN:$PATH")"
 check "with no zoxide installed its source is empty and nothing else changes" \
-  "{\"t\":\"jumped\",\"favourites\":[\"$D/sub\"],\"zoxide\":[],\"recent\":[\"$D\"]" \
+  "{\"t\":\"jumped\",\"id\":7,\"favourites\":[\"$D/sub\"],\"zoxide\":[],\"recent\":[\"$D\"]" \
   "$(jump_run "$NO_ZOXIDE")"
 
 # No per-key cleanup: the cache is inside the sandbox, so it goes when the sandbox does.

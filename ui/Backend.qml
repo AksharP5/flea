@@ -60,7 +60,7 @@ Item {
     // hidden is the flag the request carried, echoed by the backend: two clients peek this wire, so path alone does not say whose reply this is.
     signal peeked(string path, bool hidden, int total, var rows, bool readFailed, int mode)
     // The path bar's folder jump, the existing folders of each source in its own order; see docs/protocol.md "jump".
-    signal jumped(var favourites, var zoxide, var recent)
+    signal jumped(int id, var favourites, var zoxide, var recent)
     signal archiveStarted(int id)
     signal archiveDone(int id, bool ok, bool verified, string err)
     signal convertChecked(var message)
@@ -232,9 +232,9 @@ Item {
     }
 
     // op is "peers" for the flyout's list and "send" for the transfer it chooses; both answer late.
-    // Once per open of the path bar: the client's favourites and recent files, joined there with zoxide.
-    function jump(favourites, recent) {
-        root.send({ c: "jump", favourites: favourites, recent: recent })
+    // Once per open of the path bar: the client's favourites and recent files, joined there with zoxide; id comes back on the answer.
+    function jump(id, favourites, recent) {
+        root.send({ c: "jump", id: id, favourites: favourites, recent: recent })
     }
 
     function localSend(op, peer, paths) {
@@ -328,7 +328,7 @@ Item {
     // Sample input: {"t":"trashed","ok":1,"failed":0}
     // Sample input: {"t":"made","ok":true,"path":"/home/gm/Pictures/New Folder"}
     // Sample input: {"t":"undone","op":"move","ok":true}
-    // Sample input: {"t":"jumped","favourites":["/home/gm/Projects"],"zoxide":["/home/gm/Documents"],"recent":[],"ms":4.210}
+    // Sample input: {"t":"jumped","id":3,"favourites":["/home/gm/Projects"],"zoxide":["/home/gm/Documents"],"recent":[],"ms":4.210}
     function receive(line) {
         if (!line || line.length === 0) {
             return

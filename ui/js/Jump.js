@@ -25,16 +25,17 @@ var MAX_STARTS = 16
 // character always clears it, which keeps the board's query o listing every folder with an o in it.
 var MIN_SCORE_PER_CHARACTER = BONUS_BASENAME
 
-// A line that starts the way a path does is typed as one, as it was before the jump: Enter resolves it
-// and Tab completes it. The bar opens holding the whole path, so the dropdown waits for a name.
-// Sample input: "o" and "flea" are queries; "/usr/share", "~/Work", "../x" and "file:///etc" are paths.
+// A line with a slash in it, or one that starts at home or with a dot, is typed as a path, exactly as
+// before the jump: Enter resolves it and Tab completes it. The bar opens holding the whole path, and a Tab
+// that completes one name ends the line in a slash, so "Wo", Tab, Enter still opens ./Work.
+// Sample input: "o" and "flea" are queries; "/usr/share", "Work/", "~", "../x" and "file:///etc" are paths.
 function isQuery(text) {
     var line = String(text).trim()
-    if (line.length === 0) {
+    if (line.length === 0 || line.indexOf("/") >= 0) {
         return false
     }
     var first = line.charAt(0)
-    return first !== "/" && first !== "~" && first !== "." && line.indexOf("file://") !== 0
+    return first !== "~" && first !== "."
 }
 
 // The path as the chrome writes it, a tilde for the home directory; this is also the text the query matches.

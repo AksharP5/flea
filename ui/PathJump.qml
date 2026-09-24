@@ -20,19 +20,28 @@ Item {
 
     // The backend's answer for this open, { favourites, zoxide, recent }, empty until it arrives.
     property var sources: ({})
+    readonly property bool answered: root.sources.favourites !== undefined
     readonly property var entries: root.editing ? Jump.rows(root.sources, root.query, root.home) : []
     property int cursor: -1
     readonly property bool shown: root.entries.length > 0
+    // Every open asks with a new id and takes only the answer carrying it, so a slow answer to an earlier
+    // open can never land in this one, or move a cursor the user has already moved.
+    property int asked: 0
+    // Enter on a name before this open's answer is in: held, then taken by the answer, so the same keys
+    // open the same folder however fast they were typed.
+    property bool enterWaiting: false
     // Where any row last saw the pointer, so rows changing under a resting pointer never move the cursor; see ui/MenuRow.qml.
     property point pointerGlobal: Qt.point(-1, -1)
 
     // ui/WindowBody.qml carries these to the pane's backend and back, the way it carries the bar's Tab.
-    signal requested(var favourites, var recent)
+    signal requested(int id, var favourites, var recent)
     signal chosen(string path)
+    // Enter that the dropdown did not take after all: nothing matched, so the bar resolves the line as a path.
+    signal declined()
 
-    // The keys arrive through the field's Keys.forwardTo, which skips an invisible item, so an empty
-    // dropdown leaves Enter and the arrows to the bar exactly as they were before the jump existed.
-    visible: root.shown
+    // The keys arrive through the field's Keys.forwardTo, which skips an invisible item, so this stays
+    // visible for the whole edit and hands back every key it does not use; only the frame hides.
+    visible: root.editing
     // The parent is the bar's path slot, which stops a hairline above the strip's bottom edge.
     y: root.parent ? root.parent.height + Theme.spacing.hairline : 0
     width: root.parent ? root.parent.width : 0
@@ -42,6 +51,8 @@ Item {
     onCursorChanged: scroll.reveal(rowItems.itemAt(root.cursor))
     onEditingChanged: {
         root.sources = ({})
+        root.enterWaiting = false
+        root.asked += 1
         if (root.editing) {
             // Read afresh on every open, because every other application appends to the history.
             recent.active = true
@@ -49,10 +60,24 @@ Item {
         }
     }
 
-    // The backend's jumped line for this open; one that lands after the bar closed has nobody to show it to.
-    function take(favourites, zoxide, recentFolders) {
-        if (root.editing) {
-            root.sources = { favourites: favourites, zoxide: zoxide, recent: recentFolders }
+    // The backend's jumped line; one for another open, or landing after the bar closed, is dropped.
+    function take(id, favourites, zoxide, recentFolders) {
+        if (!root.editing || id !== root.asked) {
+            return
+        }
+        root.sources = { favourites: favourites, zoxide: zoxide, recent: recentFolders }
+        if (root.enterWaiting) {
+            root.enterWaiting = false
+            root.enter()
+        }
+    }
+
+    // Enter itself: the cursor row when there is one, and otherwise the line as a path, as before the jump.
+    function enter() {
+        if (root.cursor >= 0) {
+            root.chosen(root.entries[root.cursor].path)
+        } else {
+            root.declined()
         }
     }
 
@@ -77,27 +102,48 @@ Item {
         target: recent.item
         function onRefreshed() {
             if (root.editing) {
-                root.requested(root.favouritePaths(), recent.item.paths)
+                root.requested(root.asked, root.favouritePaths(), recent.item.paths)
             }
         }
     }
 
+    // The backend answers inside its own zoxide and stat budgets, docs/protocol.md "jump"; one that never
+    // answers at all, a backend gone, must not hold an Enter for good, so past this the line is a path.
+    readonly property int answerLimitMs: 4000
+    Timer {
+        id: enterLimit
+        interval: root.answerLimitMs
+        running: root.enterWaiting
+        onTriggered: {
+            root.enterWaiting = false
+            root.declined()
+        }
+    }
+
     Keys.onPressed: function (event) {
-        if (event.key === Qt.Key_Down || event.key === Qt.Key_Up) {
+        if (root.shown && (event.key === Qt.Key_Down || event.key === Qt.Key_Up)) {
             root.cursor = Jump.step(root.entries, root.cursor, event.key === Qt.Key_Down ? 1 : -1)
             event.accepted = true
             return
         }
-        if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && root.cursor >= 0) {
-            root.chosen(root.entries[root.cursor].path)
-            event.accepted = true
-            return
+        if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+            if (root.shown) {
+                root.enter()
+                event.accepted = true
+                return
+            }
+            if (!root.answered && Jump.isQuery(root.query)) {
+                root.enterWaiting = true
+                event.accepted = true
+                return
+            }
         }
         event.accepted = false
     }
 
     Rectangle {
         id: frame
+        visible: root.shown
         width: root.width
         height: Math.max(0, Math.min(rows.implicitHeight + 2 * Theme.spacing.rowPaddingY, root.room))
         color: Theme.color.surface

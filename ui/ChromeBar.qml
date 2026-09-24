@@ -37,7 +37,7 @@ Item {
     signal completeRequested(string dir, bool hidden)
     signal said(string text)
     // The folder jump's one read per open, carried to the pane's backend like Tab's peek; see ui/PathJump.qml.
-    signal jumpRequested(var favourites, var recent)
+    signal jumpRequested(int id, var favourites, var recent)
     readonly property alias jump: jump
     // Its dropdown hangs below the strip, so the strip rises over the tab bar and the listing while it shows.
     z: jump.shown ? 1 : 0
@@ -361,7 +361,8 @@ Item {
             editing: root.editing
             query: field.text
             home: root.home
-            onRequested: function (favourites, recent) { root.jumpRequested(favourites, recent) }
+            onRequested: function (id, favourites, recent) { root.jumpRequested(id, favourites, recent) }
+            onDeclined: root.commitEdit()
             onChosen: function (path) { root.closeEdit(); if (path !== root.path) root.pathEntered(path) }
         }
     }

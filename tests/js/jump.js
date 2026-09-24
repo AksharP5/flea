@@ -31,7 +31,9 @@ function score(hay, query) {
 
 function run(check) {
     check("a name is a query", Jump.isQuery("o"), true)
-    check("a name with a slash inside is still a query", Jump.isQuery("cl/fl"), true)
+    check("a slash anywhere makes the line a path", Jump.isQuery("cl/fl"), false)
+    check("a Tab that completed one name ends in a slash, so Enter opens it", Jump.isQuery("Work/"), false)
+    check("home alone is a path", Jump.isQuery("~"), false)
     check("an absolute path is typed as one", Jump.isQuery("/usr/share"), false)
     check("a home path is typed as one", Jump.isQuery("~/Work"), false)
     check("a relative climb is typed as one", Jump.isQuery("../x"), false)
@@ -95,6 +97,19 @@ function run(check) {
     for (var i = 0; i < 4096; i++) pathological += "a"
     check("a pathological name is scored from bounded starts", score(pathological, "aa") !== null, true)
 
+    // SCORES is the_exact_scores_the_jump_port_mirrors in src/backend/fuzzy.rs, value for value, so the
+    // port and the scorer it copies cannot drift apart without one of the two suites going red.
+    var bounded = ""
+    for (var b = 0; b < 16; b++) bounded += "ax"
+    var SCORES = [["report.txt", "rep", 34], ["raspberry-pie.txt", "rep", 16], ["my-notes.txt", "notes", 58],
+                  ["bignotes.txt", "notes", 52], ["SearchStrip.qml", "strip", 58], ["searchstrip.qml", "strip", 52],
+                  ["notes/bench.txt", "bench", 58], ["bench/notes.txt", "bench", 38], ["axxab", "ab", 16], ["axxb", "ab", 12],
+                  [bounded + "ab", "ab", 6], ["downloads/helper.txt", "dwnhelp", 53], ["~/Documents/claude/omarchy", "o", 10],
+                  ["~/Documents/claude/omarchy", "src", 5], ["~/Projects/homelab/nix", "tax", -7]]
+    for (var t = 0; t < SCORES.length; t++) {
+        check("the Rust scorer's own score for " + SCORES[t][1] + " against " + SCORES[t][0], score(SCORES[t][0], SCORES[t][1]), SCORES[t][2])
+    }
+
     // The wash is the best alignment's longest run, and it lands where the scorer's bonuses put it.
     check("the leaf's word start wins the wash over a letter inside a parent",
           Jump.match("~/Documents/claude/omarchy", "o").positions[0], 19)
@@ -109,7 +124,7 @@ function run(check) {
     var flea = Jump.rows(BOARD, "o", HOME)[1]
     check("a wash in the parent keeps the parent muted", JSON.stringify(Jump.segments(flea)),
           '[{"text":"~/D","leaf":false,"wash":false},{"text":"o","leaf":false,"wash":true},{"text":"cuments/claude/","leaf":false,"wash":false},{"text":"flea","leaf":true,"wash":false}]')
-    var across = Jump.rows({ zoxide: ["/w/claude/flea"] }, "e/f", HOME)[0]
+    var across = { text: "/w/claude/flea", leafStart: 10, washStart: 8, washLength: 3 }
     check("a wash across the last slash is cut in two", JSON.stringify(Jump.segments(across).map(function (s) { return s.text + (s.leaf ? "L" : "") + (s.wash ? "W" : "") })),
           '["/w/claud","e/W","fLW","leaL"]')
     check("a separator has no label", Jump.segments({ separator: true }).length, 0)

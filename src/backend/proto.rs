@@ -56,7 +56,7 @@ pub enum Request {
     LocalSend { op: String, peer: String, paths: Vec<String>, id: usize },
     TrashBrowse { line: String },
     // The path bar's folder jump: the favourites and recent files the client read, joined with zoxide's ranking.
-    Jump { favourites: Vec<String>, recent: Vec<String> },
+    Jump { id: usize, favourites: Vec<String>, recent: Vec<String> },
     Quit,
     Unknown,
 }
@@ -180,7 +180,7 @@ pub fn parse_request(line: &str) -> Request {
             media: field_bool(line, "media"),
             archive: field_bool(line, "archive"),
         },
-        Some("jump") => Request::Jump { favourites: field_str_array(line, "favourites"), recent: field_str_array(line, "recent") },
+        Some("jump") => Request::Jump { id: field_usize(line, "id").unwrap_or(0), favourites: field_str_array(line, "favourites"), recent: field_str_array(line, "recent") },
         Some("quit") => Request::Quit,
         _ => Request::Unknown,
     }

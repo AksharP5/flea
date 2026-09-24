@@ -732,22 +732,26 @@ nothing recording which half.
 
 ### jump
 
-`{"c":"jump","favourites":[<string>,...],"recent":[<string>,...]}`
+`{"c":"jump","id":<uint>,"favourites":[<string>,...],"recent":[<string>,...]}`
 
-Example: `{"c":"jump","favourites":["/home/gm/Projects"],"recent":["/home/gm/Pictures/screenshots/shot.png"]}`
+Example: `{"c":"jump","id":3,"favourites":["/home/gm/Projects"],"recent":["/home/gm/Pictures/screenshots/shot.png"]}`
 
 The path bar's folder jump, asked **once per open of the bar**, never per keystroke: the client filters
 the answer itself as the line changes. `favourites` are Flea's own favourites in their rail order, and
 `recent` is the desktop's `recently-used.xbel` newest first, which the client reads with Qt's XML reader
 because the backend has none. The backend adds the third source, zoxide's ranking, from one
 `zoxide query --list --all`, and answers one `jumped` line from a thread, because zoxide is a subprocess
-and a stat can block on a network mount.
+and a stat can block on a network mount. `id` is the client's own number for this open and comes back
+on the answer, so an answer to an earlier open is told apart from this one's.
 
 **Nothing is written.** `--all` is what keeps zoxide from pruning its own database on a query Flea made:
 without it zoxide deletes entries missing for 90 days and saves. zoxide is optional: absent, it is an
 empty source and says nothing. A zoxide that runs past 2 s is killed and draws nothing, and its answer is
-read up to 1 MiB and its first 1,000 rows. Every existence check shares one 1 s budget, so a folder whose
-stat has not answered by then is dropped with the rows after it rather than holding the whole answer.
+read up to 1 MiB and its first 1,000 rows. Only one zoxide runs at a time: an open while an earlier one is
+still being reaped draws no zoxide rather than starting a second. Each source is checked on a thread of its
+own against one shared 1 s budget, so a stat wedged on a dead mount drops that source's rows from that one on
+and never the other sources; a path whose earlier check has still not come back is skipped, not queued
+behind it, so a dead mount holds one thread and not one more per open.
 
 ### quit
 
@@ -1172,9 +1176,9 @@ or `move`, which is what lets the status bar say what it just put back.
 
 ### jumped
 
-`{"t":"jumped","favourites":[<string>,...],"zoxide":[<string>,...],"recent":[<string>,...],"ms":<float>}`
+`{"t":"jumped","id":<uint>,"favourites":[<string>,...],"zoxide":[<string>,...],"recent":[<string>,...],"ms":<float>}`
 
-Example: `{"t":"jumped","favourites":["/home/gm/Projects"],"zoxide":["/home/gm/Documents"],"recent":["/home/gm/Pictures/screenshots"],"ms":4.210}`
+Example: `{"t":"jumped","id":3,"favourites":["/home/gm/Projects"],"zoxide":["/home/gm/Documents"],"recent":["/home/gm/Pictures/screenshots"],"ms":4.210}`
 
 The answer to one `jump`: the folders of each source that exist now, each source in its own order.
 A favourite or a zoxide row must itself be a directory; a recent entry stands for the folder it sits in,

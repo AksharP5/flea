@@ -244,4 +244,25 @@ mod tests {
         assert_eq!(rank_order(4, "b.txt", 4, "a.txt"), Ordering::Greater);
         assert_eq!(rank_order(4, "a.txt", 4, "a.txt"), Ordering::Equal);
     }
+
+    // The same table, value for value, is SCORES in tests/js/jump.js: ui/js/Jump.js ports this scorer, so a
+    // weight changed here fails this test until the port and its table are changed with it.
+    #[test]
+    fn the_exact_scores_the_jump_port_mirrors() {
+        let bounded = format!("{}ab", "ax".repeat(16));
+        let table: [(&str, &str, Option<i32>); 15] = [
+            ("report.txt", "rep", Some(34)), ("raspberry-pie.txt", "rep", Some(16)),
+            ("my-notes.txt", "notes", Some(58)), ("bignotes.txt", "notes", Some(52)),
+            ("SearchStrip.qml", "strip", Some(58)), ("searchstrip.qml", "strip", Some(52)),
+            ("notes/bench.txt", "bench", Some(58)), ("bench/notes.txt", "bench", Some(38)),
+            ("axxab", "ab", Some(16)), ("axxb", "ab", Some(12)),
+            // The run at the seventeenth "a" is never tried, so the sixteenth start's gapped 6 is the answer.
+            (&bounded, "ab", Some(6)),
+            ("downloads/helper.txt", "dwnhelp", Some(53)), ("~/Documents/claude/omarchy", "o", Some(10)),
+            ("~/Documents/claude/omarchy", "src", Some(5)), ("~/Projects/homelab/nix", "tax", Some(-7)),
+        ];
+        for (hay, query, expected) in table {
+            assert_eq!(score(hay, query), expected, "{} against {}", query, hay);
+        }
+    }
 }
