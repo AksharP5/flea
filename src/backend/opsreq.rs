@@ -340,15 +340,18 @@ fn one_item(
             scanned: settled.load(Ordering::Relaxed),
         });
     };
-    let mut p = Progress { cancel, on_bytes: &mut sink, partial: None, tree: None, manifest: super::copymanifest::writer_for(src, dst) };
-    let outcome = if moving { move_any(src, dst, &mut p) } else { copy_any(src, dst, &mut p) };
+    let mut p = Progress { cancel, on_bytes: &mut sink, partial: None, tree: None, manifest: if moving { super::copymanifest::writer_for_move(src, dst) } else { super::copymanifest::writer_for(src, dst) } };
+    let mut outcome = if moving { move_any(src, dst, &mut p) } else { copy_any(src, dst, &mut p) };
     match &outcome {
         Ok(()) if moving => steps.push(undo::moved(src, dst, source)?),
         Ok(()) => steps.push(undo::copied(src, dst, source)?),
         // The partial is this operation's, so it is journaled and undo removes it like any created path.
         Err(_) => {
             if let Some(path) = p.partial.take() {
-                let manifest = p.manifest.take().and_then(|writer| writer.finish());
+                let (manifest, loud) = super::copymanifest::finish_loud(p.manifest.take());
+                if let (Err(outcome), Some(e)) = (&mut outcome, loud) {
+                    outcome.msg.push_str(&format!("; copy manifest failed: {e}"));
+                }
                 steps.push(undo::copied_partial(src, &path, source, manifest)?);
             }
         }

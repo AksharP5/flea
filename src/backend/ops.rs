@@ -92,9 +92,11 @@ pub fn duplicate(path: &Path) -> (Result<PathBuf, FleaError>, Vec<Step>) {
         Err(mut error) => {
             let mut steps = Vec::new();
             if let Some(partial) = p.partial.take() {
-                // A success journals the plain step above, so its undo is byte-for-byte
-                // today's; only a partial carries what the copy managed to create.
-                let manifest = p.manifest.take().and_then(|writer| writer.finish());
+                // A success journals the plain step above, so its undo is byte-for-byte today's; only a partial carries what the copy managed to create.
+                let (manifest, loud) = crate::backend::copymanifest::finish_loud(p.manifest.take());
+                if let Some(e) = loud {
+                    error.msg.push_str(&format!("; copy manifest failed: {e}"));
+                }
                 match undo::copied_partial(path, &partial, source, manifest) {
                     Ok(step) => steps.push(step),
                     Err(record) => error.msg.push_str(&format!("; could not journal partial copy {}: {}", partial.display(), record.msg)),

@@ -113,6 +113,12 @@ impl Manifest {
         self.end = end;
         Ok(())
     }
+    pub(crate) fn append_raw(&mut self, batch: &[u8]) -> Result<(), String> {
+        let end = self.end.checked_add(batch.len() as u64).ok_or("Trash review is too large for its backing file.")?;
+        self.file.write_all_at(batch, self.end).map_err(|e| format!("Could not write Trash review: {}", e))?;
+        self.end = end;
+        Ok(())
+    }
     pub fn records(&self) -> Records {
         Records { file: self.file.clone(), start: 0, end: self.end }
     }
@@ -124,6 +130,7 @@ impl Manifest {
 impl Records {
     pub fn start(&self) -> u64 { self.start }
     pub fn end(&self) -> u64 { self.end }
+    pub(crate) fn file_raw(&self) -> i32 { self.file.as_raw_fd() }
     fn length(&self, offset: u64) -> Result<u64, String> {
         let mut bytes = [0; LENGTH_BYTES as usize];
         self.file.read_exact_at(&mut bytes, offset)

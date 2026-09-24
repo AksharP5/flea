@@ -1,31 +1,56 @@
-// What a tree copy created, recorded as it runs so undo of a failed copy removes
-// exactly those paths and nothing else. The records live in an anonymous file beside
-// the journal's own pattern (trashmanifest.rs), never in the in-memory journal entry.
+// Tree-copy creation manifest on the runtime filesystem, never on the destination, never in the journal entry.
 use crate::backend::trashmanifest::{Manifest, Records};
 use crate::error::FleaError;
 use std::os::unix::ffi::OsStrExt;
-use std::os::unix::fs::MetadataExt;
+use std::os::unix::fs::{DirBuilderExt, MetadataExt};
 use std::path::{Component, Path, PathBuf};
 
-// Twice the largest tree this product is benched against; past it the copy still
-// runs, but undo falls back to the whole-tree check rather than recording more.
+// Twice the largest tree this product is benched against; past it the copy still runs, but undo falls back to the whole-tree check rather than recording more.
 const MAX_ENTRIES: usize = 200_000;
 // About 32 bytes of header plus short names times the entry cap, rounded up.
 const MAX_BYTES: u64 = 32 * 1024 * 1024;
 // dev(8) + ino(8) + kind(4) + len(8) + mtime sec(8) + mtime nsec(8).
 const HEADER: usize = 44;
+// Owner-only manifest directory, so a planted symlink cannot redirect the anonymous file.
+const MANIFEST_MODE: u32 = 0o700;
 
-// Recorded while the copy runs, one append per created path, so a 100,000-file
-// tree never sits in memory whole; dropped unread when the copy succeeds.
+extern "C" {
+    fn getuid() -> u32;
+}
+
+// Runtime filesystem for the manifest, never the copy source or destination, so a full destination cannot fail the append and the fd pins no mount the user ejects.
+fn manifest_dir() -> Result<PathBuf, String> {
+    let uid = unsafe { getuid() };
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    if let Some(runtime) = crate::userfile::env_dir("XDG_RUNTIME_DIR") {
+        candidates.push(runtime.join("flea"));
+    }
+    candidates.push(PathBuf::from(format!("/run/user/{uid}/flea")));
+    candidates.push(PathBuf::from(format!("/dev/shm/flea-{uid}")));
+    candidates.push(std::env::temp_dir().join("flea"));
+    for dir in candidates {
+        if std::fs::DirBuilder::new().recursive(true).mode(MANIFEST_MODE).create(&dir).is_ok() {
+            return Ok(dir);
+        }
+    }
+    Err("no writable runtime directory for the copy manifest".into())
+}
+
+// Recorded while the copy runs, one path per created file in one arena, so a 100,000-file tree never sits in memory whole; dropped unread when the copy succeeds.
 pub struct Writer {
     inner: Manifest,
     root: PathBuf,
     count: usize,
     overflow: bool,
+    failed: Option<String>,
+    arena: Vec<u8>,
+    ends: Vec<u32>,
 }
 
-// The journal step holds this instead of the records: an fd to the same anonymous
-// file, so dropping the step closes the last holder and the manifest goes with it.
+// One batched write per flush, so a success drops its buffer with no manifest I/O at all.
+const FLUSH_AT: usize = 65536;
+
+// The journal step holds this instead of the records: an fd to the same anonymous file, so dropping the step closes the last holder and the manifest goes with it.
 #[derive(Clone, Debug)]
 pub struct Handle {
     records: Records,
@@ -33,11 +58,17 @@ pub struct Handle {
     count: usize,
 }
 
-// PartialEq is journal identity (which copy this belongs to), never proof that the
-// filesystem still holds those paths; the per-record checks at undo time are that.
+// PartialEq is journal identity (which copy this belongs to), never proof that the filesystem still holds those paths; the per-record checks at undo time are that.
 impl PartialEq for Handle {
     fn eq(&self, other: &Self) -> bool {
         self.root == other.root && self.count == other.count
+    }
+}
+
+impl Handle {
+    #[cfg(test)]
+    pub fn fd_raw(&self) -> i32 {
+        self.records.file_raw()
     }
 }
 
@@ -52,8 +83,8 @@ pub struct Report {
     pub kept: Vec<Kept>,
 }
 
-// Fallback means the stream never verified a single record, so the caller runs
-// today's whole-tree check; anything already verified deleted stays deleted.
+// Fallback means the stream never verified a record, so the caller runs today's whole-tree check.
+
 pub enum Outcome {
     Done(Report),
     Fallback,
@@ -65,59 +96,126 @@ pub fn writer_for(src: &Path, dst: &Path) -> Option<Writer> {
     if meta.file_type().is_symlink() || !meta.is_dir() || !dst.is_absolute() {
         return None;
     }
-    Writer::create(&dst.parent()?.to_path_buf(), dst).ok()
+    Writer::create(dst).ok()
+}
+
+// A same-filesystem move is a plain rename with no copy, so no manifest is opened at all.
+pub fn writer_for_move(src: &Path, dst: &Path) -> Option<Writer> {
+    let meta = src.symlink_metadata().ok()?;
+    if meta.file_type().is_symlink() || !meta.is_dir() || !dst.is_absolute() {
+        return None;
+    }
+    let parent = dst.parent()?;
+    if same_dev(src, parent) {
+        return None;
+    }
+    Writer::create(dst).ok()
+}
+
+// Finish a failed copy loud: Ok manifest or None, plus a loud error when the append itself failed.
+pub fn finish_loud(writer: Option<Writer>) -> (Option<Handle>, Option<String>) {
+    match writer {
+        Some(writer) => match writer.finish() {
+            Ok(manifest) => (manifest, None),
+            Err(e) => (None, Some(e)),
+        },
+        None => (None, None),
+    }
+}
+
+// Same device means rename stays on one filesystem; any stat failure keeps the manifest.
+fn same_dev(a: &Path, b: &Path) -> bool {
+    match (a.symlink_metadata(), b.symlink_metadata()) {
+        (Ok(ma), Ok(mb)) => ma.dev() == mb.dev(),
+        _ => false,
+    }
 }
 
 impl Writer {
-    fn create(parent: &Path, root: &Path) -> Result<Self, String> {
+    fn create(root: &Path) -> Result<Self, String> {
         if !root.is_absolute() {
             return Err("a manifest root must be absolute".into());
         }
-        Ok(Self { inner: Manifest::new(parent)?, root: root.to_path_buf(), count: 0, overflow: false })
+        Ok(Self { inner: Manifest::new(&manifest_dir()?)?, root: root.to_path_buf(), count: 0, overflow: false, failed: None, arena: Vec::new(), ends: Vec::new() })
     }
 
-    // Recording never fails the copy: once the bound is hit every later path is
-    // simply unrecorded and finish() answers None, which journals without a manifest.
-    // The identity comes from the caller's own descriptor where one is at hand
-    // (fstat, no lookup at all), so a rename between the create and this call cannot
-    // substitute another file's identity for the one the copy made.
-    pub fn record(&mut self, named: &Path, meta: &std::fs::Metadata) {
-        if self.overflow || self.count >= MAX_ENTRIES || self.inner.len() >= MAX_BYTES {
+    // Full paths only, no prefix check and no stat, so a success drops its arena having paid no syscall and no parse for it.
+    pub fn record(&mut self, named: &Path) {
+        if self.failed.is_some() || self.overflow || self.count >= MAX_ENTRIES {
             self.overflow = true;
             return;
         }
-        let rel = match named.strip_prefix(&self.root) {
-            Ok(rel) => rel,
-            Err(_) => {
-                self.overflow = true;
-                return;
+        let bytes = named.as_os_str().as_bytes();
+        match self.arena.len().checked_add(bytes.len()).and_then(|end| u32::try_from(end).ok()) {
+            Some(end) => {
+                self.arena.extend_from_slice(bytes);
+                self.ends.push(end);
+                self.count += 1;
             }
-        };
-        if self.inner.append(&encode(meta, rel.as_os_str().as_bytes())).is_err() {
-            self.overflow = true;
-            return;
+            None => {
+                self.overflow = true;
+            }
         }
-        self.count += 1;
     }
 
-    // Symlinks and nodes have no descriptor to fstat; the at-path pins every parent
-    // directory, leaving only the final name to resolve, the way copyfile.rs holds them.
-    pub fn record_stat(&mut self, at: &Path, named: &Path) {
-        match at.symlink_metadata() {
-            Ok(meta) => self.record(named, &meta),
-            Err(_) => self.overflow = true,
+    // The at-path is the pin copyfile.rs holds; the identity is read at finish, so a success pays no stat.
+    pub fn record_stat(&mut self, _at: &Path, named: &Path) {
+        if self.failed.is_some() {
+            return;
         }
+        self.record(named);
     }
 
     pub fn overflow(&mut self) {
         self.overflow = true;
     }
 
-    pub fn finish(self) -> Option<Handle> {
-        if self.overflow || self.count == 0 {
-            return None;
+    pub fn finish(mut self) -> Result<Option<Handle>, String> {
+        if let Some(e) = self.failed {
+            return Err(e);
         }
-        Some(Handle { records: self.inner.records(), root: self.root, count: self.count })
+        if self.overflow || self.count == 0 {
+            return Ok(None);
+        }
+        let mut batch: Vec<u8> = Vec::new();
+        let mut written = 0usize;
+        let mut start = 0usize;
+        for &end in &self.ends {
+            let full = std::path::Path::new(std::ffi::OsStr::from_bytes(&self.arena[start..end as usize]));
+            start = end as usize;
+            let rel = match full.strip_prefix(&self.root) {
+                Ok(rel) => rel,
+                Err(_) => return Ok(None),
+            };
+            let meta = match full.symlink_metadata() {
+                Ok(meta) => meta,
+                Err(_) => continue,
+            };
+            let bytes = encode(&meta, rel.as_os_str().as_bytes());
+            if self.inner.len() + batch.len() as u64 + bytes.len() as u64 + 16 > MAX_BYTES {
+                return Ok(None);
+            }
+            let length = bytes.len() as u64;
+            batch.extend_from_slice(&length.to_le_bytes());
+            batch.extend_from_slice(&bytes);
+            batch.extend_from_slice(&length.to_le_bytes());
+            written += 1;
+            if batch.len() >= FLUSH_AT {
+                if let Err(e) = self.inner.append_raw(&batch) {
+                    return Err(e);
+                }
+                batch.clear();
+            }
+        }
+        if !batch.is_empty() {
+            if let Err(e) = self.inner.append_raw(&batch) {
+                return Err(e);
+            }
+        }
+        if written == 0 {
+            return Ok(None);
+        }
+        Ok(Some(Handle { records: self.inner.records(), root: self.root, count: written }))
     }
 }
 
@@ -171,8 +269,8 @@ fn contained(root: &Path, rel: &Path) -> Option<PathBuf> {
     }
 }
 
-// Reverse creation order is deepest first, because a copy makes a directory before
-// anything inside it; Records::previous streams that way without holding the manifest whole.
+// Reverse creation order is deepest first; Records::previous streams that way without holding the manifest whole.
+
 pub fn remove_owned(handle: &Handle) -> Outcome {
     let mut report = Report { total: handle.count, removed: 0, kept: Vec::new() };
     let mut offset = handle.records.end();
@@ -190,8 +288,8 @@ pub fn remove_owned(handle: &Handle) -> Outcome {
     Outcome::Done(report)
 }
 
-// A damaged stream after verified deletions must never widen into a whole-tree
-// removal; the rest stays on disk and the report says the manifest unreadable.
+// A damaged stream after verified deletions never widens into a whole-tree removal.
+
 fn unfinished(handle: &Handle, mut report: Report, processed: usize) -> Outcome {
     if processed == 0 {
         return Outcome::Fallback;

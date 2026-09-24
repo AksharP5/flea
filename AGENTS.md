@@ -4394,8 +4394,7 @@ promises the copy only, says that name may now be incomplete, and tells the oper
 before deleting anything. Removing the duplicate is the operator's call, not Ctrl+Z's.
 
 **The journal records only what an operation created or moved.** `undo.rs`'s `Step` has five shapes the
-product writes: `Moved` (rename back), `Copied` (remove the copy while its root still has the identity,
-ctime included, recorded when the step was journaled and nothing inside it is newer), `MadeDir` (remove it
+product writes: `Moved` (rename back), `Copied` (remove the copy; a failed tree copy carries a manifest, a success carries none), `MadeDir` (remove it
 while it is still empty, because whatever is inside it now was put there by someone else), `MadeFile`
 (remove it while it is still the untouched empty file) and `Trashed` (restore it, written by a trash and
 by a transfer that replaced an item, ahead of that item's own step); `Created` exists only
@@ -4405,16 +4404,8 @@ whose step list is empty is not pushed at all, so a refused rename leaves nothin
 newest first, and a failing step stops the rest rather than half-reversing. A copy that fails short of a
 cancel (ENOSPC, EPERM, a socket deeper in the tree) leaves the partial destination it created on disk,
 because removing it on a transient error would destroy data, and `copyfile.rs` reports that path in
-`Progress.partial` so `transfer` and `duplicate` journal it as a `Copied` step. Undo removes that tree
-only while nothing inside it is newer than its root, and a tree copy that failed after writing any file
-inside it usually is, one ctime tick being enough, so undo leaves it in place and names the newer file;
-that is v0.3.2's behaviour, and `tests` pin the removal only for a partial holding nothing.
-0.3.3 tried bumping the root's ctime on failure and reverted it, because the bump also blessed a file
-another writer had put inside mid-copy and undo deleted it; closing the gap safely needs the copy to
-record each path it created. A destination that already existed is never reported, because nothing was
-created there.
-corner: a copy is not snapshot-isolated: a file another writer puts inside the tree while a copy succeeds,
-or directly in its root while one fails, is not newer than the recorded root and goes with the tree.
+`Progress.partial` so `transfer` and `duplicate` journal it as a `Copied` step. A failed tree copy records every path it creates in `copymanifest.rs` as it runs, one append per created path in an anonymous file on the runtime filesystem, never on the destination, so a full destination cannot fail the manifest and the journal holds no descriptor on the mount being ejected; a same-filesystem move is a plain rename and opens no manifest at all. Undo walks that manifest deepest first and removes each recorded path only while it still holds the recorded identity, keeping a file edited after the copy, a path replaced by another inode, and a directory left non-empty by a stray, and reporting each kept path with its cause; a manifest that never verified a record falls back to the whole-tree check, and a success journals the plain step with no manifest. A destination that already existed is never reported, because nothing was created there.
+corner: a copy is not snapshot-isolated, so a concurrent write into a recorded path that keeps its identity goes with the tree; only identity mismatch keeps a path.
 
 **A paste or a drop onto names that exist asks once, and the answer covers only what was asked.**
 Before it sends a transfer, `ui/CollideHost.qml` sends `collisions`, which `collide.rs` `ask_beside` serves
@@ -4434,10 +4425,7 @@ at once and drops its step, so a refused copy leaves the destination as it found
 fails, the step stays for undo and the item's error says the old item is still in Trash, a cancel's
 too, and that item counts as failed rather than skipped, since its name no longer holds what it held,
 while the transfer still reports the cancel. A partial copy holding the name keeps
-both steps, and undo meets the partial under the journal rule above: removed only while nothing inside
-it is newer than its root. A tree copy that failed after writing any file inside it usually is newer, so
-undo stops at the partial and spends the entry, and the old item stays in Trash for the trash browser
-to restore. A folder is replaced whole, the old one going to Trash, and never merged. A trash that
+both steps, and undo meets the partial under the manifest rule above: it removes only the recorded paths that still hold their identity and keeps any stray, reporting each kept path with its cause. A tree copy that failed after writing any file inside it still removes every file it made, keeping only what another writer added or changed after the copy, so the old item stays in Trash for the trash browser to restore only when the partial keeps a stray. A folder is replaced whole, the old one going to Trash, and never merged. A trash that
 refuses (a mount with no trash of its own, no `gio`) fails that item and touches nothing. An item
 already there that holds any source the batch names, its own or another item's, is refused rather than
 trashed with that source inside it, whatever order the batch runs in; so is one an incoming symlink

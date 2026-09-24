@@ -165,8 +165,8 @@ pub fn copied(from: &std::path::Path, to: &std::path::Path, source: ItemIdentity
     Ok(Step::Copied { from: from.to_path_buf(), to: to.to_path_buf(), source, created: ItemIdentity::inspect(to)?, manifest: None })
 }
 
-// A failed or cancelled tree copy carries what it managed to create, so undo
-// removes exactly those paths; a success keeps the plain step above unchanged.
+// A failed or cancelled tree copy carries what it managed to create; a success keeps the plain step.
+
 pub fn copied_partial(from: &std::path::Path, to: &std::path::Path, source: ItemIdentity, manifest: Option<super::copymanifest::Handle>) -> Result<Step, FleaError> {
     Ok(Step::Copied { from: from.to_path_buf(), to: to.to_path_buf(), source, created: ItemIdentity::inspect(to)?, manifest })
 }
@@ -189,9 +189,8 @@ fn reverse(step: &Step) -> Result<Option<(ItemIdentity, ItemIdentity)>, FleaErro
         Step::Created { path } => remove(path)?,
         Step::Copied { to, created, manifest, .. } => {
             if let Some(handle) = manifest {
-                // The manifest names only what the copy made, so the coarse whole-tree
-                // checks below are skipped: a stray's creation bumps the root's own
-                // ctime and would refuse the removal its own files are owed.
+                // The manifest names only what the copy made, so the coarse whole-tree checks below are skipped.
+
                 match super::copymanifest::remove_owned(handle) {
                     super::copymanifest::Outcome::Done(report) if report.kept.is_empty() => {}
                     super::copymanifest::Outcome::Done(report) => {

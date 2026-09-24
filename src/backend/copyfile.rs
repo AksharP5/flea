@@ -97,7 +97,7 @@ fn copy_file_at(src: At, dst: At, total: u64, p: &mut Progress) -> Result<(), Fl
     if let Some(carried) = p.tree.as_mut() {
         *carried += done;
     }
-    record_open(p, dst.named, &w);
+    record_open(p, dst.named);
     Ok(())
 }
 
@@ -131,18 +131,15 @@ fn left_partial(p: &mut Progress, dst: &Path, e: FleaError) -> FleaError {
 }
 
 // A failure mid-file leaves a half-written file, which undo removes only if the manifest names it.
-fn left_half_written(p: &mut Progress, dst: At, w: &std::fs::File, e: FleaError) -> FleaError {
-    record_open(p, dst.named, w);
+fn left_half_written(p: &mut Progress, dst: At, _w: &std::fs::File, e: FleaError) -> FleaError {
+    record_open(p, dst.named);
     left_partial(p, dst.named, e)
 }
 
-// The identity is fstat'd off the still-open descriptor, so undo verifies what is on disk without a later sweep.
-fn record_open(p: &mut Progress, named: &Path, w: &std::fs::File) {
+// The path is recorded with no stat and no I/O, so a success drops its list having paid no syscall for it.
+fn record_open(p: &mut Progress, named: &Path) {
     if let Some(writer) = p.manifest.as_mut() {
-        match w.metadata() {
-            Ok(meta) => writer.record(named, &meta),
-            Err(_) => writer.overflow(),
-        }
+        writer.record(named);
     }
 }
 
@@ -199,10 +196,7 @@ fn copy_dir_at(src: At, dst: At, p: &mut Progress) -> Result<(), FleaError> {
         .map_err(|e| from_io("copy", &dst.named.to_string_lossy(), &e))?;
     let into = open_dir(dst.at).map_err(|e| from_io("copy", &dst.named.to_string_lossy(), &e))?;
     if let Some(writer) = p.manifest.as_mut() {
-        match into.metadata() {
-            Ok(meta) => writer.record(dst.named, &meta),
-            Err(_) => writer.overflow(),
-        }
+        writer.record(dst.named);
     }
     let (from_held, into_held) = (held_path(&from), held_path(&into));
     // Set once at the top of the tree, so a directory inside it goes on counting rather than starting again.
