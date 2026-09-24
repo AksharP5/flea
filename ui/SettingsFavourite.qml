@@ -98,8 +98,9 @@ Item {
         }
     }
     TapHandler {
-        // The remove mark owns its own corner of the row, and a TapHandler under another one still
-        // taps, so the row reads where the press landed rather than opening the folder it removes.
+        // Exclusive on press so the listing row under the card cannot tap as well; the remove mark
+        // owns its corner, so the row still reads where the press landed before it opens anything.
+        gesturePolicy: TapHandler.ReleaseWithinBounds
         onTapped: function (point) { if (point.position.x < remove.x) root.activated() }
     }
 }

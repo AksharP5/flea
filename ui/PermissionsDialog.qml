@@ -171,7 +171,7 @@ FocusScope {
                 anchors.right: parent.right
                 anchors.rightMargin: Theme.spacing.rowPaddingX
                 anchors.verticalCenter: parent.verticalCenter
-                glyph: "x"
+                glyph: "x"; gesturePolicy: TapHandler.ReleaseWithinBounds
                 // The one chrome control here, so brightness is all it has to say where the keyboard is: muted at rest, foreground under focus.
                 restingColor: Theme.color.muted
                 enabled: !root.applying
@@ -256,7 +256,7 @@ FocusScope {
                                     // A disabled row stays checked, so the box dims and keeps its value.
                                     available: root.editable
                                 }
-                                TapHandler { onTapped: checkbox.toggle() }
+                                TapHandler { gesturePolicy: TapHandler.ReleaseWithinBounds; onTapped: checkbox.toggle() }
                             }
                         }
                     }

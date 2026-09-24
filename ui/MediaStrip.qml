@@ -83,6 +83,7 @@ Item {
 
         TapHandler {
             acceptedButtons: Qt.LeftButton
+            gesturePolicy: TapHandler.ReleaseWithinBounds
             onTapped: {
                 root.touched()
                 root.toggled()
@@ -183,6 +184,7 @@ Item {
 
         TapHandler {
             acceptedButtons: Qt.LeftButton
+            gesturePolicy: TapHandler.ReleaseWithinBounds
             onTapped: {
                 root.touched()
                 Flea.MediaSound.toggle()

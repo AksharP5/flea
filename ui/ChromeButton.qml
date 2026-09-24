@@ -12,6 +12,8 @@ Item {
     // False while something the chrome sits under takes the pointer; the handlers stop, the drawing does not.
     property bool inputLive: true
     property color restingColor: Theme.color.foreground
+    // DragThreshold lets a drag that starts on a chrome bar button move the window; an overlay's instance passes ReleaseWithinBounds.
+    property int gesturePolicy: TapHandler.DragThreshold
     property real glyphSize: Theme.chromeMarkSize
 
     signal activated()
@@ -66,10 +68,12 @@ Item {
         cursorShape: Qt.PointingHandCursor
     }
 
+    // overlay-tap-exempt: the instance chooses, and tests/shellload.sh holds every overlay's instance to ReleaseWithinBounds.
     TapHandler {
         id: tap
         enabled: root.inputLive
         acceptedButtons: Qt.LeftButton
+        gesturePolicy: root.gesturePolicy
         onTapped: root.activated()
     }
 }

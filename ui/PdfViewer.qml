@@ -135,6 +135,7 @@ Item {
             spacing: Theme.spacing.gap
 
             Flea.ChromeButton {
+                gesturePolicy: TapHandler.ReleaseWithinBounds
                 id: previous
                 glyph: "chevron-left"
                 accessName: "Previous page"
@@ -158,6 +159,7 @@ Item {
             }
 
             Flea.ChromeButton {
+                gesturePolicy: TapHandler.ReleaseWithinBounds
                 id: next
                 glyph: "chevron-right"
                 accessName: "Next page"
@@ -178,6 +180,7 @@ Item {
             spacing: Theme.spacing.gap
 
             Flea.ChromeButton {
+                gesturePolicy: TapHandler.ReleaseWithinBounds
                 id: zoomOut
                 glyph: "minus"
                 accessName: "Zoom out"
@@ -188,6 +191,7 @@ Item {
             }
 
             Flea.ChromeButton {
+                gesturePolicy: TapHandler.ReleaseWithinBounds
                 id: zoomIn
                 glyph: "plus"
                 accessName: "Zoom in"
@@ -198,6 +202,7 @@ Item {
             }
 
             Flea.ChromeButton {
+                gesturePolicy: TapHandler.ReleaseWithinBounds
                 id: expand
                 glyph: "maximize"
                 accessName: "Expand"
@@ -208,6 +213,7 @@ Item {
             }
 
             Flea.ChromeButton {
+                gesturePolicy: TapHandler.ReleaseWithinBounds
                 id: close
                 glyph: "x"
                 accessName: "Close"

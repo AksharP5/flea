@@ -124,7 +124,8 @@ FocusScope {
                         Accessible.role: Accessible.Button
                         Accessible.name: dangerText.text
                         Accessible.onPressAction: { root.destructiveFocus = true; root.activate() }
-                        TapHandler { onTapped: { root.destructiveFocus = true; root.activate() } }
+                        // The grab Cancel's DialogButton takes: exclusive on press, so no handler under the card shares the tap.
+                        TapHandler { gesturePolicy: TapHandler.ReleaseWithinBounds; onTapped: { root.destructiveFocus = true; root.activate() } }
                     }
                 }
             }

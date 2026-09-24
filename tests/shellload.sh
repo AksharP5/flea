@@ -88,6 +88,71 @@ else
     grep -aiE 'ERROR|unavailable|Cannot assign to non-existent' "$log" | head -5 | sed 's/^/     /'
 fi
 
+# Sample input: "    Flea.FilterStrip {", which needs "FilterStrip 1.0 FilterStrip.qml"; the loader's file fallback hides a missing row.
+unlisted=""
+for type in $(grep -ho 'Flea\.[A-Z][A-Za-z0-9]*' ui/*.qml | cut -d. -f2 | sort -u); do
+    grep -qE "^(singleton )?$type [0-9.]+ $type\.qml$" ui/qmldir || unlisted="$unlisted $type"
+done
+if [ -z "$unlisted" ]; then
+    ok "every Flea.<Type> a ui/ file names has its ui/qmldir line"
+else
+    bad "ui/qmldir has no line for:$unlisted"
+fi
+
+# Every surface drawn over the listing behind a ground that takes the pointer; the walk below adds each file one places.
+overlay_roots=(CollideConfirm ContextMenu ConvertDialog KeymapSheet MenuActionDialog NetworkDialog OpenWithDialog
+    PermissionsDialog Preview SettingsPanel ShareBrowser TransferCard TrashConfirm)
+
+# Sample references a root carries: "Flea.MenuRow {", "NetworkForm {", "\"PdfViewer.qml\"".
+# corner: a QtQuick "Row {" also pulls in ui/Row.qml, which carries no TapHandler.
+overlay_files=()
+queue=("${overlay_roots[@]}")
+while [ "${#queue[@]}" -gt 0 ]; do
+    name=${queue[0]}
+    queue=("${queue[@]:1}")
+    case " ${overlay_files[*]} " in *" $name "*) continue ;; esac
+    overlay_files+=("$name")
+    for ref in $(grep -oE '(Flea\.)?[A-Z][A-Za-z0-9]* *\{|"[A-Z][A-Za-z0-9]*\.qml"' "ui/$name.qml" | tr -d '"{ ' | sort -u); do
+        ref=${ref#Flea.}
+        ref=${ref%.qml}
+        [ -f "ui/$ref.qml" ] && queue+=("$ref")
+    done
+done
+
+# A default TapHandler takes a passive grab, so the listing row under the overlay taps as well (0.3.4's
+# Permissions checkbox). Each TapHandler block, and each ChromeButton an overlay places, must say
+# ReleaseWithinBounds, or the line above it must read "overlay-tap-exempt: <why>".
+# corner: braces are counted per line, and no overlay file carries one inside a string.
+passive=""
+for name in "${overlay_files[@]}"; do
+    number=0 opened=0 depth=0 policy=0 previous=""
+    while IFS= read -r line; do
+        number=$((number + 1))
+        if [ "$opened" -eq 0 ]; then
+            case "$line" in
+                *"TapHandler {"*|*"ChromeButton {"*)
+                    case "$previous" in *"overlay-tap-exempt:"*) ;; *) opened=$number depth=0 policy=0 ;; esac ;;
+            esac
+        fi
+        if [ "$opened" -ne 0 ]; then
+            case "$line" in *"gesturePolicy: TapHandler.ReleaseWithinBounds"*) policy=1 ;; esac
+            braces_open=${line//[^\{]/}
+            braces_close=${line//[^\}]/}
+            depth=$((depth + ${#braces_open} - ${#braces_close}))
+            if [ "$depth" -le 0 ]; then
+                [ "$policy" -eq 1 ] || passive="$passive ui/$name.qml:$opened"
+                opened=0
+            fi
+        fi
+        previous=$line
+    done < "ui/$name.qml"
+done
+if [ -z "$passive" ]; then
+    ok "every overlay tap in ${#overlay_files[@]} files takes ReleaseWithinBounds, so no row beneath taps with it"
+else
+    bad "an overlay tap keeps the default passive grab:$passive"
+fi
+
 printf 'shellload: full log %s\n' "$log"
 printf 'shellload: %s check(s), %s failed\n' "$((pass + fail))" "$fail"
 [ "$fail" -eq 0 ]

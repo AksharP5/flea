@@ -9238,6 +9238,9 @@ case_clickthrough() {
     local i
     # Eighty rows overflow the window at every density; forty stopped short of a compact screen's 43.
     for i in $(seq -w 1 80); do : > "$dir/f$i.txt"; done
+    # Every menu row shown for Permissions, and a favourite that cannot open, so its click leaves the path; the suite's state home comes back after.
+    local suite_state_home="$XDG_STATE_HOME"
+    seed_ui_state "$fixture_root/clickthrough-state" '{"menu":{"hidden":[]},"places":{"favourites":[{"label":"Unopenable","path":"relative/unopenable"}]}}'
     launch "$dir"
     wait_listing 80
     local parked; parked=$(ipc cursor)
@@ -9267,7 +9270,7 @@ case_clickthrough() {
     settle
     [[ "$(ipc settingsOpen)" == "true" ]] || fail "clickthrough: the comma key did not open settings"
     local section centre cx cy wx wy
-    for section in keys menus display; do
+    for section in keys menus display places; do
         rows_run_under "$(ipc settingsCardRect)" "the settings card"
         centre=$(ipc settingsRailRowCentre "$section")
         [[ -n "$centre" ]] || fail "clickthrough: the settings rail has no $section row"
@@ -9279,11 +9282,74 @@ case_clickthrough() {
         [[ "$(ipc cursor)" == "$parked" && "$(ipc path)" == "$dir" ]] \
             || fail "clickthrough: the $section rail row click reached the pane beneath, cursor $(ipc cursor), path $(ipc path)"
     done
+    clickthrough_click "$(ipc settingsRowCentre favourite:0)" "Places favourite" "$dir" "$parked"
+    [[ "$(ipc lastMessage)" == "Could not open Unopenable"* ]] \
+        || fail "clickthrough: the Places favourite did not take its click, the footer says $(ipc lastMessage)"
     key -k Escape >/dev/null
     settle
     [[ "$(ipc settingsOpen)" == "false" ]] || fail "clickthrough: Escape did not close settings"
-    printf 'CLICKTHROUGH chips=ok rail=ok cursor=%s\n' "$parked"
+    clickthrough_permissions "$dir" "$parked"
+    clickthrough_delete "$dir" "$parked"
+    printf 'CLICKTHROUGH chips=ok rail=ok favourite=ok permissions=ok close=ok delete=ok cursor=%s\n' "$parked"
     kill_flea
+    export XDG_STATE_HOME="$suite_state_home"
+}
+
+clickthrough_wait() {
+    local reader="$1" filter="$2" what="$3" end=$((SECONDS + 10))
+    while (( SECONDS < end )); do
+        ipc "$reader" | jq -e "$filter" >/dev/null && return
+        sleep 0.05
+    done
+    fail "clickthrough: $what; $reader answered $(ipc "$reader")"
+}
+
+# Clicks a control by the window-relative centre an IPC reader gave, then requires the parked row to stand.
+clickthrough_click() {
+    local centre="$1" what="$2" dir="$3" parked="$4" cx cy wx wy
+    [[ "$centre" =~ ^[0-9]+\ [0-9]+$ ]] || fail "clickthrough: $what has no centre, ipc answered [$centre]"
+    read -r cx cy <<< "$centre"
+    read -r wx wy _ww _wh < <(window_box) || fail "native window coordinates unavailable"
+    omarchy-drive click "$((cx + wx))" "$((cy + wy))" >/dev/null
+    settle
+    [[ "$(ipc cursor)" == "$parked" && "$(ipc path)" == "$dir" ]] \
+        || fail "clickthrough: the $what click reached the pane beneath, cursor $(ipc cursor), path $(ipc path)"
+}
+
+# Every Permissions checkbox and then its close mark, clicked over the rows its card covers: none lets a row beneath tap.
+clickthrough_permissions() {
+    local dir="$1" parked="$2" box name centre mode
+    local -a boxes
+    key m >/dev/null
+    settle
+    menu_seek Permissions
+    key -k Return >/dev/null
+    clickthrough_wait permissionsState '.opened and (.busy == false) and .editable' "Permissions did not open editable on row 0"
+    rows_run_under "$(ipc permissionsState | jq -r '.rect')" "the Permissions card"
+    # Sample reader row: "Owner read<TAB>612 388".
+    mapfile -t boxes < <(ipc permissionsState | jq -r '.controls[] | select(.bit != null) | [.name, .centre] | @tsv')
+    [[ "${#boxes[@]}" == 9 ]] || fail "clickthrough: Permissions drew ${#boxes[@]} checkboxes, not nine"
+    for box in "${boxes[@]}"; do
+        IFS=$'\t' read -r name centre <<< "$box"
+        mode=$(ipc permissionsState | jq -r '.mode')
+        clickthrough_click "$centre" "$name checkbox" "$dir" "$parked"
+        [[ "$(ipc permissionsState | jq -r '.mode')" != "$mode" ]] || fail "clickthrough: the $name checkbox did not take its click"
+    done
+    clickthrough_click "$(ipc permissionsState | jq -r '.controls[] | select(.name == "Close") | .centre')" "Permissions close mark" "$dir" "$parked"
+    clickthrough_wait permissionsState '.opened | not' "the close mark did not close Permissions"
+}
+
+# The permanent-deletion card's Delete button over the rows: row 0 goes, and the row under the button does not tap.
+clickthrough_delete() {
+    local dir="$1" parked="$2"
+    key -M shift -k Delete -m shift >/dev/null
+    clickthrough_wait menuDialogState '.confirmation.opened and .confirmation.count == 1' "Shift+Delete did not ask to delete row 0"
+    rows_run_under "$(ipc menuDialogState | jq -r '.confirmation.rect')" "the deletion card"
+    clickthrough_click "$(ipc menuDialogState | jq -r '.confirmation.danger.centre')" "Delete button" "$dir" "$parked"
+    wait_listing 79
+    [[ ! -e "$dir/f01.txt" ]] || fail "clickthrough: the Delete button did not delete row 0"
+    [[ "$(ipc cursor)" == "$parked" && "$(ipc path)" == "$dir" ]] \
+        || fail "clickthrough: after the deletion the cursor is $(ipc cursor) and the path $(ipc path)"
 }
 
 # The wheel over an open overlay stays with the overlay: the listing beneath a menu, a card or a
