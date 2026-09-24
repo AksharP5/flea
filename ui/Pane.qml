@@ -224,6 +224,7 @@ FocusScope {
     // The filesystem line the status bar draws, refreshed once per directory rather than per row.
     property string fsName: ""
     property real fsFree: 0
+    property string fsPath: ""
 
     function goBack() { if (trashHost.opened) trashHost.close(); else Nav.back(root) }
     function goForward() { if (!trashHost.opened) Nav.forward(root) }

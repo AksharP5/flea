@@ -48,6 +48,7 @@ Flea.PreviewColumn {
     thumb: root.pane && root.loadedIndex >= 0 ? Thumbs.fileFor(root.pane.thumbState, root.loadedIndex) : ""
     noThumbComing: root.row !== null && (root.row.t !== true || !root.pane
         || Thumbs.refused(root.pane.thumbState, root.loadedIndex))
+    readsOriginal: root.pane !== null && Thumbs.decodesOriginal(root.pane.fsPath, root.pane.path, root.pane.fsName)
 
     function identity(row) {
         return row ? JSON.stringify([row.n, row.s, row.m, row.p, row.i]) : ""

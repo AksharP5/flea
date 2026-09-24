@@ -22,6 +22,8 @@ Item {
     property var selectedRows: []
     // The row's own absolute path, which the PDF page needs and nothing else here does.
     property string path: ""
+    // Whether the row is on a disk in this machine, where frameSharp may read the whole image; see ui/js/Thumbs.js.
+    property bool readsOriginal: false
     property int pdfControlIndex: -1
     property real pdfZoom: 1
     readonly property real pdfScrollY: pdfFlick.contentY
@@ -127,6 +129,23 @@ Item {
                 // which can be the whole camera file, takes the ceiling ui/PreviewImage.qml sets.
                 sourceSize.width: root.thumb.length > 0 ? 0 : Math.max(1, Math.round(width))
                 sourceSize.height: root.thumb.length > 0 ? 0 : Math.max(1, Math.round(height))
+            }
+
+            // The cache file is 256 px and this frame is a third of the window, so an image the cache file
+            // would stretch decodes itself at the frame's size, ui/PreviewImage.qml's ceiling, over it; the
+            // cache file stays on screen until this is Ready, so a cursor move never draws an empty frame.
+            Image {
+                id: frameSharp
+                anchors.fill: frameThumb
+                visible: frameThumb.visible && frameSharp.status === Image.Ready
+                source: root.readsOriginal && root.previewState === Facts.IMAGE && root.thumb.length > 0
+                        && frameThumb.status === Image.Ready && frameThumb.paintedWidth > frameThumb.implicitWidth
+                        ? Format.fileUri(root.path) : ""
+                fillMode: Image.PreserveAspectFit
+                asynchronous: true
+                cache: false
+                sourceSize.width: Math.max(1, Math.round(width))
+                sourceSize.height: Math.max(1, Math.round(height))
             }
 
             // The player, in the frame it paints into; built by the first press of play and not before, and by source rather than type, because QtMultimedia costs 20 MB on import alone.

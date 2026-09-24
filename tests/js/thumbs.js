@@ -97,4 +97,16 @@ function run(check) {
     check("a part-scrolled window reaches the row its bottom edge straddles", v.first + "," + v.last, "0,36")
     v = Thumbs.viewport(21, 37, 36, 30)
     check("and that straddled row is still clamped to the last row of the listing", v.last, 29)
+
+    // The Columns preview decodes an image itself only on a disk in this machine; a share keeps the cache file.
+    var here = "/home/gm/Pictures"
+    check("a btrfs folder decodes the original", Thumbs.decodesOriginal(here, here, "btrfs"), true)
+    check("so does an exfat stick, which fsinfo names by its magic", Thumbs.decodesOriginal(here, here, "0x2011bab0"), true)
+    check("an NFS share does not", Thumbs.decodesOriginal(here, here, "nfs"), false)
+    check("nor a CIFS share", Thumbs.decodesOriginal(here, here, "cifs"), false)
+    check("nor an SMB2 share, which fsinfo names by its magic", Thumbs.decodesOriginal(here, here, "0xfe534d42"), false)
+    check("nor a GVFS, rclone or sshfs folder, which are all FUSE", Thumbs.decodesOriginal(here, here, "fuse"), false)
+    check("nor a folder whose statfs failed", Thumbs.decodesOriginal(here, here, ""), false)
+    check("nor one whose statfs is still the previous folder's", Thumbs.decodesOriginal("/home/gm", here, "btrfs"), false)
+    check("nor one with no statfs yet", Thumbs.decodesOriginal("", here, "btrfs"), false)
 }
