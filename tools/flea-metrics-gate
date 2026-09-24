@@ -104,7 +104,6 @@ gridMinCellWidth|146|space(125), GridView.dc.html's five-column reference viewpo
 settingsPanelWidth|630|round(space(480) x 9/8), GM's roomier SettingsView board
 settingsRailWidth|169|630 - 459 - 2 outer hairlines, SettingsView rule 1
 settingsPaneWidth|459|round(space(350) x 9/8), GM's roomier Settings pane
-settingsIndent|52|52 x 13 / 13, the continuation indent five settings boards draw a hint and the ruler at
 settingsRailPaddingY|10|10 x 13 / 13, the inset Settings.dc.html gives the rail column above its first row"
 
 checked=0

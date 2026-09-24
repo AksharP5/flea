@@ -192,7 +192,7 @@ Item {
     Text {
         id: hint
         visible: root.isHint
-        x: root.isFooter ? Theme.spacing.rowPaddingX : Theme.settings.indent
+        x: root.isFooter ? Theme.spacing.rowPaddingX : markSlot.x + markSlot.width + Theme.spacing.gap
         y: root.isFooter ? 2 * Theme.settings.railPaddingY + Theme.spacing.hairline : Theme.spacing.rowPaddingY
         width: parent.width - x - Theme.spacing.rowPaddingX
         text: root.row.label || ""
@@ -263,13 +263,13 @@ Item {
         }
     }
 
-    // A ruler is the row above it continued, so it takes the boards' own continuation indent
-    // rather than the label column: five settings boards draw both it and a hint at that inset.
+    // A ruler is the row above it continued, so it starts at that row's label column, as a hint
+    // does: HANDOFF rules 3 and 8, nothing is indented and a hint sits under its control's label.
     Flea.SettingsRuler {
         id: ruler
         visible: root.isRuler
-        anchors.left: parent.left
-        anchors.leftMargin: Theme.settings.indent
+        anchors.left: markSlot.right
+        anchors.leftMargin: Theme.spacing.gap
         anchors.right: parent.right
         anchors.rightMargin: Theme.spacing.rowPaddingX
         anchors.verticalCenter: parent.verticalCenter
