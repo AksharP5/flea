@@ -57,7 +57,6 @@ fn copy_file_at(src: At, dst: At, total: u64, p: &mut Progress) -> Result<(), Fl
     // Issue 109: a create takes the umask, so a 0600 source landed 0644 and the copy published what
     // the original kept private. The source's own bits are carried by the create itself, so there is
     // no window where the bytes are on disk under a wider mode, narrowed by the umask and never widened.
-    // The mode comes from the open's own fstat, so the descriptor is stat'd once, not twice.
     let mode = keep_mode(src_meta.permissions().mode());
     let mut w = std::fs::OpenOptions::new()
         .write(true)

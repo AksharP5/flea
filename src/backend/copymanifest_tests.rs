@@ -142,8 +142,7 @@ fn framed_bytes_never_pass_the_cap() {
     assert!(writer.finish().expect("no I/O").is_none(), "an overfull manifest journals today's step instead");
 }
 
-// A tree copy records every path it creates exactly once: each file through the copy's own
-// descriptor, each directory at creation, so undo walks the same set the copy made.
+// A tree copy records every path it creates exactly once, so undo walks the same set the copy made.
 #[test]
 fn a_tree_copy_records_each_file_once_and_each_directory_once() {
     use crate::backend::copyfile::{copy_any, Progress};

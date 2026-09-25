@@ -25,8 +25,7 @@ pub fn open_if_regular(path: &Path, extra_flags: i32) -> std::io::Result<File> {
     open_if_regular_with_meta(path, extra_flags).map(|(f, _)| f)
 }
 
-// The same open, handing back the fstat its own check already took, so a caller that needs the
-// mode does not stat the descriptor a second time.
+// The same open, handing back the fstat its own check took, so a caller needing the mode never stats it twice.
 pub fn open_if_regular_with_meta(path: &Path, extra_flags: i32) -> std::io::Result<(File, std::fs::Metadata)> {
     let f = std::fs::OpenOptions::new().read(true).custom_flags(O_NONBLOCK | extra_flags).open(path)?;
     // corner: this second check is what closes that window, and no test can schedule the swap that opens it.
