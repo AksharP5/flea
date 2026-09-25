@@ -5,7 +5,7 @@ fn recorded(d: &TestDir, names: &[&str]) -> Handle {
     let root = d.dir("root");
     let mut writer = Writer::create(&root).expect("anonymous manifest");
     // The root first, the way copy_dir_at records its own creation before any child.
-    writer.record(&root);
+    writer.record(&root, &root.symlink_metadata().unwrap());
     for name in names {
         let p = root.join(name);
         if name.ends_with('/') {
@@ -16,7 +16,7 @@ fn recorded(d: &TestDir, names: &[&str]) -> Handle {
             }
             std::fs::write(&p, format!("body of {name}")).unwrap();
         }
-        writer.record(&p);
+        writer.record(&p, &p.symlink_metadata().unwrap());
     }
     writer.finish().expect("no I/O").expect("records went")
 }
@@ -92,11 +92,11 @@ fn an_overflowed_writer_finishes_without_a_manifest() {
 }
 
 #[test]
-fn a_same_filesystem_move_opens_no_manifest() {
+fn a_directory_move_always_opens_a_manifest() {
     let d = TestDir::new("manifestskipmove");
     let src = d.dir("src");
     let dst = d.join("dst");
-    assert!(writer_for_move(&src, &dst).is_none(), "plain rename pays no O_TMPFILE");
+    assert!(writer_for_move(&src, &dst).is_some(), "even a same-device rename is manifested, since EXDEV through a symlinked parent defeats a device check");
     assert!(writer_for(&src, &dst).is_some(), "copy still records");
 }
 
@@ -105,11 +105,11 @@ fn two_thousand_records_stream_there_and_back() {
     let d = TestDir::new("manifeststream");
     let root = d.dir("root");
     let mut writer = Writer::create(&root).expect("anonymous manifest");
-    writer.record(&root);
+    writer.record(&root, &root.symlink_metadata().unwrap());
     for i in 0..2000 {
         let p = root.join(format!("f{i:05}.bin"));
         std::fs::write(&p, "x").unwrap();
-        writer.record(&p);
+        writer.record(&p, &p.symlink_metadata().unwrap());
     }
     let handle = writer.finish().expect("no I/O").expect("bounded well under the cap");
     assert_eq!(handle.count, 2001);

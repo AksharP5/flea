@@ -3,10 +3,11 @@
 # a sweep of 50 cursor moves at key-repeat rate must open no original, and a rest on a 6016x3900
 # PNG must decode it exactly once. Decodes are counted from outside the column, as open events on
 # the fixture directory between touch sentinel files the harness drops at each phase boundary, so
-# windows follow the event stream's own order instead of comparing two clocks, and one decode is
-# one rest event with at least one open of the original: Qt opens an image more than once per
-# decode. The same instrument runs on the base commit too: this pins the product path, it is not a
-# fix. Offscreen, so it needs no display and no lock.
+# windows follow the event stream's own order instead of comparing two clocks. One decode opens its
+# original several times over, so the rest counts decode episodes, runs of big.png opens unbroken by
+# any other event, and demands exactly one; a second decode lands its own run and reddens. The same
+# instrument runs on the base commit too: this pins the product path, it is not a fix. Offscreen, so
+# it needs no display and no lock.
 set -u
 cd "$(dirname "$0")/.." || exit 1
 
@@ -27,6 +28,12 @@ cleanup() {
     local result=$?
     trap - EXIT
     [ -n "${watcher:-}" ] && kill "$watcher" 2>/dev/null
+    wait 2>/dev/null
+    # A failed run keeps its root, so every log path a FAIL line prints still points at a file.
+    if [ "$result" -ne 0 ]; then
+        printf 'sharp-decode: keeping %s\n' "$test_root"
+        exit "$result"
+    fi
     sandbox_remove "$test_root"
     exit "$result"
 }
@@ -34,16 +41,16 @@ trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-cfg="$test_root/config"
+config_dir="$test_root/config"
 photos="$test_root/photos"
 runtime="$test_root/runtime"
 log="$test_root/sharp.log"
 watchlog="$test_root/watch.log"
-mkdir -p "$cfg" "$photos" "$runtime" || exit 1
+mkdir -p "$config_dir" "$photos" "$runtime" || exit 1
 chmod 700 "$runtime" || exit 1
-ln -s "$PWD/tests/sharp-decode.qml" "$cfg/shell.qml" || exit 1
-ln -s /usr/share/omarchy/shell/Commons "$cfg/Commons" || exit 1
-ln -s /usr/share/omarchy/shell/Ui "$cfg/Ui" || exit 1
+ln -s "$PWD/tests/sharp-decode.qml" "$config_dir/shell.qml" || exit 1
+ln -s /usr/share/omarchy/shell/Commons "$config_dir/Commons" || exit 1
+ln -s /usr/share/omarchy/shell/Ui "$config_dir/Ui" || exit 1
 
 # Fifty sweep photos as copies of two seeds, one shared 256 px thumbnail each, the 6016x3900 PNG
 # rest row, and a text row the initial selection loads so nothing image-like opens before the
@@ -75,7 +82,7 @@ watcher=$!
     QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software QT_QPA_UPDATE_IDLE_TIME=1 \
     QT_FORCE_STDERR_LOGGING=1 \
     SHARP_UI="$PWD/ui" SHARP_PHOTOS="$photos" \
-    timeout 120 qs -p "$cfg" > "$log" 2>&1 )
+    timeout 120 qs -p "$config_dir" > "$log" 2>&1 )
 status=$?
 # The watch is killed only once qs is gone, plus a breath so its last events flush: nothing after
 # the done sentinel can enter a window, and nothing before it is still unread.
@@ -89,28 +96,54 @@ if grep -q 'SHARP FAIL' "$log" || ! grep -q 'SHARP DONE' "$log"; then
 else
     # The three sentinels in order open the sweep and rest windows; delivery is causal, so every
     # event of a window is already in the log once its closing sentinel is read.
-    read -r got_sweep got_rest got_done sweep_opens rest_big rest_sweep < <(awk -F'|' '
-        $1 ~ /CREATE/ && $2 == "sentinel-sweep" { phase = 1; s0 = 1; next }
-        $1 ~ /CREATE/ && $2 == "sentinel-rest" { if (phase == 1) phase = 2; s1 = 1; next }
-        $1 ~ /CREATE/ && $2 == "sentinel-done" { if (phase == 2) phase = 3; s3 = 1; next }
-        $1 ~ /OPEN/ && ($2 ~ /^s[0-9]+\.jpg$/ || $2 == "big.png") {
-            if (phase == 1) sweep++
-            else if (phase == 2 && $2 == "big.png") big++
-            else if (phase == 2) rest_sweep++
-        }
-        END { print s0 + 0, s1 + 0, s3 + 0, sweep + 0, big + 0, rest_sweep + 0 }' "$watchlog")
-    if [[ "$got_sweep" != 1 || "$got_rest" != 1 || "$got_done" != 1 ]]; then
+    # Sample input, one inotifywait line per event: 'OPEN|s12.jpg' opens a sharp original, while
+    # 'CREATE|sentinel-rest' closes the sweep window and opens the rest one; thumbnails start with
+    # t, sentinels with sentinel-, and note.txt is the text row, so only an s photo or big.png is a
+    # sharp decode, and only a run of big.png opens unbroken by any other line is one decode episode.
+    got_sweep=0; got_rest=0; got_done=0; phase=0
+    sweep_opens=0; rest_big=0; rest_episodes=0; rest_sweep=0; in_big_run=0
+    events=""; name=""
+    while IFS='|' read -r events name || [ -n "$events" ]; do
+        case "$events" in
+        *CREATE*)
+            if [ "$name" = "sentinel-sweep" ]; then phase=1; got_sweep=1; in_big_run=0
+            elif [ "$name" = "sentinel-rest" ]; then [ "$phase" -eq 1 ] && phase=2; got_rest=1; in_big_run=0
+            elif [ "$name" = "sentinel-done" ]; then [ "$phase" -eq 2 ] && phase=3; got_done=1
+            fi
+            ;;
+        *OPEN*)
+            if [ "$phase" -eq 1 ]; then
+                case "$name" in
+                s*.jpg|big.png) sweep_opens=$((sweep_opens + 1)) ;;
+                esac
+                in_big_run=0
+            elif [ "$phase" -eq 2 ]; then
+                if [ "$name" = "big.png" ]; then
+                    rest_big=$((rest_big + 1))
+                    if [ "$in_big_run" -eq 0 ]; then rest_episodes=$((rest_episodes + 1)); in_big_run=1; fi
+                else
+                    in_big_run=0
+                    case "$name" in
+                    s*.jpg) rest_sweep=$((rest_sweep + 1)) ;;
+                    esac
+                fi
+            fi
+            ;;
+        *) in_big_run=0 ;;
+        esac
+    done < "$watchlog"
+    if [ "$got_sweep" != 1 ] || [ "$got_rest" != 1 ] || [ "$got_done" != 1 ]; then
         bad "a phase sentinel never arrived (sweep=$got_sweep rest=$got_rest done=$got_done) (log $log)"
     else
-        if [[ "$sweep_opens" = 0 ]]; then
+        if [ "$sweep_opens" -eq 0 ]; then
             ok "50 moves at key-repeat rate opened no original"
         else
             bad "the sweep opened $sweep_opens original(s) (log $log)"
         fi
-        if [[ "$rest_big" -ge 1 && "$rest_sweep" = 0 ]]; then
-            ok "a rest decoded exactly the rested original ($rest_big open event(s) for one decode)"
+        if [ "$rest_episodes" -eq 1 ] && [ "$rest_sweep" -eq 0 ]; then
+            ok "a rest decoded exactly the rested original ($rest_big open event(s) in one decode)"
         else
-            bad "the rest opened big.png $rest_big time(s) and sweep rows $rest_sweep time(s) (log $log)"
+            bad "the rest opened big.png $rest_big time(s) in $rest_episodes decode(s) and sweep rows $rest_sweep time(s) (log $log)"
         fi
     fi
 fi

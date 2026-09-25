@@ -44,11 +44,11 @@ Item {
     // opening waits for the cursor to settle, which is issue 117 below.
     onPathChanged: { root.page = 0; pdfSettle.restart() }
     onPageCountChanged: if (root.pageCount > 0) root.page = Math.min(root.page, root.pageCount - 1)
-    // A turn arms the cap only for a page other than the one on screen: held turns share the
-    // first turn's deadline, and turning back onto the shown page stops the cap instead of arming it.
+    // A turn arms the cap for a page other than the one on screen; with no page shown yet it does nothing, and turning back onto the shown page stops the cap instead.
     onPageChanged: {
         if (page.status !== Image.Loading) return
-        if (root.shownPage >= 0 && root.page !== root.shownPage) renderCap.start()
+        if (root.shownPage < 0) return
+        if (root.page !== root.shownPage) renderCap.start()
         else { renderCap.stop(); root.fellBack = false }
     }
 

@@ -246,6 +246,12 @@ function run(check) {
     check("and it takes the error role with its hint from the live keymap",
           refused.isError + "|" + Focus.noTrashHint(),
           true + "|" + Keymap.hintFor("deletePermanently") + " deletes")
+    // A preset with no deletePermanently row leaves hintFor empty, so the refusal reads bare rather than dangling a separator.
+    var keepHint = Keymap.hintFor
+    Keymap.hintFor = function (action) { return action === "deletePermanently" ? "" : keepHint(action) }
+    check("with no key for deletePermanently the refusal reads bare", Focus.noTrashLine(), Focus.NO_TRASH)
+    check("and its hint is empty rather than a bare verb", Focus.noTrashHint(), "")
+    Keymap.hintFor = keepHint
     var onDisk = pane(closed())
     onDisk.path = "/home/gm/Downloads"
     check("while Delete in a local folder still does", Focus.lookup(key(Qt.Key_Delete, "", none), onDisk), "trash")

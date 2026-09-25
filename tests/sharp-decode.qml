@@ -35,12 +35,33 @@ ShellRoot {
 
     // The stub pane SelectionPreview reads: cursor and directory identity for the settle, join and
     // kindNames for the load, thumbState for the thumbnail binding, fsPath and fsName for the
-    // local-disk original rule, and a backend whose meta reply the harness injects by hand.
+    // local-disk original rule, and a backend answering meta for every row the sweep and the rest hold.
     Item {
         id: stubBackend
         signal metaResult(var message)
-        function askMeta(index, text, media, archive) { return 0 }
+        property int nextToken: 0
+        property var pending: []
+        function askMeta(index, text, media, archive) {
+            nextToken += 1
+            pending.push({ token: nextToken, index: index })
+            metaTimer.restart()
+            return nextToken
+        }
         function thumb(rows) {}
+    }
+
+    // Local disk answers in milliseconds, so a settled selection is never left waiting on a reply.
+    Timer {
+        id: metaTimer
+        interval: 5
+        onTriggered: {
+            for (var i = 0; i < stubBackend.pending.length; i++) {
+                var req = stubBackend.pending[i]
+                var big = req.index === shell.restRow
+                stubBackend.metaResult({ token: req.token, w: big ? 6016 : 640, h: big ? 3900 : 480 })
+            }
+            stubBackend.pending = []
+        }
     }
 
     Item {
@@ -92,9 +113,14 @@ ShellRoot {
     // The settled engine behind the first measurement: the cursor starts on the text row and the
     // sweep sentinel is dropped before anything moves, so module load and the first layout never
     // enter a window, and the script reads every earlier event as drained once it sees the file.
+    // Every row carries the thumbnail its sharp original waits for, so a settle that let a sweep load would decode during the sweep and redden the script.
     function begin() {
         stub.path = shell.photoDir
         stub.fsPath = shell.photoDir
+        var files = {}
+        for (var i = 1; i < shell.restRow; i++) files[i] = shell.photoDir + "/t" + (i - 1) + ".png"
+        files[shell.restRow] = shell.photoDir + "/t50.png"
+        stub.thumbState = ({ file: files })
         stub.cursorIndex = 0
         shell.mark("sweep")
         shell.log("READY pid=" + Quickshell.processId)
@@ -126,15 +152,14 @@ ShellRoot {
                 stub.cursorIndex = shell.restRow
                 shell.mark("rest")
                 shell.log("REST START")
-                injectPoll.restart()
+                restPoll.restart()
             }
         }
     }
 
-    // The backend's own replies, which a local disk answers in milliseconds: the meta that takes
-    // the column out of LOADING and the thumbnail the sharp original waits for.
+    // The rest has loaded once the column holds a path; the decode it starts is what the done window counts.
     Timer {
-        id: injectPoll
+        id: restPoll
         interval: 10
         repeat: true
         property int waited: 0
@@ -142,10 +167,6 @@ ShellRoot {
             waited += interval
             if (loader.item.path !== "") {
                 stop()
-                var files = {}
-                files[stub.cursorIndex] = shell.photoDir + "/t50.png"
-                stub.thumbState = ({ file: files })
-                loader.item.meta = { w: 6016, h: 3900 }
                 shell.log("INJECT")
                 doneTimer.restart()
             } else if (waited > 1000) {

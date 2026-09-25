@@ -150,6 +150,17 @@ function run(check) {
     })[0].keys.split(" / ").indexOf("d"), -1)
     check("menu-only actions invent no shortcut", Keymap.hintFor("emptyTrash"), "")
     check("a shift chord fills an action no plain key names", Keymap.hintFor("deletePermanently"), "shift-delete")
+    // A preset shift row for an action the table binds plain: the plain key must speak for it, since a shift chord only fills what no text or plain row names.
+    var keepRows = Keymap.bindingRows
+    Keymap.bindingRows = function (name, frontend) {
+        return [{ mods: "none", key: "Delete", keys: "delete", action: "trash", preset: "all" },
+                { mods: "shift", key: "X", keys: "shift-x", action: "trash", preset: name }]
+    }
+    Keymap.setPreset("vim")
+    check("a preset shift row never replaces the plain hint", Keymap.hintFor("trash"), "delete")
+    Keymap.bindingRows = keepRows
+    Keymap.setPreset("vim")
+    check("deletePermanently still gets its shift hint where no plain row exists", Keymap.hintFor("deletePermanently"), "shift-delete")
     check("sheet is populated from effective current bindings", Keymap.sheetFor(Keymap.preset, "gui").length > 30, true)
     // One cap names one key. Joining every spelling an action answers to produced caps of 40
     // characters on Default and 78 on Mac, wider than the card, and they drew over the next column.

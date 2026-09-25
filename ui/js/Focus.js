@@ -8,6 +8,7 @@
 .import "Ops.js" as Ops
 .import "PreviewKeys.js" as PreviewKeys
 .import "RailKeys.js" as RailKeys
+.import "Status.js" as Status
 .import "Search.js" as Search
 .import "Sort.js" as Sort
 .import "Swap.js" as Swap
@@ -17,10 +18,10 @@
 var LIST = "list"
 var RAIL = "rail"
 
-// Refusal where gio has no Trash: the place in the primary, the key that still works in the secondary.
+// Refusal where gio has no Trash: the place in the primary, the key that still works in the secondary, both from the guarded helper so a preset with no key reads bare.
 var NO_TRASH = "This location has no Trash"
-function noTrashHint() { return Keymap.hintFor("deletePermanently") + " deletes" }
-function noTrashLine() { return NO_TRASH + " · " + noTrashHint() }
+function noTrashHint() { return Status.trashHint().replace(" · ", "") }
+function noTrashLine() { return NO_TRASH + Status.trashHint() }
 
 // Tab is the only thing that moves focus between views, so the rule lives in one function.
 function next(current, sidebar) {

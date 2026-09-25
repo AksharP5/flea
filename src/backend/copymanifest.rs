@@ -11,19 +11,21 @@ const MAX_ENTRIES: usize = 200_000;
 const MAX_BYTES: u64 = 32 * 1024 * 1024;
 // dev(8) + ino(8) + kind(4) + len(8) + mtime sec(8) + mtime nsec(8).
 const HEADER: usize = 44;
+// The two length words Manifest::append writes around each record.
+const FRAMING: u64 = 16;
 
-// Recorded while the copy runs, one path per created file in one arena, so a 100,000-file tree never sits in memory whole; dropped unread when the copy succeeds.
+// Buffered while the copy runs and appended every 64 KiB, so a 100,000-file tree never sits in memory whole; dropped unread when the copy succeeds.
 pub struct Writer {
     inner: Manifest,
     root: PathBuf,
     count: usize,
     overflow: bool,
     failed: Option<String>,
-    arena: Vec<u8>,
+    buf: Vec<u8>,
     ends: Vec<u32>,
 }
 
-// One batched write per flush, so a success drops its buffer with no manifest I/O at all.
+// Records reach the anonymous file in 64 KiB batches as the copy runs, so memory stays bounded whatever the tree holds.
 const FLUSH_AT: usize = 65536;
 
 // The journal step holds this instead of the records: an fd to the same anonymous file, so dropping the step closes the last holder and the manifest goes with it.
@@ -82,24 +84,9 @@ pub fn writer_for(src: &Path, dst: &Path) -> Option<Writer> {
     }
 }
 
-// A same-filesystem move is a plain rename with no copy, so no manifest is opened at all.
+// A move copies only across filesystems, but EXDEV through a symlinked parent defeats a device check, so every directory move is manifested; a rename drops it unread.
 pub fn writer_for_move(src: &Path, dst: &Path) -> Option<Writer> {
-    let meta = src.symlink_metadata().ok()?;
-    if meta.file_type().is_symlink() || !meta.is_dir() || !dst.is_absolute() {
-        return None;
-    }
-    let parent = dst.parent()?;
-    if same_dev(src, parent) {
-        return None;
-    }
-    match Writer::create_for(src, dst) {
-        // Same fallback as a copy: the move still runs, and the operator is told the manifest did not.
-        Err(e) => {
-            eprintln!("flea: copy manifest unavailable for {}: {e}", dst.display());
-            None
-        }
-        Ok(writer) => Some(writer),
-    }
+    writer_for(src, dst)
 }
 
 // Finish a failed copy loud: Ok manifest or None, plus a loud error when the append itself failed.
@@ -110,14 +97,6 @@ pub fn finish_loud(writer: Option<Writer>) -> (Option<Handle>, Option<String>) {
             Err(e) => (None, Some(e)),
         },
         None => (None, None),
-    }
-}
-
-// Same device means rename stays on one filesystem; any stat failure keeps the manifest.
-fn same_dev(a: &Path, b: &Path) -> bool {
-    match (a.symlink_metadata(), b.symlink_metadata()) {
-        (Ok(ma), Ok(mb)) => ma.dev() == mb.dev(),
-        _ => false,
     }
 }
 
@@ -134,7 +113,7 @@ impl Writer {
             // A directory that qualifies can still refuse an anonymous file, so each one is tried in turn.
             match Manifest::new(&dir) {
                 Ok(inner) => {
-                    return Ok(Self { inner, root: root.to_path_buf(), count: 0, overflow: false, failed: None, arena: Vec::new(), ends: Vec::new() })
+                    return Ok(Self { inner, root: root.to_path_buf(), count: 0, overflow: false, failed: None, buf: Vec::new(), ends: Vec::new() })
                 }
                 Err(e) => last = e,
             }
@@ -148,38 +127,71 @@ impl Writer {
         Self::create_for(root, root)
     }
 
-    // Full paths only, no prefix check and no stat, so a success drops its arena having paid no syscall and no parse for it.
-    pub fn record(&mut self, named: &Path) {
+    // Identity arrives with the path from the caller's own descriptor (fstat, no lookup), so a rename between create and record cannot substitute another file.
+    pub fn record(&mut self, named: &Path, meta: &std::fs::Metadata) {
         if self.failed.is_some() || self.overflow || self.count >= MAX_ENTRIES {
             self.overflow = true;
             return;
         }
-        let bytes = named.as_os_str().as_bytes();
-        match self.arena.len().checked_add(bytes.len()).and_then(|end| u32::try_from(end).ok()) {
-            Some(end) => {
-                self.arena.extend_from_slice(bytes);
-                self.ends.push(end);
-                self.count += 1;
+        let rel = match named.strip_prefix(&self.root) {
+            Ok(rel) => rel,
+            Err(_) => {
+                self.overflow = true;
+                return;
             }
-            None => {
+        };
+        let bytes = encode(meta, rel.as_os_str().as_bytes());
+        if self.inner.len() + self.buf.len() as u64 + bytes.len() as u64 + FRAMING > MAX_BYTES {
+            self.overflow = true;
+            return;
+        }
+        self.buf.extend_from_slice(&bytes);
+        self.ends.push(self.buf.len() as u32);
+        self.count += 1;
+        if self.buf.len() >= FLUSH_AT {
+            self.flush();
+        }
+    }
+
+    // No descriptor to fstat for symlinks and nodes, so the at-path pins every parent and only the final name resolves, the way copyfile.rs holds them.
+    pub fn record_stat(&mut self, at: &Path, named: &Path) {
+        if self.failed.is_some() {
+            return;
+        }
+        match at.symlink_metadata() {
+            Ok(meta) => self.record(named, &meta),
+            Err(_) => {
                 self.overflow = true;
             }
         }
     }
 
-    // The at-path is the pin copyfile.rs holds; the identity is read at finish, so a success pays no stat.
-    pub fn record_stat(&mut self, _at: &Path, named: &Path) {
-        if self.failed.is_some() {
-            return;
-        }
-        self.record(named);
-    }
-
-    #[cfg(test)]
+    // A stat this copy could not take records nothing: finish answers None and undo falls back to the whole-tree check.
     pub fn overflow(&mut self) {
         self.overflow = true;
     }
 
+    // Every buffered record through Manifest in one write, so the framing lives in one place; a failed batch latches and finish reports it loud.
+    fn flush(&mut self) {
+        if self.failed.is_some() {
+            self.buf.clear();
+            self.ends.clear();
+            return;
+        }
+        let buf = std::mem::take(&mut self.buf);
+        let ends = std::mem::take(&mut self.ends);
+        let mut start = 0usize;
+        let mut records: Vec<&[u8]> = Vec::with_capacity(ends.len());
+        for end in ends {
+            records.push(&buf[start..end as usize]);
+            start = end as usize;
+        }
+        if let Err(e) = self.inner.append_all_labelled("copy manifest", &records) {
+            self.failed = Some(e);
+        }
+    }
+
+    // Finish never stats the destination: every identity was captured at create, so a failed or cancelled copy answers at once.
     pub fn finish(mut self) -> Result<Option<Handle>, String> {
         if let Some(e) = self.failed {
             return Err(e);
@@ -187,45 +199,11 @@ impl Writer {
         if self.overflow || self.count == 0 {
             return Ok(None);
         }
-        let mut batch: Vec<u8> = Vec::new();
-        let mut written = 0usize;
-        let mut start = 0usize;
-        for &end in &self.ends {
-            let full = std::path::Path::new(std::ffi::OsStr::from_bytes(&self.arena[start..end as usize]));
-            start = end as usize;
-            let rel = match full.strip_prefix(&self.root) {
-                Ok(rel) => rel,
-                Err(_) => return Ok(None),
-            };
-            let meta = match full.symlink_metadata() {
-                Ok(meta) => meta,
-                Err(_) => continue,
-            };
-            let bytes = encode(&meta, rel.as_os_str().as_bytes());
-            if self.inner.len() + batch.len() as u64 + bytes.len() as u64 + 16 > MAX_BYTES {
-                return Ok(None);
-            }
-            let length = bytes.len() as u64;
-            batch.extend_from_slice(&length.to_le_bytes());
-            batch.extend_from_slice(&bytes);
-            batch.extend_from_slice(&length.to_le_bytes());
-            written += 1;
-            if batch.len() >= FLUSH_AT {
-                if let Err(e) = self.inner.append_raw(&batch) {
-                    return Err(e);
-                }
-                batch.clear();
-            }
+        self.flush();
+        if let Some(e) = self.failed.take() {
+            return Err(e);
         }
-        if !batch.is_empty() {
-            if let Err(e) = self.inner.append_raw(&batch) {
-                return Err(e);
-            }
-        }
-        if written == 0 {
-            return Ok(None);
-        }
-        Ok(Some(Handle { records: self.inner.records(), root: self.root, count: written }))
+        Ok(Some(Handle { records: self.inner.records(), root: self.root, count: self.count }))
     }
 }
 

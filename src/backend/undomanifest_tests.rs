@@ -160,6 +160,35 @@ fn a_file_replaced_by_another_inode_is_kept() {
 }
 
 #[test]
+fn a_file_edited_or_replaced_mid_copy_survives_undo() {
+    let d = TestDir::new("undopartialmidcopy");
+    let src = flat_source(&d, "source");
+    let partial = d.join("clone");
+    // Snapshotted at 3 and tampered at 5 on the copy's own thread, so both are recorded by then and the manifest holds the as-created identity, so undo keeps both.
+    let (mut edited, mut replaced) = (PathBuf::new(), PathBuf::new());
+    let mut hook = |reports: u32, src: &Path, dst: &Path| {
+        if reports == 3 {
+            let mut bins = std::fs::read_dir(dst).unwrap().flatten().map(|entry| entry.path()).filter(|p| p.extension().and_then(|e| e.to_str()) == Some("bin"));
+            edited = bins.next().expect("a copied file to edit");
+            replaced = bins.next().expect("a copied file to replace");
+        } else if reports == 5 {
+            std::fs::write(&edited, "the user's own longer work").unwrap();
+            let swap = dst.join("swap.bin");
+            std::fs::write(&swap, "another writer's file").unwrap();
+            std::fs::rename(&swap, &replaced).unwrap();
+            std::fs::set_permissions(src, std::fs::Permissions::from_mode(0o000)).unwrap();
+        }
+    };
+    let handle = partial_with_manifest(&src, &partial, &mut hook);
+    let step = copied_partial(&src, &partial, ItemIdentity::inspect(&src).unwrap(), Some(handle)).unwrap();
+    let mut j = journal("copy", vec![step]);
+    let err = j.undo().expect_err("both tampered files must be reported, not removed");
+    assert!(err.msg.contains("kept"), "honest count: {}", err.msg);
+    assert_eq!(std::fs::read_to_string(&edited).unwrap(), "the user's own longer work");
+    assert_eq!(std::fs::read_to_string(&replaced).unwrap(), "another writer's file");
+}
+
+#[test]
 fn a_missing_manifest_falls_back_to_todays_behaviour() {
     let d = TestDir::new("undopartialfallback");
     // Newer inside: today's refusal, word for word.
@@ -246,7 +275,7 @@ fn walk_bins(root: &Path) -> Vec<PathBuf> {
     found
 }
 
-// A process-wide file-size cap, scoped to this test's big file alone.
+// Process-wide, but 300 KiB: the suite's largest concurrent write is two_thousand_records' ~140 KiB manifest stream, so only this test's 512 KiB file trips it; the 2 KiB cap runs in a child above.
 
 #[repr(C)]
 struct Rlimit {
@@ -347,6 +376,15 @@ fn a_failed_copy_holds_no_descriptor_on_the_destination_filesystem() {
 
 #[test]
 fn a_manifest_append_failure_is_loud_rather_than_silent_overflow() {
+    // RLIMIT_FSIZE is process-wide, so the 2 KiB cap below runs in a re-executed child and nothing else running here can hit it.
+    if std::env::var_os("FLEA_FSIZE_CHILD").is_none() {
+        let exe = std::env::current_exe().expect("a test binary knows its own path");
+        let out = std::process::Command::new(exe).args(["--exact", "--test-threads=1", "--nocapture", "backend::undomanifest_tests::a_manifest_append_failure_is_loud_rather_than_silent_overflow"]).env("FLEA_FSIZE_CHILD", "1").output().expect("the test binary re-executes");
+        let report = format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
+        assert!(out.status.success(), "the fsize child failed: {report}");
+        assert!(report.contains("1 passed"), "the fsize child ran no test: {report}");
+        return;
+    }
     let d = TestDir::new("undomanifestloud");
     let src = d.dir("srcl");
     let root = d.dir("rootl");
@@ -354,7 +392,7 @@ fn a_manifest_append_failure_is_loud_rather_than_silent_overflow() {
     std::fs::write(root.join("probe.txt"), "x").unwrap();
     let cap = FileSizeCap::cap(2 * 1024);
     for _ in 0..100 {
-        writer.record(&root);
+        writer.record(&root, &root.symlink_metadata().unwrap());
     }
     let result = writer.finish();
     drop(cap);

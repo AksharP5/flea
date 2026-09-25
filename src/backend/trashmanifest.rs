@@ -103,19 +103,35 @@ impl Manifest {
     }
     pub fn len(&self) -> u64 { self.end }
     pub fn append(&mut self, bytes: &[u8]) -> Result<(), String> {
-        let length = bytes.len() as u64;
-        let end = self.end.checked_add(length).and_then(|end| end.checked_add(2 * LENGTH_BYTES))
-            .ok_or("Trash review is too large for its backing file.")?;
-        self.file.write_all_at(&length.to_le_bytes(), self.end)
-            .and_then(|_| self.file.write_all_at(bytes, self.end + LENGTH_BYTES))
-            .and_then(|_| self.file.write_all_at(&length.to_le_bytes(), end - LENGTH_BYTES))
-            .map_err(|e| format!("Could not write Trash review: {}", e))?;
+        self.append_labelled("Trash review", bytes)
+    }
+    // The batched form of append_labelled: one framing per record but a single write for the batch, so a 100,000-file tree copy pays a hundred writes and not three hundred thousand.
+    pub fn append_all_labelled(&mut self, label: &str, records: &[&[u8]]) -> Result<(), String> {
+        let mut total = 0u64;
+        for bytes in records {
+            total = total.checked_add(bytes.len() as u64).and_then(|sum| sum.checked_add(2 * LENGTH_BYTES)).ok_or_else(|| format!("{label} is too large for its backing file."))?;
+        }
+        let end = self.end.checked_add(total).ok_or_else(|| format!("{label} is too large for its backing file."))?;
+        let mut batch = Vec::with_capacity(total as usize);
+        for bytes in records {
+            let length = bytes.len() as u64;
+            batch.extend_from_slice(&length.to_le_bytes());
+            batch.extend_from_slice(bytes);
+            batch.extend_from_slice(&length.to_le_bytes());
+        }
+        self.file.write_all_at(&batch, self.end).map_err(|e| format!("Could not write {label}: {}", e))?;
         self.end = end;
         Ok(())
     }
-    pub(crate) fn append_raw(&mut self, batch: &[u8]) -> Result<(), String> {
-        let end = self.end.checked_add(batch.len() as u64).ok_or("Trash review is too large for its backing file.")?;
-        self.file.write_all_at(batch, self.end).map_err(|e| format!("Could not write Trash review: {}", e))?;
+    // One framing for every manifest on this file: the copy manifest names its own component through this rather than hand-building lengths.
+    pub fn append_labelled(&mut self, label: &str, bytes: &[u8]) -> Result<(), String> {
+        let length = bytes.len() as u64;
+        let end = self.end.checked_add(length).and_then(|end| end.checked_add(2 * LENGTH_BYTES))
+            .ok_or_else(|| format!("{label} is too large for its backing file."))?;
+        self.file.write_all_at(&length.to_le_bytes(), self.end)
+            .and_then(|_| self.file.write_all_at(bytes, self.end + LENGTH_BYTES))
+            .and_then(|_| self.file.write_all_at(&length.to_le_bytes(), end - LENGTH_BYTES))
+            .map_err(|e| format!("Could not write {label}: {}", e))?;
         self.end = end;
         Ok(())
     }

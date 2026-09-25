@@ -80,8 +80,7 @@ pub fn qualifying_dirs(candidates: &[PathBuf], forbid: &[u64], uid: u32) -> Vec<
     out
 }
 
-// The devices one copy must stay off: its source's and its destination's, the destination read through
-// its nearest existing parent because it rarely exists yet.
+// The devices one copy must stay off, source and destination, the destination read through its nearest existing parent because it rarely exists yet.
 pub fn forbid_for(src: &Path, dst: &Path) -> Vec<u64> {
     let mut forbid = Vec::new();
     if let Some(dev) = existing_dev(src) {
