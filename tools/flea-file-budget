@@ -12,10 +12,11 @@ shelf/Panel.qml 430
 shelf/ShelfCard.qml 443
 shelf/ShelfService.qml 481
 src/backend/copyfile.rs 404
+src/backend/imagesize.rs 475
 src/backend/localsend.rs 403
 src/backend/menu_actions.rs 560
 src/backend/menu_registry.rs 563
-src/backend/metareq.rs 404
+src/backend/metareq.rs 423
 src/backend/opsdispatch.rs 536
 src/backend/opsreq.rs 402
 src/backend/opsreq/tests.rs 424
@@ -48,7 +49,8 @@ ui/PaneMenuActions.qml 404
 ui/PaneWire.qml 485
 ui/PermissionsDialog.qml 426
 ui/PickerWindow.qml 676
-ui/PreviewColumn.qml 478
+ui/PreviewColumn.qml 480
+ui/Preview.qml 417
 ui/Row.qml 421
 ui/SettingsPanel.qml 542
 ui/SettingsRow.qml 410

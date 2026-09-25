@@ -2267,6 +2267,15 @@ user-override parsing plus palette and token application stay together as the si
 theme owner. Splitting its pure parsers is deferred because that change needs its own
 automated regression coverage.
 
+The EXIF orientation pass records four ceilings, each re-derived with `wc -l` at the commit that
+recorded it. `src/backend/imagesize.rs` 354 to 475 for the `Header` type, the `jpeg_header` walk
+that reads the first Exif APP1's head in the same pass, `exif_orientation` and the byte-order test;
+it is one job, header bytes in and stored dimensions plus orientation out, so it stays one file.
+`src/backend/metareq.rs` 404 to 423 for the `orientation` field, the `header()` call and the
+`orient` slot on the line plus its test. `ui/Preview.qml` 391 to 417 for `imageRow`, `imageTurn`,
+`askImage()` and the `turn`-before-`path` bind. `ui/PreviewColumn.qml` 478 to 480 for the `turned`
+swap on its original fallback; `ui/PreviewImage.qml` stays inside its budget at 98.
+
 ## The key table is generated
 
 `keys.toml` at the repository root is the single source of truth for every binding.

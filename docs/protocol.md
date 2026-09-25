@@ -1021,13 +1021,18 @@ existing `archivedone` terminal line remains unchanged for archive clients.
 
 ### meta
 
-`{"t":"meta","row":<uint>,"w":<uint>,"h":<uint>,"ms":<uint>,"rate":<uint>,"entries":<uint>,"unpacked":<uint>,"afailed":<bool>,"names":[{"n":"<string>","d":<bool>},...],"lines":<uint>,"partial":<bool>,"lfailed":<bool>,"target":"<string>","targetdir":<bool>,"owner":"<string>"}`
+`{"t":"meta","row":<uint>,"w":<uint>,"h":<uint>,"orient":<uint>,"ms":<uint>,"rate":<uint>,"entries":<uint>,"unpacked":<uint>,"afailed":<bool>,"names":[{"n":"<string>","d":<bool>},...],"lines":<uint>,"partial":<bool>,"lfailed":<bool>,"target":"<string>","targetdir":<bool>,"owner":"<string>"}`
 
-Example: `{"t":"meta","row":4,"w":0,"h":0,"ms":0,"rate":0,"entries":214,"unpacked":3400,"afailed":false,"names":[{"n":"ui","d":true}],"lines":0,"partial":false,"lfailed":false,"target":"","targetdir":false,"owner":"gm"}`
+Example: `{"t":"meta","row":4,"w":0,"h":0,"orient":1,"ms":0,"rate":0,"entries":214,"unpacked":3400,"afailed":false,"names":[{"n":"ui","d":true}],"lines":0,"partial":false,"lfailed":false,"target":"","targetdir":false,"owner":"gm"}`
 
 Every field a row did not ask for is zero, false or empty. `w` and `h` are pixels, read from the
-file's own header; `ms` and `rate` come from the probe; `lines` is a newline count with `partial`
-true when it stopped at its 1 MiB budget, so the column states it as a floor.
+file's own header, as stored and before any turn. `ms` and `rate` come from the probe. `lines` is a
+newline count with `partial` true when it stopped at its 1 MiB budget, so the column states it as a floor.
+
+`orient` is the EXIF orientation, 1 to 8, from the same read of the same open. The walk that finds a
+JPEG's frame header reads the head of its first `Exif` APP1 on the way past. It is 1 for every file that
+names none, every non-JPEG included. Orientations 5 to 8 swap the sides, and the Columns frame and Quick
+Look ask Qt for their decode size turned the same way, because Qt fits its decode before it turns.
 
 `entries` and `unpacked` are **exact totals whenever they are non-zero**, because the index is
 streamed and counting all of it costs no memory. `names` is capped at the first `ARCHIVE_NAME_CAP`

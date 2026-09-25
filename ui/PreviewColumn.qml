@@ -75,6 +75,8 @@ Item {
     readonly property real frameRatio: 10 / 16
     // Stretch renders a vector to the whole box, so the frame's pictures keep Fit for an SVG alone.
     readonly property bool vectorPath: /\.svgz?$/i.test(root.path)
+    // EXIF orientations 5 to 8 swap the sides, and Qt fits its decode before it turns, so the box it is asked for turns too.
+    readonly property bool turned: root.meta !== null && root.meta.orient >= 5
 
     // The states that draw a picture of the file itself. A PDF draws its own page, loading draws the
     // crawl, and a multi-selection is a summary and never the cursor row's own picture.
@@ -139,8 +141,8 @@ Item {
                 cache: false
                 // Zero is unbounded to Qt, which is what the small cache PNG wants; only the fallback,
                 // which can be the whole camera file, takes the ceiling ui/PreviewImage.qml sets.
-                sourceSize.width: root.thumb.length > 0 ? 0 : Math.max(1, Math.round(boxWidth))
-                sourceSize.height: root.thumb.length > 0 ? 0 : Math.max(1, Math.round(boxHeight))
+                sourceSize.width: root.thumb.length > 0 ? 0 : Math.max(1, Math.round(root.turned ? boxHeight : boxWidth))
+                sourceSize.height: root.thumb.length > 0 ? 0 : Math.max(1, Math.round(root.turned ? boxWidth : boxHeight))
             }
 
             // The player, in the frame it paints into; built by the first press of play and not before, and by source rather than type, because QtMultimedia costs 20 MB on import alone.

@@ -14,7 +14,16 @@ const BMP_MAGIC: &[u8] = b"BM";
 const RIFF_MAGIC: &[u8] = b"RIFF";
 const WEBP_MAGIC: &[u8] = b"WEBP";
 
-pub fn dimensions(path: &Path) -> Option<(u32, u32)> {
+// The stored pixels, and the EXIF orientation a viewer turns them by: 1 unless a JPEG names another, and
+// 5 to 8 swap the sides, which is what a preview must know before it asks Qt for a size.
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub struct Header {
+    pub width: u32,
+    pub height: u32,
+    pub orientation: u8,
+}
+
+pub fn header(path: &Path) -> Option<Header> {
     let mut buf = vec![0u8; PROBE];
     let mut f = open_regular(path)?;
     let n = f.read(&mut buf).ok()?;
@@ -24,9 +33,14 @@ pub fn dimensions(path: &Path) -> Option<(u32, u32)> {
     if buf.starts_with(&[0xFF, 0xD8]) {
         f.seek(SeekFrom::Start(2)).ok()?;
         // Buffered, because the walk resyncs a byte at a time and a raw File makes that a syscall each.
-        return jpeg(&mut std::io::BufReader::new(&mut f));
+        return jpeg_header(&mut std::io::BufReader::new(&mut f));
     }
-    from_header(&buf)
+    from_header(&buf).map(|(width, height)| Header { width, height, orientation: NO_TURN })
+}
+
+#[cfg(test)]
+pub fn dimensions(path: &Path) -> Option<(u32, u32)> {
+    header(path).map(|h| (h.width, h.height))
 }
 
 pub fn from_header(b: &[u8]) -> Option<(u32, u32)> {
@@ -86,10 +100,15 @@ fn step<R: Read>(r: &mut R, walked: &mut u64) -> Option<u8> {
     Some(byte[0])
 }
 
-// Sample input: FF D8 | FF C0 <len:2> <precision:1> <height:2> <width:2> ..., with any number of
-// other FF xx segments before that frame header.
 fn jpeg<R: Read + Seek>(r: &mut R) -> Option<(u32, u32)> {
+    jpeg_header(r).map(|h| (h.width, h.height))
+}
+
+// Sample input: FF D8 | FF C0 <len:2> <precision:1> <height:2> <width:2> ..., with any number of
+// other FF xx segments before that frame header, one of which may be the APP1 carrying EXIF.
+fn jpeg_header<R: Read + Seek>(r: &mut R) -> Option<Header> {
     let mut walked: u64 = 0;
+    let mut orientation: Option<u8> = None;
     loop {
         // Any run of FF is padding before the marker, so only the byte that ends the run is one.
         while step(r, &mut walked)? != 0xFF {}
@@ -119,15 +138,73 @@ fn jpeg<R: Read + Seek>(r: &mut R) -> Option<(u32, u32)> {
             r.read_exact(&mut head).ok()?;
             let height = u16::from_be_bytes([head[1], head[2]]) as u32;
             let width = u16::from_be_bytes([head[3], head[4]]) as u32;
-            return Some((width, height));
+            return Some(Header { width, height, orientation: orientation.unwrap_or(NO_TURN) });
+        }
+        let mut body = u64::from(len) - 2;
+        // The first APP1 named Exif carries the orientation near its start, so only its head is read, in this same walk.
+        if marker == APP1 && orientation.is_none() {
+            let take = body.min(EXIF_HEAD);
+            // The head is read rather than stepped over, so the walk's own bound is checked before
+            // it: a chain of APP1s with no frame in it must still give up at the bound, not past it.
+            if walked + take > JPEG_WALK {
+                return None;
+            }
+            let mut head = vec![0u8; take as usize];
+            r.read_exact(&mut head).ok()?;
+            walked += head.len() as u64;
+            body -= head.len() as u64;
+            if let Some(tiff) = head.strip_prefix(EXIF_MAGIC) {
+                orientation = Some(exif_orientation(tiff).unwrap_or(NO_TURN));
+            }
         }
         // Seeked rather than read: an EXIF segment is tens of kilobytes and none of it is wanted.
-        walked += u64::from(len) - 2;
+        walked += body;
         if walked > JPEG_WALK {
             return None;
         }
-        r.seek(SeekFrom::Current(i64::from(len) - 2)).ok()?;
+        r.seek(SeekFrom::Current(body as i64)).ok()?;
     }
+}
+
+// EXIF's orientation 1 is "as stored"; it is also the answer for every file that names none.
+const NO_TURN: u8 = 1;
+const APP1: u8 = 0xE1;
+const EXIF_MAGIC: &[u8] = b"Exif\0\0";
+// IFD0 follows the TIFF header, in the first hundreds of bytes of the segment in every camera file seen.
+const EXIF_HEAD: u64 = 4096;
+const ORIENTATION_TAG: u16 = 0x0112;
+const TIFF_MAGIC: u16 = 42;
+const IFD_ENTRY_BYTES: usize = 12;
+
+// Sample input, the TIFF block after "Exif\0\0": "II" 2A 00 | IFD0 offset(4) | count(2) | per entry tag(2)
+// type(2) count(4) value(4), in the byte order the first two bytes name; orientation is a SHORT in the value's head.
+fn exif_orientation(tiff: &[u8]) -> Option<u8> {
+    let little = match tiff.get(0..2)? {
+        b"II" => true,
+        b"MM" => false,
+        _ => return None,
+    };
+    let u16_at = |at: usize| -> Option<u16> {
+        let s = tiff.get(at..at + 2)?;
+        Some(if little { u16::from_le_bytes([s[0], s[1]]) } else { u16::from_be_bytes([s[0], s[1]]) })
+    };
+    let u32_at = |at: usize| -> Option<u32> {
+        let s = tiff.get(at..at + 4)?;
+        Some(if little { u32::from_le_bytes([s[0], s[1], s[2], s[3]]) } else { u32::from_be_bytes([s[0], s[1], s[2], s[3]]) })
+    };
+    if u16_at(2)? != TIFF_MAGIC {
+        return None;
+    }
+    let ifd = u32_at(4)? as usize;
+    let count = u16_at(ifd)? as usize;
+    for i in 0..count {
+        let entry = ifd + 2 + i * IFD_ENTRY_BYTES;
+        if u16_at(entry)? == ORIENTATION_TAG {
+            let value = u16_at(entry + 8)?;
+            return (1..=8).contains(&value).then_some(value as u8);
+        }
+    }
+    None
 }
 
 // Sample input: "GIF89a" | width(2, little endian) | height(2, little endian)
@@ -181,6 +258,50 @@ mod tests {
         v.extend_from_slice(&w.to_be_bytes());
         v.extend_from_slice(&h.to_be_bytes());
         v
+    }
+
+    // FFD8, an APP1 "Exif\0\0" whose IFD0 holds one entry, then SOF0 carrying 4000 x 3000; tag and value in the named byte order.
+    fn exif_jpeg(order: &[u8; 2], tag: u16, value: u16) -> Vec<u8> {
+        let big = order == b"MM";
+        let u16b = |v: u16| if big { v.to_be_bytes() } else { v.to_le_bytes() };
+        let u32b = |v: u32| if big { v.to_be_bytes() } else { v.to_le_bytes() };
+        let mut tiff = order.to_vec();
+        tiff.extend_from_slice(&u16b(42));
+        tiff.extend_from_slice(&u32b(8));
+        tiff.extend_from_slice(&u16b(1));
+        tiff.extend_from_slice(&u16b(tag));
+        tiff.extend_from_slice(&u16b(3));
+        tiff.extend_from_slice(&u32b(1));
+        tiff.extend_from_slice(&u16b(value));
+        tiff.extend_from_slice(&[0, 0, 0, 0, 0, 0]);
+        let mut v = vec![0xFF, 0xD8, 0xFF, 0xE1];
+        v.extend_from_slice(&((EXIF_MAGIC.len() + tiff.len() + 2) as u16).to_be_bytes());
+        v.extend_from_slice(EXIF_MAGIC);
+        v.extend_from_slice(&tiff);
+        v.extend_from_slice(&[0xFF, 0xC0, 0x00, 0x11, 0x08]);
+        v.extend_from_slice(&3000u16.to_be_bytes());
+        v.extend_from_slice(&4000u16.to_be_bytes());
+        v.extend_from_slice(&[0u8; 8]);
+        v
+    }
+
+    fn walk(v: &[u8]) -> Option<Header> {
+        jpeg_header(&mut std::io::Cursor::new(&v[2..]))
+    }
+
+    #[test]
+    fn the_exif_orientation_comes_from_the_same_walk_in_either_byte_order() {
+        assert_eq!(walk(&exif_jpeg(b"II", 0x0112, 6)), Some(Header { width: 4000, height: 3000, orientation: 6 }));
+        assert_eq!(walk(&exif_jpeg(b"MM", 0x0112, 8)), Some(Header { width: 4000, height: 3000, orientation: 8 }));
+        // No orientation tag, a value outside 1 to 8, and a TIFF block that is not one all read as stored.
+        assert_eq!(walk(&exif_jpeg(b"II", 0x010F, 6)).map(|h| h.orientation), Some(1));
+        assert_eq!(walk(&exif_jpeg(b"II", 0x0112, 9)).map(|h| h.orientation), Some(1));
+        assert_eq!(walk(&exif_jpeg(b"XX", 0x0112, 6)), Some(Header { width: 4000, height: 3000, orientation: 1 }));
+        let d = TestDir::new("imagesizeorient");
+        let path = d.join("phone.jpg");
+        std::fs::write(&path, exif_jpeg(b"II", 0x0112, 6)).unwrap();
+        assert_eq!(header(&path), Some(Header { width: 4000, height: 3000, orientation: 6 }), "a file is read by the same walk");
+        assert_eq!(header(&d.file("plain.png", "")), None);
     }
 
     #[test]
