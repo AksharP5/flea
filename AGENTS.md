@@ -2045,6 +2045,12 @@ falls 404 to 402, inside its recorded ceiling), `shelf/Model.js` 655 to 669 for 
 `ui/js/Format.js`, and `src/tui/render.rs` 807 to 822 for the TUI's `grouped` beside `bytes`
 with its three vectors. `src/tui/model.rs` holds every call site and stays at its recorded 1196.
 
+`ui/PreviewColumn.qml` is at 505: the sharp settle, the mtime-keyed cache identity and the
+three decode counters `tests/sharp-decode.sh` read were reverted under review, and the replacement
+sharp test pins the product path from outside the column instead of from inside it. The office
+thumbnail's own "no preview" gate (Unsupported shows the mark only when no thumbnail is drawn)
+took it from 504 to 505.
+
 **Every count in this section is a SNAPSHOT, not a live figure, and eleven of the eighteen had
 drifted by 2026-09-01: `src/heap.rs` was claimed at 15 and is 100, `ui/Row.qml` at 166 and is 310,
 `ui/Theme.qml` at 264 and is 187.** Nothing was over the hard cap when that was checked; only the

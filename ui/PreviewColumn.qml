@@ -247,10 +247,11 @@ Item {
                 visible: root.previewState === Facts.LOADING
             }
 
-            // The one sentence an error is, in the theme's error role; the facts below still show.
+            // The one sentence an error is, in the theme's error role; the facts below still show. An office file's
+            // embedded thumbnail is the frame's own picture, so Unsupported says "no preview" only when there is none.
             Column {
                 anchors.centerIn: parent
-                visible: root.previewState === Facts.ERROR || root.previewState === Facts.UNSUPPORTED
+                visible: root.previewState === Facts.ERROR || (root.previewState === Facts.UNSUPPORTED && !root.thumbShown)
                 spacing: Theme.spacing.gap
 
                 Flea.Glyph {
