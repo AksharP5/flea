@@ -150,8 +150,11 @@ fn a_file_replaced_by_another_inode_is_kept() {
         let p = entry.path();
         (p.extension().and_then(|e| e.to_str()) == Some("bin")).then_some(p)
     }).expect("a copied file to replace");
+    // Held open across the replace, so ext4 cannot hand the freed inode straight to the replacement.
+    let held = std::fs::File::open(&victim).unwrap();
     std::fs::remove_file(&victim).unwrap();
     std::fs::write(&victim, "a different file at the same name").unwrap();
+    drop(held);
     let step = copied_partial(&src, &partial, ItemIdentity::inspect(&src).unwrap(), Some(handle)).unwrap();
     let mut j = journal("copy", vec![step]);
     let err = j.undo().expect_err("the replacement must be reported, not removed");
