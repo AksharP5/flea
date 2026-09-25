@@ -18,24 +18,37 @@ function trashHint() {
 var NO_TRASH = "This location has no Trash"
 function noTrashLine() { return NO_TRASH + trashHint() }
 
-// Sample input: "Press d again to trash, or Delete on its own." from ui/js/Trash.js; ui/TrashView.qml's reads "review permanent deletion".
+// Which notice starts an arm; only the arm's life ranks it. Sample input: "Press d again to trash, or Delete on its own." (ui/js/Trash.js)
 function isPrompt(text) {
     return text.indexOf("Press ") === 0 && text.indexOf(" again ") > 0
 }
 
-// A prompt, else the oldest unacknowledged error, else the notice: a hidden prompt's second press acts unannounced.
-function transientOf(errors, notice) {
-    if (isPrompt(notice) || errors.length === 0)
-        return { text: notice, isError: false, detail: "" }
-    return { text: errors[0].text, isError: true, detail: errors[0].detail }
+// An arm's record: when its prompt was said and its owner's stamp, 0 for an owner this bar cannot watch (ui/TrashView.qml's).
+function armOf(now, stamp) { return { saidAt: now, stamp: stamp } }
+function watched(arm) { return arm.stamp > 0 }
+
+// A watched arm lives while its owner's stamp stands, which the second press, any other key and navigation all zero.
+function armLive(arm, ownerStamp) { return arm !== null && (!watched(arm) || arm.stamp === ownerStamp) }
+
+// What the arm has left by its owner's clock, so a Qt timer that fires early never ends it while the key still acts.
+function armLeft(arm, now, armMs) { return arm === null ? 0 : armMs - (now - (watched(arm) ? arm.stamp : arm.saidAt)) }
+
+// A live arm's prompt, else the oldest unacknowledged error, else the notice: a hidden live prompt's second press acts unannounced.
+function transientOf(errors, notice, prompt, live) {
+    if (live === true) return { text: prompt, isError: false, detail: "" }
+    if (errors.length) return { text: errors[0].text, isError: true, detail: errors[0].detail }
+    return { text: notice, isError: false, detail: "" }
 }
 
-// The no-Trash refusal names its place and replaces its own copy there rather than stacking; other errors name none.
+// The no-Trash refusal names its place and replaces its own copy there, where it stands; other errors name none.
 function withError(errors, text, detail, place) {
-    var own = text === noTrashLine() ? place : ""
-    var kept = own.length === 0 ? errors
-        : errors.filter(function (entry) { return entry.text !== text || entry.place !== own })
-    return kept.concat([{ text: text, detail: detail || "", place: own }])
+    var entry = { text: text, detail: detail || "", place: text === noTrashLine() ? place : "" }
+    var at = entry.place.length === 0 ? -1
+        : errors.findIndex(function (e) { return e.text === text && e.place === entry.place })
+    if (at < 0) return errors.concat([entry])
+    var next = errors.slice()
+    next[at] = entry
+    return next
 }
 
 // Leaving a place drops its refusals; other errors wait for dismissal, and an unchanged queue is the same array.
@@ -70,7 +83,7 @@ function errorHere(slot) {
 }
 
 function promptHere(slot) {
-    return !slot.transientIsError && isPrompt(slot.transient)
+    return slot.armLive === true
 }
 
 // The centre zone is what just happened, and nothing else. The disk facts have a zone of their own,
@@ -93,7 +106,7 @@ function centreRole(slot) {
 
 // Whether the centre draws the notice, whose display time is the one ui/StatusBar.qml's timer ends.
 function noticeShown(slot) {
-    return promptHere(slot) || (slot.transient.length > 0 && !slot.transientIsError && !slot.stickyHere && !slot.searching)
+    return !promptHere(slot) && slot.transient.length > 0 && !slot.transientIsError && !slot.stickyHere && !slot.searching
 }
 
 // The selection's byte total, or -1 when the bar may not claim one. StatusBar board rule 3: every

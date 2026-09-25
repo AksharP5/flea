@@ -249,6 +249,7 @@ Rectangle {
         total: view.currentPane.trash.opened ? view.currentPane.trash.total : view.currentPane.total
         listingState: view.currentPane.listingState
         pane: view.currentPane.trash.opened ? null : view.currentPane
+        armOwnerStamp: view.currentPane.trash.opened ? view.currentPane.trash.trashArmedAt : view.currentPane.trashArmedAt
         selectionCount: view.currentPane.trash.opened ? view.currentPane.trash.selectedCount : view.currentPane.selectionCount()
         fsName: view.currentPane.fsName
         fsFree: view.currentPane.fsFree

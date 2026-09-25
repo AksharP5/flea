@@ -2182,6 +2182,9 @@ implementation is the other 249 lines, after the PNG writing and the temp creati
 stays one file because the queue, the pop and `cancel` share one invariant: splitting the worker
 from the queue it pops would put the two halves of that invariant in different files.
 
+0.3.5 takes `ui/WindowBody.qml` from 484 to 485 for the status bar's arm stamp, which follows the Trash view's
+dd arm while that view is open, so its prompt ends the moment the arm does.
+
 `ui/Theme.qml` is 264 lines, over the soft budget and under the hard cap. Theme and
 user-override parsing plus palette and token application stay together as the single
 theme owner. Splitting its pure parsers is deferred because that change needs its own

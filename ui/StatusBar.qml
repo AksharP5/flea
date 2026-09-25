@@ -5,6 +5,7 @@ import "js/Format.js" as Format
 import "js/Filter.js" as Filter
 import "js/Ops.js" as Ops
 import "js/Status.js" as Status
+import "js/Trash.js" as Trash
 
 Item {
     id: root
@@ -24,8 +25,15 @@ Item {
     property string notice: ""
     // [{text, detail, place}]: place is the path a no-Trash refusal was raised in, "" for every other error.
     property var errors: []
-    // An arm's prompt stands over every error, and an error over a plain notice; ui/js/Status.js transientOf.
-    readonly property var shown: Status.transientOf(root.errors, root.notice)
+    // An arm's prompt and its record, kept apart from the notice so the arm's own life, not the text, ranks it.
+    property string prompt: ""
+    property var arm: null
+    // The arm's owner stamp: the listing pane's here, the Trash view's while ui/WindowBody.qml has that view open.
+    property real armOwnerStamp: root.pane ? root.pane.trashArmedAt : 0
+    readonly property bool armLive: Status.armLive(root.arm, root.armOwnerStamp)
+    // Ended from the stamp's own change: ending it from armLive's would rewrite what armLive is still reading.
+    onArmOwnerStampChanged: if (root.arm !== null && !Status.armLive(root.arm, root.armOwnerStamp)) root.endArm()
+    readonly property var shown: Status.transientOf(root.errors, root.notice, root.prompt, root.armLive)
     readonly property string transient_: root.shown.text
     readonly property string errorDetail: root.shown.detail
     // Directive 48, GM's final: no centre lane at all. The transient sits beside the disk facts, one
@@ -88,6 +96,9 @@ Item {
     // Completion messages cannot acknowledge a failure; each error requires its own dismissal.
     function say(text, isError, detail) {
         if (!text) { root.dismiss(); return }
+        // An arm this bar cannot watch (the Trash view's) is spent by the time anything newer is said.
+        if (root.arm !== null && !Status.watched(root.arm)) root.endArm()
+        if (!isError && Status.isPrompt(text)) { root.startArm(text); return }
         if (isError) {
             root.errors = Status.withError(root.errors, text, detail, root.path)
             return
@@ -103,15 +114,37 @@ Item {
         root.errors = root.errors.filter(function (entry) { return entry.text !== text })
     }
 
-    // Dismisses what is drawn: the head error, or the notice or prompt standing over the queue.
+    // Dismisses the head error when one is drawn, else the notice; a live prompt belongs to its arm.
     function dismiss() {
         if (root.transientIsError) root.errors = root.errors.slice(1)
         else root.notice = ""
     }
-    // A refusal belongs to the place it was raised in, so leaving that place drops it.
+    // A refusal and an arm belong to the place they were raised in, so leaving that place drops both.
     onPathChanged: {
         var kept = Status.errorsAt(root.errors, root.path)
         if (kept !== root.errors) root.errors = kept
+        if (root.arm !== null) root.endArm()
+    }
+
+    function startArm(text) {
+        root.prompt = text
+        root.arm = Status.armOf(Date.now(), root.armOwnerStamp)
+        armClock.interval = Status.armLeft(root.arm, Date.now(), Trash.ARM_MS)
+        armClock.restart()
+        root.syncNoticeTimer()
+    }
+    function endArm() {
+        armClock.stop()
+        root.arm = null
+        root.prompt = ""
+        root.syncNoticeTimer()
+    }
+    Timer {
+        id: armClock
+        onTriggered: {
+            var left = Status.armLeft(root.arm, Date.now(), Trash.ARM_MS)
+            if (left > 0) { armClock.interval = left; armClock.restart() } else root.endArm()
+        }
     }
 
     function cancelTransfer() {
@@ -175,7 +208,7 @@ Item {
     }
 
     function slot() {
-        return { transient: root.transient_, transientIsError: root.transientIsError,
+        return { transient: root.transient_, transientIsError: root.transientIsError, armLive: root.armLive,
                  searching: root.searching, searchLine: root.searchLine,
                  stickyHere: root.stickyHere, sticky: root.sticky }
     }

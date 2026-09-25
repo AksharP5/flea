@@ -30,9 +30,7 @@ Item {
     readonly property bool hovered: pointer.hovered
     // For ui/Ipc.qml's contextMenuRowProbe: whether the pointer is over this row and where, before a test judges a move.
     function probe() { return pointer.hovered + " " + Math.round(pointer.point.scenePosition.x) + " " + Math.round(pointer.point.scenePosition.y) + " " + Math.round(pointer.restingAt.x) + " " + Math.round(pointer.restingAt.y) }
-    // Where any row of this menu last saw the pointer, so a row can tell a pointer that moved onto
-    // it from a row that scrolled under a pointer standing still. ui/ContextMenu.qml owns the value.
-    // A scene point despite the name: it is compared exactly, so it is the one the event carried.
+    // The scene point (despite the name) any row of the menu last saw, compared exactly; ui/ContextMenu.qml owns it.
     property point lastPointerGlobal: Qt.point(-1, -1)
     signal pointerSeen(point at)
 
@@ -267,9 +265,7 @@ Item {
         // Scene coordinates distinguish actual motion from a row moving beneath the resting pointer.
         property bool armed: false
         property point restingAt
-        // A hover at the point the menu last saw is a row arriving under a still pointer and only records
-        // where the pointer is; any other first hover reads as a move. A row a menu kept from its last
-        // open is hovered as it shows as well, which ui/ContextMenu.qml's pointerSettling discounts.
+        // A first hover at the menu's last point is a row arriving under a still pointer; ui/ContextMenu.qml's pointerSettling discounts the rest.
         onHoveredChanged: {
             if (!pointer.hovered) {
                 pointer.armed = false

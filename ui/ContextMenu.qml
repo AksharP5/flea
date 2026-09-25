@@ -214,11 +214,9 @@ Item {
                              frame.height, Math.max(0, root.workArea.height - 2 * root.workAreaInset))
     }
 
-    // Where any row or the ground last saw the pointer, in scene coordinates, so a row can tell a pointer
-    // moving onto it from a row arriving under a pointer that is standing still. Forgotten on placing.
+    // The scene point any row or the ground last saw, so a row tells a moving pointer from one it arrived under.
     property point pointerGlobal: Qt.point(-1, -1)
-    // From placing to the first frame after it, when Qt hovers whatever that frame shows under the pointer,
-    // rows an unchanged answer kept (debfa798) included: a move a row reports then is where the pointer rests.
+    // Placing to its first frame's afterAnimating: Qt hovers what that frame shows, kept rows too, so a "move" then is the rest point.
     property bool pointerSettling: false
     Connections {
         target: root.pointerSettling ? root.Window.window : null
@@ -230,6 +228,8 @@ Item {
             root.focusHolder = root.Window.window ? root.Window.window.activeFocusItem : null
         root.pointerGlobal = Qt.point(-1, -1)
         root.pointerSettling = true
+        // A place that changes nothing drawn schedules no frame, so it asks for the one that ends the settle.
+        if (root.Window.window) root.Window.window.update()
         var point = root.mapFromItem(null, scenePoint)
         root.placeX = point.x
         root.placeY = point.y

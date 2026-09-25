@@ -21,8 +21,7 @@ function slot(over) {
     return s
 }
 
-// ui/TrashView.qml's own dd prompt, read from its source because the view needs a window to run.
-// Sample input: else statusReported("Press d again to review permanent deletion, or Delete on its own.", false)
+// ui/TrashView.qml's dd prompt, read from its source; sample: else statusReported("Press d again to review permanent deletion, or Delete on its own.", false)
 function trashViewPrompt() {
     var request = new XMLHttpRequest()
     request.open("GET", Qt.resolvedUrl("../../ui/TrashView.qml"), false)
@@ -98,39 +97,61 @@ function run(check) {
     check("a plain notice still yields to the search",
           Status.centreText(noticeWhileSearching), "3 found · Searching, 12 scanned")
 
-    // A prompt asks for the key that completes an arm, so nothing may stand over it: hidden, the second
-    // d trashed with nothing on screen saying the first had armed (0.3.5 battery, tests/ui.sh phones).
-    var armed = { trashArmedAt: 0, message: function (text) { armed.said = text } }
-    Trash.arm(armed)
-    var prompt = armed.said
+    // An arm's prompt stands over errors, search and activity only while the arm lives: its text alone ranks nothing.
+    var p = { trashArmedAt: 0, cursorIndex: 3, shown: null, trashedIdx: [], said: "", selectedIndices: function () { return [] } }
+    p.message = function (text) { p.said = text }
+    p.backend = { trash: function (idx) { p.trashedIdx = idx } }
+    Trash.arm(p)
+    var prompt = p.said
     check("the listing's dd prompt reads as a prompt", Status.isPrompt(prompt), true)
     check("and so does the Trash view's own", trashViewPrompt().length > 0 && Status.isPrompt(trashViewPrompt()), true)
     check("while a result is not one", Status.isPrompt("Moved 4 items to Trash · z undoes"), false)
-    check("a prompt outranks a search that is still reporting",
-          Status.centreText(slot({ transient: prompt, searching: true, searchLine: "3 found in 1.6 s" })), prompt)
-    check("and an activity", Status.centreText(slot({ transient: prompt, stickyHere: true, sticky: "Copy 1 item to dest" })), prompt)
     var older = [{ text: "Copy failed: photo.heic · disk full", detail: "No space left on device", place: "" }]
-    check("a prompt outranks an older error that is still waiting",
-          JSON.stringify(Status.transientOf(older, prompt)), JSON.stringify({ text: prompt, isError: false, detail: "" }))
-    check("but a plain result still waits behind that error",
-          Status.transientOf(older, "Copied 1 item · p pastes").text, older[0].text)
-    check("and the error comes back with its detail once the prompt is gone",
-          Status.transientOf(older, "").detail, "No space left on device")
-    // The refusal belongs to the place that has no Trash: leaving it drops it, and another d there replaces it rather than stacking.
+    check("a prompt's text with no live arm does not stand over an error", Status.transientOf(older, prompt).isError, true)
+    check("nor over a search that is still reporting",
+          Status.centreText(slot({ transient: prompt, searching: true, searchLine: "3 found in 1.6 s" })), "3 found in 1.6 s")
+    var arm = Status.armOf(Date.now(), p.trashArmedAt)
+    check("a live arm's prompt stands over an older error", JSON.stringify(Status.transientOf(older, "", prompt,
+          Status.armLive(arm, p.trashArmedAt))), JSON.stringify({ text: prompt, isError: false, detail: "" }))
+    check("and over a search and an activity",
+          Status.centreText(slot({ transient: prompt, armLive: true, searching: true, searchLine: "3 found" })) + "|"
+          + Status.centreText(slot({ transient: prompt, armLive: true, stickyHere: true, sticky: "Copy 1 item to dest" })),
+          prompt + "|" + prompt)
+    check("while a plain result still waits behind the error",
+          Status.transientOf(older, "Copied 1 item · p pastes", "", false).text, older[0].text)
+    // dd where the trash fails: the second d spends the arm, so the failure it raises shows at once.
+    Trash.arm(p)
+    check("the second d trashes the row and spends the arm", p.trashedIdx.join(",") + "|" + p.trashArmedAt, "3|0")
+    var trashFailed = Status.withError([], "Could not move locked to the Trash · Permission denied", "", "/d")
+    check("so the failed trash shows at once, not behind a dead prompt",
+          Status.transientOf(trashFailed, "", prompt, Status.armLive(arm, p.trashArmedAt)).text, trashFailed[0].text)
+    check("and an older error shows again, detail and all", Status.transientOf(older, "", prompt, Status.armLive(arm, 0)).detail,
+          "No space left on device")
+    check("a fresh arm's new stamp leaves the old record dead", Status.armLive(arm, arm.stamp + 1), false)
+    check("the arm ends on its own clock and never early",
+          Status.armLeft(arm, arm.stamp + Trash.ARM_MS - 1, Trash.ARM_MS) + "|" + Status.armLeft(arm, arm.stamp + Trash.ARM_MS, Trash.ARM_MS), "1|0")
+    var unseen = Status.armOf(5000, 0)
+    check("the Trash view's arm, which the bar cannot watch, lives until its clock ends",
+          Status.armLive(unseen, 0) + "|" + Status.watched(unseen) + "|" + Status.armLeft(unseen, 5000 + Trash.ARM_MS, Trash.ARM_MS), "true|false|0")
+    check("a live prompt is not the notice the strip times out", Status.noticeShown(slot({ transient: prompt, armLive: true })), false)
+    check("while a plain notice with nothing over it is", Status.noticeShown(slot({ transient: "Renamed to notes.txt" })), true)
+    check("and one behind the search is not",
+          Status.noticeShown(slot({ transient: "Renamed to notes.txt", searching: true, searchLine: "3 found" })), false)
+    // The refusal belongs to the place that has no Trash: leaving it drops it, and another d there replaces it where it stands.
     var share = "/run/user/1000/gvfs/mtp:host=SAMSUNG_Android"
     var refused = Status.withError(Status.withError(older, Status.noTrashLine(), "", share), Status.noTrashLine(), "", share)
     check("a second refusal in the same place replaces the first", refused.length, 2)
     check("and names that place", refused[1].place, share)
+    var queued = Status.withError(Status.withError([], Status.noTrashLine(), "", share), "Copy failed: a.txt · disk full", "", share)
+    check("in its own slot, so a newer error never moves ahead of it",
+          Status.withError(queued, Status.noTrashLine(), "", share).map(function (e) { return e.text }).join("|"),
+          Status.noTrashLine() + "|Copy failed: a.txt · disk full")
     check("while any other error names none", Status.withError([], "Copy failed", "", share)[0].place, "")
     check("staying in the place keeps the refusal", Status.errorsAt(refused, share), refused)
     var away = Status.errorsAt(refused, "/run/user/1000/gvfs")
     check("leaving it drops the refusal and keeps every other error", JSON.stringify(away), JSON.stringify(older))
     check("so the folder above carries nothing of it", Status.transientOf(Status.errorsAt(
         Status.withError([], Status.noTrashLine(), "", share), "/run/user/1000/gvfs"), "").text, "")
-    check("and a prompt is the notice the strip times out, even over a search",
-          Status.noticeShown(slot({ transient: prompt, searching: true, searchLine: "3 found" })), true)
-    check("where a plain notice behind the search is not",
-          Status.noticeShown(slot({ transient: "Renamed to notes.txt", searching: true, searchLine: "3 found" })), false)
 
     // V7: the clipboard's own hint joins the undo hint on the secondary, so no sentence here ends
     // in advice. ui/js/Ops.js builds both into its result lines and this is what takes them apart.
