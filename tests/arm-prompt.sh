@@ -29,10 +29,18 @@ output=$( ( env -u DISPLAY -u WAYLAND_DISPLAY -u HYPRLAND_INSTANCE_SIGNATURE \
     QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software QT_QPA_UPDATE_IDLE_TIME=1 QT_FORCE_STDERR_LOGGING=1 \
     timeout 20 qs -p "$test_root/config" 2>&1 ) 2>/dev/null )
 
-# Sample input, the verdict line: "  INFO qml: ARM_PROMPT DONE 17 checks, 0 failed"
-if ! printf '%s\n' "$output" | grep -q 'ARM_PROMPT DONE [0-9]* checks, 0 failed' || printf '%s\n' "$output" | grep -q 'ARM_PROMPT FAIL'; then
-    printf 'FAIL a dd prompt outlived its arm or left something stale\n'
+# Every check a full green run makes, read off that run's own DONE line; a leg that stops running makes fewer and fails here.
+expected_checks=18
+# Sample input, the verdict line: "  INFO qml: ARM_PROMPT DONE 18 checks, 0 failed"
+if ! printf '%s\n' "$output" | grep -q "ARM_PROMPT DONE $expected_checks checks, 0 failed" || printf '%s\n' "$output" | grep -q 'ARM_PROMPT FAIL'; then
+    printf 'FAIL a dd prompt outlived its arm, left something stale, or the run made other than %s checks\n' "$expected_checks"
     printf '%s\n' "$output" | grep -aE 'ARM_PROMPT (FAIL|DONE)|ERROR|error' | head -20
+    exit 1
+fi
+# Sample input, one per check: "  INFO qml: ARM_PROMPT ok j disarms the Trash view"
+passed=$(printf '%s\n' "$output" | grep -c 'ARM_PROMPT ok ')
+if [ "$passed" -ne "$expected_checks" ]; then
+    printf 'FAIL the run passed %s checks by name, not %s\n' "$passed" "$expected_checks"
     exit 1
 fi
 # The offscreen platform itself says it cannot mask a FloatingWindow; that one line is the platform's, never the bar's.

@@ -4,6 +4,7 @@ import QtQuick
 import QtTest
 import Quickshell
 import "flea" as Flea
+import "flea/js/Status.js" as Status
 import "flea/js/Trash.js" as Trash
 
 // tests/arm-prompt.sh's harness, on its own clock: the real ui/StatusBar.qml shows a dd prompt only while its arm lives and leaves nothing stale, and the real ui/TrashView.qml disarms on another key and on choose().
@@ -62,6 +63,12 @@ ShellRoot {
         TestEvent { id: keys }
     }
 
+    // What ui/TrashHost.qml does with the view's reports, so its dd prompt reaches this bar as it does in the window.
+    Connections {
+        target: view
+        function onStatusReported(message, error) { bar.say(message, error) }
+    }
+
     // The owner stamps, then says its prompt, the order ui/js/Trash.js and ui/TrashView.qml keep.
     function arm(stampedAt) {
         owner.trashArmedAt = stampedAt
@@ -105,6 +112,16 @@ ShellRoot {
         view.trashArmedAt = Date.now()
         view.choose(0, false)
         shell.check("choose() disarms it", view.trashArmedAt, 0)
+        // The firing pair, with the view as the bar's owner the way ui/WindowBody.qml sets it while the view is open.
+        bar.armOwner = view
+        view.selected = ({ "trash:///fixture.txt": true })
+        keys.keyClickChar("d", Qt.NoModifier, -1)
+        shell.check("the view's first d arms it and draws its prompt on the bar",
+                    (view.trashArmedAt > 0) + "|" + Status.isPrompt(bar.transient_), "true|true")
+        keys.keyClickChar("d", Qt.NoModifier, -1)
+        shell.check("the second d spends the arm", view.trashArmedAt, 0)
+        shell.check("so the bar shows no prompt over the review", bar.transient_, "")
+        shell.check("and the review opens", view.confirming, true)
     }
 
     function advance() {
