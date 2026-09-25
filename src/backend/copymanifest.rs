@@ -140,14 +140,16 @@ impl Writer {
                 return;
             }
         };
-        let bytes = encode(meta, rel.as_os_str().as_bytes());
+        let rel = rel.as_os_str().as_bytes();
+        // Encoded straight into the batch buffer, so a warm batch allocates nothing of its own.
+        let need = HEADER + rel.len();
         // The buffer holds unframed records, so every buffered record's framing counts, not only the new one's.
         let framed = (self.ends.len() as u64 + 1) * FRAMING;
-        if self.inner.len() + self.buf.len() as u64 + bytes.len() as u64 + framed > MAX_BYTES {
+        if self.inner.len() + self.buf.len() as u64 + need as u64 + framed > MAX_BYTES {
             self.overflow = true;
             return;
         }
-        self.buf.extend_from_slice(&bytes);
+        encode_into(&mut self.buf, meta, rel);
         self.ends.push(self.buf.len() as u32);
         self.count += 1;
         if self.buf.len() >= FLUSH_AT {
@@ -185,17 +187,18 @@ impl Writer {
             self.ends.clear();
             return;
         }
-        let buf = std::mem::take(&mut self.buf);
-        let ends = std::mem::take(&mut self.ends);
+        // Cleared rather than taken, so the next batch reuses both allocations.
         let mut start = 0usize;
-        let mut records: Vec<&[u8]> = Vec::with_capacity(ends.len());
-        for end in ends {
-            records.push(&buf[start..end as usize]);
+        let mut records: Vec<&[u8]> = Vec::with_capacity(self.ends.len());
+        for end in self.ends.iter().copied() {
+            records.push(&self.buf[start..end as usize]);
             start = end as usize;
         }
         if let Err(e) = self.inner.append_all_labelled("copy manifest", &records) {
             self.failed = Some(e);
         }
+        self.buf.clear();
+        self.ends.clear();
     }
 
     // Finish never stats the destination: every identity was captured at create, so a failed or cancelled copy answers at once.
@@ -216,14 +219,19 @@ impl Writer {
 
 fn encode(meta: &std::fs::Metadata, rel: &[u8]) -> Vec<u8> {
     let mut out = Vec::with_capacity(HEADER + rel.len());
+    encode_into(&mut out, meta, rel);
+    out
+}
+
+// The record bytes appended to a caller-held buffer, so the hot path encodes with no per-record Vec.
+fn encode_into(out: &mut Vec<u8>, meta: &std::fs::Metadata, rel: &[u8]) {
     out.extend_from_slice(&meta.dev().to_le_bytes());
     out.extend_from_slice(&meta.ino().to_le_bytes());
     out.extend_from_slice(&(meta.mode() & 0o170000).to_le_bytes());
     out.extend_from_slice(&meta.len().to_le_bytes());
     out.extend_from_slice(&meta.mtime().to_le_bytes());
     out.extend_from_slice(&meta.mtime_nsec().to_le_bytes());
-    out.extend_from_slice(&rel);
-    out
+    out.extend_from_slice(rel);
 }
 
 struct Decoded {

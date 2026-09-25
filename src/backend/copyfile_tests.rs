@@ -23,6 +23,25 @@ fn a_source_swapped_to_a_symlink_after_the_stat_is_refused_rather_than_followed(
     assert!(!d.join("dst.bin").exists(), "and nothing of the target reached the destination");
 }
 
+// copy_dir_entries routes a d_type-regular child straight to copy_file_at with no lstat of its
+// own, so the O_NOFOLLOW open plus fstat there is the only thing standing between a swapped-in
+// symlink and the target's bytes. Called directly, the swap already complete, it must refuse.
+#[test]
+fn a_child_swapped_to_a_symlink_is_refused_by_the_file_open_itself() {
+    let d = TestDir::new("treefileswap");
+    let secret = d.file("secret.txt", "not yours");
+    let src = d.join("swapped.bin");
+    std::os::unix::fs::symlink(&secret, &src).expect("the swap the listing cannot see");
+    let dst = d.join("dst.bin");
+    let flag = AtomicBool::new(false);
+    let mut sink = |_: u64, _: u64| {};
+    let mut p = quiet(&flag, &mut sink);
+    let e = copy_file_at(here(&src), here(&dst), 0, &mut p)
+        .expect_err("a symlinked child must not be followed");
+    assert_eq!(e.where_, "copy");
+    assert!(!dst.exists(), "and nothing of the target reached the destination");
+}
+
 #[test]
 fn a_file_copy_reproduces_the_bytes_and_reports_progress() {
     let d = TestDir::new("copyfile");

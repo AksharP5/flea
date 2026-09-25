@@ -52,12 +52,13 @@ pub fn copy_file(src: &Path, dst: &Path, total: u64, p: &mut Progress) -> Result
 fn copy_file_at(src: At, dst: At, total: u64, p: &mut Progress) -> Result<(), FleaError> {
     // Anything reaching here that is not a regular file was swapped in after copy_any's stat:
     // O_NOFOLLOW refuses a symlink, and regfile's non-blocking open and fstat refuse every other kind.
-    let mut r = crate::backend::regfile::open_if_regular(src.at, O_NOFOLLOW)
+    let (mut r, src_meta) = crate::backend::regfile::open_if_regular_with_meta(src.at, O_NOFOLLOW)
         .map_err(|e| from_io("copy", &src.named.to_string_lossy(), &e))?;
     // Issue 109: a create takes the umask, so a 0600 source landed 0644 and the copy published what
     // the original kept private. The source's own bits are carried by the create itself, so there is
     // no window where the bytes are on disk under a wider mode, narrowed by the umask and never widened.
-    let mode = r.metadata().map(|m| keep_mode(m.permissions().mode())).unwrap_or(0o600);
+    // The mode comes from the open's own fstat, so the descriptor is stat'd once, not twice.
+    let mode = keep_mode(src_meta.permissions().mode());
     let mut w = std::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
@@ -250,11 +251,22 @@ fn copy_dir_entries(src: At, dst: At, p: &mut Progress) -> Result<(), FleaError>
         let name = entry.file_name();
         let (from_at, from_named) = (src.at.join(&name), src.named.join(&name));
         let (into_at, into_named) = (dst.at.join(&name), dst.named.join(&name));
-        copy_at(
-            At { at: &from_at, named: &from_named },
-            At { at: &into_at, named: &into_named },
-            p,
-        )?;
+        // d_type is free, and copy_file_at's O_NOFOLLOW open plus fstat refuse a swap as copy_at's lstat did.
+        if entry.file_type().map(|t| t.is_file()).unwrap_or(false) {
+            // The total is unused inside a tree: p.tree is Some here.
+            copy_file_at(
+                At { at: &from_at, named: &from_named },
+                At { at: &into_at, named: &into_named },
+                0,
+                p,
+            )?;
+        } else {
+            copy_at(
+                At { at: &from_at, named: &from_named },
+                At { at: &into_at, named: &into_named },
+                p,
+            )?;
+        }
     }
     Ok(())
 }

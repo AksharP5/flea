@@ -22,12 +22,19 @@ pub fn open_regular(path: &Path) -> Option<File> {
 // The open itself, which a copy also takes with O_NOFOLLOW: O_NONBLOCK covers the window after the
 // caller's own stat, so a row swapped for a fifo inside it returns here instead of never returning.
 pub fn open_if_regular(path: &Path, extra_flags: i32) -> std::io::Result<File> {
+    open_if_regular_with_meta(path, extra_flags).map(|(f, _)| f)
+}
+
+// The same open, handing back the fstat its own check already took, so a caller that needs the
+// mode does not stat the descriptor a second time.
+pub fn open_if_regular_with_meta(path: &Path, extra_flags: i32) -> std::io::Result<(File, std::fs::Metadata)> {
     let f = std::fs::OpenOptions::new().read(true).custom_flags(O_NONBLOCK | extra_flags).open(path)?;
     // corner: this second check is what closes that window, and no test can schedule the swap that opens it.
-    if !f.metadata().map(|m| m.is_file()).unwrap_or(false) {
+    let meta = f.metadata().map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidInput, "not a regular file"))?;
+    if !meta.is_file() {
         return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "not a regular file"));
     }
-    Ok(f)
+    Ok((f, meta))
 }
 
 #[cfg(test)]

@@ -141,3 +141,29 @@ fn framed_bytes_never_pass_the_cap() {
     assert!(writer.overflow, "one record past the cap overflows");
     assert!(writer.finish().expect("no I/O").is_none(), "an overfull manifest journals today's step instead");
 }
+
+// A tree copy records every path it creates exactly once: each file through the copy's own
+// descriptor, each directory at creation, so undo walks the same set the copy made.
+#[test]
+fn a_tree_copy_records_each_file_once_and_each_directory_once() {
+    use crate::backend::copyfile::{copy_any, Progress};
+    use std::sync::atomic::AtomicBool;
+    let d = TestDir::new("manifesttreecount");
+    let src = d.dir("tree");
+    std::fs::write(src.join("a.bin"), "a").unwrap();
+    std::fs::write(src.join("b.bin"), "b").unwrap();
+    std::fs::create_dir(src.join("sub")).unwrap();
+    std::fs::write(src.join("sub/c.bin"), "c").unwrap();
+    std::os::unix::fs::symlink("a.bin", src.join("link")).unwrap();
+    let dst = d.join("clone");
+    let flag = AtomicBool::new(false);
+    let mut sink = |_: u64, _: u64| {};
+    let writer = Writer::create(&dst).expect("anonymous manifest");
+    let mut p = Progress { cancel: &flag, on_bytes: &mut sink, tree: None, partial: None, manifest: Some(writer) };
+    copy_any(&src, &dst, &mut p).expect("copy");
+    let writer = p.manifest.take().expect("the writer back");
+    let handle = writer.finish().expect("no I/O").expect("records went");
+    // Three files, one symlink and two directories: the root and its one subdirectory.
+    assert_eq!(handle.count, 6, "each created path is recorded exactly once");
+    assert_eq!(std::fs::read_to_string(dst.join("sub/c.bin")).unwrap(), "c");
+}
