@@ -24,10 +24,20 @@ pub struct Progress<'a> {
     pub partial: Option<PathBuf>,
     // Where a tree copy records every path it creates; a finished copy drops it unread.
     pub manifest: Option<super::copymanifest::Writer>,
+    // Some while the destination needs its bytes confirmed: the transfer (or duplicate, redo,
+    // rename) created it from the destination and flushes it at the end.
+    pub durability: Option<&'a mut super::durable::Ctx>,
 }
 
 pub fn cancelled(p: &Progress) -> bool {
     p.cancel.load(Ordering::Relaxed)
+}
+
+// The one durable call every copy path makes: a no-op unless the destination needs confirming.
+fn touch(p: &mut Progress, dir: &Path) {
+    if let Some(ctx) = p.durability.as_mut() {
+        ctx.touch(dir);
+    }
 }
 
 // A path the filesystem is asked about, beside the path an error names. Inside a tree the first is a
@@ -65,6 +75,7 @@ fn copy_file_at(src: At, dst: At, total: u64, p: &mut Progress) -> Result<(), Fl
         .open(dst.at)
         .map_err(|e| from_io("copy", &dst.named.to_string_lossy(), &e))?;
     // From here the destination exists, and every failure below leaves it for the caller to journal.
+    let durable = p.durability.as_ref().is_some_and(|c| c.durable);
     let mut buf = vec![0u8; CHUNK];
     let mut done: u64 = 0;
     loop {
@@ -85,14 +96,33 @@ fn copy_file_at(src: At, dst: At, total: u64, p: &mut Progress) -> Result<(), Fl
             return Err(left_half_written(p, dst, &w, from_io("copy", &dst.named.to_string_lossy(), &e)));
         }
         done += n as u64;
+        if !durable {
+            let (reported, against) = match p.tree {
+                Some(carried) => (carried + done, 0),
+                None => (done, total),
+            };
+            (p.on_bytes)(reported, against);
+        }
+    }
+    if let Err(e) = w.flush() {
+        return Err(left_half_written(p, dst, &w, from_io("copy", &dst.named.to_string_lossy(), &e)));
+    }
+    if durable {
+        // The bytes count only once the drive confirms them, so the rate is the drive's real rate.
+        if let Err(e) = crate::backend::durable::fsync_file(&w) {
+            if let Some(ctx) = p.durability.as_mut() {
+                ctx.note_file_failed();
+            }
+            return Err(left_half_written(p, dst, &w, from_io("copy", &dst.named.to_string_lossy(), &e)));
+        }
         let (reported, against) = match p.tree {
             Some(carried) => (carried + done, 0),
             None => (done, total),
         };
         (p.on_bytes)(reported, against);
-    }
-    if let Err(e) = w.flush() {
-        return Err(left_half_written(p, dst, &w, from_io("copy", &dst.named.to_string_lossy(), &e)));
+        if let Some(parent) = dst.named.parent() {
+            touch(p, parent);
+        }
     }
     if let Some(carried) = p.tree.as_mut() {
         *carried += done;
@@ -153,6 +183,9 @@ fn copy_symlink_at(src: At, dst: At, p: &mut Progress) -> Result<(), FleaError> 
     if let Some(writer) = p.manifest.as_mut() {
         writer.record_stat(dst.at, dst.named);
     }
+    if let Some(parent) = dst.named.parent() {
+        touch(p, parent);
+    }
     Ok(())
 }
 
@@ -181,6 +214,9 @@ fn copy_at(src: At, dst: At, p: &mut Progress) -> Result<(), FleaError> {
     crate::backend::copynode::copy_node(&meta, dst.at)?;
     if let Some(writer) = p.manifest.as_mut() {
         writer.record_stat(dst.at, dst.named);
+    }
+    if let Some(parent) = dst.named.parent() {
+        touch(p, parent);
     }
     Ok(())
 }
@@ -236,6 +272,10 @@ fn copy_dir_at(src: At, dst: At, p: &mut Progress) -> Result<(), FleaError> {
     // widened by the owner's three, because a copy that carried every byte is not a failure.
     if let Some(mode) = keep {
         let _ = std::fs::set_permissions(&into_held, std::fs::Permissions::from_mode(mode));
+    }
+    touch(p, dst.named);
+    if let Some(parent) = dst.named.parent() {
+        touch(p, parent);
     }
     r
 }
@@ -317,10 +357,23 @@ fn open_dir(path: &Path) -> std::io::Result<std::fs::File> {
 // Same filesystem is a rename; a different one is copy-then-remove, and the source only goes once the copy is complete.
 pub fn move_any(src: &Path, dst: &Path, p: &mut Progress) -> Result<(), FleaError> {
     match crate::backend::renamecompat::rename_noreplace(src, dst) {
-        Ok(()) => Ok(()),
+        Ok(()) => {
+            // One rename rewrote two directory entries, so both folders are confirmed.
+            if let Some(parent) = dst.parent() {
+                touch(p, parent);
+            }
+            if let Some(parent) = src.parent() {
+                touch(p, parent);
+            }
+            Ok(())
+        }
         Err(e) if e.raw_os_error() == Some(EXDEV) => {
             copy_any(src, dst, p)?;
-            remove_any(src)
+            remove_any(src)?;
+            if let Some(parent) = src.parent() {
+                touch(p, parent);
+            }
+            Ok(())
         }
         Err(e) => Err(from_io("rename", &dst.to_string_lossy(), &e)),
     }

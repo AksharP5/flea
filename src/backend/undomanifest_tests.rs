@@ -34,6 +34,7 @@ fn partial_with_manifest(src: &Path, dst: &Path, hook: &mut dyn FnMut(u32, &Path
         tree: None,
         partial: None,
         manifest: copymanifest::writer_for(src, dst),
+        durability: None,
     };
     let outcome = crate::backend::copyfile::copy_any(src, dst, &mut p);
     let finished = p.partial.take();
@@ -236,6 +237,7 @@ fn a_symlink_the_copy_made_goes_without_touching_its_target() {
         tree: None,
         partial: None,
         manifest: copymanifest::writer_for(&src, &partial),
+        durability: None,
     };
     crate::backend::copyfile::copy_any(&src, &partial, &mut p).expect("the copy");
     let handle = p.manifest.take().map(|writer| writer.finish().expect("no I/O")).unwrap_or(None).expect("manifest");

@@ -5,7 +5,18 @@ use std::path::{Path, PathBuf};
 
 // Sample: `2 1 0:9 / /home/pi/My\040Drive rw - fuse.rclone remote: rw`; longest enclosing mount wins after octal unescaping.
 pub(crate) fn mount_type_in(path: &Path, body: &str) -> Option<String> {
-    let mut best: Option<(usize, String)> = None;
+    mount_entry_in(path, body).map(|entry| entry.fstype)
+}
+
+// The mount that owns a path: its filesystem type and its device numbers.
+pub(crate) struct MountEntry {
+    pub fstype: String,
+    pub majmin: String,
+}
+
+// Sample: the line above answers fstype "fuse.rclone" and majmin "0:9".
+pub(crate) fn mount_entry_in(path: &Path, body: &str) -> Option<MountEntry> {
+    let mut best: Option<(usize, MountEntry)> = None;
     for line in body.lines() {
         let fields: Vec<&str> = line.split_whitespace().collect();
         let split = match fields.iter().position(|field| *field == "-") {
@@ -21,10 +32,13 @@ pub(crate) fn mount_type_in(path: &Path, body: &str) -> Option<String> {
         }
         let depth = mount.components().count();
         if best.as_ref().map(|(old, _)| depth >= *old).unwrap_or(true) {
-            best = Some((depth, fields[split + 1].to_string()));
+            best = Some((
+                depth,
+                MountEntry { fstype: fields[split + 1].to_string(), majmin: fields[2].to_string() },
+            ));
         }
     }
-    best.map(|(_, kind)| kind)
+    best.map(|(_, entry)| entry)
 }
 
 fn unescape(field: &str) -> Vec<u8> {
@@ -84,6 +98,18 @@ mod tests {
     #[test]
     fn malformed_mountinfo_is_ignored() {
         assert_eq!(mount_type_in(Path::new("/home/pi"), "junk\n"), None);
+    }
+
+    #[test]
+    fn the_entry_names_the_fstype_the_device_and_the_source() {
+        let info = "1 0 8:1 / / rw - ext4 /dev/a rw\n\
+                    30 1 8:17 / /media/stick rw - vfat /dev/sdb1 rw\n";
+        let entry = mount_entry_in(Path::new("/media/stick/photo.jpg"), info).expect("the stick owns its files");
+        assert_eq!(entry.fstype, "vfat");
+        assert_eq!(entry.majmin, "8:17");
+        let root = mount_entry_in(Path::new("/elsewhere"), info).expect("the root owns the rest");
+        assert_eq!((root.fstype.as_str(), root.majmin.as_str()), ("ext4", "8:1"));
+        assert!(mount_entry_in(Path::new("/home/pi"), "junk\n").is_none());
     }
 
     // The kernel escapes only \040, \011, \012 and \134, but this is a parser at a trust boundary.

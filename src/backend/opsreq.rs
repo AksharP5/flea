@@ -22,7 +22,7 @@ pub enum OpMsg {
     Progress { id: usize, index: usize, name: String, bytes: u64, total: u64, scanned: u64 },
     Item { id: usize, index: usize, name: String, ok: bool, err: String },
     TransferDone { id: usize, ok: usize, failed: usize, skipped: usize, cancelled: bool, entry: Entry,
-                   retry: Vec<(PathBuf, ItemIdentity)> },
+                   retry: Vec<(PathBuf, ItemIdentity)>, durable: bool, note: String },
     Trashed { ok: usize, failed: usize, entry: Entry },
     Duplicated { ok: bool, path: String, err: String, entry: Entry },
     RedoDone { journal: super::undo::Journal, result: Result<String, FleaError> },
@@ -66,11 +66,11 @@ pub fn transferitem_line(id: usize, index: usize, name: &str, ok: bool, err: &st
 }
 
 pub fn transferdone_line(id: usize, ok: usize, failed: usize, skipped: usize, cancelled: bool,
-                         retry: &[(PathBuf, ItemIdentity)]) -> String {
+                         retry: &[(PathBuf, ItemIdentity)], durable: bool, note: &str) -> String {
     let paths: Vec<_> = retry.iter().map(|(path, _)| format!("\"{}\"", escape(&path.to_string_lossy()))).collect();
     format!(
-        r#"{{"t":"transferdone","id":{},"ok":{},"failed":{},"skipped":{},"cancelled":{},"retryPaths":[{}]}}"#,
-        id, ok, failed, skipped, cancelled, paths.join(",")
+        r#"{{"t":"transferdone","id":{},"ok":{},"failed":{},"skipped":{},"cancelled":{},"retryPaths":[{}],"durable":{},"note":"{}"}}"#,
+        id, ok, failed, skipped, cancelled, paths.join(","), durable, escape(note)
     )
 }
 
@@ -217,6 +217,7 @@ pub(crate) fn run_transfer_checked(
     let sweep = SweepGuard { flag: Arc::new(AtomicBool::new(true)) };
     let policy = policy.for_batch(&paths);
     spawn_total(&paths, &dest, policy.skipping(), &cancel, &settled, &sweep.flag);
+    let mut ctx = crate::backend::durable::Ctx::begin(&dest);
     let mut steps: Vec<Step> = Vec::new();
     let mut retry = Vec::new();
     let (mut ok, mut failed, mut skipped) = (0usize, 0usize, 0usize);
@@ -285,7 +286,7 @@ pub(crate) fn run_transfer_checked(
                 continue;
             }
         };
-        let land = |steps: &mut Vec<Step>| one_item(id, index, &name, moving, &src, &dst, source.clone(), &cancel, &tx, &settled, steps);
+        let mut land = |steps: &mut Vec<Step>| one_item(id, index, &name, moving, &src, &dst, source.clone(), &cancel, &tx, &settled, steps, &mut ctx);
         let outcome = if replace { replacing(&dst, &mut steps, land) } else { land(&mut steps) };
         match outcome {
             Ok(()) => {
@@ -306,7 +307,8 @@ pub(crate) fn run_transfer_checked(
         }
     }
     let entry = Entry { op: if moving { "move".to_string() } else { "copy".to_string() }, steps };
-    let _ = tx.send(OpMsg::TransferDone { id, ok, failed, skipped, cancelled: was_cancelled, entry, retry });
+    let finished = crate::backend::durable::finish(id, &tx, &ctx);
+    let _ = tx.send(OpMsg::TransferDone { id, ok, failed, skipped, cancelled: was_cancelled, entry, retry, durable: finished.ok, note: finished.note });
 }
 
 // A directory reports the bytes its tree has copied so far and no total, see copyfile.rs Progress.
@@ -323,6 +325,7 @@ fn one_item(
     tx: &Sender<OpMsg>,
     settled: &AtomicU64,
     steps: &mut Vec<Step>,
+    ctx: &mut super::durable::Ctx,
 ) -> Result<(), FleaError> {
     let mut last = Instant::now() - PROGRESS_EVERY;
     let mut sink = |done: u64, total: u64| {
@@ -340,7 +343,7 @@ fn one_item(
             scanned: settled.load(Ordering::Relaxed),
         });
     };
-    let mut p = Progress { cancel, on_bytes: &mut sink, partial: None, tree: None, manifest: if moving { super::copymanifest::writer_for_move(src, dst) } else { super::copymanifest::writer_for(src, dst) } };
+    let mut p = Progress { cancel, on_bytes: &mut sink, partial: None, tree: None, manifest: if moving { super::copymanifest::writer_for_move(src, dst) } else { super::copymanifest::writer_for(src, dst) }, durability: Some(ctx) };
     let mut outcome = if moving { move_any(src, dst, &mut p) } else { copy_any(src, dst, &mut p) };
     match &outcome {
         Ok(()) if moving => steps.push(undo::moved(src, dst, source)?),

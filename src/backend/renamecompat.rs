@@ -94,7 +94,8 @@ fn needs_fuse_fallback_in(from: &Path, error: &io::Error, mountinfo: &str) -> bo
 pub(crate) fn copy_then_remove(from: &Path, to: &Path) -> Result<(), FleaError> {
     let cancel = AtomicBool::new(false);
     let mut sink = |_: u64, _: u64| {};
-    let mut progress = Progress { cancel: &cancel, on_bytes: &mut sink, partial: None, tree: None, manifest: None };
+    let mut ctx = crate::backend::durable::Ctx::begin(to);
+    let mut progress = Progress { cancel: &cancel, on_bytes: &mut sink, partial: None, tree: None, manifest: None, durability: Some(&mut ctx) };
     if let Err(error) = copy_any(from, to, &mut progress) {
         if progress.partial.as_deref() == Some(to) {
             if let Err(cleanup) = remove_any(to) {
@@ -106,6 +107,15 @@ pub(crate) fn copy_then_remove(from: &Path, to: &Path) -> Result<(), FleaError> 
             }
         }
         return Err(rename_error(error));
+    }
+    drop(progress);
+    // The copy landed but its folder is unconfirmed; the source is kept so nothing is lost.
+    if ctx.flush_dirs().is_err() {
+        return Err(FleaError {
+            where_: "rename".to_string(),
+            path: to.to_string_lossy().to_string(),
+            msg: crate::backend::durable::DIR_UNCONFIRMED.to_string(),
+        });
     }
     match remove_any(from) {
         Ok(()) => Ok(()),

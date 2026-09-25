@@ -132,6 +132,7 @@ fn report(rx: std::sync::mpsc::Receiver<OpMsg>, paths: &[String], moving: bool) 
     let mut failed = 0;
     for msg in rx {
         match msg {
+            OpMsg::Meta { line } => println!("{}", line),
             OpMsg::Progress { id, index, name, bytes, total, scanned } => {
                 println!("{}", transferprogress_line(id, index, &name, bytes, total, scanned));
             }
@@ -145,8 +146,8 @@ fn report(rx: std::sync::mpsc::Receiver<OpMsg>, paths: &[String], moving: bool) 
                     }
                 }
             }
-            OpMsg::TransferDone { id, ok, failed: bad, skipped, cancelled, retry, entry } => {
-                println!("{}", transferdone_line(id, ok, bad, skipped, cancelled, &retry));
+            OpMsg::TransferDone { id, ok, failed: bad, skipped, cancelled, retry, entry, durable, note } => {
+                println!("{}", transferdone_line(id, ok, bad, skipped, cancelled, &retry, durable, &note));
                 steps = entry.steps;
             }
             _ => {}

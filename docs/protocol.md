@@ -473,6 +473,16 @@ Directory recursion is invisible on this wire: the backend walks a
 tree to copy it and the client sees only the top-level item's lines, so the wire's shape does not depend
 on how deep a folder is.
 
+**Copies onto removable, phone and network targets are durable before "done".** When the
+destination classes usb, phone or network, or its filesystem is vfat, exfat or ntfs, each file is
+fsync'd after its last write and every directory Flea created or wrote into is fsync'd before the
+transfer reports done. Local btrfs and ext4 targets keep today's behaviour. A failed file fsync fails
+that item like any other copy error and journals the partial for undo. The same rule covers a
+same-directory duplicate, a redo of a copy, and a same-filesystem rename onto a durable target:
+the new files are fsync'd, and the destination directory (and the source directory for a move)
+with them; a rename that already landed reports success either way, because claiming otherwise
+would lie about what happened.
+
 **A choice for names that already exist rides on two optional fields**, `collide` and `collideId`:
 
 Example: `{"c":"transfer","op":"copy","paths":["/home/gm/Desktop/screenshot.png"],"dest":"/home/gm/Pictures","collide":"replace","collideId":7}`
@@ -1041,7 +1051,7 @@ then sends its transfer with `collide` `refuse`, so a name that appears in the m
 
 ### transferprogress
 
-`{"t":"transferprogress","id":<uint>,"index":<uint>,"name":"<string>","bytes":<uint>,"total":<uint>}`
+`{"t":"transferprogress","id":<uint>,"index":<uint>,"name":"<string>","bytes":<uint>,"total":<uint>[,"phase":"writing"]}`
 
 Example: `{"t":"transferprogress","id":12,"index":0,"name":"a.txt","bytes":40000000,"total":120000000}`
 
@@ -1051,6 +1061,13 @@ before its terminal line; that is correct and not a missing message.
 **Only a regular file reports bytes.** A directory has no total without the sweep this codebase does not
 do, and a same-filesystem move is a single `rename(2)` with nothing to report partway through, so
 neither emits these lines at all. A client renders an item with no progress as indeterminate.
+On a durable target (usb, phone, network, or vfat/exfat/ntfs) those bytes are reported only after
+the drive confirms them, so the rate is the drive's real rate.
+
+**The final phase rides one more of these lines.** After the last file, the transfer emits
+`{"t":"transferprogress","id":<uint>,"index":0,"name":"","bytes":0,"total":0,"scanned":0,"phase":"writing"}`
+while it fsyncs every directory it created or wrote into. Cancel is not honoured there because
+every file is already complete. Older clients ignore the field they never asked for.
 
 **An extract's one progress line is not a transfer's.** It carries the archive's own file name as
 `name` with `bytes` and `total` both 0: the unpacking tool streams no per-item bytes, so any figure for
@@ -1072,15 +1089,19 @@ removes it; only a cancel removes its partial itself, see `transfercancel`.
 
 ### transferdone
 
-`{"t":"transferdone","id":<uint>,"ok":<uint>,"failed":<uint>,"skipped":<uint>,"cancelled":<bool>}`
+`{"t":"transferdone","id":<uint>,"ok":<uint>,"failed":<uint>,"skipped":<uint>,"cancelled":<bool>,"durable":<bool>,"note":"<string>"}`
 
-Example: `{"t":"transferdone","id":12,"ok":1,"failed":1,"skipped":0,"cancelled":false}`
+Example: `{"t":"transferdone","id":12,"ok":1,"failed":1,"skipped":0,"cancelled":false,"durable":false,"note":""}`
 
 The whole operation's terminal line. `skipped` counts the items the transfer did not start by design:
 those a cancel reached before they started, the colliding items a `collide` of `skip` left in place,
 and an item a `collide` move would have put back where it already is. A cancelled `replace` whose
 put-back failed is counted in `failed` instead, see `transfer`. `cancelled` is true when a
-`transfercancel`, a `quit` or stdin closing ended it early.
+`transfercancel`, a `quit` or stdin closing ended it early. `durable` is true only when the
+destination needed durability and every flush succeeded, so the UI can say "written to the drive";
+local targets report false and never claim it. `note` carries the sentence the UI prints when the
+files landed but a folder flush did not, `copied, but the drive did not confirm the folder`, and
+is empty otherwise.
 
 ### trashed
 

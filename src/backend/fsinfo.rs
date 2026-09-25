@@ -22,6 +22,10 @@ const MAGIC: &[(i64, &str)] = &[
     (0x01021994, "tmpfs"),
     (0x6969, "nfs"),
     (0xFF534D42, "cifs"),
+    (0xFE534D42, "smb2"),
+    (0x01021997, "9p"),
+    (0x00C36400, "ceph"),
+    (0x2011BAB0, "exfat"),
     (0x65735546, "fuse"),
     (0x4D44, "vfat"),
     (0x5346544E, "ntfs"),
@@ -71,6 +75,17 @@ pub fn read(path: &Path) -> Option<Info> {
     Some(Info { name: name_for(buf.f_type), free: buf.f_bavail.saturating_mul(buf.f_bsize.max(0) as u64) })
 }
 
+// The raw f_type for the directory's filesystem, so the class decision can name a network
+// mount the table spells "fuse" for; None when the path cannot be read at all.
+pub fn magic_of(path: &Path) -> Option<i64> {
+    let c = CString::new(path.as_os_str().as_encoded_bytes()).ok()?;
+    let mut buf: StatFs = unsafe { std::mem::zeroed() };
+    if unsafe { statfs(c.as_ptr(), &mut buf) } != 0 {
+        return None;
+    }
+    Some(buf.f_type)
+}
+
 // An unknown filesystem reports its own magic rather than a wrong name or an empty string.
 pub fn name_for(f_type: i64) -> String {
     for (magic, name) in MAGIC {
@@ -103,6 +118,14 @@ mod tests {
         assert_eq!(name_for(0xEF53), "ext4");
         assert_eq!(name_for(0x01021994), "tmpfs");
         assert_eq!(name_for(0x1234), "0x1234", "a wrong name would be worse than the number");
+    }
+
+    #[test]
+    fn network_and_removable_magics_read_back_as_names() {
+        assert_eq!(name_for(0xFE534D42), "smb2");
+        assert_eq!(name_for(0x01021997), "9p");
+        assert_eq!(name_for(0x00C36400), "ceph");
+        assert_eq!(name_for(0x2011BAB0), "exfat");
     }
 
     #[test]

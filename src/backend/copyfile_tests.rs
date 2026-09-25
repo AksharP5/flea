@@ -4,7 +4,7 @@ use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::sync::atomic::AtomicBool;
 
 fn quiet<'a>(flag: &'a AtomicBool, sink: &'a mut dyn FnMut(u64, u64)) -> Progress<'a> {
-    Progress { cancel: flag, on_bytes: sink, partial: None, tree: None, manifest: None }
+    Progress { cancel: flag, on_bytes: sink, partial: None, tree: None, manifest: None, durability: None }
 }
 
 // copy_any sends a symlink to copy_symlink, so a symlink reaching copy_file was swapped in after

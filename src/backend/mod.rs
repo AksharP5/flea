@@ -8,6 +8,8 @@ pub mod archivereq;
 pub mod archivework;
 pub mod mime;
 pub mod fsinfo;
+pub mod extclass;
+pub mod durable;
 pub mod icons;
 pub mod regfile;
 pub mod imagesize;

@@ -126,6 +126,8 @@ impl Drop for Terminal {
                 steps: Vec::new(),
             },
             retry: Vec::new(),
+            durable: false,
+            note: String::new(),
         }));
     }
 }

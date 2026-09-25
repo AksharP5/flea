@@ -42,6 +42,19 @@ pub fn rename(path: &Path, to_name: &str) -> Result<(PathBuf, Vec<Step>), FleaEr
     }
     let before = ItemIdentity::inspect(path)?;
     renamecompat::rename_path(path, &to)?;
+    {
+        // A same-filesystem rename is atomic, so confirming its directory is best effort: the
+        // rename already happened, and an error here would claim otherwise. It is still said aloud.
+        let mut confirm = crate::backend::durable::Ctx::begin(&to);
+        if confirm.durable {
+            if let Some(parent) = to.parent() {
+                confirm.touch(parent);
+            }
+            if confirm.flush_dirs().is_err() {
+                eprintln!("flea: rename landed but the drive did not confirm the folder");
+            }
+        }
+    }
     Ok((to.clone(), vec![undo::moved(path, &to, before)?]))
 }
 
@@ -82,13 +95,20 @@ pub fn duplicate(path: &Path) -> (Result<PathBuf, FleaError>, Vec<Step>) {
     };
     let flag = AtomicBool::new(false);
     let mut sink = |_: u64, _: u64| {};
+    let mut ctx = crate::backend::durable::Ctx::begin(&dst);
     let mut p = Progress { cancel: &flag, on_bytes: &mut sink, partial: None, tree: None,
-        manifest: crate::backend::copymanifest::writer_for(path, &dst) };
+        manifest: crate::backend::copymanifest::writer_for(path, &dst), durability: Some(&mut ctx) };
     match copy_any(path, &dst, &mut p) {
-        Ok(()) => match undo::copied(path, &dst, source) {
-            Ok(step) => (Ok(dst), vec![step]),
-            Err(error) => (Err(error), Vec::new()),
-        },
+        Ok(()) => {
+            drop(p);
+            // The bytes landed; only the folder confirmation can still fail, so the step stays journalled either way.
+            let unconfirmed = ctx.flush_dirs().is_err();
+            match undo::copied(path, &dst, source) {
+                Ok(step) if !unconfirmed => (Ok(dst), vec![step]),
+                Ok(step) => (Err(named("duplicate", &dst, crate::backend::durable::DIR_UNCONFIRMED)), vec![step]),
+                Err(error) => (Err(error), Vec::new()),
+            }
+        }
         Err(mut error) => {
             let mut steps = Vec::new();
             if let Some(partial) = p.partial.take() {

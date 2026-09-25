@@ -81,6 +81,7 @@ fn a_file_half_written_when_writes_give_out_is_removed_by_undo() {
         tree: None,
         partial: None,
         manifest: copymanifest::writer_for(&src, &partial),
+        durability: None,
     };
     let cap = FileSizeCap::cap(300 * 1024);
     let outcome = copy_any(&src, &partial, &mut p);
