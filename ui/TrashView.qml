@@ -5,6 +5,7 @@ import "." as Flea
 import "js/Format.js" as Format
 import "js/Icons.js" as Icons
 import "js/Keymap.js" as Keymap
+import "js/Ops.js" as Ops
 import "js/Tap.js" as Tap
 import "js/TrashDates.js" as Trash
 import "js/Trash.js" as TrashKeys
@@ -217,7 +218,7 @@ FocusScope {
                 if ((message.recoveryErrors || []).length > 0)
                     operationResult("Interrupted file operation needs attention", message.recoveryErrors.join("\n"), true)
                 else if (message.recoveredCount > 0)
-                    operationResult("Recovered " + message.recoveredCount + " interrupted file operations", "", false)
+                    operationResult("Recovered " + message.recoveredCount + " interrupted file " + Ops.pluralWord(message.recoveredCount, "operation", "operations"), "", false)
                 errorText = ""
                 var kept = ({})
                 var keptIdentities = ({})
@@ -263,7 +264,7 @@ FocusScope {
             }
             selectionIdentities = identities
             allSelected = false; selectionToken = 0; selectionCount = 0; selected = next
-            var text = (message.op === "restore" ? "Restored " : "Deleted ") + Format.count(message.done) + " of " + Format.count(message.done + failed)
+            var text = Ops.doneOf(message.op === "restore" ? "Restored" : "Deleted", message.done, message.done + failed)
             if (failed) text += " · " + Format.count(failed) + " failed"
             var detail = failures.map(function(item) { return (item.name || item.uri) + " failed: " + item.error }).join("\n")
             operationResult(text, detail, failed > 0)

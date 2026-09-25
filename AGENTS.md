@@ -1974,6 +1974,11 @@ its sources and its keys are all `ui/PathJump.qml`. `ui/WindowBody.qml` 484 to 4
 request to the pane's backend and its answer back, the two lines Tab's peek already spends.
 `src/backend/run.rs` 427 to 428 for the `jump` arm, whose work is all `src/backend/jump.rs`.
 
+Trashone takes `ui/js/Ops.js` from 335 to 367 for the five singular/plural sentence helpers every
+delete confirm and status line now shares, `ui/TrashView.qml` from 466 to 467 for the one import
+that reaches them, `src/tui/render.rs` from 822 to 835 for the singular TUI confirm and its test,
+and `src/tui/model.rs` from 1196 to 1197 for the noun on its Deleted line.
+
 `src/backend/ops.rs` split to `src/backend/renamecompat.rs` at 455: composing PR 35's safe rclone
 rename into the release tree put the rename exception over the 400-line hard cap, so the exception
 and its tests moved to the module that already owned classifying which rename failures need it.

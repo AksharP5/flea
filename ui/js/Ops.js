@@ -19,9 +19,41 @@ function emptyTransfer() {
              done: 0, bytes: 0, total: 0, moved: 0 }
 }
 
+// Any counted noun, so callers with their own word never hand-build the plural.
+function pluralWord(n, one, many) {
+    return n === 1 ? one : many
+}
+
+// "item" or "items", the noun alone for a line that already carries its count.
+function itemWord(n) {
+    return pluralWord(n, "item", "items")
+}
+
 // "1 item" or "1,204 items", so no caller builds a plural by hand.
 function items(n) {
-    return Format.count(n) + (n === 1 ? " item" : " items")
+    return Format.count(n) + " " + itemWord(n)
+}
+
+// The delete confirm names its scope ("Trash items" in the Trash view, "items" on a menu
+// delete), singular for one and plural otherwise, so no caller keeps its own "items" constant.
+function scopeSingle(scope) {
+    return String(scope).replace("items", "item")
+}
+function deleteScopeLine(scope, n) {
+    return n === 1 ? "This " + scopeSingle(scope) + " is deleted from disk. This cannot be undone."
+                   : "These " + scope + " are deleted from disk. This cannot be undone."
+}
+
+// The Empty Trash body deletes "it" for one and "them" otherwise; sizeText and undoHint are the
+// row's own formatted size and key hint, which this module never formats itself.
+function deleteAllLine(n, sizeText, undoHint) {
+    return items(n) + ", " + sizeText + ". This deletes " + pluralWord(n, "it", "them")
+        + " from disk. " + undoHint + " cannot undo it and the undo journal does not cover it."
+}
+
+// "Deleted 1 of 1 item" or "Restored 0 of 2 items": the Trash view and the menu delete status.
+function doneOf(verb, done, total) {
+    return verb + " " + Format.count(done) + " of " + Format.count(total) + " " + itemWord(total)
 }
 
 // extract is the one verb not derived from moving: an extract drives this same card and its Cancel.
@@ -119,7 +151,7 @@ function leaf(path) {
 
 // The pane's own delete verdict, which ui/PaneMenuActions.qml draws when a menu delete lands.
 function deletedLine(message) {
-    var text = "Deleted " + Format.count(message.deleted) + " of " + Format.count(message.count)
+    var text = doneOf("Deleted", message.deleted, message.count)
     if (message.failed) text += " · " + Format.count(message.failed) + " failed"
     if (message.cancelled) text += " · cancelled"
     return text

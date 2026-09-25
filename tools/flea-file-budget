@@ -25,8 +25,8 @@ src/backend/trashbrowse.rs 698
 src/backend/trashdelete.rs 895
 src/tui/actions.rs 1021
 src/tui/input.rs 449
-src/tui/model.rs 1196
-src/tui/render.rs 822
+src/tui/model.rs 1197
+src/tui/render.rs 835
 src/uistate.rs 442
 src/uistore.rs 483
 src/vulkan.rs 620
@@ -51,12 +51,12 @@ ui/Row.qml 421
 ui/SettingsPanel.qml 542
 ui/SettingsRow.qml 410
 ui/Sidebar.qml 543
-ui/TrashView.qml 466
+ui/TrashView.qml 467
 ui/WindowBody.qml 487
-ui/js/Filter.js 301
-ui/js/Focus.js 341
+ui/js/Filter.js 253
+ui/js/Focus.js 334
 ui/js/Keymap.js 313
-ui/js/Ops.js 335
+ui/js/Ops.js 367
 ui/js/Settings.js 427"
 
 status=0

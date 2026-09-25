@@ -505,7 +505,7 @@ trash_restore_failures() {
     row=$(menu_row_index Restore) || fail "trash: missing selected Restore row"
     trash_guard_store 1
     trash_click contextMenuRowCentre "$row"
-    trash_failure_status 'Restored 0 of 1 · 1 failed' 'without overwriting'
+    trash_failure_status 'Restored 0 of 1 item · 1 failed' 'without overwriting'
     trash_wait '.opened and .total == 1 and .selectedCount == 1 and (.busy == false)'
     [[ "$(cat "$payload/beta.txt")" == 'existing destination' ]] || fail "trash: Restore overwrote an existing file"
     uri=$(/usr/bin/gio trash --list | cut -f1)
@@ -542,7 +542,7 @@ trash_restore_failures() {
     menu_seek Restore
     trash_guard_store 1
     key -k Return >/dev/null
-    trash_failure_status 'Restored 0 of 1 · 1 failed' 'Could not open original location'
+    trash_failure_status 'Restored 0 of 1 item · 1 failed' 'Could not open original location'
     trash_wait '.opened and .total == 1 and .selectedCount == 1 and (.busy == false)'
     [[ ! -e "$original" ]] || fail "trash: restore fabricated an unavailable parent"
     trash_shot trash-restore-missing-parent
@@ -817,7 +817,7 @@ case_trash() {
     trash_guard_store 2
     key -k Return >/dev/null
     trash_wait '.total == 1 and .selectedCount == 1 and (.busy == false)'
-    [[ "$(ipc statusPrimary)" == 'Deleted 1 of 2 · 1 failed' && "$(ipc statusError)" == true ]] \
+    [[ "$(ipc statusPrimary)" == 'Deleted 1 of 2 items · 1 failed' && "$(ipc statusError)" == true ]] \
         || fail "trash: partial deletion did not retain the named primary failure"
     [[ "$(ipc statusDetail)" == *locked* && "$(ipc statusDetail)" == *'Permission denied'* ]] \
         || fail "trash: partial deletion has no file-specific failure detail"

@@ -40,4 +40,24 @@ function run(check) {
     var one = pane(4, [])
     Ops.trash(one, 0)
     check("one row records itself", one.trashedFirst, 4)
+
+    // trashone: every confirm and status string naming a count or a scope is singular for one.
+    check("one item is 'item' and two are 'items'",
+          Ops.itemWord(1) + " / " + Ops.itemWord(2) + " / " + Ops.itemWord(0),
+          "item / items / items")
+    check("one scope is 'This Trash item is' and two are 'These Trash items are'",
+          Ops.deleteScopeLine("Trash items", 1) + " // " + Ops.deleteScopeLine("Trash items", 2),
+          "This Trash item is deleted from disk. This cannot be undone. // These Trash items are deleted from disk. This cannot be undone.")
+    check("a menu delete names its own scope the same way",
+          Ops.deleteScopeLine("items", 1),
+          "This item is deleted from disk. This cannot be undone.")
+    check("an empty-trash body deletes 'it' for one and 'them' otherwise",
+          Ops.deleteAllLine(1, "4 KiB", "^z") + " // " + Ops.deleteAllLine(2, "4 KiB", "^z"),
+          "1 item, 4 KiB. This deletes it from disk. ^z cannot undo it and the undo journal does not cover it. // 2 items, 4 KiB. This deletes them from disk. ^z cannot undo it and the undo journal does not cover it.")
+    check("a finished Trash delete names its total",
+          Ops.doneOf("Deleted", 1, 1) + " // " + Ops.doneOf("Deleted", 1, 2) + " // " + Ops.doneOf("Restored", 0, 1),
+          "Deleted 1 of 1 item // Deleted 1 of 2 items // Restored 0 of 1 item")
+    check("a non-item noun keeps its own singular",
+          Ops.pluralWord(1, "operation", "operations") + " / " + Ops.pluralWord(3, "operation", "operations"),
+          "operation / operations")
 }

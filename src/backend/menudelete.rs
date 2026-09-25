@@ -84,7 +84,8 @@ impl Review {
             }
         }
         let error = if failed > 0 {
-            format!("{} selected items were not completely deleted. First failure: {}", failed, first_error)
+            format!("{} selected {} not completely deleted. First failure: {}", failed,
+                if failed == 1 { "item was" } else { "items were" }, first_error)
         } else { String::new() };
         Ok(format!(r#""deleted":{},"failed":{},"cancelled":{},"error":"{}","remaining":[{}]"#,
             deleted, failed, cancelled, escape(&error), self.remaining()))

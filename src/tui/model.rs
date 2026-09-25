@@ -945,7 +945,8 @@ impl Model {
                 } else if flag(&value, "stale") {
                     self.say("Deletion cancelled".into());
                 } else {
-                    self.say(format!("Deleted {} of {}{}", super::render::grouped(count(&value, "deleted")), super::render::grouped(self.menu_count),
+                    self.say(format!("Deleted {} of {} {}{}", super::render::grouped(count(&value, "deleted")), super::render::grouped(self.menu_count),
+                        if self.menu_count == 1 { "item" } else { "items" },
                         if flag(&value, "cancelled") { " · Cancelled".into() } else { String::new() }));
                     if count(&value, "failed") > 0 { self.fail(format!("{} failed · {}", super::render::grouped(count(&value, "failed")), text(&value, "error"))); }
                     let remaining: BTreeSet<PathBuf> = value.get("remaining").and_then(Json::as_array).unwrap_or(&[]).iter().filter_map(Json::as_str).map(PathBuf::from).collect();

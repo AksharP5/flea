@@ -516,7 +516,10 @@ pub fn deletion_rows(m: &Model) -> Vec<String> {
     let summary = if deletion.token == 0 { "Inspecting selected items…".into() }
         else { format!("{} {}, {}", grouped(deletion.count), if deletion.count == 1 { "item" } else { "items" }, bytes(deletion.bytes)) };
     let mut rows: Vec<String> = Wrapped::new(&summary, width).map(str::to_owned).collect();
-    rows.extend(Wrapped::new("This deletes them from disk. This cannot be undone.", width).map(str::to_owned));
+    // One item is deleted as "it", several as "them", the same rule the window's confirm keeps.
+    let scope = if deletion.count == 1 { "This deletes it from disk. This cannot be undone." }
+        else { "This deletes them from disk. This cannot be undone." };
+    rows.extend(Wrapped::new(scope, width).map(str::to_owned));
     rows.push(String::new());
     if m.columns < 30 { rows.extend([" ".repeat(10), " ".repeat(10)]); }
     else { rows.push(" ".repeat(22)); }
@@ -722,6 +725,16 @@ mod tests {
         assert_eq!(menu_rows(&model), ["hide hidden", "taildrop  ▶"]);
         model.taildrop.error = "signed out".into();
         assert_eq!(menu_rows(&model), ["hide hidden", "taildrop · signed out"]);
+    }
+    #[test]
+    fn deletion_confirm_is_singular_for_one_item() {
+        let mut model = Model::new(std::path::PathBuf::from("/"), &crate::jsondoc::Json::Null);
+        model.deletion = Some(super::super::model::Deletion { token: 1, count: 1, bytes: 42, ..Default::default() });
+        model.columns = 80;
+        let confirmation = deletion_rows(&model).concat();
+        assert!(confirmation.contains("1 item,"));
+        assert!(confirmation.contains("This deletes it from disk. This cannot be undone."));
+        assert!(!confirmation.contains("them"));
     }
     #[test]
     fn confirmation_buttons_stay_visible_and_hit_testable_at_small_sizes() {
