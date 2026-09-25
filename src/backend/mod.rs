@@ -83,6 +83,9 @@ pub mod watch;
 // Test-only: the failing-first manifest behaviour for undo of a failed tree copy.
 #[cfg(test)]
 mod undomanifest_tests;
+// Test-only: the copy manifest under a failing filesystem, each cap in a re-executed child.
+#[cfg(test)]
+mod manifestfsize_tests;
 // Test-only: hard rule 9's sandbox root, so no destructive test names a path outside one.
 #[cfg(test)]
 pub mod testdir;

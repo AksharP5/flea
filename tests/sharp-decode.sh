@@ -3,11 +3,10 @@
 # a sweep of 50 cursor moves at key-repeat rate must open no original, and a rest on a 6016x3900
 # PNG must decode it exactly once. Decodes are counted from outside the column, as open events on
 # the fixture directory between touch sentinel files the harness drops at each phase boundary, so
-# windows follow the event stream's own order instead of comparing two clocks. One decode opens its
-# original several times over, so the rest counts decode episodes, runs of big.png opens unbroken by
-# any other event, and demands exactly one; a second decode lands its own run and reddens. The same
-# instrument runs on the base commit too: this pins the product path, it is not a fix. Offscreen, so
-# it needs no display and no lock.
+# windows follow the event stream's own order instead of comparing two clocks. Qt 6.11 opens a
+# PNG exactly once per decode, so the rest window must hold exactly one OPEN of big.png; a second
+# decode opens it again and reddens. The same instrument runs on the base commit too: this pins
+# the product path, it is not a fix. Offscreen, so it needs no display and no lock.
 set -u
 cd "$(dirname "$0")/.." || exit 1
 
@@ -94,20 +93,16 @@ wait 2>/dev/null
 if grep -q 'SHARP FAIL' "$log" || ! grep -q 'SHARP DONE' "$log"; then
     bad "the harness did not finish (qs exit $status): $(grep -a 'SHARP FAIL' "$log" | head -1) (log $log)"
 else
-    # The three sentinels in order open the sweep and rest windows; delivery is causal, so every
-    # event of a window is already in the log once its closing sentinel is read.
-    # Sample input, one inotifywait line per event: 'OPEN|s12.jpg' opens a sharp original, while
-    # 'CREATE|sentinel-rest' closes the sweep window and opens the rest one; thumbnails start with
-    # t, sentinels with sentinel-, and note.txt is the text row, so only an s photo or big.png is a
-    # sharp decode, and only a run of big.png opens unbroken by any other line is one decode episode.
+    # Sample input, one inotifywait line per event: 'OPEN|s12.jpg' is a sharp decode and 'CREATE|sentinel-rest' opens the rest window once the sweep one closes.
+    # Qt 6.11 opens a PNG exactly once per decode, so the rest window must hold exactly one OPEN of big.png and no s photo opens.
     got_sweep=0; got_rest=0; got_done=0; phase=0
-    sweep_opens=0; rest_big=0; rest_episodes=0; rest_sweep=0; in_big_run=0
+    sweep_opens=0; rest_big=0; rest_sweep=0
     events=""; name=""
     while IFS='|' read -r events name || [ -n "$events" ]; do
         case "$events" in
         *CREATE*)
-            if [ "$name" = "sentinel-sweep" ]; then phase=1; got_sweep=1; in_big_run=0
-            elif [ "$name" = "sentinel-rest" ]; then [ "$phase" -eq 1 ] && phase=2; got_rest=1; in_big_run=0
+            if [ "$name" = "sentinel-sweep" ]; then phase=1; got_sweep=1
+            elif [ "$name" = "sentinel-rest" ]; then [ "$phase" -eq 1 ] && phase=2; got_rest=1
             elif [ "$name" = "sentinel-done" ]; then [ "$phase" -eq 2 ] && phase=3; got_done=1
             fi
             ;;
@@ -116,20 +111,13 @@ else
                 case "$name" in
                 s*.jpg|big.png) sweep_opens=$((sweep_opens + 1)) ;;
                 esac
-                in_big_run=0
             elif [ "$phase" -eq 2 ]; then
-                if [ "$name" = "big.png" ]; then
-                    rest_big=$((rest_big + 1))
-                    if [ "$in_big_run" -eq 0 ]; then rest_episodes=$((rest_episodes + 1)); in_big_run=1; fi
-                else
-                    in_big_run=0
-                    case "$name" in
-                    s*.jpg) rest_sweep=$((rest_sweep + 1)) ;;
-                    esac
-                fi
+                if [ "$name" = "big.png" ]; then rest_big=$((rest_big + 1)); fi
+                case "$name" in
+                s*.jpg) rest_sweep=$((rest_sweep + 1)) ;;
+                esac
             fi
             ;;
-        *) in_big_run=0 ;;
         esac
     done < "$watchlog"
     if [ "$got_sweep" != 1 ] || [ "$got_rest" != 1 ] || [ "$got_done" != 1 ]; then
@@ -140,10 +128,10 @@ else
         else
             bad "the sweep opened $sweep_opens original(s) (log $log)"
         fi
-        if [ "$rest_episodes" -eq 1 ] && [ "$rest_sweep" -eq 0 ]; then
-            ok "a rest decoded exactly the rested original ($rest_big open event(s) in one decode)"
+        if [ "$rest_big" -eq 1 ] && [ "$rest_sweep" -eq 0 ]; then
+            ok "a rest decoded exactly the rested original"
         else
-            bad "the rest opened big.png $rest_big time(s) in $rest_episodes decode(s) and sweep rows $rest_sweep time(s) (log $log)"
+            bad "the rest opened big.png $rest_big time(s) and sweep rows $rest_sweep time(s) (log $log)"
         fi
     fi
 fi

@@ -121,3 +121,20 @@ fn two_thousand_records_stream_there_and_back() {
     assert_eq!(report.removed, 2001, "two thousand files and the root that held them");
     assert!(!root.exists(), "deepest first ends with the root itself");
 }
+
+#[test]
+fn framed_bytes_never_pass_the_cap() {
+    let d = TestDir::new("manifestcap");
+    let root = d.dir("root");
+    let meta = d.file("probe.bin", "x").symlink_metadata().unwrap();
+    // 964-byte names make each framed record exactly 1024 B, so 32,768 fill the 32 MiB cap exactly and the next one overflows.
+    let mut writer = Writer::create(&root).expect("anonymous manifest");
+    for i in 0..32768 {
+        writer.record(&root.join(format!("f{i:0963}")), &meta);
+    }
+    assert!(!writer.overflow, "the cap-fitting records all went");
+    assert_eq!(writer.inner.len() + writer.buf.len() as u64 + writer.ends.len() as u64 * FRAMING, MAX_BYTES);
+    writer.record(&root.join("one-more"), &meta);
+    assert!(writer.overflow, "one record past the cap overflows");
+    assert!(writer.finish().expect("no I/O").is_none(), "an overfull manifest journals today's step instead");
+}

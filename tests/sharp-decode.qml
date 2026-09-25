@@ -110,10 +110,8 @@ ShellRoot {
         }
     }
 
-    // The settled engine behind the first measurement: the cursor starts on the text row and the
-    // sweep sentinel is dropped before anything moves, so module load and the first layout never
-    // enter a window, and the script reads every earlier event as drained once it sees the file.
-    // Every row carries the thumbnail its sharp original waits for, so a settle that let a sweep load would decode during the sweep and redden the script.
+    // The settled engine behind the first measurement: the cursor starts on the text row, the sweep sentinel drops first, and every row carries its thumbnail.
+    // Module load never enters a window, and a settle that let a sweep load would decode during the sweep and redden the script.
     function begin() {
         stub.path = shell.photoDir
         stub.fsPath = shell.photoDir

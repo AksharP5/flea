@@ -141,7 +141,9 @@ impl Writer {
             }
         };
         let bytes = encode(meta, rel.as_os_str().as_bytes());
-        if self.inner.len() + self.buf.len() as u64 + bytes.len() as u64 + FRAMING > MAX_BYTES {
+        // The buffer holds unframed records, so every buffered record's framing counts, not only the new one's.
+        let framed = (self.ends.len() as u64 + 1) * FRAMING;
+        if self.inner.len() + self.buf.len() as u64 + bytes.len() as u64 + framed > MAX_BYTES {
             self.overflow = true;
             return;
         }

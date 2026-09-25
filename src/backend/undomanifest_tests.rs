@@ -186,6 +186,7 @@ fn a_file_edited_or_replaced_mid_copy_survives_undo() {
     assert!(err.msg.contains("kept"), "honest count: {}", err.msg);
     assert_eq!(std::fs::read_to_string(&edited).unwrap(), "the user's own longer work");
     assert_eq!(std::fs::read_to_string(&replaced).unwrap(), "another writer's file");
+    assert_eq!(std::fs::read_dir(&partial).unwrap().count(), 2, "exactly the two tampered files stand");
 }
 
 #[test]
@@ -275,88 +276,6 @@ fn walk_bins(root: &Path) -> Vec<PathBuf> {
     found
 }
 
-// Process-wide, but 300 KiB: the suite's largest concurrent write is two_thousand_records' ~140 KiB manifest stream, so only this test's 512 KiB file trips it; the 2 KiB cap runs in a child above.
-
-#[repr(C)]
-struct Rlimit {
-    cur: u64,
-    max: u64,
-}
-#[allow(clashing_extern_declarations)]
-extern "C" {
-    fn signal(signum: i32, handler: usize) -> usize;
-    fn setrlimit(resource: i32, rlim: *const Rlimit) -> i32;
-    fn getrlimit(resource: i32, rlim: *mut Rlimit) -> i32;
-}
-const SIGXFSZ: i32 = 25;
-const SIG_IGN: usize = 1;
-const RLIMIT_FSIZE: i32 = 1;
-
-struct FileSizeCap {
-    old_handler: usize,
-    old_limit: Rlimit,
-}
-impl FileSizeCap {
-    fn cap(bytes: u64) -> Self {
-        let mut old_limit = Rlimit { cur: 0, max: 0 };
-        assert_eq!(unsafe { getrlimit(RLIMIT_FSIZE, &mut old_limit) }, 0);
-        // Without this the first exceeding write kills the process instead of failing it.
-        let old_handler = unsafe { signal(SIGXFSZ, SIG_IGN) };
-        let cap = Rlimit { cur: bytes, max: old_limit.max };
-        assert_eq!(unsafe { setrlimit(RLIMIT_FSIZE, &cap) }, 0);
-        let mut took = Rlimit { cur: 0, max: 0 };
-        assert_eq!(unsafe { getrlimit(RLIMIT_FSIZE, &mut took) }, 0);
-        // The read proves the cap is really on: a silent no-op here would copy whole.
-        assert_eq!(took.cur, bytes);
-        Self { old_handler, old_limit }
-    }
-}
-impl Drop for FileSizeCap {
-    fn drop(&mut self) {
-        unsafe { setrlimit(RLIMIT_FSIZE, &self.old_limit) };
-        unsafe { signal(SIGXFSZ, self.old_handler) };
-    }
-}
-
-#[test]
-fn a_file_half_written_when_writes_give_out_is_removed_by_undo() {
-    let d = TestDir::new("undopartialfsize");
-    let src = d.dir("source");
-    for i in 0..3 {
-        std::fs::write(src.join(format!("f{i}.bin")), "x".repeat(64)).unwrap();
-    }
-    // Past the 256 KiB copy chunk, so the failure lands mid-file, not at create.
-
-    std::fs::write(src.join("big.bin"), "x".repeat(512 * 1024)).unwrap();
-    let partial = d.join("clone");
-    let flag = AtomicBool::new(false);
-    let mut sink = |_: u64, _: u64| {};
-    let mut p = Progress {
-        cancel: &flag,
-        on_bytes: &mut sink,
-        tree: None,
-        partial: None,
-        manifest: copymanifest::writer_for(&src, &partial),
-    };
-    let cap = FileSizeCap::cap(300 * 1024);
-    let outcome = crate::backend::copyfile::copy_any(&src, &partial, &mut p);
-    let finished = p.partial.take();
-    let manifest = p.manifest.take().map(|writer| writer.finish().expect("no I/O")).unwrap_or(None);
-    drop(p);
-    drop(cap);
-    outcome.expect_err("the size cap must fail the big file mid-write");
-    assert_eq!(finished, Some(partial.clone()));
-    let half = partial.join("big.bin").symlink_metadata().expect("the half-written file stays");
-    assert!(half.len() < 512 * 1024 && half.len() >= 256 * 1024, "part of it went: {}", half.len());
-    check_root(&d, &partial);
-    let handle = manifest.expect("the failed copy is manifested");
-    let step = copied_partial(&src, &partial, ItemIdentity::inspect(&src).unwrap(), Some(handle)).unwrap();
-    let mut j = journal("copy", vec![step]);
-    assert_eq!(j.undo().expect("everything the copy created must go"), "copy");
-    assert!(!partial.exists(), "the half-written file went with its tree");
-    assert_eq!(src.join("big.bin").metadata().unwrap().len(), 512 * 1024, "the source stands whole");
-}
-
 #[test]
 fn a_failed_copy_holds_no_descriptor_on_the_destination_filesystem() {
     let d = TestDir::new("undofdnodest");
@@ -372,29 +291,4 @@ fn a_failed_copy_holds_no_descriptor_on_the_destination_filesystem() {
     let dest_dev = std::fs::metadata(d.path()).expect("dest stat").dev();
     assert_ne!(fd_dev, dest_dev, "manifest lives off the destination filesystem");
     drop(handle);
-}
-
-#[test]
-fn a_manifest_append_failure_is_loud_rather_than_silent_overflow() {
-    // RLIMIT_FSIZE is process-wide, so the 2 KiB cap below runs in a re-executed child and nothing else running here can hit it.
-    if std::env::var_os("FLEA_FSIZE_CHILD").is_none() {
-        let exe = std::env::current_exe().expect("a test binary knows its own path");
-        let out = std::process::Command::new(exe).args(["--exact", "--test-threads=1", "--nocapture", "backend::undomanifest_tests::a_manifest_append_failure_is_loud_rather_than_silent_overflow"]).env("FLEA_FSIZE_CHILD", "1").output().expect("the test binary re-executes");
-        let report = format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
-        assert!(out.status.success(), "the fsize child failed: {report}");
-        assert!(report.contains("1 passed"), "the fsize child ran no test: {report}");
-        return;
-    }
-    let d = TestDir::new("undomanifestloud");
-    let src = d.dir("srcl");
-    let root = d.dir("rootl");
-    let mut writer = copymanifest::writer_for(&src, &root).expect("manifest dir writable");
-    std::fs::write(root.join("probe.txt"), "x").unwrap();
-    let cap = FileSizeCap::cap(2 * 1024);
-    for _ in 0..100 {
-        writer.record(&root, &root.symlink_metadata().unwrap());
-    }
-    let result = writer.finish();
-    drop(cap);
-    assert!(result.is_err(), "append failure must Err, not silent None");
 }
