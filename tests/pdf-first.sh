@@ -1,7 +1,5 @@
 #!/bin/bash
-# A turn before the first page lands leaves the cap alone: PreviewPdf.qml must not stop renderCap
-# or clear fellBack while shownPage is -1, so no loading mark stands in for a page never drawn, and
-# the turned-to page still lands. Offscreen, so it needs no display and no lock.
+# A turn before the first page lands must leave the cap alone and still land the turned-to page; offscreen, so no display and no lock.
 set -u
 cd "$(dirname "$0")/.." || exit 1
 

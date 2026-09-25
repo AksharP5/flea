@@ -3,9 +3,7 @@
 import Quickshell
 import QtQuick
 
-// tests/pdf-first.sh's harness: the real ui/PreviewPdf.qml opens a two-page document with a slow
-// first page, turns before that render lands, and logs its state every 15 ms, so the script can
-// prove the turn left the cap alone while no page was shown and the second page still landed.
+// tests/pdf-first.sh's harness: the real ui/PreviewPdf.qml turns a slow first page before it lands and logs state every 15 ms.
 ShellRoot {
     id: shell
 
@@ -94,6 +92,7 @@ ShellRoot {
             if (loader.item && loader.item.shownPage === 1) {
                 stop()
                 stateTimer.stop()
+                shell.log("STATE " + (Date.now() - shell.turnAt) + " " + shell.state())
                 shell.log("DONE")
                 shell.quit()
             } else if (Date.now() - shell.turnAt > 5000) {
