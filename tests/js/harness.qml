@@ -15,6 +15,7 @@ import "filter-cursor.js" as FilterCursorSuite
 import "focus.js" as FocusSuite
 import "focus-forward.js" as FocusForwardSuite
 import "focus-grid.js" as FocusGridSuite
+import "gridgeometry.js" as GridGeometrySuite
 import "focus-lines.js" as FocusLinesSuite
 import "focus-wrap.js" as FocusWrapSuite
 import "format.js" as FormatSuite
@@ -91,6 +92,7 @@ Item {
             ["edmonton", DstSuite],
             ["errors", ErrorsSuite], ["facts", FactsSuite], ["filter", FilterSuite], ["filter-cursor", FilterCursorSuite],
             ["focus", FocusSuite], ["focus-grid", FocusGridSuite], ["focus-forward", FocusForwardSuite],
+            ["gridgeometry", GridGeometrySuite],
             ["focus-lines", FocusLinesSuite], ["focus-wrap", FocusWrapSuite],
             ["format", FormatSuite], ["icons", IconsSuite],
             ["keymap", KeymapSuite], ["localsend", LocalSendSuite], ["match", MatchSuite], ["menu", MenuSuite],

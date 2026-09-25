@@ -3,6 +3,7 @@ import "." as Flea
 import "js/DirSizes.js" as DirSizes
 import "js/Filter.js" as Filter
 import "js/Focus.js" as Focus
+import "js/GridGeometry.js" as GridGeometry
 import "js/Tap.js" as Tap
 import "js/Thumbs.js" as Thumbs
 
@@ -36,8 +37,9 @@ GridView {
     signal dirSizesApplied(var ask)
     signal dirSizesCancelled()
 
-    // How many tiles fit across, which is what a cursor step down has to move by.
-    readonly property int columns: Math.max(1, Math.floor(root.width / Math.max(Theme.grid.minCellWidth, ViewState.thumbnailPixels + 2 * Theme.spacing.rowPaddingX)))
+    // Counted on the width less one gap, the inset that keeps a tile frame off both edge lines.
+    readonly property int columns: GridGeometry.columnsFor(root.width, Theme.grid.minCellWidth,
+        ViewState.thumbnailPixels, Theme.spacing.rowPaddingX, Theme.spacing.gap)
     readonly property int tileRows: Math.max(1, Math.ceil(root.pane.shownTotal / root.columns))
     // Mark, one gap, two caption lines, and the padding above and below.
     readonly property int cellHeightPx: ViewState.thumbnailPixels + Theme.spacing.gap
@@ -58,7 +60,10 @@ GridView {
     Keys.onPressed: function (event) { event.accepted = Focus.handleKey(event, root.pane, root.pane.sidebar) }
     model: pane.shownTotal
     clip: true
-    cellWidth: Math.floor(root.width / root.columns)
+    // One gap of bare ground along the left and the top; GridTile's hairline inset stays.
+    leftMargin: Theme.spacing.gap
+    topMargin: Theme.spacing.gap
+    cellWidth: GridGeometry.cellWidthFor(root.width, root.columns, Theme.spacing.gap)
     cellHeight: root.cellHeightPx
     cacheBuffer: root.cellHeightPx * 2
     boundsBehavior: Flickable.StopAtBounds
