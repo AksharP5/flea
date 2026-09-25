@@ -135,26 +135,41 @@ mod tests {
 
     #[test]
     fn a_child_is_noticed_when_it_exits_rather_than_at_the_next_poll_boundary() {
-        // The child sleeps 30 ms, which a 25 ms poll step could only notice at its 50 ms boundary.
-        const CHILD_SLEEP: Duration = Duration::from_millis(30);
-        // Nine runs, so a single scheduling stall cannot move the fifth value.
+        // Two sleeps half a 25 ms quantum apart: a step waiter lands them on opposite
+        // sides of its sawtooth and its overshoots differ by half the quantum whatever
+        // the load, while an exact waiter answers both alike. Scheduler delay shifts
+        // both medians together, which is what an absolute bound could not survive:
+        // the exact arm alone measured 15 to 18 ms medians under CPU oversubscription.
+        const NEAR_SLEEP: Duration = Duration::from_millis(30);
+        const FAR_SLEEP: Duration = Duration::from_micros(42_500);
+        // Nine runs a sleep, so a single scheduling stall cannot move either fifth value.
         const RUNS: usize = 9;
-        // Above the exact wait's low single digits and well under the old step's 20 ms, so it is neither flaky nor vacuous.
-        const BOUND: Duration = Duration::from_millis(10);
-        // The argv is derived from the constant, so raising one cannot silently leave the other behind.
-        let full = vec!["/usr/bin/sleep".to_string(), format!("{:.3}", CHILD_SLEEP.as_secs_f64())];
-        let mut overshoot: Vec<Duration> = Vec::new();
+        // Half the old quantum is 12.5 ms against this 10, so a regressed step waiter
+        // reddens it and an exact waiter clears it by its own noise alone.
+        const FLAT: Duration = Duration::from_millis(10);
+        let argv = |sleep: Duration| {
+            // Four decimals, because the half-quantum pair needs the half millisecond spelled out.
+            vec!["/usr/bin/sleep".to_string(), format!("{:.4}", sleep.as_secs_f64())]
+        };
+        let mut near: Vec<Duration> = Vec::with_capacity(RUNS);
+        let mut far: Vec<Duration> = Vec::with_capacity(RUNS);
         for _ in 0..RUNS {
-            let started = Instant::now();
-            assert!(matches!(run_with_timeout(&full, A_LONG_LIMIT), Ran::Succeeded));
-            let took = started.elapsed();
-            // The lower bound is what stops a shortened child from making every overshoot zero and the test vacuous.
-            assert!(took >= CHILD_SLEEP, "the child returned before its own sleep, at {:?}", took);
-            overshoot.push(took - CHILD_SLEEP);
+            for (sleep, out) in [(NEAR_SLEEP, &mut near), (FAR_SLEEP, &mut far)] {
+                let full = argv(sleep);
+                let started = Instant::now();
+                assert!(matches!(run_with_timeout(&full, A_LONG_LIMIT), Ran::Succeeded));
+                let took = started.elapsed();
+                // The lower bound is what stops a shortened child from making every overshoot zero and the test vacuous.
+                assert!(took >= sleep, "the child returned before its own sleep, at {:?}", took);
+                out.push(took - sleep);
+            }
         }
-        overshoot.sort();
-        let median = overshoot[RUNS / 2];
-        assert!(median < BOUND, "median overshoot was {:?} over {} runs", median, RUNS);
+        near.sort();
+        far.sort();
+        let drift = near[RUNS / 2].abs_diff(far[RUNS / 2]);
+        assert!(drift < FLAT,
+            "median overshoot moves {:?} between a 30 ms and a 42.5 ms child over {} runs a sleep",
+            drift, RUNS);
     }
 
     #[test]

@@ -107,27 +107,74 @@ impl Drop for Worker {
 #[cfg(test)]
 mod tests {
     use super::*;
+    // Depth 1900 exceeds the default 1024 open-file limit for any traversal
+    // holding a descriptor per level, which is what std's remove_dir_all does,
+    // so the cleanup below runs on every path out of a deep test, panic
+    // included, and holds none. The walk itself holds one listing at a time,
+    // pinned beside this in dirsize.rs; the depth here is stack headroom.
+    const DEEP_DEPTH: usize = 1900;
+
+    struct DeepTree {
+        sandbox: super::super::testdir::TestDir,
+        leaf: PathBuf,
+    }
+
+    impl DeepTree {
+        // Depth stays what the stack proof was taken at: under PATH_MAX as paths, over any real tree.
+        fn build(tag: &str) -> Self {
+            let sandbox = super::super::testdir::TestDir::new(tag);
+            let mut leaf = sandbox.path().to_path_buf();
+            for _ in 0..DEEP_DEPTH {
+                leaf.push("d");
+                sandbox.assert_contains(&leaf);
+                std::fs::create_dir(&leaf).unwrap();
+            }
+            Self { sandbox, leaf }
+        }
+        fn root(&self) -> &std::path::Path {
+            self.sandbox.path()
+        }
+    }
+
+    impl Drop for DeepTree {
+        fn drop(&mut self) {
+            // Bottom up, one rmdir at a time; best effort, so whatever this
+            // cannot take falls through to the sandbox drop as before.
+            while self.leaf != self.sandbox.path() {
+                if std::fs::remove_dir(&self.leaf).is_err() {
+                    break;
+                }
+                self.leaf.pop();
+            }
+        }
+    }
+
+    // A test that dies before its manual cleanup leaves its whole tree to the
+    // sandbox drop, whose remove_dir_all holds a descriptor per level.
+    #[test]
+    fn a_deep_tree_is_removed_even_when_its_test_fails_before_cleanup() {
+        let slot: std::sync::Mutex<Option<PathBuf>> = std::sync::Mutex::new(None);
+        // No invariant crosses the panic: the slot write completes before it.
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let tree = DeepTree::build("size-deep-unwind");
+            *slot.lock().unwrap() = Some(tree.root().to_path_buf());
+            panic!("simulated failure before cleanup");
+        }));
+        assert!(result.is_err(), "the simulated failure did not panic");
+        let kept = slot.lock().unwrap().take().unwrap();
+        assert!(!kept.exists(), "a failed deep test left its tree behind: {}", kept.display());
+    }
+
     #[test]
     fn deep_directory_tree_fits_the_worker_stack() {
-        let d = super::super::testdir::TestDir::new("size-deep");
-        let mut path = d.path().to_path_buf();
-        for _ in 0..1900 {
-            path.push("d");
-            d.assert_contains(&path);
-            std::fs::create_dir(&path).unwrap();
-        }
+        let tree = DeepTree::build("size-deep");
         let (events, rx) = channel();
         let mut worker = Worker::new(events);
-        worker.start(vec![(0, d.path().to_path_buf())]);
+        worker.start(vec![(0, tree.root().to_path_buf())]);
         let Event::DirSize(done) = rx.recv_timeout(Duration::from_secs(10)).unwrap() else { panic!() };
         assert!(worker.accept(&done));
         assert!(done.result.bytes > 0);
         assert!(!done.result.partial, "the walk reached the bottom of the tree rather than stopping short of it");
-        // Bottom up, one rmdir at a time: std's remove_dir_all holds a descriptor per level and would starve parallel tests.
-        while path != d.path() {
-            std::fs::remove_dir(&path).unwrap();
-            path.pop();
-        }
     }
 
     #[test]
