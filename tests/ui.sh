@@ -10073,7 +10073,7 @@ case_previewviews() {
 . "$repo/tests/ui-transfer-live.sh"
 
 declare -a wanted=("$@")
-[[ ${#wanted[@]} -eq 0 ]] && wanted=(cursor scroll scrollbar terminal open rows click ctrlclick viewrestart dd collide sortrestart duallaunch dirsortstale editplace mute placemenu runscript unmounted sidebar menu background hidden selection watch optical select colour lifted icons thumbs hashcache stale nosweep oem header overflow focus preview pdffocus network netmark networkauth networktimeout gvfs sharebrowser unmount phones eject rename renamelife taildrop providers grid columns operations tabs openterminal renderer settings makedefault clickthrough wheelunder overlays views formats previewviews hangshare openwithdesign noblank transferlive)
+[[ ${#wanted[@]} -eq 0 ]] && wanted=(cursor scroll scrollbar terminal open rows click ctrlclick viewrestart dd collide sortrestart duallaunch dirsortstale editplace mute placemenu runscript unmounted sidebar menu background hidden selection watch optical select colour lifted icons thumbs hashcache stale nosweep oem header overflow focus preview pdffocus network netmark networkauth networktimeout gvfs sharebrowser unmount phones trasharm eject rename renamelife taildrop providers grid columns operations tabs openterminal renderer settings makedefault clickthrough wheelunder overlays views formats previewviews hangshare openwithdesign noblank transferlive)
 
 : > "$run_log"
 : > "$flea_log"

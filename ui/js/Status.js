@@ -23,15 +23,14 @@ function isPrompt(text) {
     return text.indexOf("Press ") === 0 && text.indexOf(" again ") > 0
 }
 
-// An arm's record: when its prompt was said and its owner's stamp, 0 for an owner this bar cannot watch (ui/TrashView.qml's).
-function armOf(now, stamp) { return { saidAt: now, stamp: stamp } }
-function watched(arm) { return arm.stamp > 0 }
+// An arm's record: its owner (the pane, or the Trash view while it is open) and the stamp that owner set before the prompt.
+function armOf(owner, stamp) { return { owner: owner, stamp: stamp } }
 
-// A watched arm lives while its owner's stamp stands, which the second press, any other key and navigation all zero.
-function armLive(arm, ownerStamp) { return arm !== null && (!watched(arm) || arm.stamp === ownerStamp) }
+// Live while the bar still has that owner and the owner still holds that stamp; its second press, any other key and a new listing zero it.
+function armLive(arm, owner) { return arm !== null && arm.stamp > 0 && arm.owner === owner && owner.trashArmedAt === arm.stamp }
 
-// What the arm has left by its owner's clock, so a Qt timer that fires early never ends it while the key still acts.
-function armLeft(arm, now, armMs) { return arm === null ? 0 : armMs - (now - (watched(arm) ? arm.stamp : arm.saidAt)) }
+// What the arm has left by its owner's clock, the stamp, so a Qt timer that fires early never ends it while the key still acts.
+function armLeft(arm, now, armMs) { return arm === null ? 0 : armMs - (now - arm.stamp) }
 
 // A live arm's prompt, else the oldest unacknowledged error, else the notice: a hidden live prompt's second press acts unannounced.
 function transientOf(errors, notice, prompt, live) {

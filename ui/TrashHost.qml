@@ -14,8 +14,6 @@ Loader {
     readonly property bool confirming: item !== null && item.confirming
     readonly property int total: item ? item.total : 0
     readonly property int selectedCount: item ? item.selectedCount : 0
-    // The view's dd stamp, set before its prompt is said, so ui/StatusBar.qml can watch that arm the way it watches the listing's.
-    readonly property double trashArmedAt: item ? item.trashArmedAt : 0
 
     // The 30 day sweep, GM's ruling of 2026-09-11. It runs the same three requests the window runs,
     // in the same order, so prepare still reviews every item against the identity the listing

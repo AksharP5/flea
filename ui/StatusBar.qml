@@ -28,11 +28,15 @@ Item {
     // An arm's prompt and its record, kept apart from the notice so the arm's own life, not the text, ranks it.
     property string prompt: ""
     property var arm: null
-    // The arm's owner stamp: the listing pane's here, the Trash view's while ui/WindowBody.qml has that view open.
-    property real armOwnerStamp: root.pane ? root.pane.trashArmedAt : 0
-    readonly property bool armLive: Status.armLive(root.arm, root.armOwnerStamp)
-    // Ended from the stamp's own change: ending it from armLive's would rewrite what armLive is still reading.
-    onArmOwnerStampChanged: if (root.arm !== null && !Status.armLive(root.arm, root.armOwnerStamp)) root.endArm()
+    // The arm's owner: the listing pane here, the Trash view while ui/WindowBody.qml has that view open.
+    property var armOwner: root.pane
+    readonly property bool armLive: Status.armLive(root.arm, root.armOwner)
+    // The owner zeroing or replacing its own stamp ends the prompt: the second press, any other key, a new listing.
+    Connections {
+        target: root.arm !== null ? root.arm.owner : null
+        function onTrashArmedAtChanged() { if (root.arm !== null && root.arm.owner.trashArmedAt !== root.arm.stamp) root.endArm() }
+    }
+    onArmOwnerChanged: if (root.arm !== null && root.arm.owner !== root.armOwner) root.loseArm()
     readonly property var shown: Status.transientOf(root.errors, root.notice, root.prompt, root.armLive)
     readonly property string transient_: root.shown.text
     readonly property string errorDetail: root.shown.detail
@@ -96,8 +100,6 @@ Item {
     // Completion messages cannot acknowledge a failure; each error requires its own dismissal.
     function say(text, isError, detail) {
         if (!text) { root.dismiss(); return }
-        // An arm this bar cannot watch (the Trash view's) is spent by the time anything newer is said.
-        if (root.arm !== null && !Status.watched(root.arm)) root.endArm()
         if (!isError && Status.isPrompt(text)) { root.startArm(text); return }
         if (isError) {
             root.errors = Status.withError(root.errors, text, detail, root.path)
@@ -123,13 +125,22 @@ Item {
     onPathChanged: {
         var kept = Status.errorsAt(root.errors, root.path)
         if (kept !== root.errors) root.errors = kept
-        if (root.arm !== null) root.endArm()
+        if (root.arm !== null) root.loseArm()
     }
 
+    // The prompt supersedes the notice it covers. One said before its owner stamped could never be ended by the arm, so it is only a notice, and said loudly.
     function startArm(text) {
+        var stamp = root.armOwner ? root.armOwner.trashArmedAt : 0
+        if (!(stamp > 0)) {
+            console.warn("StatusBar: \"" + text + "\" was said before its owner armed, so it is only a notice")
+            root.notice = text
+            root.syncNoticeTimer()
+            return
+        }
+        root.notice = ""
         root.prompt = text
-        root.arm = Status.armOf(Date.now(), root.armOwnerStamp)
-        armClock.interval = Status.armLeft(root.arm, Date.now(), Trash.ARM_MS)
+        root.arm = Status.armOf(root.armOwner, stamp)
+        armClock.interval = Math.max(1, Status.armLeft(root.arm, Date.now(), Trash.ARM_MS))
         armClock.restart()
         root.syncNoticeTimer()
     }
@@ -139,11 +150,17 @@ Item {
         root.prompt = ""
         root.syncNoticeTimer()
     }
+    // The bar ending an arm (its owner lost, its place left, its clock run out) ends it at the owner too, so no key completes a hidden arm.
+    function loseArm() {
+        var arm = root.arm
+        root.endArm()
+        if (arm !== null && arm.owner && arm.owner.trashArmedAt === arm.stamp) arm.owner.trashArmedAt = 0
+    }
     Timer {
         id: armClock
         onTriggered: {
             var left = Status.armLeft(root.arm, Date.now(), Trash.ARM_MS)
-            if (left > 0) { armClock.interval = left; armClock.restart() } else root.endArm()
+            if (left > 0) { armClock.interval = left; armClock.restart() } else root.loseArm()
         }
     }
 

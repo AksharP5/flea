@@ -288,6 +288,66 @@ case_trashrestore() { case_trash restore; }
 case_trashstale() { case_trash stale; }
 case_trashfailure() { case_trash failure; }
 
+# The Trash view's dd prompt lives exactly as long as its arm, which ui/WindowBody.qml's arm owner wiring is what makes true.
+case_trasharm() {
+    local trash_box payload root trash_checks=0 trash_case_label=trasharm step seen
+    local trash_parent_bus_id="" trash_private_bus_id="" trash_bus_address="" trash_bus_pid="" trash_provider_pid=""
+    local prompt="Press d again to review permanent deletion, or Delete on its own."
+    # Key codes through uinput, so each press lands inside the 1.5 s arm without the key helper's refocus.
+    local key_d=32 key_j=36 key_k=37
+    [[ "$(realpath -e "$(command -v gio)")" == /usr/bin/gio ]] || fail "trasharm: product gio resolves to a stub"
+    sandbox_require "$fixture_root"
+    trash_box=$(mktemp -d "$fixture_root/trash.XXXXXXXX") || fail "trasharm: fixture creation failed"
+    printf 'native private Trash\n' > "$trash_box/.flea-test-sandbox"
+    export XDG_DATA_HOME="$trash_box/data" XDG_CONFIG_HOME="$trash_box/config"
+    export XDG_STATE_HOME="$trash_box/state" XDG_CACHE_HOME="$trash_box/cache"
+    for root in "$XDG_DATA_HOME" "$XDG_CONFIG_HOME" "$XDG_STATE_HOME" "$XDG_CACHE_HOME"; do
+        trash_guard "$root"
+        mkdir -p "$root" || fail "trasharm: writable root creation failed"
+    done
+    "$flea_bin" --ui-state '{"view":"list","keys":"default","preview":{"column":false},"menu":{"hidden":[]}}' >/dev/null \
+        || fail "trasharm: preferences could not be stored inside the fixture"
+    payload="$trash_box/payload"
+    trash_guard "$payload"
+    mkdir "$payload" || fail "trasharm: fixture creation failed"
+    trash_start_bus
+    printf 'alpha\n' > "$payload/alpha.txt"
+    printf 'beta\n' > "$payload/beta.txt"
+    launch "$payload"
+    wait_listing 2
+    trash_move alpha.txt 0 1
+    trash_move beta.txt 1 0
+    trash_rail
+    trash_wait '.opened and .total == 2 and (.busy == false)'
+    trash_click trashRowCentre 0 left
+    trash_wait '.opened and .selectedCount == 1 and (.busy == false)'
+    for step in other second; do
+        YDOTOOL_SOCKET="$XDG_RUNTIME_DIR/.ydotool_socket" ydotool key "$key_d:1" "$key_d:0" >/dev/null 2>&1
+        for _attempt in $(seq 1 20); do seen=$(ipc lastMessage); [[ "$seen" == "$prompt" ]] && break; sleep 0.02; done
+        [[ "$seen" == "$prompt" ]] || fail "trasharm: d in the Trash view drew $(printf '%q' "$seen"), not its prompt"
+        if [[ "$step" == other ]]; then
+            YDOTOOL_SOCKET="$XDG_RUNTIME_DIR/.ydotool_socket" ydotool key "$key_j:1" "$key_j:0" >/dev/null 2>&1
+        else
+            YDOTOOL_SOCKET="$XDG_RUNTIME_DIR/.ydotool_socket" ydotool key "$key_d:1" "$key_d:0" >/dev/null 2>&1
+        fi
+        seen=$(ipc lastMessage)
+        printf 'TRASHARM %s first_sample=%q armed=%s\n' "$step" "$seen" "$(ipc trashState | jq -c '.confirmation.opened')"
+        # Nothing stale either: the notice the prompt covered ("Moved 1 item to Trash") went when the prompt came.
+        [[ -z "$seen" ]] || fail "trasharm: after the $step key the bar still reads $(printf '%q' "$seen")"
+        if [[ "$step" == other ]]; then
+            YDOTOOL_SOCKET="$XDG_RUNTIME_DIR/.ydotool_socket" ydotool key "$key_k:1" "$key_k:0" >/dev/null 2>&1
+            trash_wait '.opened and (.busy == false) and (.confirmation.opened == false)'
+            trash_click trashRowCentre 0 left
+            trash_wait '.opened and .selectedCount == 1 and (.busy == false)'
+        fi
+    done
+    trash_wait '.confirmation.opened and .confirmation.count == 1' 'the second d opened the review'
+    key -k Return >/dev/null
+    trash_wait '(.confirmation.opened == false) and .total == 2 and (.busy == false)' 'Cancel kept both items'
+    trash_guard_store 2
+    trash_cleanup 0
+}
+
 trash_key_alternatives() {
     local preset="$1" binding bindings
     key m >/dev/null

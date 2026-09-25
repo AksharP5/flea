@@ -30,6 +30,18 @@ function trashViewPrompt() {
     return found ? found[1] : ""
 }
 
+// ui/TrashView.qml's armDelete stamps before it reports; sample: trashArmedAt = paired ? 0 : now ... statusReported("Press d again ...", false)
+function trashViewStampsFirst() {
+    var request = new XMLHttpRequest()
+    request.open("GET", Qt.resolvedUrl("../../ui/TrashView.qml"), false)
+    request.send()
+    var body = String(request.responseText || "")
+    var from = body.indexOf("function armDelete()")
+    var stamp = body.indexOf("trashArmedAt = paired ? 0 : now", from)
+    var say = body.indexOf("statusReported(\"Press ", from)
+    return from >= 0 && stamp > from && say > stamp
+}
+
 function run(check) {
     // The disk facts have a zone of their own now, so an idle centre says nothing at all.
     var quiet = slot({})
@@ -98,41 +110,52 @@ function run(check) {
           Status.centreText(noticeWhileSearching), "3 found · Searching, 12 scanned")
 
     // An arm's prompt stands over errors, search and activity only while the arm lives: its text alone ranks nothing.
-    var p = { trashArmedAt: 0, cursorIndex: 3, shown: null, trashedIdx: [], said: "", selectedIndices: function () { return [] } }
-    p.message = function (text) { p.said = text }
+    var p = { trashArmedAt: 0, cursorIndex: 3, shown: null, trashedIdx: [], said: "", stampAtSay: -1, selectedIndices: function () { return [] } }
+    p.message = function (text) { p.said = text; p.stampAtSay = p.trashArmedAt }
     p.backend = { trash: function (idx) { p.trashedIdx = idx } }
     Trash.arm(p)
     var prompt = p.said
     check("the listing's dd prompt reads as a prompt", Status.isPrompt(prompt), true)
     check("and so does the Trash view's own", trashViewPrompt().length > 0 && Status.isPrompt(trashViewPrompt()), true)
     check("while a result is not one", Status.isPrompt("Moved 4 items to Trash · z undoes"), false)
+    // ui/StatusBar.qml watches the stamp its owner holds when the prompt is said, so each owner stamps first.
+    check("Trash.arm stamps before it says its prompt", p.stampAtSay > 0 && p.stampAtSay === p.trashArmedAt, true)
+    check("and ui/TrashView.qml's armDelete does too", trashViewStampsFirst(), true)
     var older = [{ text: "Copy failed: photo.heic · disk full", detail: "No space left on device", place: "" }]
     check("a prompt's text with no live arm does not stand over an error", Status.transientOf(older, prompt).isError, true)
     check("nor over a search that is still reporting",
           Status.centreText(slot({ transient: prompt, searching: true, searchLine: "3 found in 1.6 s" })), "3 found in 1.6 s")
-    var arm = Status.armOf(Date.now(), p.trashArmedAt)
+    var arm = Status.armOf(p, p.trashArmedAt)
     check("a live arm's prompt stands over an older error", JSON.stringify(Status.transientOf(older, "", prompt,
-          Status.armLive(arm, p.trashArmedAt))), JSON.stringify({ text: prompt, isError: false, detail: "" }))
+          Status.armLive(arm, p))), JSON.stringify({ text: prompt, isError: false, detail: "" }))
     check("and over a search and an activity",
           Status.centreText(slot({ transient: prompt, armLive: true, searching: true, searchLine: "3 found" })) + "|"
           + Status.centreText(slot({ transient: prompt, armLive: true, stickyHere: true, sticky: "Copy 1 item to dest" })),
           prompt + "|" + prompt)
     check("while a plain result still waits behind the error",
           Status.transientOf(older, "Copied 1 item · p pastes", "", false).text, older[0].text)
+    check("the arm is dead to a bar that has lost its owner", Status.armLive(arm, { trashArmedAt: p.trashArmedAt }), false)
     // dd where the trash fails: the second d spends the arm, so the failure it raises shows at once.
     Trash.arm(p)
     check("the second d trashes the row and spends the arm", p.trashedIdx.join(",") + "|" + p.trashArmedAt, "3|0")
     var trashFailed = Status.withError([], "Could not move locked to the Trash · Permission denied", "", "/d")
     check("so the failed trash shows at once, not behind a dead prompt",
-          Status.transientOf(trashFailed, "", prompt, Status.armLive(arm, p.trashArmedAt)).text, trashFailed[0].text)
-    check("and an older error shows again, detail and all", Status.transientOf(older, "", prompt, Status.armLive(arm, 0)).detail,
+          Status.transientOf(trashFailed, "", prompt, Status.armLive(arm, p)).text, trashFailed[0].text)
+    check("and an older error shows again, detail and all", Status.transientOf(older, "", prompt, Status.armLive(arm, p)).detail,
           "No space left on device")
-    check("a fresh arm's new stamp leaves the old record dead", Status.armLive(arm, arm.stamp + 1), false)
-    check("the arm ends on its own clock and never early",
-          Status.armLeft(arm, arm.stamp + Trash.ARM_MS - 1, Trash.ARM_MS) + "|" + Status.armLeft(arm, arm.stamp + Trash.ARM_MS, Trash.ARM_MS), "1|0")
-    var unseen = Status.armOf(5000, 0)
-    check("the Trash view's arm, which the bar cannot watch, lives until its clock ends",
-          Status.armLive(unseen, 0) + "|" + Status.watched(unseen) + "|" + Status.armLeft(unseen, 5000 + Trash.ARM_MS, Trash.ARM_MS), "true|false|0")
+    p.trashArmedAt = arm.stamp + 1
+    check("a fresh arm's new stamp leaves the old record dead", Status.armLive(arm, p), false)
+    // The Trash view is an owner like the pane, watched the same way, with no unwatched kind left.
+    var view = { trashArmedAt: 2000 }
+    var viewArm = Status.armOf(view, 2000)
+    check("the Trash view's arm lives while its stamp stands", Status.armLive(viewArm, view), true)
+    view.trashArmedAt = 0
+    check("and ends when the view zeroes it, on any other key or the second d", Status.armLive(viewArm, view), false)
+    check("a prompt said before its owner armed is no arm at all", Status.armLive(Status.armOf(view, 0), view), false)
+    var said = Status.armOf(view, 1000)
+    check("the arm ends on its owner's clock, the stamp, never on when the bar heard of it",
+          Status.armLeft(said, 1000 + Trash.ARM_MS - 1, Trash.ARM_MS) + "|" + Status.armLeft(said, 1000 + Trash.ARM_MS, Trash.ARM_MS)
+          + "|" + Status.armLeft(said, 1500, Trash.ARM_MS), "1|0|" + (Trash.ARM_MS - 500))
     check("a live prompt is not the notice the strip times out", Status.noticeShown(slot({ transient: prompt, armLive: true })), false)
     check("while a plain notice with nothing over it is", Status.noticeShown(slot({ transient: "Renamed to notes.txt" })), true)
     check("and one behind the search is not",
