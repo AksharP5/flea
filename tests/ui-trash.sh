@@ -290,11 +290,15 @@ case_trashfailure() { case_trash failure; }
 
 # The Trash view's dd prompt lives exactly as long as its arm, which ui/WindowBody.qml's arm owner wiring is what makes true.
 case_trasharm() {
-    local trash_box payload root trash_checks=0 trash_case_label=trasharm step seen
+    local trash_box payload root trash_checks=0 trash_case_label=trasharm step seen before t0 sampled_ms arm_ms
+    local moved="Moved 1 item to Trash · z undoes"
     local trash_parent_bus_id="" trash_private_bus_id="" trash_bus_address="" trash_bus_pid="" trash_provider_pid=""
     local prompt="Press d again to review permanent deletion, or Delete on its own."
     # Key codes through uinput, so each press lands inside the 1.5 s arm without the key helper's refocus.
     local key_d=32 key_j=36 key_k=37
+    # Sample input: "var ARM_MS = 1500" in ui/js/Trash.js, the arm's own clock, which ui/TrashView.qml shares.
+    arm_ms=$(grep -o '^var ARM_MS = [0-9]*' "$repo/ui/js/Trash.js" | grep -o '[0-9]*$')
+    [[ "$arm_ms" =~ ^[0-9]+$ ]] || fail "trasharm: no ARM_MS in ui/js/Trash.js"
     [[ "$(realpath -e "$(command -v gio)")" == /usr/bin/gio ]] || fail "trasharm: product gio resolves to a stub"
     sandbox_require "$fixture_root"
     trash_box=$(mktemp -d "$fixture_root/trash.XXXXXXXX") || fail "trasharm: fixture creation failed"
@@ -322,6 +326,10 @@ case_trasharm() {
     trash_click trashRowCentre 0 left
     trash_wait '.opened and .selectedCount == 1 and (.busy == false)'
     for step in other second; do
+        before=$(ipc lastMessage)
+        # The notice the prompt must supersede is up when it arms, or the empty bar below proves nothing.
+        [[ "$step" != other || "$before" == "$moved" ]] || fail "trasharm: before the arm the bar read $(printf '%q' "$before"), not the move's notice"
+        t0=$(date +%s%3N)
         YDOTOOL_SOCKET="$XDG_RUNTIME_DIR/.ydotool_socket" ydotool key "$key_d:1" "$key_d:0" >/dev/null 2>&1
         for _attempt in $(seq 1 20); do seen=$(ipc lastMessage); [[ "$seen" == "$prompt" ]] && break; sleep 0.02; done
         [[ "$seen" == "$prompt" ]] || fail "trasharm: d in the Trash view drew $(printf '%q' "$seen"), not its prompt"
@@ -331,7 +339,11 @@ case_trasharm() {
             YDOTOOL_SOCKET="$XDG_RUNTIME_DIR/.ydotool_socket" ydotool key "$key_d:1" "$key_d:0" >/dev/null 2>&1
         fi
         seen=$(ipc lastMessage)
-        printf 'TRASHARM %s first_sample=%q armed=%s\n' "$step" "$seen" "$(ipc trashState | jq -c '.confirmation.opened')"
+        sampled_ms=$(( $(date +%s%3N) - t0 ))
+        printf 'TRASHARM %s before=%q first_sample=%q sampled_ms=%s review=%s\n' "$step" "$before" "$seen" "$sampled_ms" \
+            "$(ipc trashState | jq -c '.confirmation.opened')"
+        # Inside the arm's own clock, so only the view's disarm, never the clock running out, can have emptied the bar.
+        (( sampled_ms < arm_ms )) || fail "trasharm: the $step sample landed $sampled_ms ms after the arm, past its $arm_ms ms clock"
         # Nothing stale either: the notice the prompt covered ("Moved 1 item to Trash") went when the prompt came.
         [[ -z "$seen" ]] || fail "trasharm: after the $step key the bar still reads $(printf '%q' "$seen")"
         if [[ "$step" == other ]]; then
