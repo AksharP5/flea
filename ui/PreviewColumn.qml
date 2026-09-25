@@ -23,8 +23,6 @@ Item {
     property var selectedRows: []
     // The row's own absolute path, which the PDF page needs and nothing else here does.
     property string path: ""
-    // Whether the row is on a disk in this machine, where frameSharp may read the whole image; see ui/js/Thumbs.js.
-    property bool readsOriginal: false
     property int pdfControlIndex: -1
     property real pdfZoom: 1
     readonly property real pdfScrollY: pdfFlick.contentY
@@ -144,31 +142,6 @@ Item {
                 sourceSize.width: root.thumb.length > 0 ? 0 : Math.max(1, Math.round(boxWidth))
                 sourceSize.height: root.thumb.length > 0 ? 0 : Math.max(1, Math.round(boxHeight))
             }
-
-            // The cache file is 256 px and this frame is a third of the window, so an image the cache file
-            // would stretch decodes itself at the frame's size, ui/PreviewImage.qml's ceiling, over it; the
-            // cache file stays on screen until this is Ready, so a cursor move never draws an empty frame.
-            // It takes frameThumb's exact-fit sizing and EXIF turn, or a phone photo's upright thumbnail would give way to a sideways original.
-            Image {
-                id: frameSharp
-                readonly property real fit: Thumbs.fitScale(frameThumb.boxWidth, frameThumb.boxHeight, implicitWidth, implicitHeight, 1)
-                x: root.vectorPath ? Theme.spacing.hairline : Math.round((parent.width - width) / 2)
-                y: root.vectorPath ? Theme.spacing.hairline : Math.round((parent.height - height) / 2)
-                width: root.vectorPath ? frameThumb.boxWidth : implicitWidth * fit
-                height: root.vectorPath ? frameThumb.boxHeight : implicitHeight * fit
-                visible: frameThumb.visible && frameSharp.status === Image.Ready
-                source: root.readsOriginal && root.previewState === Facts.IMAGE && root.thumb.length > 0
-                        && frameThumb.status === Image.Ready && frameThumb.paintedWidth > frameThumb.implicitWidth
-                        ? Format.fileUri(root.path) : ""
-                fillMode: root.vectorPath ? Image.PreserveAspectFit : Image.Stretch
-                autoTransform: true
-                asynchronous: true
-                cache: false
-                sourceSize.width: Math.max(1, Math.round(frameThumb.boxWidth))
-                sourceSize.height: Math.max(1, Math.round(frameThumb.boxHeight))
-            }
-            // A transparent picture showed the stretched thumbnail through itself, 272 pixels on the fixture logo, so the thumbnail goes.
-            Binding { target: frameThumb; property: "opacity"; value: frameSharp.status === Image.Ready ? 0 : 1 }
 
             // The player, in the frame it paints into; built by the first press of play and not before, and by source rather than type, because QtMultimedia costs 20 MB on import alone.
             Loader {

@@ -1,26 +1,26 @@
-//@ pragma ShellId flea-sharp-decode-test
+//@ pragma ShellId flea-preview-decode-test
 
 import Quickshell
 import QtQuick
 
-// tests/sharp-decode.sh's harness: the real ui/SelectionPreview.qml, the product path into the
-// preview column, starts on a text row and then holds one photo per cursor move at key-repeat
-// rate over a stub pane. The script counts the fixture directory's own open events between touch
-// sentinel files this harness drops at each phase boundary, so a sweep that starts no decode and
-// a rest that starts exactly one are proved from outside the column, in event order rather than by
-// comparing two clocks. This pins the product path on the base commit too: it names no property
-// any fix added, so it behaves the same there. It is not a fix.
+// tests/preview-decode.sh's harness. First the real ui/SelectionPreview.qml, the product path into
+// the preview column, starts on a text row, then holds one photo per cursor move at key-repeat rate
+// over a stub pane, then rests on a 6016x3900 PNG. The script counts the fixture directory's own
+// open events between touch sentinel files this harness drops at each phase boundary, in event
+// order rather than by comparing two clocks. Then the real ui/PreviewImage.qml, Quick Look's image
+// pane, decodes an EXIF-turned photo, a 3000x100 banner and a small PNG in a 754x471 box, and logs
+// each decode's size and the size it is drawn at.
 ShellRoot {
     id: shell
 
-    readonly property string uiDir: Quickshell.env("SHARP_UI")
-    readonly property string photoDir: Quickshell.env("SHARP_PHOTOS")
+    readonly property string uiDir: Quickshell.env("PREVIEW_UI")
+    readonly property string photoDir: Quickshell.env("PREVIEW_PHOTOS")
     readonly property int sweepCount: 50
     readonly property int restRow: 51
 
     property int movesLeft: 0
 
-    function log(line) { console.log("SHARP " + line) }
+    function log(line) { console.log("PREVIEW " + line) }
     function quit() { Quickshell.execDetached(["kill", String(Quickshell.processId)]) }
     function mark(name) { Quickshell.execDetached(["touch", shell.photoDir + "/sentinel-" + name]) }
 
@@ -34,8 +34,8 @@ ShellRoot {
     }
 
     // The stub pane SelectionPreview reads: cursor and directory identity for the settle, join and
-    // kindNames for the load, thumbState for the thumbnail binding, fsPath and fsName for the
-    // local-disk original rule, and a backend answering meta for every row the sweep and the rest hold.
+    // kindNames for the load, thumbState for the thumbnail binding, and a backend answering meta for
+    // every row. It says local btrfs, so a rule that reads originals on a local disk would fire here.
     Item {
         id: stubBackend
         signal metaResult(var message)
@@ -108,6 +108,18 @@ ShellRoot {
                 onStatusChanged: if (status === Loader.Error) { shell.log("FAIL the preview did not load"); shell.quit() }
             }
         }
+
+        // Quick Look's box on this test, the Columns frame's own 754x471, loaded only after the column's windows close.
+        Loader {
+            id: quickLook
+            x: 20
+            y: 20
+            width: 754
+            height: 471
+            active: false
+            source: "file://" + shell.uiDir + "/PreviewImage.qml"
+            onStatusChanged: if (status === Loader.Error) { shell.log("FAIL Quick Look's image pane did not load"); shell.quit() }
+        }
     }
 
     // Settled start on the text row with the sweep sentinel dropped first and every row pre-thumbnailed, so module load never enters a window and a sweep-time load would decode and redden.
@@ -154,7 +166,7 @@ ShellRoot {
         }
     }
 
-    // The rest has loaded once the column holds a path; the decode it starts is what the done window counts.
+    // The rest has loaded once the column holds a path; whatever it opens is what the done window counts.
     Timer {
         id: restPoll
         interval: 10
@@ -164,7 +176,7 @@ ShellRoot {
             waited += interval
             if (loader.item.path !== "") {
                 stop()
-                shell.log("INJECT")
+                shell.log("RESTED")
                 doneTimer.restart()
             } else if (waited > 1000) {
                 stop()
@@ -174,15 +186,59 @@ ShellRoot {
         }
     }
 
-    // The rest the brief names holds the process after the decode, and the done sentinel closes
-    // the rest window; the extra half second lets the spawned touch land before the kill does.
+    // Two seconds of rest, longer than the 0.3.5 candidate's 580 ms sharp decode, then the done
+    // sentinel closes the rest window and Quick Look's half begins.
     Timer {
         id: doneTimer
         interval: 2000
         onTriggered: {
             shell.mark("done")
             shell.log("DONE")
-            quitTimer.restart()
+            quickLook.active = true
+            shell.lookAt("portrait", shell.photoDir + "/portrait.jpg")
+        }
+    }
+
+    // The Image inside ui/PreviewImage.qml, found by the property only an Image has, so the test names no id of the pane's.
+    function picture() {
+        var kids = quickLook.item ? quickLook.item.children : []
+        for (var i = 0; i < kids.length; i++)
+            if (kids[i].autoTransform !== undefined) return kids[i]
+        return null
+    }
+
+    property string looking: ""
+    property string lookingName: ""
+    function lookAt(label, path) {
+        shell.looking = label
+        shell.lookingName = path.substring(path.lastIndexOf("/") + 1)
+        quickLook.item.path = path
+        lookPoll.waited = 0
+        lookPoll.restart()
+    }
+
+    // Sample log line: "PREVIEW QL portrait decoded=314x471 drawn=314x471".
+    Timer {
+        id: lookPoll
+        interval: 10
+        repeat: true
+        property int waited: 0
+        onTriggered: {
+            waited += interval
+            var img = shell.picture()
+            // The source check keeps the portrait's Ready from answering for the small PNG.
+            if (quickLook.item && quickLook.item.status === "image" && img && String(img.source).endsWith("/" + shell.lookingName)) {
+                stop()
+                shell.log("QL " + shell.looking + " decoded=" + img.implicitWidth + "x" + img.implicitHeight
+                          + " drawn=" + Math.round(img.width) + "x" + Math.round(img.height))
+                if (shell.looking === "portrait") shell.lookAt("banner", shell.photoDir + "/banner.png")
+                else if (shell.looking === "banner") shell.lookAt("small", shell.photoDir + "/small.png")
+                else quitTimer.restart()
+            } else if (waited > 5000) {
+                stop()
+                shell.log("FAIL Quick Look never drew " + shell.looking + " (status " + (quickLook.item ? quickLook.item.status : "none") + ")")
+                shell.quit()
+            }
         }
     }
 

@@ -1970,9 +1970,13 @@ the caller that needs it. Re-derived with `wc -l` after the move and the test it
 its tests to the arm each names and took the rename module to 346, so the parser is under both
 budgets and the rename module is under the hard cap and over the soft one.
 
-`ui/PreviewColumn.qml` is back at 504: the sharp settle, the mtime-keyed cache identity and the
-three decode counters `tests/sharp-decode.sh` read were reverted under review, and the replacement
-sharp test pins the product path from outside the column instead of from inside it.
+`ui/PreviewColumn.qml` is at 477: the Columns sharp stage (a second `Image` decoding the original at the
+frame size over the cache file) was removed before 0.3.5 shipped, because it cost 0.4 to 0.6 s of CPU a
+visit on a 33 Mpx PNG and 2 to 4 MB of PSS over v0.3.4. The frame draws the 256 px cache file as v0.3.4
+did, at the exact fit, never enlarged past the original's own size, and EXIF-upright where it falls back
+to the original. The sharp frame returns in 0.3.6 from a disk-cached sharp file, GM's ruling.
+`tests/preview-decode.sh` pins it from outside the column: a rest opens the cache file and no original,
+and Quick Look's `ui/PreviewImage.qml` still decodes an EXIF-turned photo upright at the exact fit.
 
 **Every count in this section is a SNAPSHOT, not a live figure, and eleven of the eighteen had
 drifted by 2026-09-01: `src/heap.rs` was claimed at 15 and is 100, `ui/Row.qml` at 166 and is 310,

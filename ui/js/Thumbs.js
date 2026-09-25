@@ -84,18 +84,6 @@ function refused(state, row) {
     return state.file[row] === ""
 }
 
-// The filesystems src/backend/fsinfo.rs names for a disk in this machine, plus the magics it reports in hex
-// for exfat, ntfs3 and f2fs. A share (nfs, cifs, SMB2's 0xfe534d42) and every FUSE mount (GVFS, rclone,
-// sshfs) are left out, so the preview never reads a whole image over the network at each cursor rest.
-var LOCAL_FILESYSTEMS = ["btrfs", "ext4", "xfs", "zfs", "tmpfs", "vfat", "ntfs", "overlay", "reiserfs",
-    "0x2011bab0", "0x7366746e", "0xf2f52010"]
-
-// Sample input: ("/home/gm/Pictures", "/home/gm/Pictures", "btrfs"). A statfs of another directory, the
-// one a navigation left before its own answer landed, or no answer at all, is not this directory's.
-function decodesOriginal(fsPath, path, fsName) {
-    return String(fsPath || "").length > 0 && fsPath === path && LOCAL_FILESYSTEMS.indexOf(String(fsName || "")) >= 0
-}
-
 // src/backend/thumbs.rs THUMB_SIZE: the longest side of a cache file made from a larger original.
 var CACHE_SIZE = 256
 
