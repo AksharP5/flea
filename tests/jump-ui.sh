@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# The path bar's folder jump through the real ChromeBar and PathJump, offscreen: what one open asks for,
-# a held Enter, a stale answer, a Tab-completed path, a name with no match, a backend that never answers.
+# The path bar's folder jump through the real ChromeBar and PathJump, offscreen: what one open asks for
+# (a provisional ask at once, then the whole ask once the history read lands), a held Enter, a stale
+# answer, a Tab-completed path, a name with no match, a backend that never answers.
 set -u
 . "$(dirname "$0")/../tools/flea-sandbox-guard"
 cd "$(dirname "$0")/.." || exit 1

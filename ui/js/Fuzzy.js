@@ -82,14 +82,12 @@ function alignFrom(hay, needle, start, base) {
 }
 
 // null when the query is not a subsequence of the candidate; otherwise the best alignment's score and
-// the positions it matched, which is what the wash is drawn from.
-function match(candidate, query) {
-    var needle = String(query).toLowerCase()
+// the positions it matched, which is what the wash is drawn from. The needle is the query lowered once
+// by the caller; the hay is folded once per open by ui/js/Jump.js prepare, never per keystroke.
+function matchFolded(hay, base, needle) {
     if (needle.length === 0) {
         return { score: 0, positions: [] }
     }
-    var hay = fold(String(candidate))
-    var base = baseStart(hay)
     var best = null
     var starts = 0
     for (var i = 0; i < hay.length; i++) {
@@ -110,6 +108,18 @@ function match(candidate, query) {
         }
     }
     return best
+}
+
+// null when the query is not a subsequence of the candidate; otherwise the best alignment's score and
+// the positions it matched, which is what the wash is drawn from.
+function match(candidate, query) {
+    var needle = String(query).toLowerCase()
+    if (needle.length === 0) {
+        return { score: 0, positions: [] }
+    }
+    var hay = fold(String(candidate))
+    var base = baseStart(hay)
+    return matchFolded(hay, base, needle)
 }
 
 // The one run the row washes: the longest stretch of consecutive matched positions, the first on a tie.

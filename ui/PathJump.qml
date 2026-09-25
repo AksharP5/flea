@@ -24,15 +24,31 @@ Item {
     // The backend's answer for this open, { favourites, zoxide, recent }, empty until it arrives.
     property var sources: ({})
     readonly property bool answered: root.sources.favourites !== undefined
+    // The same answer folded once for ranking: every keystroke ranks out of this instead of folding
+    // every candidate again, so a keystroke costs the alignment alone. Dropped with sources below,
+    // so one open never keeps the next one's folds.
+    property var prepared: null
     // Tab is the path bar's own completion, so a line it has touched is a path for the rest of the edit:
     // with two children sharing a prefix it stops short of the slash, and Enter still means ./that.
     property bool pathTyped: false
-    readonly property var entries: root.editing && !root.pathTyped ? Jump.rows(root.sources, root.query, root.home) : []
+    readonly property var entries: root.editing && !root.pathTyped && root.prepared !== null
+        ? Jump.rowsPrepared(root.prepared, root.query) : []
     property int cursor: -1
     readonly property bool shown: root.entries.length > 0
-    // Every open asks with a new id and takes only the answer carrying it, so a slow answer to an earlier
-    // open can never land in this one, or move a cursor the user has already moved.
+    // Every ask carries a new id and take() keeps only the newest open's answers, so a slow answer to
+    // an earlier ask can never land in this one, or move a cursor the user has already moved.
     property int asked: 0
+    // An open whose history is stale asks twice: a provisional ask with what is kept, so the
+    // dropdown fills from the backend's answer instead of waiting out the history read, and the whole
+    // ask under a new id once the read lands. take() shows the provisional rows but only the whole
+    // answer spends a held Enter or settles wholeTaken; a provisional answer landing after the whole
+    // one is dropped like a stale one. The whole ask waits for the provisional answer as well as the
+    // read, so the two backend calls never overlap on the backend's one zoxide slot.
+    property int provisionalId: 0
+    property bool wholeTaken: false
+    // The provisional answer has landed, and the whole ask has been sent; one whole ask per open.
+    property bool provTaken: false
+    property bool wholeAsked: false
     // Enter on a name before this open's answer is in: held, then taken by the answer, so the same keys
     // open the same folder however fast they were typed.
     property bool enterWaiting: false
@@ -57,15 +73,23 @@ Item {
     onCursorChanged: scroll.reveal(rowItems.itemAt(root.cursor))
     onEditingChanged: {
         root.sources = ({})
+        root.prepared = null
         root.enterWaiting = false
         root.pathTyped = false
+        root.provisionalId = 0
+        root.wholeTaken = false
+        root.provTaken = false
+        root.wholeAsked = false
         root.asked += 1
         if (!root.editing) {
             return
         }
         if (root.historyKept && root.historyReadAt === root.historyChanges) {
+            root.wholeAsked = true
             root.ask()
         } else {
+            root.provisionalId = root.asked
+            root.ask()
             root.readHistory()
         }
     }
@@ -83,6 +107,21 @@ Item {
 
     function ask() {
         root.requested(root.asked, root.favouritePaths(), root.recentPaths)
+    }
+
+    function askWhole() {
+        // One whole ask per open, only once the provisional answer and the history read are both in,
+        // so the two backend calls never overlap on the backend's one zoxide slot. The read's own
+        // staleness is the next open's business: this one asks with the newest paths it has.
+        if (!root.editing || root.wholeAsked || !root.provTaken) {
+            return
+        }
+        if (root.provisionalId !== 0 && !(root.historyKept && !root.historyReading)) {
+            return
+        }
+        root.wholeAsked = true
+        root.asked += 1
+        root.ask()
     }
 
     // The watch starts before the read, so a change landing while it runs is counted and read next time.
@@ -103,11 +142,24 @@ Item {
     }
 
     // The backend's jumped line; one for another open, or landing after the bar closed, is dropped.
+    // A provisional answer draws its rows but never spends a held Enter and never settles the open.
     function take(id, favourites, zoxide, recentFolders, frecency) {
-        if (!root.editing || id !== root.asked) {
+        if (!root.editing) {
             return
         }
-        root.sources = { favourites: favourites, zoxide: zoxide, recent: recentFolders, frecency: frecency || ({}) }
+        var provisional = id === root.provisionalId && root.provisionalId !== 0 && !root.wholeTaken
+        if (id !== root.asked && !provisional) {
+            return
+        }
+        var answer = { favourites: favourites, zoxide: zoxide, recent: recentFolders, frecency: frecency || ({}) }
+        root.sources = answer
+        root.prepared = Jump.prepare(answer, root.home)
+        if (provisional) {
+            root.provTaken = true
+            root.askWhole()
+            return
+        }
+        root.wholeTaken = true
         if (root.enterWaiting) {
             root.enterWaiting = false
             root.enter()
@@ -150,9 +202,9 @@ Item {
             // The parsed model goes once its newest paths are kept, which bounds what stays in memory at
             // Recent.LIMIT paths; later, because the reader is the one emitting this signal.
             Qt.callLater(function () { if (!root.historyReading) recent.active = false })
-            if (root.editing) {
-                root.ask()
-            }
+            // The whole ask waits for the provisional answer too, which take() records; either order
+            // of the two landings converges on it, and a closed bar asks nothing more.
+            root.askWhole()
         }
     }
 
@@ -191,7 +243,9 @@ Item {
                 event.accepted = true
                 return
             }
-            if (!root.answered && !root.pathTyped && Jump.isQuery(root.query)) {
+            // Held until the whole answer, not the provisional one, so the same keys open the same
+            // folder however fast they were typed; a visible row above already took the press itself.
+            if ((!root.answered || !root.wholeTaken) && !root.pathTyped && Jump.isQuery(root.query)) {
                 root.enterWaiting = true
                 event.accepted = true
                 return

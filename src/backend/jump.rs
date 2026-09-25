@@ -60,7 +60,17 @@ fn answer(program: &str, id: usize, favourites: &[String], recent: &[String]) ->
     let ranked = zoxide(program, ZOXIDE_LIMIT);
     let paths: Vec<String> = ranked.iter().map(|(path, _)| path.clone()).collect();
     let mounts = mounts_in(&std::fs::read_to_string(MOUNTINFO).unwrap_or_default());
-    let found = existing(candidates(favourites, &paths, recent), CHECK_LIMIT, folder, &mounts);
+    // A favourite or a zoxide row must itself be a folder; a recent file stands for the folder holding
+    // it, whose parents resolve first so one open stats each folder once no matter how many files sit
+    // in it. jumped_line answers each folder once in its first source either way.
+    let mut found = existing(candidates(favourites, &paths, &[]), CHECK_LIMIT, folder, &mounts);
+    let (parents, files) = recent_parents(recent);
+    let resolved = resolve_parents(parents, CHECK_LIMIT, &mounts);
+    for (file, parent) in files {
+        if let Some(folder) = resolve_recent(&file, &parent, &resolved) {
+            found.push((Source::Recent, folder));
+        }
+    }
     jumped_line(id, &found, &ranked, started.elapsed().as_secs_f64() * 1000.0)
 }
 
@@ -161,6 +171,49 @@ fn folder(candidate: &Candidate) -> Option<String> {
     }
     let parent = path.parent()?;
     parent.is_dir().then(|| parent.to_string_lossy().into_owned())
+}
+
+// Each recent file with the folder it sits in, and every such folder once in first-seen order, so one
+// open stats each folder a single time no matter how many files sit in it. Sample input:
+// ["/a/f.txt", "/a/g.txt", "/b/h.txt"] names "/a" and "/b" once each and pairs every file with its
+// folder; a path that is not absolute, and the root's own empty parent, name no folder to check.
+fn recent_parents(recent: &[String]) -> (Vec<String>, Vec<(String, String)>) {
+    let mut seen = HashSet::new();
+    let mut parents = Vec::new();
+    let mut files = Vec::new();
+    for file in recent.iter().filter(|path| path.starts_with('/')) {
+        let parent = Path::new(file).parent().map(|parent| parent.to_string_lossy().into_owned()).unwrap_or_default();
+        if !parent.is_empty() && seen.insert(parent.clone()) {
+            parents.push(parent.clone());
+        }
+        files.push((file.clone(), parent));
+    }
+    (parents, files)
+}
+
+// What one recent file stands for now: itself when it is a folder, the folder it sits in when that
+// folder resolved above, and nothing when neither does. The metadata follows links, the rule folder()
+// follows, so a symlink to a folder still stands for itself; a file stands for its folder without a
+// second stat, because a file that exists sits in a folder that does.
+fn resolve_recent(file: &str, parent: &str, resolved: &HashSet<String>) -> Option<String> {
+    match std::fs::metadata(file) {
+        Ok(meta) if meta.is_dir() => Some(file.to_string()),
+        Ok(_) => Some(parent.to_string()),
+        Err(_) => resolved.contains(parent).then(|| parent.to_string()),
+    }
+}
+
+// Every folder recent files sit in, checked once on the same budget and wedged-mount keys the per-row
+// checks use: a parent that never answers drops every file under it, the way one wedged stat drops its
+// source's rows from that one on.
+fn resolve_parents(parents: Vec<String>, limit: Duration, mounts: &[(PathBuf, String)]) -> HashSet<String> {
+    let own: Vec<Candidate> = parents.into_iter().map(|path| Candidate { source: Source::Recent, path }).collect();
+    existing(own, limit, is_dir_path, mounts).into_iter().map(|(_, path)| path).collect()
+}
+
+// A folder stands for itself when it is one.
+fn is_dir_path(candidate: &Candidate) -> Option<String> {
+    Path::new(&candidate.path).is_dir().then(|| candidate.path.clone())
 }
 
 // A filesystem that answers over the network or through FUSE, the kind whose stat can wedge for good.

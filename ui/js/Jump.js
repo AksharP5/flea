@@ -58,24 +58,56 @@ function runsIn(positions) {
     return runs
 }
 
-// One folder's row, or null when the query misses it or only scatters through it below the floor. own is
-// whether the query matches the folder's own name alone; the wash and the runs come from that match when
-// it does, and from the whole path's otherwise.
-function ranked(path, query, home) {
-    var text = display(path, home)
-    var whole = Fuzzy.match(text, query)
-    if (whole === null || whole.score < (query.length - 1) * MIN_SCORE_PER_CHARACTER) {
+// One open's candidates folded once, so a keystroke never displays, folds or lowers anything per
+// candidate. The dropdown prepares once per answer; rows() below is the same work in one call.
+// Sample sources: { favourites: ["/home/gm/Projects"], zoxide: ["/home/gm/Documents"], recent: [],
+//                   frecency: { "/home/gm/Documents": 80 } }
+function prepare(sources, home) {
+    var given = sources || {}
+    var frecency = given.frecency || {}
+    var entries = []
+    for (var s = 0; s < SOURCES.length; s++) {
+        var paths = given[SOURCES[s]] || []
+        for (var i = 0; i < paths.length; i++) {
+            var path = String(paths[i])
+            var text = display(path, home)
+            var leaf = leafStart(text)
+            var whole = Fuzzy.fold(text)
+            var leafFold = whole.slice(leaf)
+            entries.push({ path: path, text: text, leaf: leaf, whole: whole,
+                           baseWhole: Fuzzy.baseStart(whole), leafFold: leafFold,
+                           baseLeaf: Fuzzy.baseStart(leafFold),
+                           source: s, at: i, frecency: Number(frecency[path]) || 0 })
+        }
+    }
+    return { entries: entries }
+}
+
+// One folder's row out of prepared candidates, or null when the query misses it or only scatters
+// through it below the floor. The runs read off the leaf-relative positions, whose offset keeps
+// adjacency, and only the wash moves by the leaf.
+function rankedPrepared(entry, needle, floor) {
+    // A candidate shorter than the needle cannot hold it as a subsequence.
+    if (entry.text.length < needle.length) {
         return null
     }
-    var leaf = leafStart(text)
-    var named = Fuzzy.match(text.substring(leaf), query)
+    var whole = Fuzzy.matchFolded(entry.whole, entry.baseWhole, needle)
+    if (whole === null || whole.score < floor) {
+        return null
+    }
+    var named = Fuzzy.matchFolded(entry.leafFold, entry.baseLeaf, needle)
     var positions = whole.positions
     if (named !== null) {
-        positions = named.positions.map(function (at) { return at + leaf })
+        positions = named.positions
     }
     var wash = Fuzzy.run(positions)
-    return { path: path, text: text, leafStart: leaf, washStart: wash.start, washLength: wash.length,
-             own: named !== null, runs: runsIn(positions) }
+    if (named !== null) {
+        wash = { start: wash.start + entry.leaf, length: wash.length }
+    }
+    return { path: entry.path, text: entry.text, leafStart: entry.leaf,
+             washStart: wash.start, washLength: wash.length,
+             own: named !== null, runs: runsIn(positions),
+             source: entry.source, at: entry.at, frecency: entry.frecency }
 }
 
 // The controller's ruling, in order: the folder's own name, then contiguity, then frecency, then a favourite
@@ -96,28 +128,21 @@ function before(a, b) {
     return a.at - b.at
 }
 
-// The dropdown's rows: every source's matches in one ranked list, a source giving at most SOURCE_ROWS of
-// its best. frecency is zoxide's score for any folder it ranks, whichever source draws that folder.
-// Sample sources: { favourites: ["/home/gm/Projects"], zoxide: ["/home/gm/Documents"], recent: [],
-//                   frecency: { "/home/gm/Documents": 80 } }
-function rows(sources, line, home) {
+// The dropdown's rows out of prepared candidates: every source's matches in one ranked list, a
+// source giving at most SOURCE_ROWS of its best.
+function rowsPrepared(prepared, line) {
     if (!isQuery(line)) {
         return []
     }
     var query = String(line).trim()
-    var given = sources || {}
-    var frecency = given.frecency || {}
+    var needle = query.toLowerCase()
+    var floor = (query.length - 1) * MIN_SCORE_PER_CHARACTER
+    var entries = (prepared && prepared.entries) || []
     var found = []
-    for (var s = 0; s < SOURCES.length; s++) {
-        var paths = given[SOURCES[s]] || []
-        for (var i = 0; i < paths.length; i++) {
-            var row = ranked(String(paths[i]), query, home)
-            if (row !== null) {
-                row.source = s
-                row.at = i
-                row.frecency = Number(frecency[row.path]) || 0
-                found.push(row)
-            }
+    for (var e = 0; e < entries.length; e++) {
+        var row = rankedPrepared(entries[e], needle, floor)
+        if (row !== null) {
+            found.push(row)
         }
     }
     found.sort(before)
@@ -130,6 +155,14 @@ function rows(sources, line, home) {
         }
     }
     return out
+}
+
+// The dropdown's rows: prepare's work in one call, for the callers that rank once.
+function rows(sources, line, home) {
+    if (!isQuery(line)) {
+        return []
+    }
+    return rowsPrepared(prepare(sources, home), String(line))
 }
 
 // A row's label in drawing order: the text cut where the leaf starts and where the wash starts and ends,

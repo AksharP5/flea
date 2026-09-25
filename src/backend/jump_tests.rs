@@ -112,6 +112,56 @@ fn missing_folders_are_dropped_and_a_recent_file_stands_for_its_folder() {
     ]);
 }
 
+#[test]
+fn recent_parents_names_each_folder_once_in_first_seen_order() {
+    let (parents, files) = recent_parents(&strings(&["/a/f.txt", "/a/g.txt", "/b/h.txt", "relative", "/a/f.txt"]));
+    assert_eq!(parents, vec!["/a".to_string(), "/b".to_string()]);
+    assert_eq!(files, vec![
+        ("/a/f.txt".to_string(), "/a".to_string()),
+        ("/a/g.txt".to_string(), "/a".to_string()),
+        ("/b/h.txt".to_string(), "/b".to_string()),
+        ("/a/f.txt".to_string(), "/a".to_string()),
+    ]);
+}
+
+#[test]
+fn a_recent_folder_stands_for_itself_and_a_gone_file_for_its_resolved_parent() {
+    let dir = TestDir::new("jump-resolve-recent");
+    let root = dir.path().to_string_lossy().into_owned();
+    std::fs::create_dir(dir.path().join("kept")).unwrap();
+    std::fs::write(dir.path().join("kept/note.txt"), "x").unwrap();
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(dir.path().join("kept"), dir.path().join("link")).unwrap();
+    let resolved: HashSet<String> = [format!("{}/kept", root)].into_iter().collect();
+    let missing: HashSet<String> = HashSet::new();
+    assert_eq!(resolve_recent(&format!("{}/kept", root), &root, &resolved), Some(format!("{}/kept", root)));
+    assert_eq!(resolve_recent(&format!("{}/kept/note.txt", root), &format!("{}/kept", root), &resolved),
+        Some(format!("{}/kept", root)));
+    assert_eq!(resolve_recent(&format!("{}/kept/gone.txt", root), &format!("{}/kept", root), &resolved),
+        Some(format!("{}/kept", root)));
+    assert_eq!(resolve_recent(&format!("{}/gone/gone.txt", root), &format!("{}/gone", root), &missing), None);
+    #[cfg(unix)]
+    assert_eq!(resolve_recent(&format!("{}/link", root), &root, &resolved), Some(format!("{}/link", root)));
+}
+
+#[test]
+fn recent_files_sharing_one_parent_answer_their_folder_once() {
+    let _turn = serial();
+    let dir = TestDir::new("jump-shared-parent");
+    let root = dir.path().to_string_lossy().into_owned();
+    std::fs::create_dir(dir.path().join("shared")).unwrap();
+    std::fs::write(dir.path().join("shared/a.txt"), "x").unwrap();
+    std::fs::write(dir.path().join("shared/b.txt"), "x").unwrap();
+    // No zoxide rows and no favourites: the recent files are the only source, and every one of
+    // them, the folder itself and a file deleted since, names the one folder a single check proves.
+    let fake = script(&dir, "zoxide", "exit 0");
+    let recent = strings(&[&format!("{}/shared/a.txt", root), &format!("{}/shared/b.txt", root),
+        &format!("{}/shared", root), &format!("{}/shared/gone.txt", root), &format!("{}/gone/gone.txt", root)]);
+    let line = answer(&fake, 9, &[], &recent);
+    let expected = format!(r#"{{"t":"jumped","id":9,"favourites":[],"zoxide":[],"recent":["{}/shared"],"frecency":{{}},"ms":"#, root);
+    assert!(line.starts_with(&expected), "{}", line);
+}
+
 // A check that blocks on any path ending in /stuck, the shape a stat takes on a mount that stopped answering.
 static STUCK_CALLS: AtomicUsize = AtomicUsize::new(0);
 const STUCK_FOR: Duration = Duration::from_secs(3);

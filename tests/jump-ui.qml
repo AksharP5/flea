@@ -51,23 +51,33 @@ ShellRoot {
         function () { chrome.startEdit(); return true },
         function () { return root.asked.length === 1 },
         function () {
-            var first = root.asked[0]
-            root.check("one open asks once, with the favourites as the rail holds them", first.favourites, root.sources.favourites)
-            root.check("and the recent history's files, newest first", first.recent,
-                       [root.home + "/Pictures/screenshots/shot.png", root.home + "/Work/field/notes.md"])
+            root.check("a stale history still asks at once, with what is kept", root.asked[0].recent, [])
+            root.check("with the favourites as the rail holds them", root.asked[0].favourites, root.sources.favourites)
             root.type("o")
             root.check("no answer yet, so no dropdown", chrome.jump.shown, false)
             root.press(Qt.Key_Return)
             root.check("Enter on a name before the answer is held, not resolved as a path", [root.entered, chrome.editing], [[], true])
-            root.answer(-1)
-            root.check("an answer carrying an earlier open's id is dropped", [chrome.jump.shown, root.entered], [false, []])
+            chrome.jump.take(0, root.sources.favourites, root.sources.zoxide, root.sources.recent)
+            root.check("an answer carrying no ask's id is dropped", [chrome.jump.shown, root.entered], [false, []])
+            chrome.jump.take(1, root.sources.favourites, root.sources.zoxide, [])
+            root.check("the provisional answer draws but does not spend the held Enter", [root.entered, chrome.editing], [[], true])
+            root.check("its rows are the kept sources alone", root.rows(), [
+                root.home + "/Projects", root.home + "/Documents/claude/omarchy", root.home + "/Documents",
+                root.home + "/Downloads", root.home + "/Documents/claude/flea"])
+            return true
+        },
+        // The whole ask waits for the provisional answer and the history read, in either order.
+        function () { return root.asked.length === 2 },
+        function () {
+            root.check("the read history's files, newest first, on the whole ask", root.asked[1].recent,
+                       [root.home + "/Pictures/screenshots/shot.png", root.home + "/Work/field/notes.md"])
             root.answer(0)
-            root.check("this open's answer takes the held Enter to the first row", root.entered, [root.home + "/Projects"])
+            root.check("this open's whole answer takes the held Enter to the first row", root.entered, [root.home + "/Projects"])
             root.check("and the bar closes", chrome.editing, false)
             chrome.startEdit()
             return true
         },
-        function () { return root.asked.length === 2 },
+        function () { return root.asked.length === 3 },
         function () {
             root.answer(0)
             root.type("o")
@@ -84,7 +94,7 @@ ShellRoot {
             chrome.startEdit()
             return true
         },
-        function () { return root.asked.length === 3 },
+        function () { return root.asked.length === 4 },
         function () {
             root.answer(0)
             root.type("Wo")
@@ -100,7 +110,7 @@ ShellRoot {
             chrome.startEdit()
             return true
         },
-        function () { return root.asked.length === 4 },
+        function () { return root.asked.length === 5 },
         function () {
             root.answer(0)
             root.type("zzz")
@@ -109,7 +119,7 @@ ShellRoot {
             chrome.startEdit()
             return true
         },
-        function () { return root.asked.length === 5 },
+        function () { return root.asked.length === 6 },
         function () {
             root.type("o")
             root.press(Qt.Key_Return)
@@ -122,7 +132,7 @@ ShellRoot {
             chrome.startEdit()
             return true
         },
-        function () { return root.asked.length === 6 },
+        function () { return root.asked.length === 7 },
         function () {
             root.type("o")
             root.press(Qt.Key_Return)
@@ -133,7 +143,7 @@ ShellRoot {
             chrome.startEdit()
             return true
         },
-        function () { return root.asked.length === 7 },
+        function () { return root.asked.length === 8 },
         function () {
             root.answer(0)
             root.type("Wo")
@@ -150,7 +160,7 @@ ShellRoot {
             chrome.startEdit()
             return true
         },
-        function () { return root.asked.length === 8 },
+        function () { return root.asked.length === 9 },
         function () {
             root.answer(0)
             root.type("o")
@@ -169,10 +179,16 @@ ShellRoot {
         // The desktop replaces the file, the way GTK writes it: a temp and a rename.
         function () { return !history.running && Date.now() - root.stepStarted > root.settleMs },
         function () { chrome.startEdit(); return true },
-        function () { return root.asked.length === 10 },
+        function () { return root.asked.length === 11 },
+        function () {
+            // The provisional take is what sends the whole ask: the backend never answers here.
+            root.answer(0)
+            return true
+        },
+        function () { return root.asked.length === 12 },
         function () {
             root.check("the next open reads the replaced history, once", chrome.jump.historyReads, 2)
-            root.check("and asks with its newest file first", root.asked[9].recent[0], root.home + "/Music/new.flac")
+            root.check("and asks with its newest file first", root.asked[11].recent[0], root.home + "/Music/new.flac")
             root.press(Qt.Key_Escape)
             history.command = ["sh", "-c", "rm -f -- \"$1\"", "sh", root.xbel]
             history.running = true
@@ -180,9 +196,14 @@ ShellRoot {
         },
         function () { return !history.running && Date.now() - root.stepStarted > root.settleMs },
         function () { chrome.startEdit(); return true },
-        function () { return root.asked.length === 11 },
+        function () { return root.asked.length === 13 },
         function () {
-            root.check("a history that is gone is read as empty", [root.asked[10].recent, chrome.jump.historyReads], [[], 3])
+            root.answer(0)
+            return true
+        },
+        function () { return root.asked.length === 14 },
+        function () {
+            root.check("a history that is gone is read as empty", [root.asked[13].recent, chrome.jump.historyReads], [[], 3])
             root.press(Qt.Key_Escape)
             return true
         }
