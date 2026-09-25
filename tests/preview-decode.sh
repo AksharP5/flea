@@ -1,13 +1,5 @@
 #!/bin/bash
-# The preview column draws the 256 px cache file and never the original, as v0.3.4 did (GM, 0.3.5:
-# the sharp Columns frame returns in 0.3.6 from a disk cache), driven through the real
-# ui/SelectionPreview.qml offscreen: a sweep of 50 cursor moves at key-repeat rate opens no original,
-# and a two-second rest on a 6016x3900 PNG opens its cache file and not the PNG. Opens are counted from
-# outside the column, as open events on the fixture directory between touch sentinel files the
-# harness drops at each phase boundary, so windows follow the event stream's own order instead of
-# comparing two clocks. Then Quick Look's ui/PreviewImage.qml, in a 754x471 box, must draw an EXIF-turned
-# photo upright at the exact fit, decode a 3000x100 banner at the exact fit and not the covering size,
-# and leave a 120x68 PNG at its own size. Offscreen: no display, no lock.
+# The Columns preview as v0.3.4 drew it (the cache file, the original only where none exists) and Quick Look's decode, offscreen; see AGENTS.md "File budget".
 set -u
 cd "$(dirname "$0")/.." || exit 1
 
@@ -52,9 +44,7 @@ ln -s "$PWD/tests/preview-decode.qml" "$config_dir/shell.qml" || exit 1
 ln -s /usr/share/omarchy/shell/Commons "$config_dir/Commons" || exit 1
 ln -s /usr/share/omarchy/shell/Ui "$config_dir/Ui" || exit 1
 
-# Fifty sweep photos as copies of two seeds, one shared 256 px thumbnail each, the 6016x3900 PNG
-# rest row, and a text row the initial selection loads so nothing image-like opens before the
-# sweep. Content is irrelevant: only open events are counted, never pixels.
+# Fifty sweep photos with a cache file each, the 6016x3900 PNG rest row and a text start row; only open events are counted, never pixels.
 printf 'preview decode rest row, not an image\n' > "$photos/note.txt" \
     || { echo "preview-decode.sh: text fixture generation failed"; exit 1; }
 magick -size 640x480 plasma:fractal -seed 3 "$photos/seed0.jpg" \
@@ -71,8 +61,7 @@ for i in $(seq 0 49); do
 done
 cp "$photos/thumb.png" "$photos/t50.png" || exit 1
 
-# Quick Look's three: 600x400 pixels a phone marks RightTop (EXIF 6), upright 400x600; a banner; a PNG smaller than any box.
-# magick writes no EXIF block for a generated image, so exiv2 sets the Orientation tag a phone would.
+# Quick Look's three: 600x400 pixels exiv2 marks RightTop (EXIF 6), since magick writes no EXIF block; a banner; a PNG smaller than any box.
 magick -size 600x400 gradient:white-black "$photos/portrait.jpg" \
     && exiv2 -M"set Exif.Image.Orientation Short 6" "$photos/portrait.jpg" \
     || { echo "preview-decode.sh: portrait generation failed"; exit 1; }
@@ -83,8 +72,7 @@ magick -size 3000x100 xc:gray60 "$photos/banner.png" \
 magick -size 120x68 xc:gray40 "$photos/small.png" \
     || { echo "preview-decode.sh: small fixture generation failed"; exit 1; }
 
-# Sample input: 'OPEN|s12.jpg'. Thumbnails start with t, sentinels with sentinel-, and note.txt is
-# the text row the preview reads as text, so an s photo or big.png is an original opened.
+# Sample input: 'OPEN|t12.png' is a cache file, 'OPEN|s12.jpg' or 'OPEN|big.png' an original, 'CREATE|sentinel-rest' a phase boundary.
 inotifywait -m -e open -e create --format '%e|%f' "$photos" > "$watchlog" 2>&1 &
 watcher=$!
 
@@ -96,8 +84,7 @@ watcher=$!
     PREVIEW_UI="$PWD/ui" PREVIEW_PHOTOS="$photos" \
     timeout 120 qs -p "$config_dir" > "$log" 2>&1 )
 status=$?
-# The watch is killed only once qs is gone, plus a breath so its last events flush: nothing after
-# the done sentinel can enter a window, and nothing before it is still unread.
+# The watch outlives qs by a breath so its last events flush before it is read.
 sleep 1
 kill "$watcher" 2>/dev/null
 watcher=""
@@ -108,7 +95,7 @@ if grep -q 'PREVIEW FAIL' "$log" || ! grep -q 'PREVIEW DONE' "$log"; then
 else
     # Sample input, one inotifywait line per event: 'OPEN|t50.png' is the rest row's cache file and 'CREATE|sentinel-rest' opens the rest window once the sweep one closes.
     got_sweep=0; got_rest=0; got_done=0; phase=0
-    sweep_opens=0; rest_big=0; rest_cache=0; rest_sweep=0
+    sweep_opens=0; sweep_names=""; rest_big=0; rest_cache=0; rest_sweep=0
     events=""; name=""
     while IFS='|' read -r events name || [ -n "$events" ]; do
         case "$events" in
@@ -119,9 +106,11 @@ else
             fi
             ;;
         *OPEN*)
+            # v0.3.4's settle outlasts a 30 ms repeat, so a sweep loads no row: any open but a sentinel's own is a load.
             if [ "$phase" -eq 1 ]; then
                 case "$name" in
-                s*.jpg|big.png) sweep_opens=$((sweep_opens + 1)) ;;
+                sentinel-*) ;;
+                *) sweep_opens=$((sweep_opens + 1)); [ "$sweep_opens" -le 3 ] && sweep_names="$sweep_names $name" ;;
                 esac
             elif [ "$phase" -eq 2 ]; then
                 case "$name" in
@@ -137,9 +126,9 @@ else
         bad "a phase sentinel never arrived (sweep=$got_sweep rest=$got_rest done=$got_done) (log $log)"
     else
         if [ "$sweep_opens" -eq 0 ]; then
-            ok "50 moves at key-repeat rate opened no original"
+            ok "50 moves at key-repeat rate opened no file at all, cache file or original"
         else
-            bad "the sweep opened $sweep_opens original(s) (log $log)"
+            bad "the sweep opened $sweep_opens file(s), first:$sweep_names (log $log)"
         fi
         if [ "$rest_cache" -ge 1 ]; then
             ok "a rest drew the rested row's cache file"
@@ -152,8 +141,7 @@ else
             bad "the rest opened big.png $rest_big time(s) and sweep rows $rest_sweep time(s) (log $log)"
         fi
     fi
-    # Sample input: 'PREVIEW QL portrait decoded=400x600 drawn=314x471'. Qt weighs sourceSize against the
-    # stored 600x400 before the turn, so this one decodes whole; upright is height over width either way.
+    # Sample input: 'PREVIEW QL portrait decoded=400x600 drawn=314x471'; Qt decodes a turned photo whole when its stored size fits the box.
     portrait=$(sed -n 's/.*PREVIEW QL portrait decoded=\([0-9]*x[0-9]*\) drawn=\([0-9]*x[0-9]*\).*/\1 \2/p' "$log")
     case "$portrait" in
         "400x600 314x471") ok "Quick Look draws an EXIF-turned photo upright at the exact fit, 314x471" ;;

@@ -3,13 +3,7 @@
 import Quickshell
 import QtQuick
 
-// tests/preview-decode.sh's harness. First the real ui/SelectionPreview.qml, the product path into
-// the preview column, starts on a text row, then holds one photo per cursor move at key-repeat rate
-// over a stub pane, then rests on a 6016x3900 PNG. The script counts the fixture directory's own
-// open events between touch sentinel files this harness drops at each phase boundary, in event
-// order rather than by comparing two clocks. Then the real ui/PreviewImage.qml, Quick Look's image
-// pane, decodes an EXIF-turned photo, a 3000x100 banner and a small PNG in a 754x471 box, and logs
-// each decode's size and the size it is drawn at.
+// tests/preview-decode.sh's harness: the real SelectionPreview swept and rested over a stub pane, then the real PreviewImage.
 ShellRoot {
     id: shell
 
@@ -24,8 +18,7 @@ ShellRoot {
     function quit() { Quickshell.execDetached(["kill", String(Quickshell.processId)]) }
     function mark(name) { Quickshell.execDetached(["touch", shell.photoDir + "/sentinel-" + name]) }
 
-    // The row shape the backend's rows line carries: a text row first so the initial load opens no
-    // image, fifty sweep photos, and the big PNG rest row last.
+    // The backend's row shape: a text start row, fifty sweep photos, the big PNG rest row.
     function rowFor(i) {
         if (i < 0 || i > shell.restRow) return null
         if (i === 0) return { n: "note.txt", d: false, t: false, s: 64, m: 1000, p: 33188, i: "text-x-generic" }
@@ -33,9 +26,7 @@ ShellRoot {
         return { n: "s" + (i - 1) + ".jpg", d: false, t: true, s: 100000 + i, m: 1000 + i, p: 33188, i: "image-x-generic" }
     }
 
-    // The stub pane SelectionPreview reads: cursor and directory identity for the settle, join and
-    // kindNames for the load, thumbState for the thumbnail binding, and a backend answering meta for
-    // every row. It says local btrfs, so a rule that reads originals on a local disk would fire here.
+    // The stub backend answers meta for every row and asks for no thumbnail, since every row already has one.
     Item {
         id: stubBackend
         signal metaResult(var message)
@@ -64,6 +55,7 @@ ShellRoot {
         }
     }
 
+    // The stub pane says local btrfs, so a rule that read originals on a local disk would fire here.
     Item {
         id: stub
         property int cursorIndex: -1
@@ -122,7 +114,7 @@ ShellRoot {
         }
     }
 
-    // Settled start on the text row with the sweep sentinel dropped first and every row pre-thumbnailed, so module load never enters a window and a sweep-time load would decode and redden.
+    // Every row pre-thumbnailed, so a load during the sweep opens its cache file and the sweep window counts it.
     function begin() {
         stub.path = shell.photoDir
         stub.fsPath = shell.photoDir
@@ -131,7 +123,6 @@ ShellRoot {
         files[shell.restRow] = shell.photoDir + "/t50.png"
         stub.thumbState = ({ file: files })
         stub.cursorIndex = 0
-        shell.mark("sweep")
         shell.log("READY pid=" + Quickshell.processId)
         settleTimer.restart()
     }
@@ -139,15 +130,16 @@ ShellRoot {
     Timer {
         id: settleTimer
         interval: 400
+        // The text row has loaded by now, so the sweep window opens on the sweep alone.
         onTriggered: {
+            shell.mark("sweep")
             shell.log("SWEEP START")
             shell.movesLeft = shell.sweepCount
             moveTimer.restart()
         }
     }
 
-    // Fifty cursor moves at key-repeat rate: SelectionPreview clears and restarts its settle on
-    // every one, so path stays empty for the whole sweep and no decode may start.
+    // Fifty cursor moves at key-repeat rate, each restarting SelectionPreview's settle before it expires.
     Timer {
         id: moveTimer
         interval: 30
@@ -186,8 +178,7 @@ ShellRoot {
         }
     }
 
-    // Two seconds of rest, longer than the 0.3.5 candidate's 580 ms sharp decode, then the done
-    // sentinel closes the rest window and Quick Look's half begins.
+    // Two seconds, longer than the 0.3.5 candidate's 580 ms sharp decode, then Quick Look's half.
     Timer {
         id: doneTimer
         interval: 2000
@@ -217,7 +208,7 @@ ShellRoot {
         lookPoll.restart()
     }
 
-    // Sample log line: "PREVIEW QL portrait decoded=314x471 drawn=314x471".
+    // Sample log line: "PREVIEW QL portrait decoded=400x600 drawn=314x471", the turned photo decoded whole and upright, drawn at the exact fit.
     Timer {
         id: lookPoll
         interval: 10

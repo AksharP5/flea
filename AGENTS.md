@@ -1972,11 +1972,15 @@ budgets and the rename module is under the hard cap and over the soft one.
 
 `ui/PreviewColumn.qml` is at 477: the Columns sharp stage (a second `Image` decoding the original at the
 frame size over the cache file) was removed before 0.3.5 shipped, because it cost 0.4 to 0.6 s of CPU a
-visit on a 33 Mpx PNG and 2 to 4 MB of PSS over v0.3.4. The frame draws the 256 px cache file as v0.3.4
-did, at the exact fit, never enlarged past the original's own size, and EXIF-upright where it falls back
-to the original. The sharp frame returns in 0.3.6 from a disk-cached sharp file, GM's ruling.
-`tests/preview-decode.sh` pins it from outside the column: a rest opens the cache file and no original,
-and Quick Look's `ui/PreviewImage.qml` still decodes an EXIF-turned photo upright at the exact fit.
+visit on a 33 Mpx PNG and 2 to 4 MB of PSS over v0.3.4. As in v0.3.4 the frame draws the row's 256 px
+cache file, and decodes the original only when no cache file exists, now at the exact fit of the frame and
+EXIF-upright; a cache file is never enlarged past the original's own size. The sharp frame returns in
+0.3.6 from a disk-cached sharp file, GM's ruling. `tests/preview-decode.sh` pins it from outside the
+column: a key-repeat sweep opens no file at all, cache file or original, and a rest opens the cache file
+and no original. It also pins Quick Look's `ui/PreviewImage.qml`: a 3000x100 banner decodes at the exact
+fit (754x25, not the covering 14130x471), and an EXIF-turned photo decodes upright and draws at the exact
+fit, decoded whole when its stored size fits the box before the turn, because Qt weighs `sourceSize`
+against the stored orientation.
 
 **Every count in this section is a SNAPSHOT, not a live figure, and eleven of the eighteen had
 drifted by 2026-09-01: `src/heap.rs` was claimed at 15 and is 100, `ui/Row.qml` at 166 and is 310,
