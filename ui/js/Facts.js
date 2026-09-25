@@ -93,7 +93,7 @@ function lineCount(meta) {
     if (!meta || meta.linesFailed || meta.lines === undefined || meta.lines === null) {
         return ""
     }
-    return (meta.partial ? "> " : "") + meta.lines
+    return (meta.partial ? "> " : "") + Format.count(meta.lines)
 }
 
 function pixels(meta) {
@@ -122,7 +122,7 @@ function archiveExtra(meta) {
         return {}
     }
     return {
-        entries: String(meta.entries),
+        entries: Format.count(meta.entries),
         unpacked: meta.unpacked > 0 ? Format.size(meta.unpacked) : ""
     }
 }
@@ -277,7 +277,7 @@ function kindSummary(groups, floor) {
     var parts = []
     for (var i = 0; i < groups.length; i++) {
         var g = groups[i]
-        parts.push((floor || "") + g.count + " " + (g.count === 1 ? g.word : plural(g.word)))
+        parts.push((floor || "") + Format.count(g.count) + " " + (g.count === 1 ? g.word : plural(g.word)))
     }
     return parts.join(", ")
 }

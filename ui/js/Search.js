@@ -182,7 +182,7 @@ function listingState(root, total) {
 // query is on, because a count still growing says something different from a count that has settled.
 function note(total, running, cancelled) {
     if (total > 0) {
-        return running ? total + " found · still scanning" : total + " found"
+        return running ? Format.count(total) + " found · still scanning" : Format.count(total) + " found"
     }
     if (running) {
         return "searching"

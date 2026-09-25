@@ -56,7 +56,7 @@ function summary(list, loaded, total) {
     if (list === null) {
         return ""
     }
-    var head = list.length + " of " + loaded + " shown"
+    var head = Format.count(list.length) + " of " + Format.count(loaded) + " shown"
     return total > loaded ? head + " · of " + Format.count(total) + " in this folder" : head
 }
 

@@ -383,9 +383,7 @@ Loader {
         }
         function onCreated(path) { root.pane.refresh(path); root.pane.message("File created.", false) }
         function onDeleted(message) {
-            var text = "Deleted " + message.deleted + " of " + message.count
-            if (message.failed) text += " · " + message.failed + " failed"
-            if (message.cancelled) text += " · cancelled"
+            var text = Ops.deletedLine(message)
             root.pane.operationResult(text, message.error || "", message.failed > 0)
             if (root.pane.path !== root.folder) return
             root.survivors = message.remaining || []

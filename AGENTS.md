@@ -2004,6 +2004,14 @@ fit (754x25, not the covering 14130x471), and an EXIF-turned photo decodes uprig
 fit, decoded whole when its stored size fits the box before the turn, because Qt weighs `sourceSize`
 against the stored orientation.
 
+The counts unit groups every row, item, file and match count in thousands and moves three
+recorded ceilings, each re-derived with `wc -l`: `ui/js/Ops.js` 331 to 335 for the `Format.js`
+import and the `deletedLine` helper that took `ui/PaneMenuActions.qml`'s delete verdict (which
+falls 404 to 402, inside its recorded ceiling), `shelf/Model.js` 655 to 669 for the shelf's own
+`grouped` thousands separator, which `shelf/Run.js` imports rather than reaching up to
+`ui/js/Format.js`, and `src/tui/render.rs` 807 to 822 for the TUI's `grouped` beside `bytes`
+with its three vectors. `src/tui/model.rs` holds every call site and stays at its recorded 1196.
+
 **Every count in this section is a SNAPSHOT, not a live figure, and eleven of the eighteen had
 drifted by 2026-09-01: `src/heap.rs` was claimed at 15 and is 100, `ui/Row.qml` at 166 and is 310,
 `ui/Theme.qml` at 264 and is 187.** Nothing was over the hard cap when that was checked; only the

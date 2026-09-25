@@ -75,7 +75,7 @@ function subtitle(req) {
 function acceptLabel(req, count) {
     var base = req.accept.length > 0 ? req.accept : defaultAccept(req)
     if (req.multiple && count > 1) {
-        return base + " " + count
+        return base + " " + Format.count(count)
     }
     return base
 }
@@ -95,7 +95,7 @@ function statusLine(count, bytes) {
     if (count === 0) {
         return "0 selected"
     }
-    return count + " selected · " + Format.size(bytes)
+    return Format.count(count) + " selected · " + Format.size(bytes)
 }
 
 // The footer's right half, which says only the keys this mode actually answers.

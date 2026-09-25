@@ -147,6 +147,18 @@ pub fn bytes(n: usize) -> String {
     }
     format!("{:.1} {}", value, UNITS[unit])
 }
+// Counts of rows, items, files and matches group in thousands, the way the GUI formats them.
+pub fn grouped(n: usize) -> String {
+    let digits = n.to_string().into_bytes();
+    let mut out = Vec::with_capacity(digits.len() + digits.len() / 3);
+    for (i, &digit) in digits.iter().enumerate() {
+        if i > 0 && (digits.len() - i) % 3 == 0 {
+            out.push(b',');
+        }
+        out.push(digit);
+    }
+    String::from_utf8(out).unwrap_or_else(|_| n.to_string())
+}
 pub fn modified(mtime: i64) -> String {
     if mtime <= 0 {
         return String::new();
@@ -365,7 +377,7 @@ pub fn draw(
         } else if filtered.as_ref().is_some_and(|rows| y == rows.len()) {
             let count = filtered.as_ref().unwrap().len();
             let note = if count == 0 { format!("Nothing matches {}", m.filter) }
-                else { format!("{} rows hidden by the filter", m.rows.len() - count) };
+                else { format!("{} rows hidden by the filter", grouped(m.rows.len() - count)) };
             out.push_str(&" ".repeat(middle_padding));
             out.push_str(&fit(&note, middle - middle_padding * 2));
             out.push_str(&" ".repeat(middle_padding));
@@ -502,7 +514,7 @@ pub fn deletion_rows(m: &Model) -> Vec<String> {
     let Some(deletion) = &m.deletion else { return Vec::new(); };
     let width = m.columns.saturating_sub(if m.columns < 30 { 4 } else { 8 }).max(1);
     let summary = if deletion.token == 0 { "Inspecting selected items…".into() }
-        else { format!("{} {}, {}", deletion.count, if deletion.count == 1 { "item" } else { "items" }, bytes(deletion.bytes)) };
+        else { format!("{} {}, {}", grouped(deletion.count), if deletion.count == 1 { "item" } else { "items" }, bytes(deletion.bytes)) };
     let mut rows: Vec<String> = Wrapped::new(&summary, width).map(str::to_owned).collect();
     rows.extend(Wrapped::new("This deletes them from disk. This cannot be undone.", width).map(str::to_owned));
     rows.push(String::new());
@@ -529,8 +541,8 @@ fn footer(m: &Model, theme: &Theme, columns: usize, elapsed: std::time::Duration
     let available = columns.saturating_sub(text_width(help) + 2);
     let mut parts = Vec::new();
     let chip = format!("{}\x1b[7m", theme.accent);
-    if !m.selected.is_empty() { parts.push((chip.as_str(), format!(" V {} ", m.selected.len()))); }
-    parts.push((theme.foreground.as_str(), format!("{} items", m.total)));
+    if !m.selected.is_empty() { parts.push((chip.as_str(), format!(" V {} ", grouped(m.selected.len())))); }
+    parts.push((theme.foreground.as_str(), format!("{} items", grouped(m.total))));
     if !m.error.is_empty() {
         let queued = if m.errors.is_empty() { String::new() } else { format!(" (+{})", m.errors.len()) };
         parts.push((theme.error.as_str(), format!("{}{} · Esc dismisses", m.error, queued)));
@@ -545,7 +557,7 @@ fn footer(m: &Model, theme: &Theme, columns: usize, elapsed: std::time::Duration
         parts.push((theme.foreground.as_str(), m.message.clone()));
     }
     if !m.filter.is_empty() {
-        parts.push((theme.foreground.as_str(), format!("Filter {} · {} matches in {} loaded rows", m.filter, m.shown().len(), m.rows.len())));
+        parts.push((theme.foreground.as_str(), format!("Filter {} · {} matches in {} loaded rows", m.filter, grouped(m.shown().len()), grouped(m.rows.len()))));
     }
     let mut out = String::new();
     let mut used = 0;
@@ -568,7 +580,7 @@ fn footer(m: &Model, theme: &Theme, columns: usize, elapsed: std::time::Duration
 }
 fn selection_line(m: &Model, y: usize, columns: usize) -> String {
     if y == 0 {
-        return format!("{} items selected", m.selected.len());
+        return format!("{} items selected", grouped(m.selected.len()));
     }
     if y == 1 {
         return "─".repeat(columns);
@@ -800,6 +812,9 @@ mod tests {
         assert_eq!(bytes(999), "999 B");
         assert_eq!(bytes(1000), "1.0 kB");
         assert_eq!(bytes(1_200_000_000), "1.2 GB");
+        assert_eq!(grouped(653), "653");
+        assert_eq!(grouped(1204), "1,204");
+        assert_eq!(grouped(1234567), "1,234,567");
         let text = "□ İ.txt";
         let (start, end) = match_range(text, "i").unwrap();
         assert_eq!(&text[start..end], "İ");

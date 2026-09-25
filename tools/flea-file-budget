@@ -7,7 +7,7 @@ soft_qml=250;  hard_qml=400
 soft_js=200;   hard_js=300
 
 # Recorded debts and scoped release exceptions retain exact per-file ceilings; global limits stay unchanged.
-known_over_cap="shelf/Model.js 655
+known_over_cap="shelf/Model.js 669
 shelf/Panel.qml 430
 shelf/ShelfCard.qml 443
 shelf/ShelfService.qml 481
@@ -26,7 +26,7 @@ src/backend/trashdelete.rs 895
 src/tui/actions.rs 1021
 src/tui/input.rs 449
 src/tui/model.rs 1196
-src/tui/render.rs 807
+src/tui/render.rs 822
 src/uistate.rs 442
 src/uistore.rs 483
 src/vulkan.rs 620
@@ -56,7 +56,7 @@ ui/WindowBody.qml 487
 ui/js/Filter.js 301
 ui/js/Focus.js 341
 ui/js/Keymap.js 313
-ui/js/Ops.js 331
+ui/js/Ops.js 335
 ui/js/Settings.js 427"
 
 status=0

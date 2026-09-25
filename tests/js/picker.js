@@ -32,6 +32,7 @@ function run(check) {
     check("an app id is named", Picker.subtitle(Picker.request('{"app":"org.gnome.gedit"}')), "Requested by org.gnome.gedit")
 
     check("the accept label carries the count", Picker.acceptLabel(req, 3), "Send 3")
+    check("and groups a four-figure one", Picker.acceptLabel(req, 1204), "Send 1,204")
     check("one file does not carry a count", Picker.acceptLabel(req, 1), "Send")
     check("no accept label falls back to Open", Picker.acceptLabel(Picker.request("{}"), 0), "Open")
     check("a folder request falls back to Choose folder", Picker.acceptLabel(Picker.request('{"directory":true}'), 0), "Choose folder")
@@ -49,6 +50,7 @@ function run(check) {
 
     check("nothing checked says so", Picker.statusLine(0, 0), "0 selected")
     check("what is checked and what it weighs", Picker.statusLine(3, 2100000), "3 selected · 2.1 MB")
+    check("and a four-figure check groups", Picker.statusLine(1204, 2100000), "1,204 selected · 2.1 MB")
     check("the open hints name Space and Enter", Picker.hints(req), "Space select · Enter open/send · Esc cancel")
     check("the save hints name neither", Picker.hints(Picker.request('{"mode":"save"}')), "Enter save · Esc cancel")
 

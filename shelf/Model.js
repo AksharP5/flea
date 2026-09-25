@@ -56,6 +56,20 @@ function bytesOf(item) {
   return isFinite(n) && n >= 0 ? n : -1
 }
 
+// The shelf's own thousands separator. It mirrors ui/js/Format.js count, which this tree
+// cannot import: the shelf moves with shelf/ into its own repository, so nothing here imports up.
+function grouped(n) {
+  var digits = String(n)
+  var out = ""
+  for (var i = 0; i < digits.length; i++) {
+    if (i > 0 && (digits.length - i) % 3 === 0) {
+      out += ","
+    }
+    out += digits.charAt(i)
+  }
+  return out
+}
+
 // BarMark rule 3: the count is never in the bar itself, so this is what the hover tooltip says. It
 // counts the pile alone, as rule 12 does, because a pinned row is not an item anybody sent.
 function tooltip(state) {
@@ -63,7 +77,7 @@ function tooltip(state) {
   if (n === 0) {
     return "Flea shelf is empty"
   }
-  return n === 1 ? "Flea shelf is holding 1 item" : "Flea shelf is holding " + n + " items"
+  return n === 1 ? "Flea shelf is holding 1 item" : "Flea shelf is holding " + grouped(n) + " items"
 }
 
 // ---- what the card draws, Main board rules 4, 5 and 7 ----
@@ -238,7 +252,7 @@ function clearedText(count) {
   if (!isFinite(n) || n <= 0) {
     return ""
   }
-  return "Cleared " + n + (n === 1 ? " item" : " items") + " \u00b7 z restores"
+  return "Cleared " + grouped(n) + (n === 1 ? " item" : " items") + " \u00b7 z restores"
 }
 
 // Sample input, the one line `flea shelf undo` answers with: what it reversed, then how many items
@@ -257,7 +271,7 @@ function undoneText(kind, count) {
     return "Undid the move"
   }
   if (kind === "pile" && n > 0) {
-    return "Put " + n + (n === 1 ? " item" : " items") + " back"
+    return "Put " + grouped(n) + (n === 1 ? " item" : " items") + " back"
   }
   return "Nothing to undo"
 }
@@ -285,7 +299,7 @@ function parsePiles(text) {
 // The one date format this project draws, which is Flea's own: 2026-09-12 19:04.
 function pileText(pile) {
   var n = Number(pile.count)
-  return n + (n === 1 ? " item" : " items") + " \u00b7 " + stamp(pile.at)
+  return grouped(n) + (n === 1 ? " item" : " items") + " \u00b7 " + stamp(pile.at)
 }
 
 // The archive's own date, which is the stamp cut at its day: 2026-09-12.

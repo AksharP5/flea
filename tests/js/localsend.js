@@ -65,6 +65,10 @@ function run(check) {
           "Sending a file.txt to Clean Lemon with LocalSend.")
     check("several are counted", LocalSend.sending("Clean Lemon", ["/home/gm/a.txt", "/home/gm/b.txt"]),
           "Sending 2 items to Clean Lemon with LocalSend.")
+    var crowd = []
+    for (var i = 0; i < 1204; i++) { crowd.push("/home/gm/f" + i + ".txt") }
+    check("and a four-figure send groups", LocalSend.sending("Clean Lemon", crowd),
+          "Sending 1,204 items to Clean Lemon with LocalSend.")
     check("a finished transfer is said once", LocalSend.verdict(true, ""), "LocalSend finished the transfer.")
     check("a refusal is the CLI's own sentence", LocalSend.verdict(false, "Clean Lemon did not accept the transfer."),
           "LocalSend \u00b7 Clean Lemon did not accept the transfer.")

@@ -1,5 +1,7 @@
 .pragma library
 
+.import "Model.js" as Model
+
 // What an action says while it runs and when it lands. The shelf inherits the transfer surface it
 // already has rather than growing a second one: these are the same wire lines ui/TransferCard.qml
 // reads, off the same backend, and the words are the Actions board's own.
@@ -41,7 +43,7 @@ function runText(state) {
   if (!state.running || state.count === 0) {
     return ""
   }
-  return state.verb + " " + Math.min(state.count, state.index + 1) + " of " + state.count
+  return state.verb + " " + Model.grouped(Math.min(state.count, state.index + 1)) + " of " + Model.grouped(state.count)
 }
 
 function runFraction(state) {
@@ -58,7 +60,7 @@ function runFooter(state) {
 function flyoutTitle(pending, count) {
   var verb = pending === "send" ? "Send" : (pending === "copy" ? "Copy" : "Move")
   var n = Number(count)
-  return verb + " " + n + (n === 1 ? " item" : " items") + " to"
+  return verb + " " + Model.grouped(n) + (n === 1 ? " item" : " items") + " to"
 }
 
 // One line per row, which is how every flea shelf listing answers. Only the line ending is stripped,
@@ -84,9 +86,9 @@ function movedText(verb, ok, failed, total, dest, firstError) {
   }
   if (failed > 0) {
     // Rule 5: a partial failure is a result and an error at once, so it is one sentence, not two.
-    return verb + " " + ok + " of " + total + (firstError ? " · " + firstError : "")
+    return verb + " " + Model.grouped(ok) + " of " + Model.grouped(total) + (firstError ? " · " + firstError : "")
   }
-  var landed = verb + " " + ok + (ok === 1 ? " item" : " items") + " to " + dest
+  var landed = verb + " " + Model.grouped(ok) + (ok === 1 ? " item" : " items") + " to " + dest
   return verb === "Moved" ? landed + " · z undoes" : landed
 }
 
@@ -100,7 +102,7 @@ function zippedText(count) {
   if (!isFinite(n) || n <= 0) {
     return ""
   }
-  return "Zipped " + n + (n === 1 ? " item" : " items") + " into one archive"
+  return "Zipped " + Model.grouped(n) + (n === 1 ? " item" : " items") + " into one archive"
 }
 
 function copiedPathsText(count) {
@@ -108,7 +110,7 @@ function copiedPathsText(count) {
   if (!isFinite(n) || n <= 0) {
     return ""
   }
-  return "Copied " + n + (n === 1 ? " path" : " paths")
+  return "Copied " + Model.grouped(n) + (n === 1 ? " path" : " paths")
 }
 
 // A send reports only by notification, so the shelf says what it handed over and keeps the pile.
@@ -117,7 +119,7 @@ function sentText(count, peer) {
   if (!isFinite(n) || n <= 0) {
     return ""
   }
-  return "Sent " + n + (n === 1 ? " item" : " items") + " to " + peer
+  return "Sent " + Model.grouped(n) + (n === 1 ? " item" : " items") + " to " + peer
 }
 
 // The destination as the card names it: the leaf, because the flyout already said the whole path.

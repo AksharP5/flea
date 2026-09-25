@@ -2,6 +2,7 @@ import QtQuick
 import qs.Commons
 import "." as Flea
 import "js/Facts.js" as Facts
+import "js/Format.js" as Format
 
 // The Archive tile's frame: the entries the wire carried, as many as the frame has room for, and the
 // count it could not name. One row per line box, less the "+ N more" line, which always has to be
@@ -52,7 +53,7 @@ Item {
         Text {
             height: root.lineHeight
             visible: Facts.archiveMore(root.meta, root.shown) > 0
-            text: "+ " + Facts.archiveMore(root.meta, root.shown) + " more"
+            text: "+ " + Format.count(Facts.archiveMore(root.meta, root.shown)) + " more"
             color: Theme.color.muted
             opacity: 0.6
             font.family: Theme.font.family

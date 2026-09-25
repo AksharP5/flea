@@ -3,6 +3,7 @@
 .import "Archive.js" as Archive
 .import "Convert.js" as Convert
 .import "Filter.js" as Filter
+.import "Format.js" as Format
 .import "Transfer.js" as Transfer
 .import "Status.js" as Status
 
@@ -18,9 +19,9 @@ function emptyTransfer() {
              done: 0, bytes: 0, total: 0, moved: 0 }
 }
 
-// "1 item" or "4 items", so no caller builds a plural by hand.
+// "1 item" or "1,204 items", so no caller builds a plural by hand.
 function items(n) {
-    return n + (n === 1 ? " item" : " items")
+    return Format.count(n) + (n === 1 ? " item" : " items")
 }
 
 // extract is the one verb not derived from moving: an extract drives this same card and its Cancel.
@@ -37,9 +38,9 @@ function progressLine(t) {
 function transferDone(t, ok, failed, skipped, cancelled) {
     var verb = t.moving ? "Moved " : "Copied "
     var partial = failed > 0 || skipped > 0 || cancelled
-    var line = verb + (partial ? ok + " of " + t.n : items(ok))
-    if (failed > 0) line += " · " + failed + " failed"
-    if (skipped > 0) line += " · " + skipped + " skipped"
+    var line = verb + (partial ? Format.count(ok) + " of " + Format.count(t.n) : items(ok))
+    if (failed > 0) line += " · " + Format.count(failed) + " failed"
+    if (skipped > 0) line += " · " + Format.count(skipped) + " skipped"
     if (cancelled) line += " · cancelled"
     return line + (ok > 0 ? Status.UNDO_HINT : "")
 }
@@ -60,7 +61,7 @@ function trashed(ok, failed) {
         return failed === 1 ? "That item could not be moved to Trash." : items(failed) + " could not be moved to Trash."
     var line = "Moved " + items(ok) + " to Trash"
     if (failed > 0)
-        line += ", " + failed + " failed"
+        line += ", " + Format.count(failed) + " failed"
     return line + Status.UNDO_HINT
 }
 
@@ -114,6 +115,14 @@ function targetPaths(pane, indices) {
 function leaf(path) {
     var cut = String(path).lastIndexOf("/")
     return cut >= 0 ? String(path).substring(cut + 1) : String(path)
+}
+
+// The pane's own delete verdict, which ui/PaneMenuActions.qml draws when a menu delete lands.
+function deletedLine(message) {
+    var text = "Deleted " + Format.count(message.deleted) + " of " + Format.count(message.count)
+    if (message.failed) text += " · " + Format.count(message.failed) + " failed"
+    if (message.cancelled) text += " · cancelled"
+    return text
 }
 
 // ---- the actions, each taking the pane the way Search.js's own do ----

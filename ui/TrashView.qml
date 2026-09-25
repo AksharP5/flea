@@ -263,8 +263,8 @@ FocusScope {
             }
             selectionIdentities = identities
             allSelected = false; selectionToken = 0; selectionCount = 0; selected = next
-            var text = (message.op === "restore" ? "Restored " : "Deleted ") + message.done + " of " + (message.done + failed)
-            if (failed) text += " · " + failed + " failed"
+            var text = (message.op === "restore" ? "Restored " : "Deleted ") + Format.count(message.done) + " of " + Format.count(message.done + failed)
+            if (failed) text += " · " + Format.count(failed) + " failed"
             var detail = failures.map(function(item) { return (item.name || item.uri) + " failed: " + item.error }).join("\n")
             operationResult(text, detail, failed > 0)
             refresh()
@@ -343,7 +343,7 @@ FocusScope {
                     // Both board cells put the count against the title and the action at the far edge, so this row's spare width rides here rather than under the title.
                     width: Math.max(implicitWidth, parent.width - 2 * Theme.hitMin - trashTitle.width - emptyAction.width - 4 * parent.spacing)
                     anchors.verticalCenter: parent.verticalCenter
-                    text: root.total + (root.total === 1 ? " item" : " items") + (root.bytesReady ? " · " + (root.bytesPartial ? "≥ " : "") + Format.size(root.totalBytes) : "")
+                    text: Format.count(root.total) + (root.total === 1 ? " item" : " items") + (root.bytesReady ? " · " + (root.bytesPartial ? "≥ " : "") + Format.size(root.totalBytes) : "")
                     textFormat: Text.PlainText
                     elide: Text.ElideRight
                     color: Theme.color.foreground

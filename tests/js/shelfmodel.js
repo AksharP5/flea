@@ -256,7 +256,22 @@ function run(check) {
   check("only the line ending goes, so a path holding a carriage return keeps it",
         Run.lines("one\r\ntw\ro\r\n").join("|"), "one|tw\ro")
 
-  check("the tooltip says what is held, because the bar itself never draws a count",
+    check("the tooltip says what is held, because the bar itself never draws a count",
           Shelf.tooltip(Shelf.empty()) + " / " + Shelf.tooltip(one) + " / " + Shelf.tooltip(mixed),
           "Flea shelf is empty / Flea shelf is holding 1 item / Flea shelf is holding 2 items")
+    // The shelf's counts group the way the window's do, through its own helper: it cannot import
+    // up to ui/js/Format.js, because it moves with shelf/ into its own repository.
+    check("counts group in thousands", Shelf.grouped(1204), "1,204")
+    check("clearing groups what it cleared", Shelf.clearedText(1204), "Cleared 1,204 items · z restores")
+    check("and putting back groups too", Shelf.undoneText("pile", 1204), "Put 1,204 items back")
+    check("a run headline groups its position and total",
+          Run.runText({ running: true, verb: "Moving", index: 203, count: 1204 }), "Moving 204 of 1,204")
+    check("and its landings group",
+          Run.movedText("Moved", 1204, 0, 1204, "drafts", ""), "Moved 1,204 items to drafts · z undoes")
+    check("a partial shelf landing groups both halves",
+          Run.movedText("Moved", 1000, 204, 1204, "drafts", "disk full"), "Moved 1,000 of 1,204 · disk full")
+    check("the flyout groups what is about to move", Run.flyoutTitle("move", 1204), "Move 1,204 items to")
+    check("and the other actions group as well",
+          Run.zippedText(1204) + "|" + Run.copiedPathsText(1204) + "|" + Run.sentText(1204, "macbookair"),
+          "Zipped 1,204 items into one archive|Copied 1,204 paths|Sent 1,204 items to macbookair")
 }

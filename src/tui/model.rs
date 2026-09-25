@@ -368,14 +368,14 @@ impl Model {
     pub fn next_rename(&mut self, wire: &mut Wire) -> io::Result<()> {
         let Some(batch) = self.bulk.take() else { return Ok(()); };
         if batch.send_next(wire, self.action_id)? {
-            self.transfer = format!("Renaming {} of {}", batch.completed + 1, batch.total);
+            self.transfer = format!("Renaming {} of {}", super::render::grouped(batch.completed + 1), super::render::grouped(batch.total));
             self.menu_action = "bulkRename".into();
             self.bulk = Some(batch);
         } else {
             self.transfer.clear();
             self.menu_action.clear();
             self.say(if batch.completed == 0 { if batch.cancelled { "Rename cancelled" } else { "No names changed" }.into() }
-                else { format!("{} {} items · Undo reverts one", if batch.cancelled { "Stopped after renaming" } else { "Renamed" }, batch.completed) });
+                else { format!("{} {} items · Undo reverts one", if batch.cancelled { "Stopped after renaming" } else { "Renamed" }, super::render::grouped(batch.completed)) });
             self.restore_path = batch.last;
             wire.send(vec![("c", word("menuaction")), ("op", word("close")), ("id", number(self.action_id))])?;
             self.refresh(wire)?;
@@ -694,7 +694,7 @@ impl Model {
                         (
                             "Entries",
                             if count(&value, "entries") > 0 {
-                                count(&value, "entries").to_string()
+                                super::render::grouped(count(&value, "entries"))
                             } else {
                                 String::new()
                             },
@@ -800,8 +800,8 @@ impl Model {
                 self.searching = text(&value, "t") == "searching";
                 self.search = format!(
                     "Search: {} matches · {} scanned",
-                    self.total,
-                    count(&value, "scanned")
+                    super::render::grouped(self.total),
+                    super::render::grouped(count(&value, "scanned"))
                 );
                 if !self.searching {
                     // Ranking changes every index; no action may use the discovery-order window.
@@ -886,7 +886,7 @@ impl Model {
                     "redone" => format!("Redid {} · Undo available", text(&value, "op")),
                     "trashed" => format!(
                         "Moved {} items to Trash · Undo available",
-                        count(&value, "ok")
+                        super::render::grouped(count(&value, "ok"))
                     ),
                     _ => format!(
                         "{} {} items{}",
@@ -895,16 +895,16 @@ impl Model {
                         } else {
                             "Transferred"
                         },
-                        count(&value, "ok"),
+                        super::render::grouped(count(&value, "ok")),
                         if count(&value, "skipped") > 0 {
-                            format!(" · {} skipped", count(&value, "skipped"))
+                            format!(" · {} skipped", super::render::grouped(count(&value, "skipped")))
                         } else {
                             String::new()
                         }
                     ),
                 });
                 if count(&value, "failed") > 0 {
-                    self.fail(format!("{} failed", count(&value, "failed")));
+                    self.fail(format!("{} failed", super::render::grouped(count(&value, "failed"))));
                 }
                 if matches!(operation, "renamed" | "made" | "duplicated") {
                     self.restore_path = Some(PathBuf::from(text(&value, "path")));
@@ -945,9 +945,9 @@ impl Model {
                 } else if flag(&value, "stale") {
                     self.say("Deletion cancelled".into());
                 } else {
-                    self.say(format!("Deleted {} of {}{}", count(&value, "deleted"), self.menu_count,
+                    self.say(format!("Deleted {} of {}{}", super::render::grouped(count(&value, "deleted")), super::render::grouped(self.menu_count),
                         if flag(&value, "cancelled") { " · Cancelled".into() } else { String::new() }));
-                    if count(&value, "failed") > 0 { self.fail(format!("{} failed · {}", count(&value, "failed"), text(&value, "error"))); }
+                    if count(&value, "failed") > 0 { self.fail(format!("{} failed · {}", super::render::grouped(count(&value, "failed")), text(&value, "error"))); }
                     let remaining: BTreeSet<PathBuf> = value.get("remaining").and_then(Json::as_array).unwrap_or(&[]).iter().filter_map(Json::as_str).map(PathBuf::from).collect();
                     self.restore_marks = std::mem::take(&mut self.delete_marks);
                     self.restore_marks.retain(|path, _| remaining.contains(path));

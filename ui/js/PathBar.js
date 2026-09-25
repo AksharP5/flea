@@ -1,5 +1,7 @@
 .pragma library
 
+.import "Format.js" as Format
+
 // What a typed path line means, and nothing about the field that carries it: ui/ChromeBar.qml owns
 // the field and ui/shell.qml owns the navigation, the same split ui/js/Filter.js keeps with its
 // strip. Every function here is pure, so tests/js/pathbar.js drives the whole of it with no window.
@@ -196,7 +198,7 @@ function completionMessage(before, after, dir) {
         return "Nothing in " + dir + " starts with that."
     }
     if (after.text === before) {
-        return after.matches + " names share that prefix."
+        return Format.count(after.matches) + " names share that prefix."
     }
     return ""
 }

@@ -195,7 +195,7 @@ Item {
         if (root.listingState === "empty") return "empty"
         if (root.listingState === "error" || root.listingState === "locked") return "unavailable"
         if (root.listingState !== "ready") return ""
-        return root.total + (root.total === 1 ? " item" : " items")
+        return Format.count(root.total) + (root.total === 1 ? " item" : " items")
     }
 
     // The left zone answers the question the view raises: the selection if there is one, what the
@@ -205,7 +205,7 @@ Item {
             return root.itemText()
         }
         if (root.selectionCount > 0) {
-            var head = root.selectionCount + " of " + root.total + " selected"
+            var head = Format.count(root.selectionCount) + " of " + Format.count(root.total) + " selected"
             return root.selectionBytes >= 0 ? head + " · " + Format.size(root.selectionBytes) : head
         }
         // SearchFilter rule 2: the same sentence the strip carries, scope and all, because the count

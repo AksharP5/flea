@@ -105,4 +105,6 @@ function run(check) {
     check("with no byte sample, so it draws no invented byte line", Transfer.byteParts(extracting, 0).length, 0)
     check("and the bar stays at its no-sample state", Transfer.fraction(extracting), 0)
     check("a copy's headline is unchanged", Transfer.head(oneFile), "Copying 1 of 1")
+    check("a four-figure transfer groups its headline",
+          Transfer.head({ moving: false, n: 1204, index: 203 }), "Copying 204 of 1,204")
 }

@@ -177,6 +177,9 @@ function run(check) {
           "Nothing in /home/gm starts with that.")
     check("a line already at the common prefix says how many share it",
           PathBar.completionMessage("/home/gm/D", many, HOME), "4 names share that prefix.")
+    check("and a four-figure match count groups",
+          PathBar.completionMessage("/home/gm/D", { text: "/home/gm/D", matches: 1204 }, HOME),
+          "1,204 names share that prefix.")
 
     // The key half. The bar is drawn in the chrome above both views, so it is global the way the
     // keymap sheet is: the rail has to reach it rather than dropping the key on the floor.

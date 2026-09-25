@@ -67,7 +67,7 @@ function head(t) {
     // An extract has no items to count, so it names its verb alone.
     if (t.extract)
         return "Extracting"
-    return (t.redo ? "Redoing " + t.redo + " " : t.moving ? "Moving " : "Copying ") + (t.index + 1) + " of " + t.n
+    return (t.redo ? "Redoing " + t.redo + " " : t.moving ? "Moving " : "Copying ") + Format.count(t.index + 1) + " of " + Format.count(t.n)
 }
 
 // The card's second row: the item in flight and how big it is. total is 0 for a directory, whose

@@ -1,4 +1,5 @@
 .pragma library
+.import "Format.js" as Format
 .import "Swap.js" as Swap
 
 // The question a paste or a drop asks before it lands on names that exist, as decisions ui/CollideHost.qml and ui/CollideConfirm.qml wire.
@@ -25,12 +26,12 @@ function folderName(dest) {
 function title(names, total, dest) {
     if (total === 1 && names.length > 0)
         return names[0].n + " already exists in " + folderName(dest)
-    return total + " items already exist in " + folderName(dest)
+    return Format.count(total) + " items already exist in " + folderName(dest)
 }
 
 // The row under the list, empty when every collision is already on it.
 function more(total, shown) {
-    return total > shown ? "and " + (total - shown) + " more" : ""
+    return total > shown ? "and " + Format.count(total - shown) + " more" : ""
 }
 
 // h and l stop at the ends like TrashConfirm's pair; Tab and Backtab come round.

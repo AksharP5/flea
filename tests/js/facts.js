@@ -174,6 +174,10 @@ function run(check) {
     check("a long archive states an exact count and an exact unpacked total, never a cap",
           valueOf(Facts.facts("archive", row("package-x-generic", 1200000000), big, "Zstandard tar"), "Entries"),
           "214, 3.4 GB out")
+    check("and a four-figure archive groups its entries",
+          valueOf(Facts.facts("archive", row("package-x-generic", 1200000000),
+                              { entries: 1204, unpacked: 3400000000 }, "Zstandard tar"), "Entries"),
+          "1,204, 3.4 GB out")
     check("the tile lists the names the wire carried",
           Facts.archiveEntries(big).map(function (e) { return e.n }).join("|"),
           "daemon|ui|Cargo.toml")
@@ -195,8 +199,10 @@ function run(check) {
     // A line count the backend had to stop early is a floor, marked the way a partial size is.
     check("a complete line count is a plain number",
           Facts.lineCount({ lines: 214, partial: false }), "214")
+    check("and a four-figure one groups",
+          Facts.lineCount({ lines: 1204, partial: false }), "1,204")
     check("and a truncated one is marked as a floor",
-          Facts.lineCount({ lines: 9000, partial: true }), "> 9000")
+          Facts.lineCount({ lines: 9000, partial: true }), "> 9,000")
     check("no meta yet is an empty cell rather than a zero",
           Facts.lineCount(null), "")
     // src/backend/metareq.rs answers lines 0 for a file it could not open, the same 0 an empty file
@@ -226,6 +232,8 @@ function run(check) {
           labels(Facts.multiFacts(many)), "Kinds|Combined|Newest|Oldest")
     check("and counts the kinds the way the canvas phrases them",
           valueOf(Facts.multiFacts(many), "Kinds"), "2 images, 1 video, 1 text")
+    check("and a four-figure kind groups",
+          Facts.kindSummary([{ word: "image", count: 1204 }], ""), "1,204 images")
     check("the combined size is every selected row added up",
           valueOf(Facts.multiFacts(many), "Combined"), "15.0 kB")
     check("an empty selection states only the row it can fill, rather than throwing",
@@ -274,4 +282,6 @@ function run(check) {
           + Facts.archiveLine({ entries: 0, unpacked: 0, archiveFailed: false, names: [] }) + "|"
           + Facts.archiveLine({ entries: 0, unpacked: 0, archiveFailed: true, names: [] }),
           "214 entries \u00b7 3.4 GB unpacked|1 entry||0 entries|")
+    check("and the Quick Look line groups a four-figure count",
+          Facts.archiveLine({ entries: 1204, unpacked: 0, names: [] }), "1,204 entries")
 }

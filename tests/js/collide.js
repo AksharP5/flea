@@ -19,6 +19,8 @@ function run(check) {
           "3 items already exist in Downloads")
     check("a count past the list still says the whole count", Collide.title(names(["a", "b", "c"]), 12, "/home/gm/Downloads"),
           "12 items already exist in Downloads")
+    check("a four-figure collision count groups", Collide.title(names(["a", "b"]), 1204, "/home/gm/Downloads"),
+          "1,204 items already exist in Downloads")
     check("the root has no leaf, so it names itself", Collide.folderName("/"), "/")
     check("a trailing name is the folder", Collide.folderName("/home/gm/Pictures"), "Pictures")
 
@@ -26,7 +28,27 @@ function run(check) {
     check("three of three needs no more line", Collide.more(3, 3), "")
     check("one past the list", Collide.more(4, 3), "and 1 more")
     check("many past it", Collide.more(40, 3), "and 37 more")
+    check("a four-figure remainder groups", Collide.more(1204, 3), "and 1,201 more")
     check("the explanation is one sentence", Collide.EXPLAIN, "Replaced items go to Trash, and Undo restores them.")
+
+    // Every count the operations surface prints groups in thousands, like the strip's own.
+    check("Ops.items groups a four-figure count", Ops.items(1204), "1,204 items")
+    check("a finished transfer groups its count",
+          Ops.transferDone({ moving: false, n: 1204 }, 1204, 0, 0, false),
+          "Copied 1,204 items · z undoes")
+    check("and a partial one groups both halves",
+          Ops.transferDone({ moving: false, n: 1204 }, 1000, 204, 0, false),
+          "Copied 1,000 of 1,204 · 204 failed · z undoes")
+    check("a refused trash groups its failure",
+          Ops.trashed(0, 1204), "1,204 items could not be moved to Trash.")
+    check("and a trash that dropped some groups the failure beside the move",
+          Ops.trashed(1000, 204), "Moved 1,000 items to Trash, 204 failed · z undoes")
+    check("the pane's delete verdict groups what it deleted of",
+          Ops.deletedLine({ deleted: 3, count: 1204, failed: 0, cancelled: false }),
+          "Deleted 3 of 1,204")
+    check("and the failure and cancel it can carry",
+          Ops.deletedLine({ deleted: 3, count: 1204, failed: 204, cancelled: true }),
+          "Deleted 3 of 1,204 · 204 failed · cancelled")
 
     // Focus: Keep both first, h and l stop at the ends, Tab and Backtab come round.
     check("the card opens on Keep both", Collide.START, "keep")

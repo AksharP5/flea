@@ -4,6 +4,7 @@ function run(check) {
     // Rule 6: a count that is still growing says so, beside the count.
     check("a running walk with matches pairs the count with the state", Search.note(9, true, false), "9 found · still scanning")
     check("and a finished one is the count alone", Search.note(9, false, false), "9 found")
+    check("and a four-figure find groups", Search.note(1204, true, false), "1,204 found · still scanning")
     check("a running walk with nothing yet says it is working", Search.note(0, true, false), "searching")
     check("a finished walk with nothing says done", Search.note(0, false, false), "done")
     check("a cancelled walk with nothing says stopped", Search.note(0, false, true), "stopped")

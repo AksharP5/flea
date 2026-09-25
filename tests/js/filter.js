@@ -46,6 +46,10 @@ function run(check) {
           Filter.summary(mixed, 7, 7), "4 of 7 shown")
     check("and names the directory those rows are a window on when it is not all of it",
           Filter.summary(mixed, 7, 104812), "4 of 7 shown · of 104,812 in this folder")
+    check("and a four-figure window groups the head it kept",
+          Filter.summary(mixed, 1204, 1204), "4 of 1,204 shown")
+    check("and groups the loaded half of a scoped one too",
+          Filter.summary(mixed, 1204, 104812), "4 of 1,204 shown · of 104,812 in this folder")
     check("nothing matching is a count like any other, and keeps the same scope",
           Filter.summary([], 350, 104812), "0 of 350 shown · of 104,812 in this folder")
     check("no filter draws no sentence at all", Filter.summary(null, 7, 7), "")

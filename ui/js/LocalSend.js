@@ -17,7 +17,7 @@ function send(pane, service, provider, peer, paths) {
 function sending(peer, paths) {
     if (paths.length === 1)
         return "Sending " + Ops.leaf(paths[0]) + " to " + peer + " with LocalSend."
-    return "Sending " + paths.length + " items to " + peer + " with LocalSend."
+    return "Sending " + Ops.items(paths.length) + " to " + peer + " with LocalSend."
 }
 
 // The CLI ends its own run when the transfer does, so this is the only result Flea ever knows.

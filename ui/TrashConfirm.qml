@@ -86,7 +86,7 @@ FocusScope {
                     Text {
                         id: title
                         width: parent.width - alertMark.width - parent.spacing
-                        text: root.snapshot.all ? "Empty Trash?" : "Delete " + root.snapshot.count + (root.snapshot.count === 1 ? " item" : " items") + " permanently?"
+                        text: root.snapshot.all ? "Empty Trash?" : "Delete " + Format.count(root.snapshot.count) + (root.snapshot.count === 1 ? " item" : " items") + " permanently?"
                         textFormat: Text.PlainText
                         wrapMode: Text.Wrap
                         color: Theme.color.foreground
@@ -96,7 +96,7 @@ FocusScope {
                 Text {
                     width: parent.width
                     text: root.snapshot.all
-                        ? root.snapshot.count + (root.snapshot.count === 1 ? " item, " : " items, ") + Format.size(root.snapshot.bytes || 0) + ". This deletes them from disk. " + Keymap.hintFor("undo") + " cannot undo it and the undo journal does not cover it."
+                        ? Format.count(root.snapshot.count) + (root.snapshot.count === 1 ? " item, " : " items, ") + Format.size(root.snapshot.bytes || 0) + ". This deletes them from disk. " + Keymap.hintFor("undo") + " cannot undo it and the undo journal does not cover it."
                         : "These " + root.scopeName + " are deleted from disk. This cannot be undone."
                     textFormat: Text.PlainText
                     wrapMode: Text.Wrap
