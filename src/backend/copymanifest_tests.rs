@@ -127,14 +127,14 @@ fn framed_bytes_never_pass_the_cap() {
     let d = TestDir::new("manifestcap");
     let root = d.dir("root");
     let meta = d.file("probe.bin", "x").symlink_metadata().unwrap();
-    // 964-byte names make each framed record exactly 1024 B, so 32,768 fill the 32 MiB cap exactly and the next one overflows.
+    // 168-byte names make each framed record 228 B, so 147,168 fill the 32 MiB cap exactly; hundreds stay buffered, so only the framed count predicts the overflow.
     let mut writer = Writer::create(&root).expect("anonymous manifest");
-    for i in 0..32768 {
-        writer.record(&root.join(format!("f{i:0963}")), &meta);
+    for i in 0..147168 {
+        writer.record(&root.join(format!("f{i:0163}.bin")), &meta);
     }
     assert!(!writer.overflow, "the cap-fitting records all went");
-    assert_eq!(writer.inner.len() + writer.buf.len() as u64 + writer.ends.len() as u64 * FRAMING, MAX_BYTES);
-    writer.record(&root.join("one-more"), &meta);
-    assert!(writer.overflow, "one record past the cap overflows");
+    assert_eq!(writer.inner.len() + writer.buf.len() as u64 + writer.ends.len() as u64 * FRAMING, 147168u64 * 228);
+    writer.record(&root.join(format!("f{:0163}.bin", 147168)), &meta);
+    assert!(writer.overflow, "the framed count predicts this exact record overflows");
     assert!(writer.finish().expect("no I/O").is_none(), "an overfull manifest journals today's step instead");
 }

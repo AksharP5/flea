@@ -125,7 +125,8 @@ Item {
         // Drawn once a render has landed: the paper alone before it was the white flash on every turn.
         visible: root.shownPage >= 0 && !root.fellBack
         document: doc
-        currentFrame: Math.min(root.page, Math.max(0, root.pageCount - 1))
+        // Qt ignores a frame at or past frameCount, which is 0 until the first render lands, so the binding reads it to reapply a turn made during that render.
+        currentFrame: page.frameCount > 0 ? Math.min(root.page, page.frameCount - 1) : 0
         fillMode: Image.PreserveAspectFit
         asynchronous: true
         // Qt 6.8's double buffer: the page on screen stays until the next render is ready, where

@@ -132,12 +132,19 @@ fn a_mid_copy_flush_failure_stays_loud() {
     let root = d.dir("root");
     let meta = d.file("probe.bin", "x").symlink_metadata().unwrap();
     let mut writer = copymanifest::writer_for(&src, &root).expect("manifest dir writable");
-    // The 70 KiB cap lets the first 64 KiB batch through and fails the second, then more records follow: finish must still Err.
-    let cap = FileSizeCap::cap(70 * 1024);
-    for i in 0..3000 {
+    // The 100 KiB cap fails a mid-copy batch; later records set overflow as well, yet finish must still Err on the latch.
+    let cap = FileSizeCap::cap(100 * 1024);
+    for i in 0..10000 {
+        if writer.failed() {
+            break;
+        }
         writer.record(&root.join(format!("m{i:05}.bin")), &meta);
     }
-    let result = writer.finish();
+    assert!(writer.failed(), "a batch failed mid-copy");
     drop(cap);
+    for i in 0..100 {
+        writer.record(&root.join(format!("n{i:05}.bin")), &meta);
+    }
+    let result = writer.finish();
     assert!(result.is_err(), "a latched mid-copy failure stays loud, never Ok(None)");
 }

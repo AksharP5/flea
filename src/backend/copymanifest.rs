@@ -173,6 +173,11 @@ impl Writer {
         self.overflow = true;
     }
 
+    #[cfg(test)]
+    pub fn failed(&self) -> bool {
+        self.failed.is_some()
+    }
+
     // Every buffered record through Manifest in one write, so the framing lives in one place; a failed batch latches and finish reports it loud.
     fn flush(&mut self) {
         if self.failed.is_some() {
