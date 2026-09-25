@@ -14,6 +14,36 @@ function trashHint() {
     return key.length > 0 ? " · " + key + " deletes" : ""
 }
 
+// Refusal where gio has no Trash: the place in the primary, the key that still works in the secondary.
+var NO_TRASH = "This location has no Trash"
+function noTrashLine() { return NO_TRASH + trashHint() }
+
+// Sample input: "Press d again to trash, or Delete on its own." from ui/js/Trash.js; ui/TrashView.qml's reads "review permanent deletion".
+function isPrompt(text) {
+    return text.indexOf("Press ") === 0 && text.indexOf(" again ") > 0
+}
+
+// A prompt, else the oldest unacknowledged error, else the notice: a hidden prompt's second press acts unannounced.
+function transientOf(errors, notice) {
+    if (isPrompt(notice) || errors.length === 0)
+        return { text: notice, isError: false, detail: "" }
+    return { text: errors[0].text, isError: true, detail: errors[0].detail }
+}
+
+// The no-Trash refusal names its place and replaces its own copy there rather than stacking; other errors name none.
+function withError(errors, text, detail, place) {
+    var own = text === noTrashLine() ? place : ""
+    var kept = own.length === 0 ? errors
+        : errors.filter(function (entry) { return entry.text !== text || entry.place !== own })
+    return kept.concat([{ text: text, detail: detail || "", place: own }])
+}
+
+// Leaving a place drops its refusals; other errors wait for dismissal, and an unchanged queue is the same array.
+function errorsAt(errors, place) {
+    var kept = errors.filter(function (entry) { return entry.place.length === 0 || entry.place === place })
+    return kept.length === errors.length ? errors : kept
+}
+
 // Which hint a result carries, if any.
 function hintOf(notice) {
     if (notice.indexOf(UNDO_HINT) >= 0) {
@@ -39,11 +69,16 @@ function errorHere(slot) {
     return slot.transient.length > 0 && slot.transientIsError
 }
 
+function promptHere(slot) {
+    return !slot.transientIsError && isPrompt(slot.transient)
+}
+
 // The centre zone is what just happened, and nothing else. The disk facts have a zone of their own,
 // so this no longer falls back to them: an idle bar's centre is empty. StatusBar board rule 1.
 // GM's ordering: acknowledged errors leave the slot; activity cannot displace them.
 function centreText(slot) {
-    if (errorHere(slot))
+    // A prompt stands over activity and search as well, for the reason transientOf gives.
+    if (errorHere(slot) || promptHere(slot))
         return slot.transient
     if (slot.stickyHere)
         return slot.sticky
@@ -54,6 +89,11 @@ function centreText(slot) {
 
 function centreRole(slot) {
     return errorHere(slot) ? "error" : "foreground"
+}
+
+// Whether the centre draws the notice, whose display time is the one ui/StatusBar.qml's timer ends.
+function noticeShown(slot) {
+    return promptHere(slot) || (slot.transient.length > 0 && !slot.transientIsError && !slot.stickyHere && !slot.searching)
 }
 
 // The selection's byte total, or -1 when the bar may not claim one. StatusBar board rule 3: every

@@ -22,9 +22,12 @@ Item {
     property string fsName: ""
     property real fsFree: 0
     property string notice: ""
+    // [{text, detail, place}]: place is the path a no-Trash refusal was raised in, "" for every other error.
     property var errors: []
-    readonly property string transient_: root.errors.length ? root.errors[0].text : root.notice
-    readonly property string errorDetail: root.errors.length ? root.errors[0].detail : ""
+    // An arm's prompt stands over every error, and an error over a plain notice; ui/js/Status.js transientOf.
+    readonly property var shown: Status.transientOf(root.errors, root.notice)
+    readonly property string transient_: root.shown.text
+    readonly property string errorDetail: root.shown.detail
     // Directive 48, GM's final: no centre lane at all. The transient sits beside the disk facts, one
     // padding before the text those facts actually draw, which is not the left edge of their fixed
     // zone box: a short filesystem line would otherwise leave the pair drifting apart by the slack.
@@ -40,7 +43,7 @@ Item {
     readonly property var secondaryItem: secondary
     readonly property var diskItem: disk
     readonly property var centreItem: centre
-    readonly property bool transientIsError: root.errors.length > 0
+    readonly property bool transientIsError: root.shown.isError
     property var activities: []
     property var dragFeedbackOwner: null
     readonly property var activity: root.activities.length ? root.activities[0] : null
@@ -86,7 +89,7 @@ Item {
     function say(text, isError, detail) {
         if (!text) { root.dismiss(); return }
         if (isError) {
-            root.errors = root.errors.concat([{text: text, detail: detail || ""}])
+            root.errors = Status.withError(root.errors, text, detail, root.path)
             return
         }
         root.notice = text
@@ -100,9 +103,15 @@ Item {
         root.errors = root.errors.filter(function (entry) { return entry.text !== text })
     }
 
+    // Dismisses what is drawn: the head error, or the notice or prompt standing over the queue.
     function dismiss() {
-        if (root.errors.length) root.errors = root.errors.slice(1)
+        if (root.transientIsError) root.errors = root.errors.slice(1)
         else root.notice = ""
+    }
+    // A refusal belongs to the place it was raised in, so leaving that place drops it.
+    onPathChanged: {
+        var kept = Status.errorsAt(root.errors, root.path)
+        if (kept !== root.errors) root.errors = kept
     }
 
     function cancelTransfer() {
@@ -124,8 +133,7 @@ Item {
 
     // A completion hidden by an error or live activity keeps its full display time after acknowledgement.
     function syncNoticeTimer() {
-        if (root.notice && !root.transientIsError && !root.stickyHere && !root.searching
-                && root.notice.indexOf(Status.UNDO_HINT) < 0)
+        if (root.notice && Status.noticeShown(root.slot()) && root.notice.indexOf(Status.UNDO_HINT) < 0)
             clear.restart()
         else clear.stop()
     }

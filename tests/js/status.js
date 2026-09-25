@@ -1,4 +1,5 @@
 .import "../../ui/js/Status.js" as Status
+.import "../../ui/js/Trash.js" as Trash
 
 // The status slot's precedence, which shipped with no suite of any kind. Operations.html states the
 // order as an unacknowledged error, then activity, and draws a failed copy holding the slot while a
@@ -18,6 +19,16 @@ function slot(over) {
         s[k] = over[k]
     }
     return s
+}
+
+// ui/TrashView.qml's own dd prompt, read from its source because the view needs a window to run.
+// Sample input: else statusReported("Press d again to review permanent deletion, or Delete on its own.", false)
+function trashViewPrompt() {
+    var request = new XMLHttpRequest()
+    request.open("GET", Qt.resolvedUrl("../../ui/TrashView.qml"), false)
+    request.send()
+    var found = String(request.responseText || "").match(/statusReported\("(Press [^"]*)"/)
+    return found ? found[1] : ""
 }
 
 function run(check) {
@@ -86,6 +97,40 @@ function run(check) {
     })
     check("a plain notice still yields to the search",
           Status.centreText(noticeWhileSearching), "3 found · Searching, 12 scanned")
+
+    // A prompt asks for the key that completes an arm, so nothing may stand over it: hidden, the second
+    // d trashed with nothing on screen saying the first had armed (0.3.5 battery, tests/ui.sh phones).
+    var armed = { trashArmedAt: 0, message: function (text) { armed.said = text } }
+    Trash.arm(armed)
+    var prompt = armed.said
+    check("the listing's dd prompt reads as a prompt", Status.isPrompt(prompt), true)
+    check("and so does the Trash view's own", trashViewPrompt().length > 0 && Status.isPrompt(trashViewPrompt()), true)
+    check("while a result is not one", Status.isPrompt("Moved 4 items to Trash · z undoes"), false)
+    check("a prompt outranks a search that is still reporting",
+          Status.centreText(slot({ transient: prompt, searching: true, searchLine: "3 found in 1.6 s" })), prompt)
+    check("and an activity", Status.centreText(slot({ transient: prompt, stickyHere: true, sticky: "Copy 1 item to dest" })), prompt)
+    var older = [{ text: "Copy failed: photo.heic · disk full", detail: "No space left on device", place: "" }]
+    check("a prompt outranks an older error that is still waiting",
+          JSON.stringify(Status.transientOf(older, prompt)), JSON.stringify({ text: prompt, isError: false, detail: "" }))
+    check("but a plain result still waits behind that error",
+          Status.transientOf(older, "Copied 1 item · p pastes").text, older[0].text)
+    check("and the error comes back with its detail once the prompt is gone",
+          Status.transientOf(older, "").detail, "No space left on device")
+    // The refusal belongs to the place that has no Trash: leaving it drops it, and another d there replaces it rather than stacking.
+    var share = "/run/user/1000/gvfs/mtp:host=SAMSUNG_Android"
+    var refused = Status.withError(Status.withError(older, Status.noTrashLine(), "", share), Status.noTrashLine(), "", share)
+    check("a second refusal in the same place replaces the first", refused.length, 2)
+    check("and names that place", refused[1].place, share)
+    check("while any other error names none", Status.withError([], "Copy failed", "", share)[0].place, "")
+    check("staying in the place keeps the refusal", Status.errorsAt(refused, share), refused)
+    var away = Status.errorsAt(refused, "/run/user/1000/gvfs")
+    check("leaving it drops the refusal and keeps every other error", JSON.stringify(away), JSON.stringify(older))
+    check("so the folder above carries nothing of it", Status.transientOf(Status.errorsAt(
+        Status.withError([], Status.noTrashLine(), "", share), "/run/user/1000/gvfs"), "").text, "")
+    check("and a prompt is the notice the strip times out, even over a search",
+          Status.noticeShown(slot({ transient: prompt, searching: true, searchLine: "3 found" })), true)
+    check("where a plain notice behind the search is not",
+          Status.noticeShown(slot({ transient: "Renamed to notes.txt", searching: true, searchLine: "3 found" })), false)
 
     // V7: the clipboard's own hint joins the undo hint on the secondary, so no sentence here ends
     // in advice. ui/js/Ops.js builds both into its result lines and this is what takes them apart.

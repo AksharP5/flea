@@ -154,26 +154,9 @@ Item {
     readonly property var submenuFrameItem: flyout
 
     // A separator is never the cursor, so both key steps and the opening cursor skip over one.
-    function stepCursor(from, delta) {
-        var i = from + delta
-        while (i >= 0 && i < root.entries.length) {
-            if (root.entries[i].separator !== true && root.entries[i].disabled !== true)
-                return i
-            i += delta
-        }
-        return from
-    }
-
-    // The same rule inside a flyout: OpenWith.html's tail row sits under its own separator, and a
-    // separator is not somewhere the cursor may rest.
-    function stepSubmenu(from, delta) {
-        var rows = root.submenuEntries, i = from + delta
-        while (i >= 0 && i < rows.length) {
-            if (rows[i].separator !== true && rows[i].disabled !== true) return i
-            i += delta
-        }
-        return from
-    }
+    function stepCursor(from, delta) { return Menu.stepRow(root.entries, from, delta) }
+    // The same rule inside a flyout: OpenWith.html's tail row sits under its own separator.
+    function stepSubmenu(from, delta) { return Menu.stepRow(root.submenuEntries, from, delta) }
 
     function firstRow() {
         return root.stepCursor(-1, 1)
@@ -231,14 +214,22 @@ Item {
                              frame.height, Math.max(0, root.workArea.height - 2 * root.workAreaInset))
     }
 
-    // Where any row last saw the pointer, so a row can tell a pointer moving onto it from a row
-    // arriving under a pointer that is standing still. Forgotten each time the menu is placed.
+    // Where any row or the ground last saw the pointer, in scene coordinates, so a row can tell a pointer
+    // moving onto it from a row arriving under a pointer that is standing still. Forgotten on placing.
     property point pointerGlobal: Qt.point(-1, -1)
+    // From placing to the first frame after it, when Qt hovers whatever that frame shows under the pointer,
+    // rows an unchanged answer kept (debfa798) included: a move a row reports then is where the pointer rests.
+    property bool pointerSettling: false
+    Connections {
+        target: root.pointerSettling ? root.Window.window : null
+        function onAfterAnimating() { root.pointerSettling = false }
+    }
 
     function place(scenePoint) {
         if (!root.opened)
             root.focusHolder = root.Window.window ? root.Window.window.activeFocusItem : null
         root.pointerGlobal = Qt.point(-1, -1)
+        root.pointerSettling = true
         var point = root.mapFromItem(null, scenePoint)
         root.placeX = point.x
         root.placeY = point.y
@@ -354,9 +345,12 @@ Item {
 
     // The ground owns every pointer event outside the rows: hover stops here, the wheel is swallowed, and the click that closes is taken on release so the row beneath never sees a press the close would have handed it.
     MouseArea {
+        id: ground
         anchors.fill: parent
         acceptedButtons: Qt.LeftButton | Qt.RightButton
         hoverEnabled: true
+        onEntered: root.pointerGlobal = ground.mapToItem(null, ground.mouseX, ground.mouseY)
+        onPositionChanged: function (mouse) { root.pointerGlobal = ground.mapToItem(null, mouse.x, mouse.y) }
         onClicked: root.close()
         onWheel: function (wheel) { wheel.accepted = true }
     }
@@ -398,6 +392,7 @@ Item {
                     lastPointerGlobal: root.pointerGlobal
                     onPointerSeen: function (at) { root.pointerGlobal = at }
                     onPointerMoved: {
+                        if (root.pointerSettling) return
                         root.cursor = row.index
                         if (Menu.hasSubmenu(row.modelData)) root.openSubmenu(row.index)
                         else root.openSubmenuRow = -1
@@ -470,7 +465,10 @@ Item {
                               glyph: subRow.modelData.glyph !== undefined ? subRow.modelData.glyph
                                    : Menu.submenuGlyph(root.entries[root.openSubmenuRow].action) })
                     current: root.submenuCursor === subRow.index
-                    onPointerMoved: if (subRow.modelData.separator !== true) root.submenuCursor = subRow.index
+                    // A flyout opened by key can land under the resting pointer too, so it reads the same point.
+                    lastPointerGlobal: root.pointerGlobal
+                    onPointerSeen: function (at) { root.pointerGlobal = at }
+                    onPointerMoved: if (!root.pointerSettling && subRow.modelData.separator !== true) root.submenuCursor = subRow.index
                     onActivated: root.chooseSub(subRow.modelData.id)
                 }
             }

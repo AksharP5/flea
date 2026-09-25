@@ -18,10 +18,10 @@
 var LIST = "list"
 var RAIL = "rail"
 
-// Refusal where gio has no Trash: the place in the primary, the key that still works in the secondary, both from the guarded helper so a preset with no key reads bare.
-var NO_TRASH = "This location has no Trash"
+// Refusal where gio has no Trash, from ui/js/Status.js, which recognises it to drop it when the pane leaves that place; a preset with no key reads bare.
+var NO_TRASH = Status.NO_TRASH
 function noTrashHint() { return Status.trashHint().replace(" · ", "") }
-function noTrashLine() { return NO_TRASH + Status.trashHint() }
+function noTrashLine() { return Status.noTrashLine() }
 
 // Tab is the only thing that moves focus between views, so the rule lives in one function.
 function next(current, sidebar) {

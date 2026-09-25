@@ -8,6 +8,13 @@ function hasSubmenu(entry) {
     return entry !== undefined && entry !== null && entry.submenu !== undefined
 }
 
+// A separator or a disabled row is never the cursor, so a step skips over one and an end keeps it where it is.
+function stepRow(rows, from, delta) {
+    for (var i = from + delta; i >= 0 && i < rows.length; i += delta)
+        if (rows[i].separator !== true && rows[i].disabled !== true) return i
+    return from
+}
+
 // Flip at the far edge first, then shift only when neither side fits.
 function clamp(point, size, bounds) {
     var start = point + size <= bounds ? point : point - size

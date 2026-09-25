@@ -191,4 +191,10 @@ function providerRefresh(check) {
     var reinstalled = drawn(MenuRefresh.settle(merged(answer, { taildropInstalled: false, taildropPeers: [] })), reading)
     check("a provider installed since its last answer is read afresh, dimmed rather than red",
           entry(reinstalled, "taildrop").disabled + "|" + String(entry(reinstalled, "taildrop").errored), "true|undefined")
+    // The one key step both the menu and its flyout take: separators and disabled rows are skipped, an end holds.
+    var steps = [{ action: "open" }, { separator: true }, { action: "cut", disabled: true }, { action: "copy" }]
+    check("a step skips a separator and a disabled row", Menu.stepRow(steps, 0, 1), 3)
+    check("and back again", Menu.stepRow(steps, 3, -1), 0)
+    check("an end keeps the cursor where it is", Menu.stepRow(steps, 3, 1) + "|" + Menu.stepRow(steps, 0, -1), "3|0")
+    check("the opening cursor is the first row a step from before the top reaches", Menu.stepRow(steps.slice(1), -1, 1), 2)
 }

@@ -29,9 +29,10 @@ Item {
     // For a parent that lights the pointer's row without moving its own cursor, as ui/ShareBrowser.qml does.
     readonly property bool hovered: pointer.hovered
     // For ui/Ipc.qml's contextMenuRowProbe: whether the pointer is over this row and where, before a test judges a move.
-    function probe() { return pointer.hovered + " " + Math.round(pointer.point.position.x) + " " + Math.round(pointer.point.position.y) + " " + Math.round(pointer.restingAt.x) + " " + Math.round(pointer.restingAt.y) }
+    function probe() { return pointer.hovered + " " + Math.round(pointer.point.scenePosition.x) + " " + Math.round(pointer.point.scenePosition.y) + " " + Math.round(pointer.restingAt.x) + " " + Math.round(pointer.restingAt.y) }
     // Where any row of this menu last saw the pointer, so a row can tell a pointer that moved onto
     // it from a row that scrolled under a pointer standing still. ui/ContextMenu.qml owns the value.
+    // A scene point despite the name: it is compared exactly, so it is the one the event carried.
     property point lastPointerGlobal: Qt.point(-1, -1)
     signal pointerSeen(point at)
 
@@ -263,19 +264,18 @@ Item {
     HoverHandler {
         id: pointer
         enabled: !root.isSeparator && root.available
-        // Global coordinates distinguish actual motion from a row moving beneath the resting pointer.
+        // Scene coordinates distinguish actual motion from a row moving beneath the resting pointer.
         property bool armed: false
         property point restingAt
-        // A menu that opens under a pointer standing still delivers no hover at all here, measured on
-        // this box, so the hover that does arrive was caused by the pointer moving and must light the
-        // row. The one exception is a row arriving under a pointer that has not moved, which reports
-        // the position the menu last saw; that one only records where the pointer is.
+        // A hover at the point the menu last saw is a row arriving under a still pointer and only records
+        // where the pointer is; any other first hover reads as a move. A row a menu kept from its last
+        // open is hovered as it shows as well, which ui/ContextMenu.qml's pointerSettling discounts.
         onHoveredChanged: {
             if (!pointer.hovered) {
                 pointer.armed = false
                 return
             }
-            var position = root.mapToGlobal(pointer.point.position)
+            var position = pointer.point.scenePosition
             pointer.armed = true
             pointer.restingAt = position
             // Read the coordinates out before reporting the new one: the shared property is live, so
@@ -288,7 +288,7 @@ Item {
         onPointChanged: {
             if (!pointer.hovered)
                 return
-            var position = root.mapToGlobal(pointer.point.position)
+            var position = pointer.point.scenePosition
             if (!pointer.armed) {
                 var firstX = root.lastPointerGlobal.x, firstY = root.lastPointerGlobal.y
                 pointer.armed = true
