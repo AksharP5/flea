@@ -334,4 +334,14 @@ case $scope_cg in
   *) echo "FAIL the stand-in's group read as '$scope_cg', so the scope checks did not run"; fail=1; kill "$tui" 2>/dev/null ;;
 esac
 
+# nautilus's indexer outlives it and crawled $HOME under every later entrant's cold launch, so the kill list ends it after nautilus.
+FLEA_UI=/nonexistent TUI_TERM=kitty TUI_CLASS=flea-bench-kitty
+eval "$(sed -n '/^declare -a KILL_TARGETS=(/,/^)/p; /^kill_comms_for() {/,/^}/p' "$bench")"
+kill_rows=" ${KILL_TARGETS[*]} "
+case $kill_rows in *" localsearch-3| "*) indexer=listed ;; *) indexer=missing ;; esac
+check "the kill list ends nautilus's indexer, localsearch-3" listed "$indexer"
+case $kill_rows in *" localsearch-ext| "*) extractor=listed ;; *) extractor=missing ;; esac
+check "and its extractor, by the 15-character comm the kernel keeps" listed "$extractor"
+check "ONLY=nautilus scopes the indexer and its extractor in" "nautilus localsearch-3 localsearch-ext" "$(kill_comms_for nautilus | tr '\n' ' ' | sed 's/ $//')"
+
 exit $fail

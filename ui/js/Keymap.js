@@ -220,11 +220,11 @@ function actionGroup(action) {
     var arms = { copyArm: "copy", cutArm: "cut", pasteArm: "paste", cursorFirstArm: "cursorFirst", trashArm: "trash" }
     return arms[action] || action
 }
-function bindingRows(name, frontend) {
+function bindingRows(name, frontend, group) {
     var rows = [], candidates = PRESET_KEYS.concat(SHARED_KEYS)
     for (var i = 0; i < candidates.length; i++) {
         var row = candidates[i]
-        if (row.preset !== "all" && row.preset !== name) continue
+        if ((row.preset !== "all" && row.preset !== name) || (group !== undefined && actionGroup(row.action) !== group)) continue
         if (!applies(row, "listing", frontend || "gui") || !row.action) continue
         if (lookupFor(name, row.keycode, row.text, row.mask, "listing", frontend || "gui") !== row.action) continue
         var duplicate = rows.some(function (kept) { return kept.keys === row.keys && kept.action === row.action })
@@ -232,10 +232,10 @@ function bindingRows(name, frontend) {
     }
     return rows
 }
-// Built at the first ask rather than by setPreset: a launch runs setPreset twice and draws no menu.
+// One action per first ask, never the whole table: the status strip asks for one key while the first window builds.
 function hintFor(action) {
-    if (HINTS === null) HINTS = hintsFor(preset)
-    return HINTS[action] || ""
+    if (!Object.prototype.hasOwnProperty.call(HINTS, action)) HINTS[action] = hintsFor(preset, action)[action] || ""
+    return HINTS[action]
 }
 // How wide a cap may get before a second spelling stops earning its place. The sheet draws two
 // columns of a 300 unit card, so a cap past this elides and the wording beside it has nowhere to go.
@@ -291,8 +291,8 @@ function sheetFor(name, frontend, dual) {
     }
     return result
 }
-function hintsFor(name) {
-    var hints = {}, ranks = {}, rows = bindingRows(name, "gui")
+function hintsFor(name, group) {
+    var hints = {}, ranks = {}, rows = bindingRows(name, "gui", group)
     for (var i = 0; i < rows.length; i++) {
         var row = rows[i]
         if (row.mods !== "text" && row.mods !== "none" && row.mods !== "shift") continue
@@ -307,7 +307,7 @@ function hintsFor(name) {
 }
 function setPreset(name) {
     preset = PRESETS.indexOf(name) >= 0 ? name : "default"
-    HINTS = null
+    HINTS = {}
 }
-var HINTS = null
+var HINTS = {}
 setPreset("default")

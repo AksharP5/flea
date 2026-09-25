@@ -685,9 +685,13 @@ list's second line names the shell by pid and start time, and a backend skips th
 already names its shell, so a second pane or window opened later cannot replace the launch's pages
 with its late-life ones.
 
-**Nothing the first frame does not show is built for it.** `ui/js/Keymap.js` builds its menu hints on
-the first `hintFor` and its sheet in `sheetFor`, never in `setPreset`, which a launch runs twice and
-which spent about 10 ms of a 127 ms body build on tables no first frame reads.
+**Nothing the first frame does not show is built for it.** `ui/js/Keymap.js` builds its sheet in
+`sheetFor`, never in `setPreset`, which a launch runs twice and which spent about 10 ms of a 127 ms body
+build on tables no first frame reads. A menu hint is built per action at that action's first `hintFor`,
+from that action's own rows: 0.3.5's status strip asks for the key of `deletePermanently` while the body
+builds, and a first ask that built the whole table ran about 9,700 JavaScript calls (86 `lookupFor` walks
+of the table) inside the first window: 4 to 7 ms of map on the studio folder warm, medians of 20 interleaved
+launches per arm against two v0.3.4 arms.
 
 **What has to stay with the window.** `itemRect` is the window's, so `centreOf`, `rectOf` and
 `boxOf` stay in the entry and `ui/Ipc.qml` reads them through its own `fleaWindow`. `sceneGraphError`
@@ -2541,6 +2545,14 @@ waits for its consumer.
   entrant, and it writes into the shared thumbnail cache. A survivor lands inside the next entrant's
   cold arm. `require_bench_idle` reads the same list, so the harness now refuses to start while
   tumblerd is alive; that is the designed behaviour of a shared list.
+- **`KILL_TARGETS` includes nautilus's indexer, `localsearch-3` and its extractor, for the same reason.**
+  nautilus activates it over D-Bus on its first launch, and on this box it indexes all of `$HOME`
+  unthrottled. After the 2026-09-24 reboot it started at 00:54:52 in the 0.3.5 battery's warm-up pass
+  and read 14.5 GB over the next two hours, under every later entrant's cold launch: Flea's scale first
+  window read 505 ms against 409 in 0.3.3, and almost every rival slowed by 48 to 119 ms. With it idle
+  the same trees read 402 to 430 (medians of 12 runs), and a full run with this entry read 407 against
+  pcmanfm's 475. A full run refuses to start while it is alive, so stop it first
+  (`systemctl --user stop localsearch-3`); the kill list ends it after every nautilus run.
 - **`foot|-e` is a substring match, so any Omarchy TUI window open at start time blocks the field by
   name.** `omarchy-launch-tui` runs `xdg-terminal-exec --app-id=$APP_ID -e "$1"`, whose command line
   contains `-e`, so `require_bench_idle` names it and refuses. Close it, or the run will not start.

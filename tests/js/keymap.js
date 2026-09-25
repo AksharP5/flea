@@ -161,6 +161,33 @@ function run(check) {
     Keymap.bindingRows = keepRows
     Keymap.setPreset("vim")
     check("deletePermanently still gets its shift hint where no plain row exists", Keymap.hintFor("deletePermanently"), "shift-delete")
+    // The status strip asks for this one key while the first window builds; the whole table was about 9,700 calls there.
+    Keymap.setPreset("default")
+    var keepLookup = Keymap.lookupFor, lookups = 0
+    Keymap.lookupFor = function () { lookups++; return keepLookup.apply(null, arguments) }
+    var firstAsk = Keymap.hintFor("deletePermanently")
+    Keymap.lookupFor = keepLookup
+    var ownRows = Keymap.PRESET_KEYS.concat(Keymap.SHARED_KEYS).filter(function (row) {
+        return (row.preset === "all" || row.preset === "default") && Keymap.applies(row, "listing", "gui")
+            && Keymap.actionGroup(row.action) === "deletePermanently"
+    }).length
+    check("the action asked for has rows of its own, so the count below can go red", ownRows > 0, true)
+    check("a first hint ask looks up only the rows of the action it asks for", lookups, ownRows)
+    check("and still answers the shift chord", firstAsk, "shift-delete")
+    // Asked one action at a time, every preset answers exactly what its whole table says.
+    var hintMismatches = []
+    for (var hp = 0; hp < Keymap.PRESETS.length; hp++) {
+        var hintTable = Keymap.hintsFor(Keymap.PRESETS[hp])
+        Keymap.setPreset(Keymap.PRESETS[hp])
+        var hintActions = Object.keys(hintTable).concat(["emptyTrash"])
+        for (var ha = 0; ha < hintActions.length; ha++) {
+            var wanted = Object.prototype.hasOwnProperty.call(hintTable, hintActions[ha]) ? hintTable[hintActions[ha]] : ""
+            if (Keymap.hintFor(hintActions[ha]) !== wanted)
+                hintMismatches.push(Keymap.PRESETS[hp] + ":" + hintActions[ha])
+        }
+    }
+    check("one-action hints match the whole table on every preset", hintMismatches.join(" "), "")
+    Keymap.setPreset("vim")
     check("sheet is populated from effective current bindings", Keymap.sheetFor(Keymap.preset, "gui").length > 30, true)
     // One cap names one key. Joining every spelling an action answers to produced caps of 40
     // characters on Default and 78 on Mac, wider than the card, and they drew over the next column.

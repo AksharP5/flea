@@ -608,6 +608,10 @@ declare -a KILL_TARGETS=(
   "hyprland-dialog|"
   # D-Bus activated by an entrant, outlives it, and writes to the shared cache, so a survivor lands in the next run's cold arm.
   "tumblerd|"
+  # nautilus starts its indexer over D-Bus and it outlives it: on 2026-09-25 it crawled $HOME for two hours, 14.5 GB, under every later entrant's cold launch.
+  "localsearch-3|"
+  # The indexer's extractor, whose comm the kernel truncates to 15 characters.
+  "localsearch-ext|"
 )
 
 # The processes in KILL_TARGETS one entrant owns. Two ids are not named after their own process.
@@ -616,6 +620,8 @@ kill_comms_for() {
     flea) printf 'qs\nflea\n' ;;
     # tumblerd outlives thunar by 300 s, and a full-field start refuses to begin beside it.
     thunar) printf 'thunar\ntumblerd\n' ;;
+    # The indexer nautilus starts outlives it the same way, so ONLY=nautilus ends it too.
+    nautilus) printf 'nautilus\nlocalsearch-3\nlocalsearch-ext\n' ;;
     superfile) printf 'spf\n' ;;
     *) printf '%s\n' "$1" ;;
   esac
