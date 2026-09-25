@@ -402,6 +402,19 @@ anchor's own window arrives. The columns view's two neighbour columns are peeks 
 they are asked for again when the path moves and stand empty for one peek round trip at the swap, as
 they did at the `listed` line before.
 
+**A right click on the Locked tile opens the locked folder's own menu, never the parent's
+background one.** A failed listing leaves no rows, so every background right click in all three views
+took the `openBackground` path and drew the parent's rows, New Folder and Paste among them, over the
+tile of a folder those rows cannot touch. `ui/js/Nav.js lockedTarget` names the folder the tile
+draws, the directory asked for or the parent's own path on a re-read refusal, and `ui/ContextMenu.qml
+openBackground` routes to `openLocked` while one is drawn, which is the one entrance all three views
+share; the m key reaches it through `ui/Pane.qml openCursorMenu`. The rows are `ui/js/LockedMenu.js
+lockedEntries`, Open in terminal, Permissions and Copy path in inventory order and nothing else, each
+dispatched by path in `ui/Pane.qml performLocked` with no snapshot and no selection. Permissions reads
+red with no sentence where it cannot act, a folder owned by somebody else or a mode never read, and
+stays plain where its owner may still fix it, which is the way back in. `tests/js/menu.js` pins the
+rows and the absent parent rows, `tests/js/nav.js` the target.
+
 ## Why the listing is an arena
 
 `Listing` (`listing.rs`) holds one `String` with every entry's name written back to
@@ -1978,6 +1991,16 @@ Trashone takes `ui/js/Ops.js` from 335 to 367 for the five singular/plural sente
 delete confirm and status line now shares, `ui/TrashView.qml` from 466 to 467 for the one import
 that reaches them, `src/tui/render.rs` from 822 to 835 for the singular TUI confirm and its test,
 and `src/tui/model.rs` from 1196 to 1197 for the noun on its Deleted line.
+
+The Locked tile's own menu raises two recorded ceilings rather than splitting a third file.
+`ui/ContextMenu.qml` goes from its recorded 534 to 566 for the tile entrance (`tileTarget` and
+`tileMode`, `openLocked`, the `openBackground` route, the `buildEntries` arm and the
+provider-refresh guard), and `ui/Pane.qml` from its recorded 648 to 673 for the tile target, the
+menu bindings, the locked dispatch and the m key's locked arm. The rows themselves went to the new
+`ui/js/LockedMenu.js`, 43 lines inside both budgets, rather than into `ui/js/Menu.js`, which stands
+at 292 with 8 lines under the hard cap; `ui/js/Nav.js` takes `lockedTarget` and stays at 248,
+inside the soft budget. `tests/js/nav.js` holds its new locked cases at 299, one line under the hard
+cap and not over it. Each count re-derived with `wc -l` at the commit that recorded it.
 
 `src/backend/ops.rs` split to `src/backend/renamecompat.rs` at 455: composing PR 35's safe rclone
 rename into the release tree put the rename exception over the 400-line hard cap, so the exception

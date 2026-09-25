@@ -35,13 +35,13 @@ tests/js/mounts.js 383
 tests/js/ops.js 384
 ui/Backend.qml 435
 ui/ChromeBar.qml 438
-ui/ContextMenu.qml 534
+ui/ContextMenu.qml 566
 ui/ConvertDialog.qml 440
 ui/Ipc.qml 791
 ui/NetworkDialog.qml 449
 ui/NetworkMounts.qml 560
 ui/OpenWithDialog.qml 588
-ui/Pane.qml 648
+ui/Pane.qml 673
 ui/PaneMenuActions.qml 404
 ui/PaneWire.qml 485
 ui/PermissionsDialog.qml 426

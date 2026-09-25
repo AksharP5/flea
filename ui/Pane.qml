@@ -34,6 +34,9 @@ FocusScope {
     property string listingState: "loading"
     property string stateMessage: ""
     property int lockedMode: 0
+    // The folder the Locked tile names while one is drawn, "" otherwise; ui/js/Nav.js owns it,
+    // and the tile's right click and the m key open that folder's own menu through it.
+    readonly property string lockedTarget: Nav.lockedTarget(root)
     // Off by default: dotfiles stay out of every listing until the context menu or "." turns them on.
     property bool showHidden: ViewState.state.hidden === true
     // Issue 27's state-file key: with it on a cursor step past an end comes round; ui/js/Focus.js step is the only reader.
@@ -607,7 +610,12 @@ FocusScope {
             && Dropbox.contains(root.dropboxService.dropboxPath, root.join(root.path, root.cursorRow.n))
         // Issue 133: no GVFS mount, share or phone, has a trash of its own, so the row is not offered there.
         canTrash: Mounts.trashable(root.path)
+        // The Locked tile's folder and mode while one is drawn; ui/ContextMenu.qml routes a
+        // background right click to that folder's own menu through them.
+        tileTarget: root.lockedTarget
+        tileMode: root.lockedMode
         onChosen: function (action) {
+            if (menu.forLocked) { root.performLocked(menu.lockedPath, action); return }
             menuActions.activate(action, menu.hasRow && !menu.forHeader)
         }
     }
@@ -641,7 +649,25 @@ FocusScope {
     }
     function sendTaildrop(peerId, path) { Ops.sendTaildrop(root, wire.taildrop, peerId, path) }
 
+    // The Locked tile's own dispatch: every row its menu offers acts on the locked folder
+    // alone, by path, never on the cursor, the selection or the parent standing behind it.
+    // The menu row is already disabled where it cannot act, so no row here can fail refused.
+    function performLocked(path, action) {
+        if (path.length === 0) return
+        if (action === "openTerminal") { wire.opener.openTerminal(path); return }
+        if (action === "copypath") { wire.opener.copyText(path); return }
+        if (action === "permissions") { root.permissionsRequested(path); return }
+        root.message(action + " is not built yet.", false)
+    }
+
     // The keyboard's own entrance to the row menu; the placement itself is ui/js/Menu.js's.
-    function openCursorMenu() { return Menu.openAtCursor(root, menu, Theme.spacing.rowPaddingX) }
+    function openCursorMenu() {
+        if (root.lockedTarget.length > 0) {
+            var at = root.listSlot.mapToItem(null, root.listSlot.width / 2, root.listSlot.height / 2)
+            menu.openLocked(root.lockedTarget, root.lockedMode, at)
+            return true
+        }
+        return Menu.openAtCursor(root, menu, Theme.spacing.rowPaddingX)
+    }
 
 }

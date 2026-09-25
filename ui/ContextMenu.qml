@@ -2,6 +2,7 @@ import QtQuick
 import qs.Commons
 import "." as Flea
 import "js/Keymap.js" as Keymap
+import "js/LockedMenu.js" as LockedMenu
 import "js/Menu.js" as Menu
 import "js/MenuRefresh.js" as MenuRefresh
 
@@ -49,6 +50,15 @@ Item {
     // False on a listing's empty space, where Menus.html's background column is what opens instead.
     // openBackground() is its only writer and openAt() puts it back, because one instance serves both.
     property bool hasRow: true
+    // The Locked tile's folder while one is drawn, "" while none is; bound by ui/Pane.qml. A right
+    // click landing on the tile reaches openBackground through the views, which routes it to the
+    // locked folder's own menu rather than the parent's background one.
+    property string tileTarget: ""
+    property int tileMode: 0
+    // The folder this opening answers for, captured at open and cleared at close, the rail's own pattern.
+    property string lockedPath: ""
+    property int lockedMode: 0
+    readonly property bool forLocked: root.lockedPath.length > 0
     property string selectionIdentity: ""
     property string openedIdentity: ""
     // The owner intersects the live monitor work area with this application's viewport.
@@ -118,6 +128,10 @@ Item {
             return root.railEntries
         if (root.forHeader)
             return Menu.headerEntries(ViewState.hiddenCols, root.showHidden)
+        // The Locked tile's own rows, acting on the locked folder without listing it; never the
+        // background rows, which would create in or paste into the parent standing behind it.
+        if (root.forLocked)
+            return LockedMenu.lockedEntries({ lockedMode: root.lockedMode, hiddenActions: ViewState.menuHidden })
         var view = MenuRefresh.providerView(root.lastProviderAnswer, MenuRefresh.live(root))
         return Menu.listingEntries({
             showHidden: root.showHidden,
@@ -176,11 +190,28 @@ Item {
 
     // The listing's other entrance, from a right click that landed on no row at all: ui/List.qml,
     // ui/GridArea.qml and ui/ColumnPane.qml each answer for their own empty space, and this one
-    // instance then draws ui/js/Menu.js backgroundEntries instead of the cursor row's.
+    // instance then draws ui/js/Menu.js backgroundEntries instead of the cursor row's. While a
+    // Locked tile is drawn the whole listing is that tile, so the click names the locked folder.
     function openBackground(scenePoint) {
+        if (root.tileTarget.length > 0) {
+            root.openLocked(root.tileTarget, root.tileMode, scenePoint)
+            return
+        }
         root.clearRail()
         root.forHeader = false
         root.hasRow = false
+        root.place(scenePoint)
+    }
+
+    // The Locked tile's own entrance, capturing the folder this opening answers for; every row
+    // below acts on that folder alone, through ui/Pane.qml's locked dispatch rather than the
+    // snapshot the cursor rows take.
+    function openLocked(path, mode, scenePoint) {
+        root.clearRail()
+        root.forHeader = false
+        root.hasRow = false
+        root.lockedPath = path
+        root.lockedMode = mode
         root.place(scenePoint)
     }
 
@@ -194,10 +225,13 @@ Item {
         root.place(scenePoint)
     }
 
-    // Cleared on both ends: a rail entry left standing would put Eject on a listing row's menu.
+    // Cleared on both ends: a rail entry left standing would put Eject on a listing row's menu,
+    // and a locked path left standing would put the old folder's rows on another directory's tile.
     function clearRail() {
         root.railEntries = []
         root.railKey = ""
+        root.lockedPath = ""
+        root.lockedMode = 0
     }
 
     // Where the menu was asked to open, in this item's own coordinates; clampFrame runs twice on it.
@@ -292,7 +326,7 @@ Item {
 
     // Fresh capabilities use the normal inventory; selection stays on its action and placement uses the existing clamp.
     function refreshProviderRows() {
-        if (!root.opened || root.forRail || root.forHeader) return
+        if (!root.opened || root.forRail || root.forHeader || root.forLocked) return
         var next = root.buildEntries()
         // An answer that changed nothing drawn leaves every row standing: no model reset, no cursor move.
         if (MenuRefresh.unchanged(root.entries, next)) return

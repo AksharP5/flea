@@ -195,6 +195,15 @@ function openCursor(pane, opener) {
     opener.open(path)
 }
 
+// The folder the Locked tile names, for its own menu and every row that menu offers: the
+// directory asked for while its tile is up, which is the parent's own path when the folder
+// failed on its own re-read. "" while no Locked tile is drawn, so the background menu stands.
+function lockedTarget(pane) {
+    if (pane.listingState !== "locked") return ""
+    var asked = pane.listingPath || ""
+    return asked.length > 0 ? trimSlash(asked) : pane.path
+}
+
 // The path helpers the columns view needs. A root has no parent and no leaf of its own.
 function trimSlash(path) {
     // A bookmark can carry one trailing slash, which no row name ever has; "/" alone keeps its own.

@@ -1,5 +1,7 @@
 .import "../../ui/js/Menu.js" as Menu
 .import "../../ui/js/MenuRefresh.js" as MenuRefresh
+.import "../../ui/js/LockedMenu.js" as LockedMenu
+.import "../../ui/js/Nav.js" as Nav
 .import "../../ui/js/Icons.js" as Icons
 .import "../../ui/js/Mounts.js" as Mounts
 
@@ -129,6 +131,25 @@ function run(check) {
     check("permissions rejects missing metadata", Menu.permissionsEntry(undefined, 1).disabled, true)
     check("permissions rejects fifo", Menu.permissionsEntry(0o010644, 1).disabled, true)
     check("permissions allows read-only inspection of special bits", Menu.permissionsEntry(0o104755, 1).disabled, false)
+    // Issue 193 follow-up (GM, 2026-09-24): a right click on the Locked tile opens the
+    // locked folder's own menu, never the parent's background one.
+    var locked = LockedMenu.lockedEntries({ lockedMode: 0o040000, hiddenActions: [] })
+    check("the Locked tile offers only rows that act without listing the folder",
+          actions(locked), "openTerminal,permissions,copypath")
+    check("and no row that would create in, paste into or sort the parent",
+          ["newFolder", "newFile", "paste", "selectAll", "sort", "toggleHidden", "settings"].every(function (a) {
+              return entry(locked, a).action === undefined
+          }), true)
+    check("Permissions stays plain while its owner may still be the operator, the way back in",
+          refusal(entry(locked, "permissions")), "false|undefined|undefined")
+    var stranger = LockedMenu.lockedEntries({ lockedMode: 0o040755, hiddenActions: [] })
+    check("Permissions for a folder owned by somebody else reads red with no sentence",
+          refusal(entry(stranger, "permissions")), "true|true|undefined")
+    var unreadable = LockedMenu.lockedEntries({ lockedMode: 0, hiddenActions: [] })
+    check("Permissions with no mode to read reads red with no sentence too",
+          refusal(entry(unreadable, "permissions")), "true|true|undefined")
+    check("hiding Open in terminal takes it off the Locked tile as well",
+          entry(LockedMenu.lockedEntries({ lockedMode: 0o040000, hiddenActions: ["openTerminal"] }), "openTerminal").action, undefined)
     check("menu fits at pointer", Menu.clamp(20, 80, 300), 20)
     check("menu flips before shifting", Menu.clamp(270, 80, 300), 190)
     check("oversized menu pins to near edge", Menu.clamp(30, 500, 300), 0)
@@ -197,4 +218,9 @@ function providerRefresh(check) {
     check("and back again", Menu.stepRow(steps, 3, -1), 0)
     check("an end keeps the cursor where it is", Menu.stepRow(steps, 3, 1) + "|" + Menu.stepRow(steps, 0, -1), "3|0")
     check("the opening cursor is the first row a step from before the top reaches", Menu.stepRow(steps.slice(1), -1, 1), 2)
+
+    // Issue 193: a Locked tile names the refused folder for its menu; any other state names nothing.
+    function lockedAs(path, asked, state) { return Nav.lockedTarget({ path: path, listingPath: asked, listingState: state }) }
+    check("refused hop names the ask, re-read names itself, ready and error name nothing", lockedAs("/d", "/d/locked", "locked") + "|" + lockedAs("/d", "/d", "locked") + "|" + lockedAs("/d", "/d", "ready") + "|" + lockedAs("/d", "/d", "error"), "/d/locked|/d||")
+    check("a refused bookmark with a trailing slash names the folder without it", lockedAs("/d", "/root/", "locked"), "/root")
 }
