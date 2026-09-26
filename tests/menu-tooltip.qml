@@ -7,7 +7,7 @@ import "flea" as Flea
 
 ShellRoot {
     id: shell
-    readonly property string longName: "Convert for DaVinci Resolve <Keep Original> & preserve audio"
+    readonly property string longName: "A long menu label with <literal markup> & a distinguishing ending"
     property int step: 0
     property int checks: 0
     property int failures: 0
