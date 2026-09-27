@@ -15,6 +15,11 @@ Item {
     id: root
 
     property var pane: null
+    // The window-long network host ui/WindowBody.qml builds lazily on the first open, handed to
+    // the rail below: the rail Loader unloads the Sidebar when the rail hides, but this service
+    // and these connections outlive it, so a mount, a bridge wait or a dialog answer that lands
+    // afterwards still opens, messages and clears its sticky line.
+    property var service: null
     readonly property bool overlay: ViewState.railAutoHide
     readonly property bool hidden: root.overlay ? !root.revealed : ViewState.railHidden
     // An overlay owes the pane no width, so the listing never reflows as the rail comes and goes.
@@ -70,12 +75,10 @@ Item {
             id: sidebar
             backend: root.pane.backend
             navigationPane: root.pane.railPane
+            service: root.service
             focused: root.pane.railPane.focusView === Focus.RAIL
             trashActive: root.pane.railPane.trash.opened
             onOpened: function(path) { RailKeys.openFrom(root.pane.railPane, path, sidebar) }
-            onNetworkOpened: function(path, origin) { RailKeys.openFrom(origin, path, sidebar) }
-            onPhotosOpened: function(path, origin) { RailKeys.openPhotosFrom(origin, path, sidebar) }
-            onTrashRequested: root.pane.railPane.trash.open()
             onMessage: function(text, isError) { RailKeys.messaged(sidebar, isError); root.pane.message(text, isError) }
             onForgetMessage: function(text) { root.pane.forgetMessage(text) }
             menu: root.pane.railPane.contextMenu()
@@ -83,6 +86,25 @@ Item {
             // The rail stays up while the pointer is on it, which is the other half of the reveal.
             HoverHandler { onHoveredChanged: root.over = hovered }
         }
+    }
+
+    // The network answers land here rather than on the Sidebar above, so they land whether the
+    // rail is shown or has been unloaded mid-mount. Each answers only for the pane that asked:
+    // the second pane shares the primary's service, and its own rail answers for its own opens.
+    function serviceOrigin(origin) {
+        return origin !== null && (origin === root.pane || origin === root.pane.railPane)
+    }
+    Connections {
+        target: root.service
+        function onOpened(path, origin) { if (root.serviceOrigin(origin)) RailKeys.openFrom(origin, path, root.pane.sidebar) }
+        function onOpenFileRequested(path, origin) { if (root.serviceOrigin(origin)) origin.openFile(path) }
+        function onPhotosOpened(path, origin) { if (root.serviceOrigin(origin)) RailKeys.openPhotosFrom(origin, path, root.pane.sidebar) }
+        function onMessage(text, isError) { var sidebar = root.pane.sidebar; if (sidebar) RailKeys.messaged(sidebar, isError); root.pane.message(text, isError) }
+        function onSticky(text, origin) { (origin || root.pane.railPane).sticky(text) }
+        // AGENTS.md "A FileView write can race a reload": the rename blocked on waitForJob()
+        // first, so this reload reads the write it caused.
+        function onRenamed() { var sidebar = root.pane.sidebar; if (sidebar) sidebar.reloadBookmarks() }
+    }
     }
 
     // Ctrl+E from a listing with the rail hidden. The rail Loader above unloads the Sidebar with

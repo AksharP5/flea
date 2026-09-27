@@ -741,8 +741,13 @@ QtObject {
         function networkStatus(): string { return root.networkDialog ? root.networkDialog.statusText : "" }
         function networkDialogMetrics(): string { return root.networkDialog ? root.networkDialog.formMetrics() : "" }
         function networkDialogMetricTargets(): string { return root.networkDialog ? root.networkDialog.formMetricTargets() : "" }
-        // Durable and non-secret, unlike the four-second status-bar transient.
-        function networkResult(): string { return root.pane.sidebar.networkResult() }
+        // Durable and non-secret, unlike the four-second status-bar transient. The host
+        // outlives the rail, so this reads the host first and the rail's method only while it stands.
+        function networkResult(): string {
+            if (root.pane.networkService) return root.pane.networkService.result
+            var sidebar = root.pane.sidebar
+            return sidebar ? sidebar.networkResult() : ""
+        }
         // The "+" ink, its hit target and the rail's own indicator dot, each "x width centre" in window
         // coordinates. Three measured rectangles, because a computed slot only restates the anchoring.
         function networkMarkGeometry(): string {

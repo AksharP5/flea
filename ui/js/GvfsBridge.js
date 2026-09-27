@@ -1,20 +1,34 @@
 .pragma library
 
 // Phones and shares open through the GVFS FUSE bridge, and Flea starts it the way gvfsd
-// does when the folder is not serving yet. The QML service owns the processes and the two
+// does when the folder is not serving yet. The QML service owns the processes and the three
 // timers; this module owns every decision, so tests/js/gvfsbridge.js pins each one with no
 // process and no clock. An action is what the service executes next: check (test -d the
-// folder), start (run gvfsd-fuse once), verify (one last check after an exit), ready (open
-// the folder), show (the Starting line), fail (the board's error line) or refuse (busy).
+// folder), checkFile (test -e it), start (run gvfsd-fuse once, detached), classify (test -d
+// it once it is served), ready (open the folder, or hand a file to the opener), show (the
+// Starting line), fail (the board's error line) or refuse (busy).
+//
+// The start is detached: closing the rail or the chooser never takes gvfsd-fuse down with it,
+// so no exit status ever reaches the board and the folder poll's own deadline is the failure
+// signal. The check stays a helper process rather than a backend peek, measured headless on
+// 2026-09-27: peek answers in 0.07 ms against 0.39 ms for test, but a peek runs on the
+// backend's single loop with no way to bound it, while a wedged FUSE path hangs a helper the
+// deadline kills and nothing else. A served path is classified by the kernel too, so a file
+// under a live bridge is ready without any start (I-3) and a directory costs the one check it
+// always did.
 
 // The Starting line stands until the service's own 250 ms timer fires, so a bridge that is
 // already coming up never flashes it.
 var STARTING_MS = 250
-// A test -d costs about a millisecond, so this bounds the open behind a starting bridge.
+// A test costs about half a millisecond, so this bounds the open behind a starting bridge.
 var POLL_MS = 150
+// One deadline for the whole ensure, checking, file-checking, waiting and classifying: a hung
+// helper and a bridge that never serves are the same wait to the watcher, and both end in the
+// board's failure line through onTimeout, once.
+var ENSURE_MS = 15000
 
 function create() {
-    return { phase: "idle", waiter: null, starts: 0, exitCode: 0 }
+    return { phase: "idle", waiter: null, starts: 0 }
 }
 
 // Sample input: "/run/user/1000" answers "/run/user/1000/gvfs", and "" answers the board's
@@ -38,19 +52,15 @@ function startingLine(name) {
     return "Starting the GVFS bridge for " + name
 }
 
-// Sample input: ("Pixel 8", "gvfsd-fuse exited with status 1") answers the board's failure
-// line word for word.
+// Sample input: ("Pixel 8", "waiting for the folder timed out") answers the board's
+// failure line word for word.
 function failedLine(name, reason) {
     return name + " needs the GVFS bridge, and it would not start · " + reason
 }
 
-// Sample input: 1 answers "gvfsd-fuse exited with status 1".
-function exitReason(code) {
-    return "gvfsd-fuse exited with status " + code
-}
-
-function startFailedReason() {
-    return "gvfsd-fuse could not start"
+// Sample input: ("Pixel 8") answers the reason a wait that outlived ENSURE_MS carries.
+function timeoutReason() {
+    return "waiting for the folder timed out"
 }
 
 // The openShare guard's own refusal, reused so two waiters never start two bridges.
@@ -85,8 +95,10 @@ function fuseArgv(bin, dir) {
     return [bin, dir, "-f"]
 }
 
-function readyFor(waiter) {
-    return [{ op: "ready", path: waiter.path, origin: waiter.origin }]
+// Sample input: a ready waiter with isDir true opens the folder, with false hands the
+// file to the opener, so a typed network URL naming a file is never listed as a folder.
+function readyFor(waiter, isDir) {
+    return [{ op: "ready", path: waiter.path, origin: waiter.origin, isDir: isDir !== false }]
 }
 
 function reset(st) {
@@ -97,7 +109,7 @@ function reset(st) {
 // A local folder opens at once and starts nothing; a gvfs folder is checked first.
 function ensure(st, req) {
     if (!needsBridge(req.path, req.bridgeDir))
-        return [{ op: "ready", path: req.path, origin: req.origin }]
+        return readyFor({ path: req.path, origin: req.origin }, true)
     if (st.phase !== "idle") {
         if (st.waiter && st.waiter.path === req.path)
             return []
@@ -109,12 +121,27 @@ function ensure(st, req) {
     return [{ op: "check", path: req.path }]
 }
 
-// The check answered: a served folder opens, an unserved one starts the bridge once.
-function onChecked(st, served) {
+// The check answered for a directory: a served one opens, anything else is file-checked
+// before anything starts, because test -d fails for a file under a live bridge too.
+function onChecked(st, dirServed) {
     if (st.phase !== "checking" || !st.waiter)
         return []
-    if (served) {
-        var done = readyFor(st.waiter)
+    if (dirServed) {
+        var done = readyFor(st.waiter, true)
+        reset(st)
+        return done
+    }
+    st.phase = "checkingFile"
+    return [{ op: "checkFile", path: st.waiter.path }]
+}
+
+// The file check answered: a served file is ready without any start, and only a path that is
+// neither a directory nor anything at all starts the bridge, exactly once per wait.
+function onCheckedFile(st, exists) {
+    if (st.phase !== "checkingFile" || !st.waiter)
+        return []
+    if (exists) {
+        var done = readyFor(st.waiter, false)
         reset(st)
         return done
     }
@@ -131,47 +158,41 @@ function onElapsed(st) {
     return [{ op: "show", text: startingLine(st.waiter.label), origin: st.waiter.origin }]
 }
 
-// A poll answered: the folder landing opens it, anything else waits on.
+// A poll answered: the folder landing is classified before it opens, anything else waits
+// on. The classify is one test -d, so a file the wait started for still lands as a file.
 function onPolled(st, served) {
     if (st.phase !== "waiting" || !st.waiter)
         return []
     if (!served)
         return []
-    var done = readyFor(st.waiter)
+    st.phase = "classifying"
+    return [{ op: "classify", path: st.waiter.path }]
+}
+
+// The classify answered for a served path: directories open, files go to the opener.
+function onClassified(st, isDir) {
+    if (st.phase !== "classifying" || !st.waiter)
+        return []
+    var done = readyFor(st.waiter, isDir)
     reset(st)
     return done
 }
 
-// The bridge exited while waited on: one last check first, because a bridge started beside
-// this one may have served the folder anyway, and only then the board's failure line.
-function onExited(st, code) {
-    if (st.phase !== "waiting" || !st.waiter)
+// The whole-ensure deadline fired: whatever leg was still running ends here, in the board's
+// failure line. The service kills its helper beside this and swallows that helper's own exit,
+// so the line answers once however the race landed.
+function onTimeout(st) {
+    if ((st.phase !== "checking" && st.phase !== "checkingFile" && st.phase !== "waiting"
+            && st.phase !== "classifying") || !st.waiter)
         return []
-    st.phase = "verifying"
-    st.exitCode = code
-    return [{ op: "verify", path: st.waiter.path }]
-}
-
-function onVerified(st, served) {
-    if (st.phase !== "verifying" || !st.waiter)
-        return []
-    if (served) {
-        var done = readyFor(st.waiter)
-        reset(st)
-        return done
-    }
-    var failed = [{ op: "fail", text: failedLine(st.waiter.label, exitReason(st.exitCode)),
+    var failed = [{ op: "fail", text: failedLine(st.waiter.label, timeoutReason()),
         origin: st.waiter.origin }]
     reset(st)
     return failed
 }
 
-// The bridge process never started at all: fail loudly rather than poll forever.
-function onStartFailed(st) {
-    if ((st.phase !== "waiting" && st.phase !== "verifying") || !st.waiter)
-        return []
-    var failed = [{ op: "fail", text: failedLine(st.waiter.label, startFailedReason()),
-        origin: st.waiter.origin }]
+// A cancelled wait answers nothing and starts nothing; the caller clears its own line.
+function cancel(st) {
     reset(st)
-    return failed
+    return []
 }

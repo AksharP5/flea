@@ -52,7 +52,11 @@ Item {
     property string editingPlace: ""
     // And the request that Edit's own attempt went out with, so no other mount answers for it.
     property string editingRequest: ""
-    readonly property var networkEntries: root.placesState.showNetwork === false || !root.railGate.showNetwork ? [] : mounts.entries
+    // The window-long network host this rail renders and routes through, injected by
+    // ui/PaneRail.qml: the service outlives the rail Loader below, so hiding the rail mid-mount
+    // kills no mount, no bridge wait and no dialog answer. Null until the first open builds it.
+    property var service: null
+    readonly property var networkEntries: root.placesState.showNetwork === false || !root.railGate.showNetwork || !root.service ? [] : root.service.entries
     // The poll rebinds its delegates in place, so a rename left standing would edit a different share.
     onNetworkEntriesChanged: root.cancelRename()
     // Phones ride the DEVICES group behind the block devices: a plugged phone is a device to the person holding it, whatever transport gvfs reaches it over.
@@ -65,7 +69,7 @@ Item {
     readonly property int railSettleMs: 800
     property bool railDeadlineElapsed: false
     property bool bookmarksReady: false
-    readonly property var railGate: Mounts.railGroupsReady(root.bookmarksReady && mounts.listingAnswered && mounts.dropboxAnswered, devices.firstAnswered && phones.firstDone, root.railDeadlineElapsed ? root.railSettleMs : 0, root.railSettleMs)
+    readonly property var railGate: Mounts.railGroupsReady(root.bookmarksReady && root.service !== null && root.service.listingAnswered && root.service.dropboxAnswered, devices.firstAnswered && phones.firstDone, root.railDeadlineElapsed ? root.railSettleMs : 0, root.railSettleMs)
     Timer { interval: root.railSettleMs; running: true; repeat: false; onTriggered: root.railDeadlineElapsed = true }
 
     // Reconcile only the aggregate; evaluating entries from a group's change handler re-enters its binding.
@@ -80,16 +84,9 @@ Item {
     }
 
     signal opened(string path)
-    signal networkOpened(string path, var origin)
-    // A phone's photo roll: the device's DCIM, walked newest first into the grid.
-    signal photosOpened(string path, var origin)
     signal addRequested()
     signal message(string text, bool isError)
     signal forgetMessage(string text)
-    // Bubbled straight from NetworkMounts; shell.qml opens ui/ShareBrowser.qml on this.
-    signal sharesListed(string baseUri, string baseLabel, var names, var origin)
-    signal networkRetryRequested(string uri, string label, string password, string reason, bool failedConnect, var origin)
-    signal networkCompleted(string requestId, string uri, bool success, string reason)
 
     // The entry index mid-rename, or -1; ui/SidebarRow.qml swaps its Text for a field on it, and ui/Pane.qml holds its keys off while it stands.
     property int renamingIndex: -1
@@ -124,13 +121,22 @@ Item {
         watchChanges: true
         printErrors: false
         onFileChanged: reload()
-        onLoaded: { root.bookmarksReady = true; root.rebuild() }
-        onLoadFailed: { root.bookmarksReady = true; root.rebuild() }
+        onLoaded: { root.bookmarksReady = true; root.rebuild(); root.pushBookmarks() }
+        onLoadFailed: { root.bookmarksReady = true; root.rebuild(); root.pushBookmarks() }
     }
 
+    // The host keeps its own copy of this text: it outlives this rail, so a rail unload
+    // mid-mount leaves the mount's labels and dedup exactly where they were.
+    function pushBookmarks() {
+        var service = root.navigationPane ? root.navigationPane.ensureNetworkService() : root.service
+        if (service) service.bookmarksText = bookmarksFile.text()
+    }
+
+    Component.onCompleted: root.pushBookmarks()
+
     // The context menu's gate for the two Dropbox rows, so the pane never reaches into the rail.
-    readonly property bool dropboxReady: mounts.dropboxReady
-    readonly property alias providerService: mounts
+    readonly property bool dropboxReady: root.service !== null && root.service.dropboxReady
+    readonly property var providerService: root.service
 
     DeviceMounts {
         id: devices
@@ -143,30 +149,16 @@ Item {
     // Lists and unmounts only: activate() below routes a phone's mount-and-open through the same openShare leg a share rides.
     PhoneMounts {
         id: phones
-        listingText: mounts.mountListing
-        listingAnswered: mounts.listingAnswered
+        listingText: root.service !== null ? root.service.mountListing : ""
+        listingAnswered: root.service !== null && root.service.listingAnswered
         onMessage: function (text, isError) { root.message(text, isError) }
-        onReleased: mounts.pollMounts()
+        onReleased: if (root.service) root.service.pollMounts()
     }
 
-    NetworkMounts {
-        id: mounts
-        backend: root.backend
-        origin: root.navigationPane
-        bookmarksText: bookmarksFile.text()
-        onOpened: function (path, origin) { root.networkOpened(path, origin) }
-        onMessage: function (text, isError) { root.message(text, isError) }
-        // The bridge wait's sticky line reaches the pane that asked, or the navigating one.
-        onSticky: function (text, origin) { (origin || root.navigationPane).sticky(text) }
-        onSharesListed: function (baseUri, baseLabel, names, origin) { root.sharesListed(baseUri, baseLabel, names, origin) }
-        onPhotosOpened: function (path, origin) { root.photosOpened(path, origin) }
-        onRetryRequested: function (uri, label, password, reason, failedConnect, origin) {
-            root.networkRetryRequested(uri, label, password, reason, failedConnect, origin)
-        }
-        onCompleted: function (requestId, uri, success, reason) { RailMenu.placeSaved(root, mounts, requestId, uri, success); root.networkCompleted(requestId, uri, success, reason) }
-        // AGENTS.md "A FileView write can race a reload": mounts.rename() blocked on waitForJob() first, so this reload reads the write it caused.
-        onRenamed: root.reloadBookmarks()
-    }
+    // The mount service lives window-long in ui/WindowBody.qml's network host, injected through
+    // ui/PaneRail.qml: every call below reaches the same instance whether this rail is shown or
+    // has been unloaded mid-mount, and the answers land through ui/PaneRail.qml's own
+    // connections rather than through this rail.
 
     // Home is in neither file, so it is prepended; the merge and its first-position-wins rule are Places.favorites'.
     onPlacesStateChanged: root.rebuild()
@@ -188,17 +180,18 @@ Item {
 
     function saveNetwork(requestId, uri, label, password, origin) {
         RailMenu.placeSubmitted(root, requestId)
-        mounts.saveLocation(uri, label, password, requestId, origin)
+        root.service.saveLocation(uri, label, password, requestId, origin)
     }
-    function cancelNetwork(requestId) { mounts.cancelLocation(requestId) }
+    function cancelNetwork(requestId) { root.service.cancelLocation(requestId) }
 
     function networkResult() {
-        return mounts.result
+        return root.service !== null ? root.service.result : ""
     }
 
-    // ui/ShareBrowser.qml's own Enter action calls this with the resolved share uri; not yet one of root.entries, so it goes straight to NetworkMounts's own open-a-share path.
+    // ui/ShareBrowser.qml's own Enter action used to call this; ui/WindowBody.qml routes that
+    // overlay through the window-long host now, so this stays only for callers holding the rail.
     function mountShare(uri, label, origin) {
-        mounts.openChildShare(uri, label, origin)
+        root.service.openChildShare(uri, label, origin === undefined ? root.navigationPane : origin)
     }
 
     // The eject mark's one click: Eject for a drive, Unmount for a share. The release
@@ -241,7 +234,7 @@ Item {
             PlaceMenu.perform(action, key, root, Favourites)
             return
         }
-        RailMenu.release(action, key, devices, mounts, root)
+        RailMenu.release(action, key, devices, root.service, root)
     }
 
     Connections {
@@ -256,7 +249,7 @@ Item {
         var error = Places.recordError(entry.original)
         if (error) { root.message("Could not open " + entry.label + " · " + error, true); return }
         if (entry.path.indexOf("://") >= 0 && entry.path.indexOf("file://") !== 0) {
-            mounts.openChildShare(entry.path, entry.label)
+            root.service.openChildShare(entry.path, entry.label, root.navigationPane)
         } else {
             root.opened(entry.path.indexOf("file://") === 0 ? Mounts.decodePath(entry.path.substring(7)) : entry.path)
         }
@@ -271,11 +264,11 @@ Item {
         if (entry.kind === "home") { root.opened(entry.path); return }
         if (entry.kind === "trash") { root.trashRequested(); return }
         var rest = index - root.placesEntries.length
-        if (rest < root.networkEntries.length) mounts.activate(rest)
+        if (rest < root.networkEntries.length) root.service.activate(rest, root.navigationPane)
         // The Photos row walks the device's DCIM through the same mount-and-resolve leg a
         // phone rides; a phone itself mounts, resolves and opens the way a share does.
-        else if (entry.kind === "photos") mounts.openPhotos(entry.uri, entry.mounted, entry.deviceLabel)
-        else if (entry.kind === "phone") mounts.openShare(entry.uri, entry.mounted, entry.label)
+        else if (entry.kind === "photos") root.service.openPhotos(entry.uri, entry.mounted, entry.deviceLabel, root.navigationPane)
+        else if (entry.kind === "phone") root.service.openShare(entry.uri, entry.mounted, entry.label, false, { origin: root.navigationPane })
         else devices.activate(rest - root.networkEntries.length)
     }
 
@@ -284,7 +277,7 @@ Item {
     // Its Mount and Open rows are the row's own activation, resolved by key because the poll renumbers.
     function openPhone(key) {
         var e = phones.entries[Mounts.rowByKey(phones.entries, key)]
-        if (e) mounts.openShare(e.uri, e.mounted, e.label)
+        if (e) root.service.openShare(e.uri, e.mounted, e.label, false, { origin: root.navigationPane })
     }
 
     // Network only: neither a favourite nor a device has a bookmark line of its own shape for
@@ -323,7 +316,7 @@ Item {
         var entry = root.networkEntries[index - root.placesEntries.length]
         if (!entry)
             return
-        mounts.rename(entry.uri, trimmed)
+        root.service.rename(entry.uri, trimmed)
     }
 
     Rectangle {

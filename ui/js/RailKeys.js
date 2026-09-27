@@ -9,34 +9,34 @@
 
 // A mount-first Enter's open has landed in root: focus follows it into the folder unless the user already left the rail.
 function landed(root, sidebar) {
-    if (!sidebar.focusOnOpen) return
+    if (!sidebar || !sidebar.focusOnOpen) return
     sidebar.focusOnOpen = false
     if (root.focusView === "rail") root.focusView = "list"
 }
 
 // A Sidebar open (opened or networkOpened): the pane that asked opens it, and a waiting claim lands; no pane spends the claim.
 function openFrom(pane, path, sidebar) {
-    if (!pane) { sidebar.focusOnOpen = false; return }
+    if (!pane) { if (sidebar) sidebar.focusOnOpen = false; return }
     pane.open(path)
-    landed(pane, sidebar)
+    if (sidebar) landed(pane, sidebar)
 }
 
 // A Sidebar photos open: the pane that asked walks the device's DCIM, newest first in
 // the grid the board draws. Guarded like a navigation: no row acts while a listing is out.
 function openPhotosFrom(pane, dcim, sidebar) {
-    if (!pane) { sidebar.focusOnOpen = false; return }
+    if (!pane) { if (sidebar) sidebar.focusOnOpen = false; return }
     if (pane.listInFlight) {
         pane.message("A directory is already loading.", false)
-        sidebar.focusOnOpen = false
+        if (sidebar) sidebar.focusOnOpen = false
         return
     }
     Photos.run(pane, dcim)
-    landed(pane, sidebar)
+    if (sidebar) landed(pane, sidebar)
 }
 
 // A mount that failed has no open to land, so its focus claim goes with the error.
 function messaged(sidebar, isError) {
-    if (isError) sidebar.focusOnOpen = false
+    if (isError && sidebar) sidebar.focusOnOpen = false
 }
 
 // The rail answers ten of the key table's action names and ignores the rest while it has focus.

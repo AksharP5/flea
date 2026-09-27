@@ -83,6 +83,18 @@ FocusScope {
     readonly property alias header: header
     property var sharedSidebar: null
     property var railPane: root
+    // The window-long network host, injected by ui/WindowBody.qml (the primary pane's own,
+    // shared by the second pane): mounts, bridge waits and dialog answers outlive the rail.
+    property var sharedNetworkService: null
+    property var networkService: null
+    // Builds the host on the first need and answers it; the rail calls this when it arrives,
+    // and the typed path and the dialog call it when the rail is hidden.
+    function ensureNetworkService() {
+        if (root.networkService) return root.networkService
+        if (root.sharedNetworkService) { root.networkService = root.sharedNetworkService; return root.networkService }
+        if (root.overlayParent) root.networkService = root.overlayParent.ensureNetworkService()
+        return root.networkService
+    }
     readonly property var sidebar: root.sharedSidebar || railHost.item
     readonly property real sidebarWidth: railHost.railWidth
     // RailAdditions rule 4 and directive 77, both answered in ui/PaneRail.qml.
@@ -435,6 +447,7 @@ FocusScope {
         // Over the listing, because with auto-hide on the rail is an overlay and not a column.
         z: 3
         pane: root
+        service: root.networkService
     }
 
     Flea.PanePath {
@@ -612,7 +625,7 @@ FocusScope {
     readonly property var cursorRow: root.rowFor(root.cursorIndex)
     readonly property alias taildropService: wire.taildrop
     readonly property alias opener: wire.opener
-    readonly property var dropboxService: root.sidebar ? root.sidebar.providerService : null
+    readonly property var dropboxService: root.networkService
 
     Flea.ContextMenu {
         id: menu

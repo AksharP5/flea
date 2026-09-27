@@ -14,7 +14,7 @@ Item {
     property int cursorIndex: 0
 
     signal closed()
-    // The resolved share uri and name, the same shape openShare() already takes for a bookmarked share; ui/Sidebar.qml "mountShare" forwards this straight through.
+    // The resolved share uri and name, the same shape openShare() already takes for a bookmarked share; ui/WindowBody.qml routes this through the window-long host's openChildShare.
     signal activated(string uri, string label)
 
     // active flips instantly (open()/close() below), so shareBrowserOpen()'s IPC read never races

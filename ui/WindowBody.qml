@@ -6,6 +6,7 @@ import "." as Flea
 import "js/TextSize.js" as TextSize
 import "js/Nav.js" as Nav
 import "js/Ops.js" as Ops
+import "js/RailMenu.js" as RailMenu
 import "js/Search.js" as Search
 import "js/Startup.js" as Startup
 
@@ -89,6 +90,24 @@ Rectangle {
         preserveSort: view.dualMode
     }
 
+    // The window-long network host: mounts, the GVFS bridge wait and the dialog answers all
+    // outlive the rail Loader in ui/PaneRail.qml, so hiding the rail mid-mount kills no wait and
+    // the folder still opens. Built lazily on the first need, the rail's arrival or a typed
+    // network address, so a launch that never touches the network pays nothing for it.
+    Loader {
+        id: networkHost
+        active: false
+        sourceComponent: Flea.NetworkMounts {
+            backend: backend
+            origin: primaryPane
+        }
+    }
+    readonly property var networkService: networkHost.item
+    function ensureNetworkService() {
+        if (!networkHost.active) networkHost.active = true
+        return networkHost.item
+    }
+
     // The canvas's own top chrome: where you are on the left, how you are looking at it on
     // the right. The path lives here, which is why the status bar below carries counts instead.
     Flea.ChromeBar {
@@ -116,13 +135,16 @@ Rectangle {
         onViewChosen: function (mode) { ViewState.changeKey("view", mode) }
         // The path bar's four. The primaryPane navigates and answers for the keyboard exactly as it
         // does for every other route in, so a path typed and a row opened end the same way.
-        // Issue 194: a typed smb:// (or other network) address mounts through the rail's own
-        // open-a-share path, which lists a server's shares, rather than listing a local path.
+        // Issue 194: a typed smb:// (or other network) address mounts through the window-long
+        // host's own open-a-share path, which lists a server's shares, rather than listing a
+        // local path. A network address is never listed as a folder: with no host it is refused
+        // with a sentence, the way 0.3.5 refused the line.
         onPathEntered: function (path) {
             if (/^(smb|sftp|ftp|ftps|dav|davs|nfs|afp):\/\//i.test(path)) {
                 var target = view.currentPane
-                if (target && target.sidebar && target.sidebar.providerService) target.sidebar.providerService.openShare(path, false, "", false, { origin: target })
-                else target.open(path)
+                var service = target ? target.ensureNetworkService() : null
+                if (service) service.openShare(path, false, "", false, { origin: target })
+                else target.message("That network address cannot be opened here.", true)
                 return
             }
             view.currentPane.open(path)
@@ -160,6 +182,7 @@ Rectangle {
         anchors.top: tabBar.bottom
         anchors.bottom: bar.top
         backend: backend
+        networkService: view.networkService
         dualMode: view.dualMode
         paneFocused: view.currentPane === primaryPane
         railPane: view.currentPane
@@ -207,6 +230,7 @@ Rectangle {
                 anchors.fill: parent
                 backend: otherBackend
                 sharedSidebar: primaryPane.sidebar
+                sharedNetworkService: primaryPane.networkService
                 dualMode: true
                 listOnly: true
                 paneFocused: view.currentPane === otherPane
@@ -384,31 +408,34 @@ Rectangle {
                 networkDialog.item.mountFinished(requestId, uri, false, "The requesting pane is no longer available.")
                 return
             }
-            networkDialog.owner = networkDialog.origin.sidebar
-            // The rail was hidden mid-dialog, unloading the Sidebar that would save the place.
-            if (!networkDialog.owner) {
-                networkDialog.item.mountFinished(requestId, uri, false, "The sidebar was hidden before the place could be saved.")
-                return
-            }
-            networkDialog.owner.saveNetwork(requestId, uri, label, password, networkDialog.origin)
+            // The host outlives the rail, so hiding the rail mid-dialog loses no answer: the
+            // completed below still lands and the dialog still finishes.
+            var sidebar = networkDialog.origin ? networkDialog.origin.sidebar : null
+            if (sidebar) RailMenu.placeSubmitted(sidebar, requestId)
+            networkDialog.owner = view.ensureNetworkService()
+            networkDialog.owner.saveLocation(requestId, uri, label, password, networkDialog.origin)
         }
         function onCancelRequested(requestId) { if (networkDialog.owner) networkDialog.owner.cancelNetwork(requestId) }
     }
 
+    // The dialog's answer lands here rather than on the rail, so it lands whether the rail is
+    // shown or has been unloaded mid-mount.
     Connections {
-        target: networkDialog.owner
+        target: view.networkService
         function onNetworkCompleted(requestId, uri, success, reason) {
+            var sidebar = view.currentPane.sidebar
+            if (sidebar && view.networkService) RailMenu.placeSaved(sidebar, view.networkService, requestId, uri, success)
             if (networkDialog.item) networkDialog.item.mountFinished(requestId, uri, success, reason)
+        }
+        function onSharesListed(baseUri, baseLabel, names, origin) { if (origin) shareBrowser.open(baseUri, baseLabel, names, origin) }
+        function onNetworkRetryRequested(uri, label, password, reason, failedConnect, origin) {
+            networkDialog.openLocation(uri, label, password, reason, failedConnect, origin)
         }
     }
 
     Connections {
         target: view.currentPane.sidebar
         function onAddRequested() { networkDialog.open() }
-        function onSharesListed(baseUri, baseLabel, names, origin) { if (origin) shareBrowser.open(baseUri, baseLabel, names, origin) }
-        function onNetworkRetryRequested(uri, label, password, reason, failedConnect, origin) {
-            networkDialog.openLocation(uri, label, password, reason, failedConnect, origin)
-        }
     }
 
     // A bare Network entry's own shares, same listArea placement as EmptyState above.
@@ -435,12 +462,13 @@ Rectangle {
         function onClosed() { view.currentPane.forceActiveFocus() }
         function onActivated(uri, label) {
             view.focusPane(shareBrowser.owner === primaryPane ? 0 : 1)
-            // The rail was hidden with the browser still open, unloading the Sidebar that mounts.
-            if (!shareBrowser.owner.sidebar) {
-                shareBrowser.owner.message("Show the sidebar to open a network share.", false)
+            // The host outlives the rail, so a hidden rail never blocks a share the browser lists.
+            var service = shareBrowser.owner.ensureNetworkService()
+            if (!service) {
+                shareBrowser.owner.message("That network share cannot be opened here.", true)
                 return
             }
-            shareBrowser.owner.sidebar.mountShare(uri, label, shareBrowser.owner)
+            service.openChildShare(uri, label, shareBrowser.owner)
         }
     }
 

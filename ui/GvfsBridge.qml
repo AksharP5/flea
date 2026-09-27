@@ -10,10 +10,16 @@ import "js/GvfsBridge.js" as GvfsBridge
 // folder opening waits for the folder rather than for the process. The window stays put
 // either way until ready() carries the folder, and failed() carries the board's error line.
 // Local folders never reach here: ui/NetworkMounts.qml only ensures FUSE paths gio resolved.
+//
+// This service lives in the window-long network host rather than in the rail, so hiding the
+// rail mid-wait kills no wait: the ready or the failure still lands and the Starting line it
+// showed still clears. The bridge itself starts detached, so closing the rail or the chooser
+// never takes gvfsd-fuse down with it; no exit status ever reaches the board, and the whole
+// ensure's own deadline is the failure signal instead.
 Item {
     id: root
 
-    signal ready(string path, var origin)
+    signal ready(string path, var origin, bool isDir)
     signal starting(string text, var origin)
     signal failed(string text, var origin)
     signal notice(string text, var origin)
@@ -21,41 +27,59 @@ Item {
     // The test seam: FLEA_GVFS_FUSE names a fake bridge command the way FLEA_BIN names one.
     property string fuseEnv: Quickshell.env("FLEA_GVFS_FUSE") || ""
     property string runtimeDir: Quickshell.env("XDG_RUNTIME_DIR") || ""
-    // The C locale ui/NetworkMounts.qml pins on its own gio calls, passed in so one property sets it.
-    property var environment: ({})
-    property var state: GvfsBridge.create()
-    // Which question checkProcess is answering: the opening check, a wait poll or the final
-    // look after an exit.
+    // Which question checkProcess is answering: the directory check, the file check, a wait
+    // poll or the classify after a poll landed.
     property string pendingMode: ""
-    property bool _awaitingStart: false
+    // Set beside the deadline's own kill so the helper's late exit answers nothing: the
+    // deadline already failed the wait, and that exit belongs to no waiter anymore.
+    property bool _ensureTimedOut: false
+
+    // D-103: flow, never state, which shadows Item.state and was the tree's own qmllint
+    // property-override.
+    property var flow: GvfsBridge.create()
 
     function dir() { return GvfsBridge.bridgeDir(root.runtimeDir) }
 
     function ensure(path, label, origin) {
-        run(GvfsBridge.ensure(root.state, { path: path, label: label, origin: origin,
+        root.run(GvfsBridge.ensure(root.flow, { path: path, label: label, origin: origin,
             bridgeDir: root.dir(), fuseBin: GvfsBridge.fuseBin(root.fuseEnv) }))
+    }
+
+    function cancel() {
+        root.pendingMode = ""
+        if (checkProcess.running) checkProcess.running = false
+        root.stopWaiting()
+        root.run(GvfsBridge.cancel(root.flow))
     }
 
     function run(actions) {
         for (var i = 0; i < actions.length; i++) {
             var action = actions[i]
-            if (action.op === "check" || action.op === "verify") {
+            if (action.op === "check" || action.op === "checkFile" || action.op === "classify") {
                 root.pendingMode = action.op
-                checkProcess.command = ["test", "-d", action.path]
+                // Directories answer -d, anything else -e: a file under a live bridge is ready
+                // without any start, and only a path that is neither starts one.
+                checkProcess.command = action.op === "check" || action.op === "classify"
+                    ? ["test", "-d", action.path] : ["test", "-e", action.path]
                 checkProcess.running = true
+                ensureDeadline.restart()
             } else if (action.op === "start") {
-                root._awaitingStart = true
-                bridgeProcess.command = action.argv
-                bridgeProcess.running = true
+                // Detached on purpose: an attached child dies with this service, and killing the
+                // rail or the chooser must never take gvfsd-fuse down for every app. There is no
+                // exit to wait for, so the folder poll below is the whole failure signal; the
+                // single flight in ensure() above is what keeps one wait to one start, because a
+                // detached spawn cannot be told apart from another one by a running flag.
+                Quickshell.execDetached(action.argv)
                 pollTimer.restart()
                 startingTimer.restart()
+                ensureDeadline.restart()
             } else if (action.op === "ready") {
-                stopWaiting()
-                root.ready(action.path, action.origin)
+                root.stopWaiting()
+                root.ready(action.path, action.origin, action.isDir)
             } else if (action.op === "show") {
                 root.starting(action.text, action.origin)
             } else if (action.op === "fail") {
-                stopWaiting()
+                root.stopWaiting()
                 root.failed(action.text, action.origin)
             } else if (action.op === "refuse") {
                 root.notice(action.text, action.origin)
@@ -64,15 +88,36 @@ Item {
     }
 
     function stopWaiting() {
+        ensureDeadline.stop()
         pollTimer.stop()
         startingTimer.stop()
+    }
+
+    // One deadline for the whole ensure, checking, file-checking, waiting and classifying.
+    // Whichever leg is still running when it fires is the one that missed it. The flag is set
+    // only beside a real kill, so a deadline that lands between two helpers arms nothing for a
+    // later wait to swallow: one kill pairs with exactly one late exit.
+    Timer {
+        id: ensureDeadline
+        interval: GvfsBridge.ENSURE_MS
+        repeat: false
+        onTriggered: {
+            if (root.flow.phase === "idle" && !root.flow.waiter)
+                return
+            if (checkProcess.running) {
+                root._ensureTimedOut = true
+                checkProcess.running = false
+            }
+            root.stopWaiting()
+            root.run(GvfsBridge.onTimeout(root.flow))
+        }
     }
 
     Timer {
         id: startingTimer
         interval: GvfsBridge.STARTING_MS
         repeat: false
-        onTriggered: root.run(GvfsBridge.onElapsed(root.state))
+        onTriggered: root.run(GvfsBridge.onElapsed(root.flow))
     }
 
     Timer {
@@ -80,11 +125,11 @@ Item {
         interval: GvfsBridge.POLL_MS
         repeat: true
         onTriggered: {
-            if (checkProcess.running || !root.state.waiter
-                    || root.state.phase !== "waiting")
+            if (checkProcess.running || !root.flow.waiter
+                    || root.flow.phase !== "waiting")
                 return
             root.pendingMode = "poll"
-            checkProcess.command = ["test", "-d", root.state.waiter.path]
+            checkProcess.command = ["test", "-e", root.flow.waiter.path]
             checkProcess.running = true
         }
     }
@@ -92,31 +137,21 @@ Item {
     Process {
         id: checkProcess
         onExited: function (exitCode) {
+            if (root._ensureTimedOut) {
+                root._ensureTimedOut = false
+                root.pendingMode = ""
+                return
+            }
             var mode = root.pendingMode
             root.pendingMode = ""
             if (mode === "poll")
-                root.run(GvfsBridge.onPolled(root.state, exitCode === 0))
-            else if (mode === "verify")
-                root.run(GvfsBridge.onVerified(root.state, exitCode === 0))
+                root.run(GvfsBridge.onPolled(root.flow, exitCode === 0))
+            else if (mode === "checkFile")
+                root.run(GvfsBridge.onCheckedFile(root.flow, exitCode === 0))
+            else if (mode === "classify")
+                root.run(GvfsBridge.onClassified(root.flow, exitCode === 0))
             else
-                root.run(GvfsBridge.onChecked(root.state, exitCode === 0))
-        }
-    }
-
-    Process {
-        id: bridgeProcess
-        // Attached rather than detached, so the exit status reaches the error line: the open
-        // waits for the folder and not for this process, which is the detached half of it.
-        environment: root.environment
-        onStarted: root._awaitingStart = false
-        onRunningChanged: {
-            if (root._awaitingStart && !running) {
-                root._awaitingStart = false
-                root.run(GvfsBridge.onStartFailed(root.state))
-            }
-        }
-        onExited: function (exitCode) {
-            root.run(GvfsBridge.onExited(root.state, exitCode))
+                root.run(GvfsBridge.onChecked(root.flow, exitCode === 0))
         }
     }
 }

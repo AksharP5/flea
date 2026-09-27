@@ -118,6 +118,20 @@ function run(check) {
     var orphan = { focusOnOpen: true }
     RailKeys.openFrom(null, "/run/user/1000/gvfs/mtp", orphan)
     check("an open with no pane opens nothing and spends the claim", orphan.focusOnOpen, false)
+    // The rail-hidden open: the window-long host answers with no Sidebar alive, so a null rail
+    // must open the folder without throwing and without moving any focus.
+    var hidden = railPane()
+    hidden.opened = []
+    hidden.open = function (path) { this.opened.push(path) }
+    RailKeys.openFrom(hidden, "/run/user/1000/gvfs/smb", null)
+    check("an open with no rail opens all the same and moves no focus",
+          hidden.opened.join(",") + "|" + hidden.focusView, "/run/user/1000/gvfs/smb|rail")
+    RailKeys.openFrom(null, "/run/user/1000/gvfs/smb", null)
+    check("an open with neither pane nor rail opens nothing and throws nothing", true, true)
+    RailKeys.landed(hidden, null)
+    check("a landing with no rail moves no focus and throws nothing", hidden.focusView, "rail")
+    RailKeys.messaged(null, true)
+    check("an error with no rail to claim spends nothing and throws nothing", true, true)
     var failing = { focusOnOpen: true }
     RailKeys.messaged(failing, false)
     check("an ordinary message keeps the claim", failing.focusOnOpen, true)

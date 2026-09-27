@@ -23,6 +23,9 @@ Item {
     property Item _pendingOrigin: null
 
     signal opened(string path, var origin)
+    // A FUSE path that is a file, not a folder: the opener takes it, so a typed network URL
+    // naming a file is never listed as a folder.
+    signal openFileRequested(string path, var origin)
     // The rail's Photos row: the resolved FUSE folder's DCIM, walked newest first into the grid.
     signal photosOpened(string path, var origin)
     signal message(string text, bool isError)
@@ -78,6 +81,10 @@ Item {
     // Issue 194's repair: gio info answered with a folder that is not the requested share.
     // Its own path is peeked first, then the FUSE root it names, all through backend.peek,
     // so no new poll is added and a second open waits on the same single-flight guard.
+    // The first peek waits on the bridge first (I-2): with the bridge down the FUSE root peek
+    // is empty, so peeking before the bridge is up answers "no browsable folder" without ever
+    // starting it. _repairWaiting covers that bridge leg, _repairActive the peek legs after it.
+    property bool _repairWaiting: false
     property string _repairUri: ""
     property string _repairPath: ""
     property string _repairRoot: ""
@@ -229,14 +236,26 @@ Item {
         onWrote: root.renamed()
     }
 
-    // Phones and shares open through the GVFS FUSE bridge: the folder gio resolved is held
-    // here until the bridge serves it, so the window stays put meanwhile and stays there on
-    // a bridge that will not start.
+    // Phones and shares open through the GVFS FUSE bridge, hosted window-long rather than
+    // in the rail: hiding the rail mid-wait kills no wait, and the ready, the failure and the
+    // Starting line it showed all still land. Files land on openFileRequested, so a typed
+    // network URL naming a file is never listed as a folder.
     GvfsBridge {
         id: bridge
-        environment: root.gioEnvironment
-        onReady: function (path, origin) {
+        onReady: function (path, origin, isDir) {
+            if (root._repairWaiting) {
+                root._repairWaiting = false
+                root._repairActive = true
+                mountTimeout.restart()
+                root.backend.peek(root._repairPath, 1, false)
+                return
+            }
             root.sticky("", origin)
+            if (!isDir) {
+                root._photosPending = false
+                root.openFileRequested(path, origin)
+                return
+            }
             if (root._photosPending) {
                 root._photosPending = false
                 root.photosOpened(Photos.dcimPath(path), origin)
@@ -246,12 +265,26 @@ Item {
         }
         onStarting: function (text, origin) { root.sticky(text, origin) }
         onFailed: function (text, origin) {
+            if (root._repairWaiting) {
+                root._repairWaiting = false
+                root.repairFailed()
+                return
+            }
             root.result = "failed"
             root._photosPending = false
             root.sticky("", origin)
             root.message(text, true)
         }
-        onNotice: function (text, origin) { root.message(text, false) }
+        // The bridge's busy refusal reaches a repair the same way: a second bridge is never
+        // started, so the repair ends instead of waiting on a wait it did not start.
+        onNotice: function (text, origin) {
+            if (root._repairWaiting) {
+                root._repairWaiting = false
+                root.repairFailed()
+                return
+            }
+            root.message(text, false)
+        }
     }
 
     // Three sources, deduped on the normalized uri (see ui/js/Mounts.js "normalize"): a live gio mount wins over a bookmark for the same share even when the trailing slash differs.
@@ -301,18 +334,20 @@ Item {
 
     // A favourite's path is already real; a share needs mounting (if not live) then resolving.
     // A cloud row's path is already real too: its mount is the tool that made it, not Flea's.
-    function activate(index) {
+    // origin rides along explicitly, because this service outlives the rail that renders it and
+    // the rail's own origin is gone by the time a hidden-rail answer lands.
+    function activate(index, origin) {
         var e = root.entries[index]
         if (!e) return
         if (e.kind === "cloud") {
-            root.opened(e.path, root.origin)
+            root.opened(e.path, origin === undefined ? root.origin : origin)
             return
         }
         if (e.kind === "share") {
-            root.openShare(e.uri, e.mounted, e.label)
+            root.openShare(e.uri, e.mounted, e.label, false, { origin: origin === undefined ? root.origin : origin })
             return
         }
-        root.opened(e.path, root.origin)
+        root.opened(e.path, origin === undefined ? root.origin : origin)
     }
 
     function passwordFor(uri) {
@@ -352,15 +387,15 @@ Item {
     // still clears the flag on its way out.
     function openPhotos(uri, mounted, label, origin) {
         root._photosPending = true
-        root.openShare(uri, mounted, label, false, { origin: origin })
+        root.openShare(uri, mounted, label, false, { origin: origin === undefined ? root.origin : origin })
     }
 
     function openShare(uri, alreadyMounted, label, authenticated, request) {
         request = request || ({})
-        // An open is single flight over four children and the repair peek, the share listing
-        // included, so a new one must not start over the running leg and hand that leg's
-        // deadline to itself; see "listShares".
-        if (mountProcess.running || authProcess.running || infoProcess.running || listSharesProcess.running || root._repairActive) {
+        // An open is single flight over four children, the bridge wait and the repair peek,
+        // the share listing included, so a new one must not start over the running leg and hand
+        // that leg's deadline to itself; see "listShares".
+        if (mountProcess.running || authProcess.running || infoProcess.running || listSharesProcess.running || root._repairActive || root._repairWaiting) {
             // A guard that returns in silence names nothing at all, and a leg can hold it 15 s.
             var reason = "Another network location is still opening; give it a moment."
             root._photosPending = false
@@ -439,6 +474,7 @@ Item {
         var uri = root._repairUri
         var refused = root._repairFailed
         root._repairActive = false
+        root._repairWaiting = false
         root._repairRoot = ""
         root._repairPath = ""
         if (refused) root.failMount("Connect failed: network location was refused", root.passwordFor(uri))
@@ -513,6 +549,9 @@ Item {
         root._pendingPassword = ""
         root._authAwaitingStart = false
         root._repairActive = false
+        root._repairWaiting = false
+        bridge.cancel()
+        root.sticky("", root._pendingOrigin)
         mountTimeout.stop()
         if (mountProcess.running) { root._mountTimedOut = true; mountProcess.running = false }
         if (infoProcess.running) { root._infoTimedOut = true; infoProcess.running = false }
@@ -654,13 +693,15 @@ Item {
                 // Issue 194: gio answered with a folder that is not this share (a user its line
                 // drops above all). Whether it exists is the backend's own answer to say: a real
                 // directory still opens, a missing one is repaired out of the FUSE root it names.
+                // The peek waits on the bridge first: with the bridge down that peek is empty and
+                // the repair ends as "no browsable folder" without ever starting the bridge.
                 root._repairUri = root._pendingUri
                 root._repairPath = path
                 root._repairFailed = failed
                 root._repairRoot = ""
-                root._repairActive = true
-                mountTimeout.restart()
-                root.backend.peek(path, 1, false)
+                root._repairWaiting = true
+                root._repairActive = false
+                bridge.ensure(path, root._pendingLabel, root._pendingOrigin)
                 return
             }
             if (exitCode === 0 && path.length > 0) {

@@ -174,6 +174,8 @@ Item {
         id: network
         onCompleted: function(requestId, uri, success, reason) { root.networkCompleted(requestId, uri, success, reason) }
         onOpened: function(path) { if (root.awaitingNetwork) root.chosen(path) }
+        // A FUSE path that is a file: the chooser selects it, the way a favourite file resolves.
+        onOpenFileRequested: function(path) { if (root.awaitingNetwork) root.chosen(path) }
         onMessage: function(text, error) { root.picker.say(text, error) }
         onRetryRequested: function(uri, label, password, reason, failed) {
             if (root.awaitingNetwork) root.picker.retryNetwork(uri, label, password, reason, failed)

@@ -2133,6 +2133,20 @@ the cloud table to the new `ui/js/Cloud.js`, 67 lines inside both budgets, the h
 `ui/js/Status.js`, 188 to 199, and the rclone verdict to `src/backend/durable.rs`, 223 to 249,
 each inside its budget. Each count re-derived with `wc -l`.
 
+The GVFS bridge review moves four recorded ceilings, each re-derived with `wc -l`: `ui/NetworkMounts.qml`
+703 to 744 for the repair waiting on the bridge before its first peek, the file-or-folder ready that
+routes a typed file URL to the opener instead of listing it, the repair-wait in the single-flight
+guard and cancel, and the `openFileRequested` signal; `ui/WindowBody.qml` 507 to 535 for the lazy
+window-long network host Loader, the typed address opening through it instead of the rail, the dialog
+mounting and landing through it so a rail unload mid-mount loses no answer, and the share browser
+activating through it; `ui/Pane.qml` 702 to 715 for the injected network service, its first-need
+builder and the dropbox service reading the host rather than the rail; `ui/Ipc.qml` 796 to 801 for the
+result reader preferring the host while the rail is hidden. `ui/GvfsBridge.qml` 122 to 157 for the
+detached start, the whole-ensure deadline with its consume-once flag and the check-file-classify ops,
+`ui/Sidebar.qml` falling 553 to 546 inside its recorded ceiling for the injected service, and
+`ui/js/GvfsBridge.js` 177 to 198 inside its 200 soft budget for the timeout, the file-aware checks
+and the classify.
+
 `src/backend/ops.rs` split to `src/backend/renamecompat.rs` at 455: composing PR 35's safe rclone
 rename into the release tree put the rename exception over the 400-line hard cap, so the exception
 and its tests moved to the module that already owned classifying which rename failures need it.

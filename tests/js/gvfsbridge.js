@@ -28,10 +28,7 @@ function run(check) {
     check("the failure line is the board's",
         GvfsBridge.failedLine("Pixel 8", "gvfsd-fuse exited with status 1"),
         "Pixel 8 needs the GVFS bridge, and it would not start · gvfsd-fuse exited with status 1")
-    check("an exit status words itself the way the board does",
-        GvfsBridge.exitReason(1), "gvfsd-fuse exited with status 1")
-    check("a helper that never ran says so instead",
-        GvfsBridge.startFailedReason(), "gvfsd-fuse could not start")
+    // The deadline's own wording is pinned beside its behaviour below.
     check("a Starting line reads as one", GvfsBridge.isStartingLine("Starting the GVFS bridge for Pixel 8"), true)
     check("any other sticky line does not", GvfsBridge.isStartingLine("Compressing 2 items to .zip"), false)
     check("the Starting line waits out the board's 250 ms", GvfsBridge.STARTING_MS, 250)
@@ -61,12 +58,18 @@ function run(check) {
     check("ready names the folder asked for", servedActs[0].path, phone)
     check("and the bridge was never started", served.starts, 0)
 
-    // The unserved folder starts the bridge exactly once, however often it is asked.
+    // The unserved folder is file-checked before anything starts: a file under a
+    // served bridge must never start a redundant one (I-3), so test -d failing is not
+    // yet a reason to start.
     var slow = GvfsBridge.create()
     var first = GvfsBridge.ensure(slow, req)
     check("an unserved folder is checked first", first.length + "|" + first[0].op, "1|check")
     check("a timer during the check claims nothing", GvfsBridge.onElapsed(slow).length, 0)
-    var start = GvfsBridge.onChecked(slow, false)
+    var fileCheck = GvfsBridge.onChecked(slow, false)
+    check("a failed directory check asks for the file check, not a start",
+        fileCheck.length + "|" + fileCheck[0].op, "1|checkFile")
+    check("still nothing started", slow.starts, 0)
+    var start = GvfsBridge.onCheckedFile(slow, false)
     check("a missing folder starts the bridge", start.length + "|" + start[0].op, "1|start")
     check("with gvfsd's own argv", start[0].argv.join(" "),
         "/usr/lib/gvfsd-fuse " + dir + " -f")
@@ -80,49 +83,59 @@ function run(check) {
         stranger[0].text, "Another network location is still opening; give it a moment.")
     check("still exactly one start", slow.starts, 1)
 
+    // A file under a served bridge is ready without any start.
+    var filed = GvfsBridge.create()
+    GvfsBridge.ensure(filed, { path: phone + "/note.txt", label: "note", origin: null,
+        bridgeDir: dir, fuseBin: req.fuseBin })
+    GvfsBridge.onChecked(filed, false)
+    var fileReady = GvfsBridge.onCheckedFile(filed, true)
+    check("a served file is ready on its file check",
+        fileReady.length + "|" + fileReady[0].op + "|" + fileReady[0].isDir, "1|ready|false")
+    check("and the bridge was never started for it", filed.starts, 0)
+
     // The window stays put: no ready and no failure until the folder is served.
     check("a fruitless poll answers nothing at all", GvfsBridge.onPolled(slow, false).length, 0)
     var show = GvfsBridge.onElapsed(slow)
     check("the 250 ms timer shows the Starting line", show.length + "|" + show[0].op, "1|show")
     check("word for word", show[0].text, "Starting the GVFS bridge for Pixel 8")
-    var landed = GvfsBridge.onPolled(slow, true)
-    check("the folder landing opens it", landed.length + "|" + landed[0].op + "|" + landed[0].path,
-        "1|ready|" + phone)
+    var classifying = GvfsBridge.onPolled(slow, true)
+    check("a served poll classifies before it opens",
+        classifying.length + "|" + classifying[0].op, "1|classify")
+    var landed = GvfsBridge.onClassified(slow, true)
+    check("the folder landing opens it",
+        landed.length + "|" + landed[0].op + "|" + landed[0].path + "|" + landed[0].isDir,
+        "1|ready|" + phone + "|true")
     check("and the wait is over", slow.phase, "idle")
 
-    // The exits-1 fake: one start, a final look, then the board's failure line.
-    var dead = GvfsBridge.create()
-    GvfsBridge.ensure(dead, req)
-    GvfsBridge.onChecked(dead, false)
-    var verify = GvfsBridge.onExited(dead, 1)
-    check("an exited bridge is verified before it is mourned",
-        verify.length + "|" + verify[0].op, "1|verify")
-    var failed = GvfsBridge.onVerified(dead, false)
-    check("the failure answers once", failed.length + "|" + failed[0].op, "1|fail")
+    // One deadline for the whole ensure: a hung check, a bridge that never serves and a
+    // classify that never answers all end in the board's failure line, once.
+    var hungCheck = GvfsBridge.create()
+    GvfsBridge.ensure(hungCheck, req)
+    check("the whole ensure shares one deadline", GvfsBridge.ENSURE_MS, 15000)
+    check("a timeout words itself the way the board does",
+        GvfsBridge.timeoutReason(), "waiting for the folder timed out")
+    var hungFailed = GvfsBridge.onTimeout(hungCheck)
+    check("a hung check fails at the deadline", hungFailed.length + "|" + hungFailed[0].op, "1|fail")
     check("word for word",
-        failed[0].text, "Pixel 8 needs the GVFS bridge, and it would not start · gvfsd-fuse exited with status 1")
-    check("still exactly one start", dead.starts, 1)
-    var overtook = GvfsBridge.create()
-    GvfsBridge.ensure(overtook, req)
-    GvfsBridge.onChecked(overtook, false)
-    GvfsBridge.onExited(overtook, 1)
-    var late = GvfsBridge.onVerified(overtook, true)
-    check("a folder that landed after all opens instead", late.length + "|" + late[0].op, "1|ready")
-
-    // The never-serves fake: the bridge stays up, the polls stay empty, the window stays put.
+        hungFailed[0].text, "Pixel 8 needs the GVFS bridge, and it would not start · waiting for the folder timed out")
+    check("and the wait is over", hungCheck.phase, "idle")
     var hung = GvfsBridge.create()
     GvfsBridge.ensure(hung, req)
     GvfsBridge.onChecked(hung, false)
+    GvfsBridge.onCheckedFile(hung, false)
     check("a hung poll answers nothing", GvfsBridge.onPolled(hung, false).length, 0)
     check("a late exit is not a second start", hung.starts, 1)
-    check("an exit after the open is nobody's failure", GvfsBridge.onExited(served, 0).length, 0)
-
-    // A binary that never ran fails loudly rather than waiting out the polls.
-    var missing = GvfsBridge.create()
-    GvfsBridge.ensure(missing, req)
-    GvfsBridge.onChecked(missing, false)
-    var unstarted = GvfsBridge.onStartFailed(missing)
-    check("an unstarted bridge fails at once", unstarted.length + "|" + unstarted[0].op, "1|fail")
-    check("naming the binary and not a status",
-        unstarted[0].text, "Pixel 8 needs the GVFS bridge, and it would not start · gvfsd-fuse could not start")
+    var hungFailed2 = GvfsBridge.onTimeout(hung)
+    check("a bridge that never serves fails at the deadline",
+        hungFailed2.length + "|" + hungFailed2[0].op, "1|fail")
+    var sorting = GvfsBridge.create()
+    GvfsBridge.ensure(sorting, req)
+    GvfsBridge.onChecked(sorting, false)
+    GvfsBridge.onCheckedFile(sorting, false)
+    GvfsBridge.onPolled(sorting, true)
+    var sortingFailed = GvfsBridge.onTimeout(sorting)
+    check("a classify that never answers fails at the deadline",
+        sortingFailed.length + "|" + sortingFailed[0].op, "1|fail")
+    check("a timeout with nobody waiting answers nothing", GvfsBridge.onTimeout(served).length, 0)
+    check("an exit after the open is nobody's failure", GvfsBridge.onTimeout(served).length, 0)
 }
