@@ -30,9 +30,6 @@ Item {
     // The backend's meta answer for the open archive, null until it lands; archiveRow is the row it was asked for.
     property var archiveMeta: null
     property int archiveRow: -1
-    // The EXIF orientation of the open image, 0 while a JPEG's is still being read; PreviewImage waits for it.
-    property int imageRow: -1
-    property int imageTurn: 1
     // MediaPdf rule 6's fourth fact: Qt carries no sample-rate key at all (QMediaMetaData::Key, Qt 6.11), so the number is the backend probe's, asked the way an archive's is.
     property int mediaRate: 0
     property int mediaRow: -1
@@ -146,8 +143,6 @@ Item {
         root.archiveRow = -1
         root.mediaRate = 0
         root.mediaRow = -1
-        root.imageRow = -1
-        root.imageTurn = 1
         if (root.pane) root.pane.listArea.forceActiveFocus()
     }
 
@@ -176,22 +171,10 @@ Item {
         root.active = true
         mediaLoader.source = root.isMedia ? "PreviewMedia.qml" : ""
         pdfLoader.source = root.isPdf ? "PdfViewer.qml" : ""
-        root.askImage()
         imageLoader.source = root.isImage ? "PreviewImage.qml" : ""
         root.askArchive()
         root.askMedia()
         root.revealStrip()
-    }
-
-    // One row, only while a JPEG is the thing open: Qt fits its decode before it turns, so a turned photo
-    // re-fits when its EXIF orientation lands; the decode never waits for it. Any other path needs no read.
-    function askImage() {
-        root.imageRow = -1
-        root.imageTurn = 1
-        if (root.isImage && root.pane && /\.(jpe?g|jfif)$/i.test(root.path)) {
-            root.imageRow = root.pane.cursorIndex
-            root.pane.backend.askMeta(root.imageRow, false, false, false)
-        }
     }
 
     // One row, only while an archive is the thing open: the same no-sweep rule the column follows.
@@ -212,17 +195,11 @@ Item {
 
     Connections {
         target: root.pane ? root.pane.backend : null
-        function onMeta(row, w, h, orient, durationMs, sampleRate, entries, unpacked, archiveFailed, names, lines, partial, linesFailed, target, targetDir, owner) {
+        function onMeta(row, w, h, durationMs, sampleRate, entries, unpacked, archiveFailed, names, lines, partial, linesFailed, target, targetDir, owner) {
             if (root.isArchive && row === root.archiveRow)
                 root.archiveMeta = { entries: entries, unpacked: unpacked, archiveFailed: archiveFailed, names: names }
             if (root.isMedia && row === root.mediaRow)
                 root.mediaRate = sampleRate
-        }
-        function onMetaResult(message) {
-            if (root.isImage && root.imageRow >= 0 && message.row === root.imageRow) {
-                root.imageTurn = message.orient || 1
-                root.imageRow = -1
-            }
         }
     }
 
@@ -232,7 +209,6 @@ Item {
         function onRowsChanged() {
             if (root.active && root.isArchive && root.archiveMeta === null) root.askArchive()
             if (root.active && root.isMedia && root.mediaRate === 0) root.askMedia()
-            if (root.active && root.isImage && root.imageRow >= 0) root.askImage()
         }
     }
 
@@ -263,6 +239,8 @@ Item {
                 root.close()
         }
         onPositionChanged: root.revealStrip()
+        // The ground takes the wheel, so a scroll over the overlay never reaches the listing behind it.
+        onWheel: function (wheel) { wheel.accepted = true }
     }
 
     // PdfViewer.html and MediaPlayer.html draw a pane with its own edge: on the surface colour alone the inset vanished into the listing behind it.
@@ -343,10 +321,7 @@ Item {
             Loader {
                 id: imageLoader
                 anchors.fill: parent
-                onLoaded: {
-                    item.turn = Qt.binding(function () { return root.imageTurn })
-                    item.path = Qt.binding(function () { return root.path })
-                }
+                onLoaded: item.path = Qt.binding(function () { return root.path })
             }
 
             // The canvas's PdfViewer, source not sourceComponent, so QtQuick.Pdf loads on the first PDF and never for a folder without one.

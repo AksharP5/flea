@@ -99,7 +99,7 @@ Item {
     // each, so the centre stays put however long the count or the disk line gets.
     readonly property real zoneSpan: Math.max(0, root.width - 2 * Theme.spacing.rowPaddingX)
     readonly property real zoneWidth: Math.round(root.zoneSpan / 3)
-    readonly property real hintWidth: root.undoSplit ? hintRestMetrics.width : hintMetrics.width
+    readonly property real hintWidth: hintMetrics.width
     signal transferCancelRequested(int id)
     implicitHeight: Theme.chromeHeight + detailView.height
 
@@ -177,9 +177,11 @@ Item {
         root.transferCancelRequested(root.transfer.id)
     }
 
-    // The click is the key: the strip's own pane undoes, the way Focus.js's undo case does.
+    // The click passes the rename, search and selection gates the z key passes.
     function clickUndo() {
-        if (root.pane) Ops.undo(root.pane)
+        if (!root.pane || root.pane.selectionBand !== null || root.pane.renameEditor() !== null) return
+        if (root.pane.searchMode === "typing" || root.pane.filterTyping) return
+        Ops.undo(root.pane)
     }
 
     function escapePressed() {
@@ -308,20 +310,27 @@ Item {
         // Rule 2: the disk keeps its zone whatever the transient says, so the pair share this and elide
         // inside it rather than growing into the facts beside them.
         readonly property real room: root.transientRoom
-        readonly property real busyRoom: root.busy ? busyMark.width + centre.spacing : 0
+        readonly property real busyRoom: root.busy ? busyLoader.width + centre.spacing : 0
         spacing: root.busy ? Theme.spacing.gap : 0
 
-        // The bridge board's busy mark, caption-sized because the bar's own text is.
-        Flea.Spinner {
-            id: busyMark
+        // The bridge board's busy mark, built only while a Starting line stands.
+        Loader {
+            id: busyLoader
+            active: root.busy
             visible: root.busy
-            width: visible ? Theme.font.caption : 0
-            height: Theme.font.caption
-            color: Theme.color.muted
+            anchors.verticalCenter: parent.verticalCenter
+            width: root.busy ? Theme.chromeMarkSize : 0
+            height: Theme.chromeMarkSize
+            sourceComponent: Flea.Spinner {
+                width: Theme.chromeMarkSize
+                height: Theme.chromeMarkSize
+                color: Theme.color.muted
+            }
         }
 
         Text {
             id: primary
+            anchors.verticalCenter: parent.verticalCenter
             text: root.centreText()
             color: root.centreColor()
             width: Math.min(implicitWidth, Math.max(0, centre.room - secondary.width - undoDot.width - undoLink.width - centre.busyRoom))
@@ -331,13 +340,27 @@ Item {
             textFormat: Text.PlainText
         }
 
+        Text {
+            id: secondary
+            anchors.verticalCenter: parent.verticalCenter
+            text: root.restText
+            color: Theme.color.muted
+            width: Math.min(implicitWidth, Math.max(0, centre.room - undoDot.width - undoLink.width - Math.min(primary.implicitWidth,
+                Math.max(0, centre.room - root.hintWidth))))
+            font.family: Theme.font.family
+            font.pixelSize: Theme.font.caption
+            elide: Text.ElideRight
+            textFormat: Text.PlainText
+        }
+
         // The undo target: muted at rest like the hint it was, foreground under the pointer while
-        // its middot stays muted.
+        // its middot stays muted. Empty unless split, so no hidden text is held.
         Text {
             id: undoDot
+            anchors.verticalCenter: parent.verticalCenter
             visible: root.undoSplit
             width: visible ? implicitWidth : 0
-            text: " · "
+            text: root.undoSplit ? " · " : ""
             color: Theme.color.muted
             font.family: Theme.font.family
             font.pixelSize: Theme.font.caption
@@ -346,9 +369,10 @@ Item {
 
         Text {
             id: undoLink
+            anchors.verticalCenter: parent.verticalCenter
             visible: root.undoSplit
             width: visible ? implicitWidth : 0
-            text: "z undoes"
+            text: root.undoSplit ? "z undoes" : ""
             color: undoHover.hovered ? Theme.color.foreground : Theme.color.muted
             font.family: Theme.font.family
             font.pixelSize: Theme.font.caption
@@ -363,18 +387,6 @@ Item {
                 onTapped: root.clickUndo()
             }
         }
-
-        Text {
-            id: secondary
-            text: root.restText
-            color: Theme.color.muted
-            width: Math.min(implicitWidth, Math.max(0, centre.room - undoDot.width - undoLink.width - Math.min(primary.implicitWidth,
-                Math.max(0, centre.room - root.hintWidth))))
-            font.family: Theme.font.family
-            font.pixelSize: Theme.font.caption
-            elide: Text.ElideRight
-            textFormat: Text.PlainText
-        }
     }
 
     TextMetrics {
@@ -382,13 +394,6 @@ Item {
         font: secondary.font
         text: root.keyHint.length ? " · " + root.keyHint
             + (root.secondaryText !== " · " + root.keyHint ? " · …" : "") : ""
-    }
-
-    TextMetrics {
-        id: hintRestMetrics
-        font: secondary.font
-        text: root.keyHintRest.length ? " · " + root.keyHintRest
-            + (root.restText !== " · " + root.keyHintRest ? " · …" : "") : ""
     }
 
     Rectangle {

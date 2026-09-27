@@ -10,20 +10,13 @@ Item {
     id: root
 
     property string path: ""
-    // The EXIF orientation from the backend's meta answer, 1 until it lands; 5 to 8 swap the sides, because Qt fits its
-    // decode before it turns. The decode never waits for it: an upright photo is done, a turned one re-fits on the answer.
-    property int turn: 1
-    // True once this path has drawn, so a re-fit keeps its picture and its "image" status while the new decode runs.
-    property bool drawn: false
-    onPathChanged: root.drawn = false
-    readonly property bool showing: picture.status === Image.Ready || (root.drawn && picture.status === Image.Loading)
 
     // The same name the media and PDF panes give their unreadable state, so Preview.qml tests one property.
     readonly property bool failed: picture.status === Image.Error
     // Every state is terminal: a decode ends Ready or Error, and a vanished file ends Error too.
     readonly property string status: {
         if (root.failed) return "This image could not be read."
-        return root.showing ? "image" : "loading"
+        return picture.status === Image.Ready ? "image" : "loading"
     }
     readonly property string name: root.path.substring(root.path.lastIndexOf("/") + 1)
 
@@ -44,11 +37,9 @@ Item {
         y: root.vector ? 0 : Math.round((root.height - height) / 2)
         width: root.vector ? root.width : implicitWidth * fit
         height: root.vector ? root.height : implicitHeight * fit
-        visible: root.showing
+        visible: picture.status === Image.Ready
         // Format.fileUri, not a concatenation: a # or a ? in the name would truncate a hand-built URI.
         source: root.path.length > 0 ? Format.fileUri(root.path) : ""
-        retainWhileLoading: true
-        onStatusChanged: if (picture.status === Image.Ready) root.drawn = true
         fillMode: root.vector ? Image.PreserveAspectFit : Image.Stretch
         // A phone keeps a portrait photo's turn in EXIF, and Qt leaves it unapplied unless asked.
         autoTransform: true
@@ -57,8 +48,8 @@ Item {
         // Decoded no larger than the surface: the same 6016x3900 PNG is 94 MB of texture at full size
         // and 8 MB bound to this box's 2099x1156 surface, measured, for 17 ms more decode.
         // corner: a zero here means unbounded to Qt, so the floor is 1 and never 0.
-        sourceSize.width: Math.max(1, Math.round(root.turn >= 5 ? root.height : root.width))
-        sourceSize.height: Math.max(1, Math.round(root.turn >= 5 ? root.width : root.height))
+        sourceSize.width: Math.max(1, Math.round(root.width))
+        sourceSize.height: Math.max(1, Math.round(root.height))
     }
 
     // A failed decode is a mark and a sentence, never a bare ground: the blank-frame class again otherwise.

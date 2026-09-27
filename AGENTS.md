@@ -2042,6 +2042,13 @@ to 793 for the undo target's own `textState` in the footer JSON (the controller'
 beside the transfer-card headline, writing flag and undo control state that one extended line
 already carries.
 
+Fix-status takes `ui/StatusBar.qml` from its recorded 446 to 451, re-derived with `wc -l`:
+the busy mark moves behind a `Loader` active on busy and sizes from `Theme.chromeMarkSize`
+with every centre child vertically centred, the undo texts stay empty unless split, the
+secondary lane moves ahead of the undo target so esc keeps the 0.3.5 order ahead of z,
+`hintWidth` returns to `hintMetrics.width`, and `clickUndo` passes the rename, search
+typing and selection band gates the z key passes.
+
 Integrated on the 0.3.6 branch after #194, the hidden-rail eject takes `ui/WindowBody.qml` from 497 to 507, re-derived
 with `wc -l` on the integrated branch.
 

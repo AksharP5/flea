@@ -191,7 +191,7 @@ Item {
         anchors.fill: parent
         enabled: root.capturing || root.holding
         hoverEnabled: true
-        acceptedButtons: Qt.AllButtons
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
         onWheel: function (wheel) { wheel.accepted = true }
     }
 
@@ -221,8 +221,9 @@ Item {
     }
 
     // afterAnimating runs on this thread just before each frame is synchronised, so it sees what that frame draws.
+    // Gated to a hold or capture, so an idle window pays no JS call per frame.
     Connections {
-        target: root.Window.window
+        target: (root.capturing || root.holding) ? root.Window.window : null
         function onAfterAnimating() {
             if (!root.visible)
                 return
