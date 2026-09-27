@@ -68,10 +68,20 @@ function unwrap(text) {
     }
 }
 
+// A typed smb:// (or sftp://, davs://, ...) address is a network location, not a name
+// relative to the pane: resolving it against the directory would list one nobody named.
+// The bar hands it back untouched, and the window routes it to the rail's own open.
+function isNetworkUri(text) {
+    return /^(smb|sftp|ftp|ftps|dav|davs|nfs|afp):\/\//i.test(String(text).trim())
+}
+
 // The typed line as an absolute path. Answers "" for a line that names nothing, which is what the
 // field checks before it navigates: an empty commit closes the bar and leaves the pane where it is.
 function resolve(text, current, home) {
     var line = String(text).trim()
+    if (isNetworkUri(line)) {
+        return line
+    }
     var body = unwrap(line)
     // Empty either because nothing was typed or because unwrap refused a URI on another host; both
     // answer "" here, and refused() below is what tells the two apart for the sentence.

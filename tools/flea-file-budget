@@ -42,7 +42,7 @@ ui/ContextMenu.qml 566
 ui/ConvertDialog.qml 440
 ui/Ipc.qml 792
 ui/NetworkDialog.qml 449
-ui/NetworkMounts.qml 578
+ui/NetworkMounts.qml 674
 ui/OpenWithDialog.qml 588
 ui/Pane.qml 673
 ui/PaneMenuActions.qml 404
@@ -56,7 +56,7 @@ ui/SettingsPanel.qml 542
 ui/SettingsRow.qml 410
 ui/Sidebar.qml 545
 ui/TrashView.qml 467
-ui/WindowBody.qml 487
+ui/WindowBody.qml 497
 ui/js/Filter.js 253
 ui/js/Focus.js 334
 ui/js/Keymap.js 313

@@ -190,4 +190,10 @@ function run(check) {
     var fromRail = barPane("rail")
     Focus.handleKey(key(Qt.Key_L, "l", Qt.ControlModifier), fromRail, fromRail.sidebar)
     check("ctrl-l opens it from the rail as well", fromRail.asked, 1)
+
+    // Issue 194 (@dannyboy1121, @jotapesse): a typed server URI is a network address,
+    // not a relative name, so the bar must hand it back for the network open, never as
+    // a local path under the pane.
+    check("a typed smb server is the network address itself", PathBar.resolve("smb://servername.lan", HOME, HOME), "smb://servername.lan")
+    check("and a share with a user keeps its user", PathBar.resolve("smb://dan@192.168.1.75/test", HOME, HOME), "smb://dan@192.168.1.75/test")
 }

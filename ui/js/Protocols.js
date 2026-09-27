@@ -200,3 +200,97 @@ function shareName(rawLabel, uri) {
     var name = head.replace(/\s+\S+\s+$/, "")
     return name.length > 0 && name !== head ? name : text
 }
+
+// Sample input: smb://dan@192.168.1.75/test, the reporter's share, and its FUSE folder
+// /run/user/1000/gvfs/smb-share:server=192.168.1.75,share=test,user=dan. A FUSE path for
+// another user, another share or another server must never open as this share's listing:
+// a mount problem answers as one instead of reading like an unreadable directory.
+function decodeSegment(raw) {
+    try { return decodeURIComponent(String(raw)) } catch (e) { return String(raw) }
+}
+
+// The smb:// request as gio sees it: the user past any DOMAIN; prefix, the host without
+// a port, and the share as the first path segment. Null when not an smb:// URI at all.
+function smbParts(uri) {
+    if (schemeOf(uri) !== "smb") return null
+    var auth = authority(uri)
+    if (auth.length === 0) return null
+    var at = auth.lastIndexOf("@")
+    var info = at < 0 ? "" : auth.substring(0, at)
+    var semi = info.indexOf(";")
+    var user = semi < 0 ? info : info.substring(semi + 1)
+    var mark = String(uri).indexOf("://") + 3
+    var rest = String(uri).substring(mark + auth.length)
+    if (rest.charAt(0) === "/") rest = rest.substring(1)
+    var cut = rest.indexOf("/")
+    var share = cut < 0 ? rest : rest.substring(0, cut)
+    return { user: decodeSegment(user), host: hostOf(uri).toLowerCase(), share: decodeSegment(share) }
+}
+
+// The smb-share: FUSE directory gio info prints a local path for, or null when the path
+// is no smb FUSE directory at all. Null is undecided, never a mismatch: an unknown shape
+// opens exactly as before rather than refusing a mount over a format this never learned.
+function fuseSmbParts(path) {
+    var m = String(path || "").match(/smb-share:server=([^,\/]+),share=([^,\/]+)(?:,user=([^,\/]+))?/)
+    if (!m) return null
+    return { host: String(m[1]).toLowerCase(), share: m[2], user: m[3] || "" }
+}
+
+// Whether gio info's answer belongs to the smb:// request that asked for it. True for any
+// non-smb URI and whenever either side will not parse; false only on a parsed mismatch, a
+// user the answer drops or changes above all, so that answer is refused as a mount failure.
+function smbFuseMatches(uri, fusePath) {
+    if (schemeOf(uri) !== "smb") return true
+    var want = smbParts(uri)
+    var got = fuseSmbParts(fusePath)
+    if (!want || !got) return true
+    var wantUser = String(want.user || "")
+    var gotUser = String(got.user || "")
+    var semi = gotUser.indexOf(";")
+    if (semi >= 0) gotUser = gotUser.substring(semi + 1)
+    return want.host === got.host
+        && String(want.share).toLowerCase() === String(got.share).toLowerCase()
+        && wantUser.toLowerCase() === gotUser.toLowerCase()
+}
+
+// Sample input: uri smb://dan@192.168.1.75/test with gio info printing the path without
+// ,user=dan while only the user=dan folder exists. Answers the entry whose user the URI
+// names; with no user the single share match wins, several prefer the desktop login.
+function smbResolve(uri, fusePaths, login) {
+    var found = { path: "", users: [] }
+    var want = smbParts(uri)
+    if (!want) return found
+    var hits = []
+    var list = fusePaths || []
+    for (var i = 0; i < list.length; i++) {
+        var got = fuseSmbParts(list[i])
+        if (!got || got.host !== want.host) continue
+        if (String(got.share).toLowerCase() !== String(want.share).toLowerCase()) continue
+        hits.push({ path: list[i], user: String(got.user || "") })
+    }
+    if (String(want.user || "").length > 0) {
+        for (var j = 0; j < hits.length; j++) {
+            if (hits[j].user.toLowerCase() === String(want.user).toLowerCase()) {
+                found.path = hits[j].path
+                return found
+            }
+        }
+        return found
+    }
+    if (hits.length === 1) {
+        found.path = hits[0].path
+        return found
+    }
+    if (hits.length > 1) {
+        for (var k = 0; k < hits.length; k++) {
+            if (hits[k].user.toLowerCase() === String(login || "").toLowerCase()) {
+                found.path = hits[k].path
+                return found
+            }
+        }
+        for (var m = 0; m < hits.length; m++) {
+            if (found.users.indexOf(hits[m].user) < 0) found.users.push(hits[m].user)
+        }
+    }
+    return found
+}

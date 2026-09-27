@@ -2067,6 +2067,8 @@ and timers to the new `ui/GvfsBridge.qml`, 122 lines inside it; `ui/StatusBar.qm
 busy mark and stays at 397, inside its 400 hard cap. Each count re-derived with `wc -l` at
 the commit that recorded it.
 
+Issue 194 takes `ui/NetworkMounts.qml` from its recorded 560 to 656 for the smb FUSE guard and the repair that peeks gio's folder, then opens the matching entry out of the FUSE root through backend.peek instead of reading a wrong mount as an unreadable directory, and `ui/WindowBody.qml` from its recorded 487 to 497 for routing a typed network address to the rail's own open-a-share path instead of a local listing. The matching lives in `ui/js/Protocols.js`, 202 to 296, and the bar's hand-back in `ui/js/PathBar.js`, 204 to 214, both over the soft budget and under the hard cap. Each count re-derived with `wc -l`.
+
 `src/backend/ops.rs` split to `src/backend/renamecompat.rs` at 455: composing PR 35's safe rclone
 rename into the release tree put the rename exception over the 400-line hard cap, so the exception
 and its tests moved to the module that already owned classifying which rename failures need it.

@@ -116,7 +116,17 @@ Rectangle {
         onViewChosen: function (mode) { ViewState.changeKey("view", mode) }
         // The path bar's four. The primaryPane navigates and answers for the keyboard exactly as it
         // does for every other route in, so a path typed and a row opened end the same way.
-        onPathEntered: function (path) { view.currentPane.open(path) }
+        // Issue 194: a typed smb:// (or other network) address mounts through the rail's own
+        // open-a-share path, which lists a server's shares, rather than listing a local path.
+        onPathEntered: function (path) {
+            if (/^(smb|sftp|ftp|ftps|dav|davs|nfs|afp):\/\//i.test(path)) {
+                var target = view.currentPane
+                if (target && target.sidebar && target.sidebar.providerService) target.sidebar.providerService.openShare(path, false, "", false, { origin: target })
+                else target.open(path)
+                return
+            }
+            view.currentPane.open(path)
+        }
         onEditClosed: view.currentPane.forceActiveFocus()
         // Tab reads the directory with the same peek the columns view makes of an ancestor,
         // so completion adds no request type and lands in that view's own cache on the way past.

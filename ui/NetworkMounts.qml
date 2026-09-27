@@ -3,6 +3,7 @@ import Quickshell
 import Quickshell.Io
 import "js/Errors.js" as Errors
 import "js/Mounts.js" as Mounts
+import "js/Protocols.js" as Protocols
 import "js/Dropbox.js" as Dropbox
 
 // OEM-shaped Network service: nothing but this file, its two children and ui/PhoneMounts.qml, which
@@ -66,6 +67,14 @@ Item {
     property bool _authCancelled: false
     property string _requestId: ""
     property string _requestPassword: ""
+    // Issue 194's repair: gio info answered with a folder that is not the requested share.
+    // Its own path is peeked first, then the FUSE root it names, all through backend.peek,
+    // so no new poll is added and a second open waits on the same single-flight guard.
+    property string _repairUri: ""
+    property string _repairPath: ""
+    property string _repairRoot: ""
+    property bool _repairFailed: false
+    property bool _repairActive: false
 
     onBookmarksTextChanged: root.rebuild()
 
@@ -119,6 +128,10 @@ Item {
                 root.refreshDropboxAccount()
             }
         }
+        // Issue 194's repair answers here. The chrome answers only the Tab request its own key
+        // names and the columns view only ever reads the ancestors it asked for, so sharing the
+        // peek wire costs those readers nothing they would otherwise notice.
+        function onPeeked(path, hidden, total, rows, readFailed, mode) { root.repairPeeked(path, rows, readFailed) }
     }
 
     function refreshDropbox(facts) {
@@ -295,9 +308,10 @@ Item {
 
     function openShare(uri, alreadyMounted, label, authenticated, request) {
         request = request || ({})
-        // An open is single flight over four children, the share listing included, so a new one must
-        // not start over the running leg and hand that leg's deadline to itself; see "listShares".
-        if (mountProcess.running || authProcess.running || infoProcess.running || listSharesProcess.running) {
+        // An open is single flight over four children and the repair peek, the share listing
+        // included, so a new one must not start over the running leg and hand that leg's
+        // deadline to itself; see "listShares".
+        if (mountProcess.running || authProcess.running || infoProcess.running || listSharesProcess.running || root._repairActive) {
             // A guard that returns in silence names nothing at all, and a leg can hold it 15 s.
             var reason = "Another network location is still opening; give it a moment."
             if (request.id) root.completed(request.id, Mounts.normalize(uri), false, reason)
@@ -367,6 +381,69 @@ Item {
                                 missing !== true, root._pendingOrigin)
     }
 
+    // Only when nothing in the FUSE root answers for the request: the mount fails with the
+    // reason gio gave, never as an unreadable directory.
+    function repairFailed() {
+        var uri = root._repairUri
+        var refused = root._repairFailed
+        root._repairActive = false
+        root._repairRoot = ""
+        root._repairPath = ""
+        if (refused) root.failMount("Connect failed: network location was refused", root.passwordFor(uri))
+        else root.failMount("Connect failed: location has no browsable folder", root.passwordFor(uri))
+    }
+
+    // Issue 194's repair, answered through backend.peek: gio's own folder first, then every
+    // entry of the FUSE root it names, matched by ui/js/Protocols.js smbResolve. A real
+    // directory always opens; several users prefer the desktop login and otherwise name
+    // themselves; anything else is the mount failing with the reason gio gave.
+    function repairPeeked(path, rows, readFailed) {
+        if (!root._repairActive) return
+        if (path === root._repairPath) {
+            if (!readFailed) {
+                var openPath = root._repairPath
+                mountTimeout.stop()
+                root._repairActive = false
+                root._repairPath = ""
+                root.result = "mounted"
+                root.finishRequest(true, "")
+                root.opened(openPath, root._pendingOrigin)
+                return
+            }
+            var cut = root._repairPath.indexOf("/gvfs/")
+            if (cut < 0 || !root.backend) {
+                mountTimeout.stop()
+                root.repairFailed()
+                return
+            }
+            root._repairRoot = root._repairPath.substring(0, cut + 5)
+            mountTimeout.restart()
+            root.backend.peek(root._repairRoot, 512, false)
+            return
+        }
+        if (root._repairRoot.length === 0 || path !== root._repairRoot) return
+        mountTimeout.stop()
+        var candidates = []
+        for (var i = 0; i < rows.length; i++) candidates.push(root._repairRoot + "/" + rows[i].n)
+        var login = Quickshell.env("USER") || Quickshell.env("LOGNAME") || ""
+        var picked = Protocols.smbResolve(root._repairUri, candidates, login)
+        root._repairActive = false
+        root._repairRoot = ""
+        root._repairPath = ""
+        if (picked.path.length > 0) {
+            root.result = "mounted"
+            root.finishRequest(true, "")
+            root.opened(picked.path, root._pendingOrigin)
+            return
+        }
+        if (picked.users.length > 0) {
+            root.failMount("Connect failed: that share is mounted as " + picked.users.join(", "),
+                           root.passwordFor(root._repairUri))
+            return
+        }
+        root.repairFailed()
+    }
+
     function finishRequest(success, reason) {
         var requestId = root._requestId
         if (!requestId) return false
@@ -383,6 +460,7 @@ Item {
         root._requestPassword = ""
         root._pendingPassword = ""
         root._authAwaitingStart = false
+        root._repairActive = false
         mountTimeout.stop()
         if (mountProcess.running) { root._mountTimedOut = true; mountProcess.running = false }
         if (infoProcess.running) { root._infoTimedOut = true; infoProcess.running = false }
@@ -436,6 +514,10 @@ Item {
             } else if (listSharesProcess.running) {
                 root._listSharesTimedOut = true
                 listSharesProcess.running = false
+            } else if (root._repairActive) {
+                root._repairActive = false
+                root._repairRoot = ""
+                root._repairPath = ""
             } else {
                 return
             }
@@ -515,6 +597,20 @@ Item {
             root._mountFailed = false
             if (timedOut) return
             var path = Mounts.localPath(String(infoOut.text || root._infoOutput || ""))
+            if (exitCode === 0 && path.length > 0 && root.backend && Protocols.schemeOf(root._pendingUri) === "smb"
+                    && !Protocols.smbFuseMatches(root._pendingUri, path)) {
+                // Issue 194: gio answered with a folder that is not this share (a user its line
+                // drops above all). Whether it exists is the backend's own answer to say: a real
+                // directory still opens, a missing one is repaired out of the FUSE root it names.
+                root._repairUri = root._pendingUri
+                root._repairPath = path
+                root._repairFailed = failed
+                root._repairRoot = ""
+                root._repairActive = true
+                mountTimeout.restart()
+                root.backend.peek(path, 1, false)
+                return
+            }
             if (exitCode === 0 && path.length > 0) {
                 root.result = "mounted"
                 root.finishRequest(true, "")
