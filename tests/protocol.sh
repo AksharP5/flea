@@ -438,22 +438,19 @@ out=$(printf '{"c":"list","path":"%s","first":10}\n{"c":"thumb","rows":[0,1,3]}\
 check "every row of a multi-row request is answered" "3" "$(echo "$out" | grep -c '"t":"thumbed"')"
 check "a directory row answers an empty file" '"row":0,"file":""' "$(echo "$out" | grep -o '"row":0,"file":""')"
 
-# ExtThumbs, callout 3: off is cache-only. A fake thumbnailer whose only act is touching
-# a canary says whether a decode started: the full path touches it, cache-only never does.
+# ExtThumbs, callout 3: off is cache-only. The decoder is jailed with only its input and output bound, so the witness is this suite's cache.
 setup
-printf 'x' > "$D/photo-a.jpg"
-printf 'x' > "$D/photo-b.jpg"
-mkdir -p "$SB/xdg/thumbnailers"
-CANARY="$SB/canary"
-printf '#!/bin/sh\ntouch "%s"\nexit 0\n' "$CANARY" > "$SB/mark.sh"
-chmod +x "$SB/mark.sh"
-printf '[Thumbnailer Entry]\nExec=%s %%i %%o\nMimeType=image/jpeg;\n' "$SB/mark.sh" > "$SB/xdg/thumbnailers/mark.thumbnailer"
-out=$(printf '{"c":"list","path":"%s","first":10}\n{"c":"thumb","rows":[2]}\n{"c":"quit"}\n' "$D" | XDG_DATA_HOME="$SB/xdg" $BIN --backend)
-check "the full path starts the decoder" "1" "$([ -e "$CANARY" ] && echo 1 || echo 0)"
-rm -f "$CANARY"
-out=$(printf '{"c":"list","path":"%s","first":10}\n{"c":"thumb","rows":[3],"cacheOnly":true}\n{"c":"quit"}\n' "$D" | XDG_DATA_HOME="$SB/xdg" $BIN --backend)
+cp "$FIXTURE_ROOT/flea-media-btrfs/photo_0.jpg" "$D/photo-a.jpg"
+cp "$FIXTURE_ROOT/flea-media-btrfs/photo_0.jpg" "$D/photo-b.jpg"
+out=$(printf '{"c":"list","path":"%s","first":10}\n{"c":"thumb","rows":[2]}\n{"c":"quit"}\n' "$D" | $BIN --backend)
+# Sample input: {"t":"thumbed","row":2,"file":"/home/flea-sandbox/t/cache/thumbnails/large/0a1b.png","ms":98.1}
+decoded=$(echo "$out" | grep -oE '"row":2,"file":"[^"]+"' | cut -d'"' -f6)
+check "the full path starts the decoder" "1" "$([ -n "$decoded" ] && [ -s "$decoded" ] && echo 1 || echo 0)"
+# A decode that started leaves a thumbnail or a fail marker here before quit returns, so an unchanged cache means none started.
+cached=$(find "$XDG_CACHE_HOME" -type f | sort)
+out=$(printf '{"c":"list","path":"%s","first":10}\n{"c":"thumb","rows":[3],"cacheOnly":true}\n{"c":"quit"}\n' "$D" | $BIN --backend)
 check "a cache-only miss answers none" "1" "$(echo "$out" | grep -c '"row":3,"file":""')"
-check "and it never starts the decoder" "0" "$([ -e "$CANARY" ] && echo 1 || echo 0)"
+check "and it never starts the decoder" "$cached" "$(find "$XDG_CACHE_HOME" -type f | sort)"
 
 # The class rides beside the fsinfo figures, once per directory change and never per row.
 out=$(printf '{"c":"list","path":"%s","first":1}\n{"c":"fsinfo"}\n{"c":"quit"}\n' "$D" | $BIN --backend)

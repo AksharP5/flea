@@ -16,6 +16,8 @@ ln -s "$PWD/ui/NetworkMounts.qml" "$test_root/config/NetworkMounts.qml"
 # The Service instantiates both of these, so a config directory without them resolves neither.
 ln -s "$PWD/ui/MountListing.qml" "$test_root/config/MountListing.qml"
 ln -s "$PWD/ui/NetworkPlaces.qml" "$test_root/config/NetworkPlaces.qml"
+# NetworkMounts hosts the GVFS bridge, which opens this fixture's local paths at once and starts nothing.
+ln -s "$PWD/ui/GvfsBridge.qml" "$test_root/config/GvfsBridge.qml"
 ln -s "$PWD/ui/js" "$test_root/config/js"
 ln -s "$PWD/tests/network-keyless.qml" "$test_root/config/shell.qml"
 call_log="$test_root/state/calls.log"

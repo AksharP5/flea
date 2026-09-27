@@ -64,6 +64,9 @@ ShellRoot {
         property var thumbState: ({ file: {} })
         property string fsPath: ""
         property string fsName: "btrfs"
+        // The fsinfo line has named the class, and "" is local, which ui/Pane.qml holds unknown until it lands.
+        property string storageClass: ""
+        property bool storageKnown: true
         property bool listInFlight: false
         property var kindNames: []
         property var preview: ({ active: false })

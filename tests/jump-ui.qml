@@ -81,8 +81,10 @@ ShellRoot {
         function () { return root.asked.length === 3 },
         function () {
             root.answer(0)
-            root.check("the settle arms when rows appear", chrome.jump.pointerSettling, true)
+            // The bar opens on the current path, which lists nothing, so the rows appear with the first name typed.
+            root.check("the answer on a path line shows no rows and arms no settle", [chrome.jump.shown, chrome.jump.pointerSettling], [false, false])
             root.type("o")
+            root.check("the settle arms when rows appear", chrome.jump.pointerSettling, true)
             // No frecency in this answer, so the own-name matches go favourites first, then zoxide, then recent.
             root.check("query o lists one ranked list", root.rows(), [
                 root.home + "/Projects", root.home + "/Documents/claude/omarchy", root.home + "/Documents",
