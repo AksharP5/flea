@@ -63,6 +63,29 @@ fn parses_each_request_shape() {
 }
 
 #[test]
+fn a_photos_request_carries_its_path_and_hidden_defaults_to_false() {
+    match parse_request(r#"{"c":"photos","path":"/run/user/1000/gvfs/mtp/DCIM","hidden":true}"#) {
+        Request::Photos { path, hidden } => {
+            assert_eq!(path, "/run/user/1000/gvfs/mtp/DCIM");
+            assert!(hidden);
+        }
+        _ => panic!("expected Photos"),
+    }
+    // Missing and explicitly false both mean dotfiles stay out of the roll.
+    for line in [r#"{"c":"photos","path":"/run/user/1000/gvfs/mtp/DCIM"}"#, r#"{"c":"photos","path":"/run/user/1000/gvfs/mtp/DCIM","hidden":false}"#] {
+        match parse_request(line) {
+            Request::Photos { path, hidden } => {
+                assert_eq!(path, "/run/user/1000/gvfs/mtp/DCIM");
+                assert!(!hidden, "{}", line);
+            }
+            _ => panic!("expected Photos for {}", line),
+        }
+    }
+    // One photos walk runs at a time, so a cancel names nothing, exactly like searchcancel.
+    assert!(matches!(parse_request(r#"{"c":"photoscancel"}"#), Request::PhotosCancel));
+}
+
+#[test]
 fn a_paths_line_escapes_every_element_and_survives_an_empty_list() {
     assert_eq!(paths_line(&[]), r#"{"t":"paths","paths":[]}"#);
     assert_eq!(

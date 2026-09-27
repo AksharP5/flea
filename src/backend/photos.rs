@@ -1,20 +1,26 @@
-// The DCIM walk behind a photos request: every photo and video under one DCIM folder in
-// one grid, newest first, ticked a slice at a time so a cancel is never blocked, the way
-// search is. Rows stream in discovery order and are ordered once at the end, so a window
-// the client already holds stays valid while the count grows, exactly as a search's does.
+// The DCIM walk behind a photos request: every photo and video under one DCIM folder, newest first, a slice per tick.
 use crate::backend::listing::Listing;
 use crate::backend::mime::Db;
 use std::path::PathBuf;
 use std::time::Instant;
 
-// One tick reads this many directories before the loop looks at its channel again, the same "one at a time" idea search uses.
-const DIRS_PER_TICK: usize = 4;
+// Entries per tick, so a 5,000-photo Camera folder on a slow MTP mount never blocks photoscancel.
+const ENTRIES_PER_TICK: usize = 100;
+
+// A directory a tick stopped inside, kept open so the next tick resumes it.
+struct OpenDir {
+    rel: String,
+    dir: PathBuf,
+    rd: std::fs::ReadDir,
+}
 
 pub struct Photos {
     root: PathBuf,
     hidden: bool,
     // Directories still to read, each a path relative to root; the empty string is root itself.
     pending: Vec<String>,
+    // The directory a tick stopped inside, resumed rather than re-read.
+    current: Option<OpenDir>,
     // One mtime per pushed match, in push order, so the finish is a permutation of the listing's spans.
     mtimes: Vec<u64>,
     pub scanned: usize,
@@ -27,6 +33,7 @@ impl Photos {
             root: PathBuf::from(root),
             hidden,
             pending: vec![String::new()],
+            current: None,
             mtimes: Vec::new(),
             scanned: 0,
             started: Instant::now(),
@@ -35,61 +42,66 @@ impl Photos {
 
     // Returns true when the walk is finished; the caller then writes the terminal line.
     pub fn step(&mut self, listing: &mut Listing, mime: &Db) -> bool {
-        for _ in 0..DIRS_PER_TICK {
-            match self.pending.pop() {
-                Some(rel) => self.read_one(&rel, listing, mime),
-                None => return true,
+        let mut entries = 0;
+        while entries < ENTRIES_PER_TICK {
+            let mut open = match self.current.take() {
+                Some(open) => open,
+                None => match self.pending.pop() {
+                    Some(rel) => {
+                        let dir = if rel.is_empty() { self.root.clone() } else { self.root.join(&rel) };
+                        // corner: an unreadable directory is skipped in silence, as scan.rs's phase one skips an unreadable entry.
+                        match std::fs::read_dir(&dir) {
+                            Ok(rd) => OpenDir { rel, dir, rd },
+                            Err(_) => continue,
+                        }
+                    }
+                    None => return true,
+                },
+            };
+            // std ends a ReadDir after its first error, so an error closes the folder the same as its end.
+            if let Some(Ok(entry)) = open.rd.next() {
+                self.read_entry(&open.rel, &open.dir, entry, listing, mime);
+                entries += 1;
+                self.current = Some(open);
             }
         }
-        self.pending.is_empty()
+        self.current.is_none() && self.pending.is_empty()
     }
 
-    fn read_one(&mut self, rel: &str, listing: &mut Listing, mime: &Db) {
-        let dir = if rel.is_empty() { self.root.clone() } else { self.root.join(rel) };
-        // corner: an unreadable directory is skipped in silence, exactly as scan.rs's phase one skips an unreadable entry.
-        let rd = match std::fs::read_dir(&dir) {
-            Ok(rd) => rd,
-            Err(_) => return,
-        };
-        for entry in rd.flatten() {
-            let name = entry.file_name();
-            let name = name.to_string_lossy();
-            // corner: a dot-prefixed name is dropped before it is counted, matching scan.rs's own hidden rule.
-            if !self.hidden && name.starts_with('.') {
-                continue;
-            }
-            self.scanned += 1;
-            // d_type is free and answers is_dir with no stat, matching scan.rs's phase 1.
-            let is_dir = entry.file_type().map(|f| f.is_dir()).unwrap_or(false);
-            let child = if rel.is_empty() { name.to_string() } else { format!("{}/{}", rel, name) };
-            // corner: a symlink reports its own type here, so a link to a directory is never descended and no loop is possible.
-            if is_dir {
-                self.pending.push(child);
-                continue;
-            }
-            // The shipped classifier is the only filter: a name no photo or video glob claims is not a photo.
-            let media = mime.lookup(&child).is_some_and(|m| m.starts_with("image/") || m.starts_with("video/"));
-            if !media {
-                continue;
-            }
-            // symlink_metadata never follows, so a link to a photo sorts on its own mtime and a
-            // dangling one can never hang the walk the way a following stat on a dead mount could.
-            let mtime = std::fs::symlink_metadata(dir.join(name.as_ref()))
-                .and_then(|m| m.modified())
-                .ok()
-                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                .map(|d| d.as_secs())
-                .unwrap_or(0);
-            // The row's name is its path relative to the root, so base.join(name) still reaches the file and every per-row facility works unchanged.
-            listing.push(&child, false);
-            self.mtimes.push(mtime);
+    fn read_entry(&mut self, rel: &str, dir: &PathBuf, entry: std::fs::DirEntry, listing: &mut Listing, mime: &Db) {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        // corner: a dot-prefixed name is dropped before it is counted, matching scan.rs's own hidden rule.
+        if !self.hidden && name.starts_with('.') {
+            return;
         }
+        self.scanned += 1;
+        // d_type is free and answers is_dir with no stat, matching scan.rs's phase 1.
+        let is_dir = entry.file_type().map(|f| f.is_dir()).unwrap_or(false);
+        let child = if rel.is_empty() { name.to_string() } else { format!("{}/{}", rel, name) };
+        // corner: a symlink reports its own type here, so a link to a directory is never descended and no loop is possible.
+        if is_dir {
+            self.pending.push(child);
+            return;
+        }
+        // The shipped classifier is the only filter: a name no photo or video glob claims is not a photo.
+        let media = mime.lookup(&child).is_some_and(|m| m.starts_with("image/") || m.starts_with("video/"));
+        if !media {
+            return;
+        }
+        // symlink_metadata never follows, so a dangling link cannot hang the walk on a dead mount.
+        let mtime = std::fs::symlink_metadata(dir.join(name.as_ref()))
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        // The row's name is its path relative to root, so base.join(name) still reaches the file.
+        listing.push(&child, false);
+        self.mtimes.push(mtime);
     }
 
-    // The walk appends in discovery order, so the finish is one permutation of the spans at the
-    // end and the name arena never moves. Newest first, with the name breaking ties, so one walk
-    // over one tree always answers in exactly one order. Answers whether the row order changed,
-    // because a new order invalidates every outstanding row index the same way a sort does.
+    // One newest-first permutation of discovery order; a changed order invalidates held row indices.
     pub fn finish(&self, listing: &mut Listing) -> bool {
         // A listing this walk did not fill by itself is never reordered: the mtimes would name other rows.
         if self.mtimes.len() != listing.len() || listing.len() < 2 {
@@ -119,8 +131,7 @@ mod tests {
     use super::*;
     use crate::backend::testdir::TestDir;
 
-    // Sample input, the globs the walk filters on: the shipped database answers these on this box,
-    // but a fixture database keeps the walk's tests off whatever update-mime-database merged here.
+    // Sample input, the globs the walk filters on, kept off whatever update-mime-database merged here.
     const GLOB_ROWS: &str = concat!(
         "50:image/jpeg:*.jpg\n",
         "50:image/heif:*.heic\n",
@@ -250,32 +261,64 @@ mod tests {
     fn a_step_reads_a_bounded_slice_so_a_cancel_is_never_blocked() {
         let d = TestDir::new("photoslice");
         d.dir("DCIM");
-        for i in 0..DIRS_PER_TICK + 3 {
+        for i in 0..ENTRIES_PER_TICK + 3 {
             d.dir(&format!("DCIM/d{}", i));
         }
         let mime = mime();
         let mut w = Photos::new(&d.join("DCIM").to_str().unwrap().to_string(), false);
         let mut l = Listing::new();
-        // The root read queues every child, so the first step cannot also drain them.
+        // The root alone holds more entries than one tick, so the first step leaves its ReadDir open.
         assert!(!w.step(&mut l, &mime));
+    }
+
+    #[test]
+    fn a_tick_is_bounded_by_entries_so_one_huge_folder_never_blocks_a_cancel() {
+        let d = TestDir::new("photosentries");
+        d.dir("DCIM/Camera");
+        let total = ENTRIES_PER_TICK * 2 + 10;
+        for i in 0..total {
+            d.file(&format!("DCIM/Camera/IMG_{i:05}.jpg"), "");
+        }
+        let mime = mime();
+        let mut w = Photos::new(&d.join("DCIM").to_str().unwrap().to_string(), false);
+        let mut l = Listing::new();
+        assert!(!w.step(&mut l, &mime), "one tick stops with the huge folder still open");
+        assert!(w.scanned <= ENTRIES_PER_TICK, "one tick reads at most one slice, got {}", w.scanned);
+        assert!(l.len() < total, "the tick left photos unread for the next tick");
+        while !w.step(&mut l, &mime) {}
+        assert_eq!(l.len(), total, "the kept ReadDir resumes until every photo arrives");
     }
 
     #[test]
     fn a_cancelled_walk_keeps_what_it_found_in_newest_first_order() {
         let d = TestDir::new("photocancel");
-        d.dir("DCIM");
-        d.file("DCIM/old.jpg", "");
-        d.file("DCIM/new.mp4", "");
-        touch_mtime(&d.join("DCIM/old.jpg"), "2026-01-01 10:00:00");
-        touch_mtime(&d.join("DCIM/new.mp4"), "2026-06-01 10:00:00");
-
+        d.dir("DCIM/Camera");
+        d.file("DCIM/Camera/old.jpg", "");
+        d.file("DCIM/Camera/new.mp4", "");
+        touch_mtime(&d.join("DCIM/Camera/old.jpg"), "2026-01-01 10:00:00");
+        touch_mtime(&d.join("DCIM/Camera/new.mp4"), "2026-06-01 10:00:00");
+        for i in 0..ENTRIES_PER_TICK {
+            d.file(&format!("DCIM/Camera/fill_{i:03}.jpg"), "");
+        }
         let mime = mime();
-        let mut w = Photos::new(&d.join("DCIM").to_str().unwrap().to_string(), false);
+        let dcim = d.join("DCIM").to_str().unwrap().to_string();
+        let mut w = Photos::new(&dcim, false);
         let mut l = Listing::new();
-        // One bounded step, then the cancel: the terminal line still ranks what arrived.
-        while !w.step(&mut l, &mime) {}
-        w.finish(&mut l);
-        assert_eq!(names(&l), ["new.mp4", "old.jpg"]);
+        // One bounded tick, then the cancel with the folder still open: the terminal line still ranks the partial walk.
+        assert!(!w.step(&mut l, &mime), "the cancel lands with pending work left");
+        let arrived = l.len();
+        assert!(arrived >= 2 && arrived < ENTRIES_PER_TICK + 2, "a partial walk, got {}", arrived);
+        assert!(w.finish(&mut l), "the partial walk still ranks what it found");
+        assert_eq!(l.len(), arrived, "finishing a cancelled walk adds no rows");
+        let order: Vec<String> = names(&l);
+        let mtime_of = |name: &str| {
+            d.join("DCIM").join(name).symlink_metadata().unwrap().modified().unwrap()
+                .duration_since(std::time::UNIX_EPOCH).unwrap().as_secs()
+        };
+        for pair in order.windows(2) {
+            let (a, b) = (&pair[0], &pair[1]);
+            assert!(mtime_of(a) > mtime_of(b) || (mtime_of(a) == mtime_of(b) && a <= b), "partial walk is newest first, {a} before {b}");
+        }
     }
 
     #[test]

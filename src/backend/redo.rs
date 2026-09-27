@@ -150,14 +150,12 @@ fn apply(saved: &ReplayStep, id: usize, index: usize, cancel: &AtomicBool, tx: &
             drop(progress);
             if result.is_ok() {
                 // The bytes landed; only the folder confirmation can still fail, so the step stays journalled either way.
-                let replayed = if moving { undo::moved(from, to, identity.clone()) } else { undo::copied(from, to, identity.clone()) };
-                if ctx.flush_dirs().is_err() {
-                    if let Ok(step) = replayed {
-                        steps.push(step);
-                    }
+                let step = if moving { undo::moved(from, to, identity) } else { undo::copied(from, to, identity) };
+                let flushed = ctx.flush_dirs();
+                steps.push(step?);
+                if flushed.is_err() {
                     return Err(error(to, super::durable::DIR_UNCONFIRMED));
                 }
-                steps.push(if moving { undo::moved(from, to, identity)? } else { undo::copied(from, to, identity)? });
             } else if let Some(partial) = partial {
                 steps.push(undo::copied(from, &partial, identity)?);
             }

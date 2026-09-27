@@ -299,6 +299,43 @@ fn a_copy_refused_because_the_destination_exists_reports_no_partial() {
     assert_eq!(std::fs::read_to_string(taken_dir.join("keep.txt")).unwrap(), "keep");
 }
 
+// A failed folder confirm keeps the source, so a crash mid-move never loses the file.
+#[test]
+fn a_cross_device_move_confirms_the_destination_before_removing_the_source() {
+    let d = TestDir::new("movexdev");
+    let src = d.file("moving.txt", "body");
+    let dst = d.join("moved.txt");
+    crate::backend::durable::test_reset();
+    crate::backend::durable::test_mark_durable(d.path());
+    let flag = AtomicBool::new(false);
+    let mut sink = |_: u64, _: u64| {};
+    let mut ctx = crate::backend::durable::Ctx::begin(&dst);
+    assert!(ctx.durable, "the marked sandbox is a durable destination");
+    let mut p = Progress { cancel: &flag, on_bytes: &mut sink, partial: None, tree: None, manifest: None, durability: Some(&mut ctx) };
+    crate::backend::durable::test_set_fail_dirs(true);
+    let error = move_cross_device(&src, &dst, &mut p).expect_err("a failed folder confirm must not remove the source");
+    assert_eq!(error.msg, crate::backend::durable::DIR_UNCONFIRMED);
+    assert!(src.exists(), "the source stays when the destination folders did not confirm");
+    assert!(dst.exists(), "the landed copy stays beside it");
+    crate::backend::durable::test_reset();
+}
+
+// Without a durability context there is no touched set, so the file's own parent is confirmed.
+#[test]
+fn a_context_free_cross_device_move_confirms_the_parent_before_removing_the_source() {
+    let d = TestDir::new("movexdevplain");
+    let src = d.file("moving.txt", "body");
+    let dst = d.join("moved.txt");
+    crate::backend::durable::test_reset();
+    crate::backend::durable::test_set_fail_dirs(true);
+    let flag = AtomicBool::new(false);
+    let mut sink = |_: u64, _: u64| {};
+    let error = move_cross_device(&src, &dst, &mut quiet(&flag, &mut sink)).expect_err("a failed parent fsync must not remove the source");
+    assert_eq!(error.msg, crate::backend::durable::DIR_UNCONFIRMED);
+    assert!(src.exists(), "the source stays when the parent did not confirm");
+    crate::backend::durable::test_reset();
+}
+
 #[test]
 fn a_same_filesystem_move_leaves_nothing_at_the_source() {
     let d = TestDir::new("movesame");

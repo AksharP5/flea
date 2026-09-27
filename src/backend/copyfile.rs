@@ -367,16 +367,40 @@ pub fn move_any(src: &Path, dst: &Path, p: &mut Progress) -> Result<(), FleaErro
             }
             Ok(())
         }
-        Err(e) if e.raw_os_error() == Some(EXDEV) => {
-            copy_any(src, dst, p)?;
-            remove_any(src)?;
-            if let Some(parent) = src.parent() {
-                touch(p, parent);
-            }
-            Ok(())
-        }
+        Err(e) if e.raw_os_error() == Some(EXDEV) => move_cross_device(src, dst, p),
         Err(e) => Err(from_io("rename", &dst.to_string_lossy(), &e)),
     }
+}
+
+// The copy's folders are confirmed before the source goes, or a crash before the caller's flush loses the file.
+pub(crate) fn move_cross_device(src: &Path, dst: &Path, p: &mut Progress) -> Result<(), FleaError> {
+    copy_any(src, dst, p)?;
+    confirm_dest(p, dst)?;
+    remove_any(src)?;
+    if let Some(parent) = src.parent() {
+        touch(p, parent);
+    }
+    Ok(())
+}
+
+// The folders copy_any touched, or the parent with no context; a failure keeps the source.
+fn confirm_dest(p: &Progress, dst: &Path) -> Result<(), FleaError> {
+    let failed = match p.durability.as_ref() {
+        Some(ctx) => ctx.flush_dirs().is_err(),
+        None => dst
+            .parent()
+            .map(crate::backend::durable::fsync_dir)
+            .unwrap_or(Ok(()))
+            .is_err(),
+    };
+    if failed {
+        return Err(FleaError {
+            where_: "move".to_string(),
+            path: dst.to_string_lossy().to_string(),
+            msg: crate::backend::durable::DIR_UNCONFIRMED.to_string(),
+        });
+    }
+    Ok(())
 }
 
 pub fn remove_any(path: &Path) -> Result<(), FleaError> {

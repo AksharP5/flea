@@ -14,8 +14,7 @@ pub enum Request {
     Search { path: String, query: String, hidden: bool },
     // Unlike thumbcancel there is no rows form: one walk runs at a time, so a cancel can only mean that one.
     SearchCancel,
-    // The phone's photo roll: an explicit walk of one DCIM folder for photos and videos,
-    // newest first, streamed the way a search is; see docs/protocol.md "photos".
+    // The phone's photo roll, streamed like a search; see docs/protocol.md "photos".
     Photos { path: String, hidden: bool },
     // One photos walk runs at a time, so a cancel can only mean that one.
     PhotosCancel,
