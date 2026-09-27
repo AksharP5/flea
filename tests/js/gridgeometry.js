@@ -33,4 +33,30 @@ function run(check) {
           GridGeometry.cellWidthFor(GAP - 1, 1, GAP), 1)
     check("zero columns never divide",
           GridGeometry.cellWidthFor(800, 0, GAP), 800 - GAP)
+
+    // The grid keeps the same lane clear on its right: tiles are counted and sized on the width
+    // less the gap and the lane, which is why the board's Medium cells draw beside it.
+    // Sample input: (700, 146, 64, 14, 9, 14) is 4, four 169 px cells beside a 14 px lane.
+    var laneWidths = [500, 700, 1200]
+    for (var l = 0; l < laneWidths.length; l++) {
+        var laneWidth = laneWidths[l]
+        var laneColumns = GridGeometry.columnsFor(laneWidth, MIN_CELL, THUMB_PX, PAD_X, GAP, PAD_X)
+        var laneCell = GridGeometry.cellWidthFor(laneWidth, laneColumns, GAP, PAD_X)
+        check("columns at " + laneWidth + " leave the gap and the lane out",
+              laneColumns, Math.max(1, Math.floor((laneWidth - GAP - PAD_X) / Math.max(MIN_CELL, THUMB_PX + 2 * PAD_X))))
+        check("cell width at " + laneWidth + " divides the width less the gap and the lane",
+              laneCell, Math.max(1, Math.floor((laneWidth - GAP - PAD_X) / Math.max(1, laneColumns))))
+        check("cells at " + laneWidth + " fit the width they were divided from",
+              laneColumns * laneCell <= laneWidth - GAP - PAD_X, true)
+        check("one more column at " + laneWidth + " would not fit beside them",
+              (laneColumns + 1) * laneCell > laneWidth - GAP - PAD_X, true)
+    }
+    // Five arguments keep the old shape: no lane named is no lane kept, so the callers that never
+    // name one cannot change what they draw.
+    check("an unnamed lane keeps nothing back",
+          GridGeometry.columnsFor(800, MIN_CELL, THUMB_PX, PAD_X, GAP),
+          GridGeometry.columnsFor(800, MIN_CELL, THUMB_PX, PAD_X, GAP, 0))
+    check("an unnamed lane sizes nothing down",
+          GridGeometry.cellWidthFor(800, 5, GAP),
+          GridGeometry.cellWidthFor(800, 5, GAP, 0))
 }

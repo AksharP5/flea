@@ -32,6 +32,19 @@ function bounded(value, originY, contentHeight, viewHeight) {
     return Math.max(minimum, Math.min(maximum, value))
 }
 
+// The lane every scrolling listing reserves at its right edge: rowPaddingX wide, whether or not
+// the bar shows, so rows never reflow and the last column never sits under the bar.
+// Sample input: lane(14) is 14, the board's own lane at base size 14.
+function lane(rowPaddingX) {
+    return Math.max(0, Number(rowPaddingX) || 0)
+}
+
+// The width a scrolling listing's content may use: the view less the lane it always keeps clear.
+// Sample input: contentWidth(700, 14) is 686, a 700 px listing holding 686 px of rows.
+function contentWidth(viewWidth, rowPaddingX) {
+    return Math.max(0, (Number(viewWidth) || 0) - lane(rowPaddingX))
+}
+
 // Whether a wheel event is consumed: only when it actually moved the content, so an event at the
 // edge keeps propagating to whatever holds this Flickable.
 function moved(previous, current) {

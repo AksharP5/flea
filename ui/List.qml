@@ -4,6 +4,7 @@ import "js/ClipMarks.js" as ClipMarks
 import "js/DirSizes.js" as DirSizes
 import "js/ExtThumbs.js" as ExtThumbs
 import "js/Filter.js" as Filter
+import "js/Scroll.js" as Scroll
 import "js/Tap.js" as Tap
 import "js/Thumbs.js" as Thumbs
 
@@ -60,7 +61,9 @@ ListView {
         // index is where the row is drawn; listingIndex is the row the backend numbers, and under a
         // filter the two are different. Everything that leaves this delegate takes the listing one.
         readonly property int listingIndex: Filter.at(root.pane.shown, index)
-        width: root.width
+        // The scroll lane stays clear at the right edge, rowPaddingX wide whether or not the bar
+        // shows, so rows never reflow and the last column never sits under the bar.
+        width: Scroll.contentWidth(root.width, Theme.spacing.rowPaddingX)
         row: root.pane.rowFor(listingIndex)
         cursor: listingIndex === root.pane.cursorIndex
         paneFocused: root.pane.paneFocused
@@ -117,7 +120,7 @@ ListView {
     // and where the background menu is raised, and a listing whose last row sits flush on the bottom
     // edge offers neither once it is scrolled to the end.
     footer: Item {
-        width: root.width
+        width: Scroll.contentWidth(root.width, Theme.spacing.rowPaddingX)
         height: Theme.chromeHeight
     }
 

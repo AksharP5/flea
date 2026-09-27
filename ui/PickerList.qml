@@ -4,6 +4,7 @@ import "." as Flea
 import "js/Match.js" as Match
 import "js/Picker.js" as Picker
 import "js/Keymap.js" as Keymap
+import "js/Scroll.js" as Scroll
 import "js/Sort.js" as Sort
 
 // The picker's listing: ui/Row.qml drawn behind a check box, and the keys that move through it. The
@@ -59,7 +60,8 @@ ListView {
         readonly property bool markable: cell.row !== null && Picker.directory(cell.row) === root.picker.folderMode
         readonly property bool isMarked: cell.markable && Picker.marked(root.picker.marks, cell.rowPath)
 
-        width: root.width
+        // The scroll lane stays clear, the same rule the window's own list follows.
+        width: Scroll.contentWidth(root.width, Theme.spacing.rowPaddingX)
         height: Theme.rowHeight
 
         // The board's marked row: the accent wash and the accent bar, under the row's own text. The

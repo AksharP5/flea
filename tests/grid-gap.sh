@@ -28,7 +28,7 @@ output=$(env -u DISPLAY -u WAYLAND_DISPLAY -u HYPRLAND_INSTANCE_SIGNATURE \
     QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1 \
     timeout 20 qs -p "$test_root/config" 2>&1)
 
-# Sample input, one probe line: "  INFO qml: GRID_GAP PASS widths=500,800,1200 gap=8 columns=3,5,7"
+# Sample input, one probe line: "  INFO qml: GRID_GAP PASS widths=500,800,1200 gap=8 lane=12 columns=3,5,7"
 pass_count=$(printf '%s\n' "$output" | grep -c 'GRID_GAP PASS')
 fail_count=$(printf '%s\n' "$output" | grep -c 'GRID_GAP FAIL')
 if [ "$pass_count" -ne 1 ] || [ "$fail_count" -ne 0 ]; then

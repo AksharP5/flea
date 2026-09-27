@@ -39,9 +39,10 @@ GridView {
     signal dirSizesApplied(var ask)
     signal dirSizesCancelled()
 
-    // Counted on the width less one gap, the inset that keeps a tile frame off both edge lines.
+    // Counted on the width less one gap, the inset that keeps a tile frame off both edge lines,
+    // and less the scroll lane, so no tile sits under the bar.
     readonly property int columns: GridGeometry.columnsFor(root.width, Theme.grid.minCellWidth,
-        ViewState.thumbnailPixels, Theme.spacing.rowPaddingX, Theme.spacing.gap)
+        ViewState.thumbnailPixels, Theme.spacing.rowPaddingX, Theme.spacing.gap, Theme.spacing.rowPaddingX)
     readonly property int tileRows: Math.max(1, Math.ceil(root.pane.shownTotal / root.columns))
     // Mark, one gap, two caption lines, and the padding above and below.
     readonly property int cellHeightPx: ViewState.thumbnailPixels + Theme.spacing.gap
@@ -65,7 +66,7 @@ GridView {
     // One gap of bare ground along the left and the top; GridTile's hairline inset stays.
     leftMargin: Theme.spacing.gap
     topMargin: Theme.spacing.gap
-    cellWidth: GridGeometry.cellWidthFor(root.width, root.columns, Theme.spacing.gap)
+    cellWidth: GridGeometry.cellWidthFor(root.width, root.columns, Theme.spacing.gap, Theme.spacing.rowPaddingX)
     cellHeight: root.cellHeightPx
     cacheBuffer: root.cellHeightPx * 2
     boundsBehavior: Flickable.StopAtBounds
@@ -150,7 +151,7 @@ GridView {
     // One tile row of bare ground at the end, the same inset ui/List.qml keeps and for the same two
     // reasons: a band has to start somewhere and the background menu has to be raisable at the end.
     footer: Item {
-        width: root.width
+        width: Math.max(0, root.width - Theme.spacing.rowPaddingX)
         height: Theme.chromeHeight
     }
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Drives the real Quickshell window with omarchy-drive and asserts through the read-only IPC seam.
-# Usage: ./tests/ui.sh [cursor|terminal|open|rows|click|ctrlclick|viewrestart|dd|sortrestart|dirsortstale|editplace|mute|placemenu|runscript|unmounted|sidebar|menu|hidden|selection|watch|optical|select|colour|lifted|icons|thumbs|hashcache|stale|nosweep|oem|header|overflow|focus|preview|network|netmark|networktimeout|networklive|gvfs|sharebrowser|unmount|phones|eject|rename|renamelife|taildrop|grid|columns|operations|tabs|openterminal|renderer|settings|makedefault|noblank|previewswap ...]; networklive is opt-in.
+# Usage: ./tests/ui.sh [cursor|terminal|open|rows|click|ctrlclick|viewrestart|dd|sortrestart|dirsortstale|editplace|mute|placemenu|runscript|unmounted|sidebar|menu|hidden|selection|watch|optical|select|colour|lifted|icons|thumbs|hashcache|stale|nosweep|oem|header|overflow|focus|preview|network|netmark|networktimeout|networklive|gvfs|sharebrowser|unmount|phones|eject|rename|renamelife|taildrop|grid|columns|operations|tabs|openterminal|renderer|settings|makedefault|scrolllane|noblank|previewswap ...]; networklive is opt-in.
 set -u
 set -o pipefail
 # Hard rule 9's guard, which owns FIXTURE_ROOT and every create and delete this suite makes.
@@ -1223,6 +1223,120 @@ case_scrollbar() {
     [[ "$(jq -r '.rect' <<< "$state")" != "$(jq -r '.rect' <<< "$list_bar")" || "$(jq -r '.content' <<< "$state")" != "$(jq -r '.content' <<< "$list_bar")" ]] \
         || fail "scrollbar: the columns report the list bar's own rect and content: $state"
     printf 'SCROLLBAR short=hidden scale=visible track=jump drag=middle views=list,grid,columns\n'
+}
+
+# rectOf answers rounded window pixels; within1 keeps a fractional layout honest.
+within1() { local got=$1 want=$2; (( got >= want - 1 && got <= want + 1 )); }
+
+# The bar sits in the lane it is measured against: ends at the view's own right edge, one lane
+# wide, its knob 2 px inside. $1 names the surface, $2 is the view's right edge, $3 is the lane.
+scrolllane_bar() {
+    local what="$1" view_right=$2 pad=$3 state bx by bw bh kx ky kw kh inset
+    state=$(ipc scrollbarState)
+    read -r bx by bw bh <<< "$(jq -r '.rect' <<< "$state")"
+    read -r kx ky kw kh <<< "$(jq -r '.knobRect' <<< "$state")"
+    (( bx + bw >= view_right - 1 && bx + bw <= view_right + 1 )) \
+        || fail "scrolllane: $what bar ends at $((bx + bw)), the view at $view_right"
+    (( bw == pad )) || fail "scrolllane: $what bar is $bw wide, the lane is $pad"
+    inset=$(( bx + bw - (kx + kw) ))
+    (( inset >= 1 && inset <= 4 )) \
+        || fail "scrolllane: $what knob sits $inset px inside the lane, not 2"
+    (( kx >= bx )) || fail "scrolllane: $what knob starts left of its lane"
+}
+
+# The list holds its rows one lane short of the view, and the header carries the same padding so
+# its Kind title stays over the rows' own Kind cells. $1 is the text size, $2 is the lane.
+scrolllane_list() {
+    local base=$1 pad=$2 ax ay aw ah rx ry rw rh area_right row_right left hx hw kind_right
+    read -r ax ay aw ah <<< "$(ipc listAreaRect)"
+    read -r rx ry rw rh <<< "$(ipc rowRect 0)"
+    area_right=$((ax + aw)); row_right=$((rx + rw))
+    within1 $((area_right - row_right)) "$pad" \
+        || fail "scrolllane: base $base rows end $((area_right - row_right)) px short of the view, not the $pad px lane"
+    scrolllane_bar "base $base list" "$area_right" "$pad"
+    left=$(ipc headerLeft)
+    IFS='|' read -r hx hw <<< "$(ipc headerCellRect kind)"
+    kind_right=$((left + hx + hw))
+    within1 "$kind_right" $((row_right - pad)) \
+        || fail "scrolllane: base $base header Kind ends at $kind_right, rows end at $row_right with a $pad px padding"
+}
+
+# The grid counts and sizes its cells on the width less the lane, so the last tile of a row ends
+# short of it. $1 is the text size, $2 is the lane.
+scrolllane_grid() {
+    local base=$1 pad=$2 ax ay aw ah area_right columns tx ty tw th lx ly lw lh last_right
+    read -r ax ay aw ah <<< "$(ipc listAreaRect)"
+    area_right=$((ax + aw))
+    columns=$(ipc gridColumns)
+    [[ "$columns" =~ ^[0-9]+$ && "$columns" -ge 1 ]] \
+        || fail "scrolllane: base $base grid reports $columns columns"
+    read -r tx ty tw th <<< "$(ipc rowRect 0)"
+    read -r lx ly lw lh <<< "$(ipc rowRect $((columns - 1)))"
+    last_right=$((lx + lw))
+    (( last_right <= area_right - pad + 1 )) \
+        || fail "scrolllane: base $base grid tiles reach $last_right, the lane starts at $((area_right - pad))"
+    (( columns * tw <= aw - pad )) \
+        || fail "scrolllane: base $base $columns tiles at $tw px overrun the $aw px view less the $pad px lane"
+    scrolllane_bar "base $base grid" "$area_right" "$pad"
+}
+
+# Each Miller column keeps its own lane: the active column's rows are one lane short of it, and
+# its bar ends at the column's own right edge rather than the view's. $1 is the size, $2 the lane.
+scrolllane_columns() {
+    local base=$1 pad=$2 ax ay aw ah col rx ry rw rh
+    read -r ax ay aw ah <<< "$(ipc listAreaRect)"
+    col=$((aw / 3))
+    read -r rx ry rw rh <<< "$(ipc rowRect 0)"
+    within1 "$rw" $((col - pad)) \
+        || fail "scrolllane: base $base the active column holds $rw px rows in a $col px column with a $pad px lane"
+    within1 $((rx + rw)) $((ax + 2 * col - pad)) \
+        || fail "scrolllane: base $base column rows end at $((rx + rw)), the column at $((ax + 2 * col - pad))"
+    scrolllane_bar "base $base columns" $((ax + 2 * col)) "$pad"
+}
+
+# ScrollLane040: every scrolling listing reserves a lane at its right edge, rowPaddingX wide,
+# whether or not the bar shows, so rows never reflow and the last column never sits under the
+# bar. The bar itself keeps 0.3.4's reveal, hold and fade, which case_scrollbar already drives.
+# Two text sizes prove the lane scales with the token; the shots are the controller's render
+# comparison against the board at those sizes.
+case_scrolllane() {
+    local dir="$fixture_root/scrolllane"
+    sandbox_scratch "$dir"
+    local i
+    for i in $(seq -w 1 30); do printf 'body\n' > "$dir/file-$i.txt"; done
+    local fixture_home="$fixture_root/scrolllane-home" real_home="$HOME"
+    fixture_home_make "$fixture_home"
+    mkdir -p "$fixture_home/.config/omarchy"
+
+    local base pad
+    for base in 12 14; do
+        printf '[font]\nbase-size = %s\n' "$base" > "$fixture_home/.config/omarchy/shell.toml"
+        export HOME="$fixture_home"
+        launch "$dir"
+        export HOME="$real_home"
+        wait_listing 30
+        settle
+        pad=$(ipc metrics | cut -d' ' -f3)
+        [[ "$pad" =~ ^[0-9]+$ ]] || fail "scrolllane: no row padding from metrics at base $base"
+        scrolllane_list "$base" "$pad"
+        shot "scrolllane-$base-list"
+        click_chrome grid
+        settle
+        [[ "$(ipc viewMode)" == grid ]] || fail "scrolllane: the chrome button did not switch to the grid at base $base"
+        scrolllane_grid "$base" "$pad"
+        shot "scrolllane-$base-grid"
+        click_chrome list
+        settle
+        click_chrome columns
+        settle
+        [[ "$(ipc viewMode)" == columns ]] || fail "scrolllane: the chrome button did not switch to the columns at base $base"
+        scrolllane_columns "$base" "$pad"
+        shot "scrolllane-$base-columns"
+        kill_flea
+    done
+    sandbox_remove "$fixture_home"
+    sandbox_remove "$dir"
+    printf 'SCROLLLANE sizes=12,14 views=list,grid,columns\n'
 }
 
 # Catches removing the cursor clamp from ListView.onContentYChanged in ui/Pane.qml.
@@ -10089,7 +10203,7 @@ case_previewviews() {
 . "$repo/tests/ui-transfer-live.sh"
 
 declare -a wanted=("$@")
-[[ ${#wanted[@]} -eq 0 ]] && wanted=(cursor scroll scrollbar terminal open rows click ctrlclick viewrestart dd collide sortrestart duallaunch dirsortstale editplace mute placemenu runscript unmounted sidebar menu background hidden selection watch optical select colour lifted icons thumbs hashcache stale nosweep oem header overflow focus preview pdffocus network netmark networkauth networktimeout gvfs sharebrowser unmount phones trasharm eject rename renamelife taildrop providers grid columns operations tabs openterminal renderer settings makedefault clickthrough wheelunder overlays views formats previewviews hangshare openwithdesign noblank previewswap transferlive)
+[[ ${#wanted[@]} -eq 0 ]] && wanted=(cursor scroll scrollbar terminal open rows click ctrlclick viewrestart dd collide sortrestart duallaunch dirsortstale editplace mute placemenu runscript unmounted sidebar menu background hidden selection watch optical select colour lifted icons thumbs hashcache stale nosweep oem header overflow focus preview pdffocus network netmark networkauth networktimeout gvfs sharebrowser unmount phones trasharm eject rename renamelife taildrop providers grid columns operations tabs openterminal renderer settings makedefault scrolllane clickthrough wheelunder overlays views formats previewviews hangshare openwithdesign noblank previewswap transferlive)
 
 : > "$run_log"
 : > "$flea_log"

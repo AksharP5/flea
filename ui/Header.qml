@@ -41,8 +41,11 @@ Item {
     // The columns this width affords, less the ones the user has hidden (qs module ViewState).
     // ui/Row.qml resolves its own from a width anchoring keeps
     // equal to this one, so the header can never head a column no row below it is drawing.
+    // The width is the view less the scroll lane: rows draw lane-narrow, so the header that did
+    // not would head a column no row below it is drawing.
     property var hiddenCols: ViewState.hiddenCols
-    readonly property var cols: root.dualMode ? Theme.dualColumns(root.width, root.hiddenCols) : Theme.columns(root.width, root.hiddenCols, root.dateWidth)
+    readonly property real contentWidth: Math.max(0, root.width - Theme.spacing.rowPaddingX)
+    readonly property var cols: root.dualMode ? Theme.dualColumns(root.contentWidth, root.hiddenCols) : Theme.columns(root.contentWidth, root.hiddenCols, root.dateWidth)
 
     implicitHeight: Theme.chromeHeight
 
@@ -117,7 +120,8 @@ Item {
     PanelSectionHeader {
         id: headerKind
         anchors.right: parent.right
-        anchors.rightMargin: Theme.spacing.rowPaddingX
+        // The header carries the lane the rows keep: its own padding plus the lane, so titles stay over their cells.
+        anchors.rightMargin: 2 * Theme.spacing.rowPaddingX
         anchors.verticalCenter: parent.verticalCenter
         visible: root.cols.kind
         width: root.cols.kind ? Theme.column.kind : 0
@@ -157,7 +161,7 @@ Item {
     }
 
     // What the header is drawing right now, for the seam that reads it beside a row's.
-    function columnSet() { return root.dualMode ? ["name"].concat(root.cols.size ? ["size"] : []).concat(root.cols.date ? ["date"] : []).join(",") : Theme.columnNames(root.width, root.hiddenCols, root.dateWidth) }
+    function columnSet() { return root.dualMode ? ["name"].concat(root.cols.size ? ["size"] : []).concat(root.cols.date ? ["date"] : []).join(",") : Theme.columnNames(root.contentWidth, root.hiddenCols, root.dateWidth) }
 
     // The one lookup the geometry reader needs, the same by-key idiom Pane.itemFor uses for rows.
     function cell(key) {

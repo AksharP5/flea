@@ -4,6 +4,7 @@ import "." as Flea
 import "js/ClipMarks.js" as ClipMarks
 import "js/Filter.js" as Filter
 import "js/ExtThumbs.js" as ExtThumbs
+import "js/Scroll.js" as Scroll
 import "js/Tap.js" as Tap
 import "js/Thumbs.js" as Thumbs
 import "js/DirSizes.js" as DirSizes
@@ -160,7 +161,7 @@ Item {
 
         // G7 needs an empty press target below the final row even when a long column fills the viewport.
         footer: Item {
-            width: view.width
+            width: Scroll.contentWidth(view.width, Theme.spacing.rowPaddingX)
             height: root.pane ? Theme.spacing.rowPaddingY : 0
         }
 
@@ -196,7 +197,8 @@ Item {
             id: cell
             required property int index
             readonly property int listingIndex: root.pane ? Filter.at(root.pane.shown, index) : index
-            width: view.width
+            // Each column keeps the scroll lane clear, the same rule ui/List.qml follows.
+            width: Scroll.contentWidth(view.width, Theme.spacing.rowPaddingX)
             // A shrunk listing subscripts out of range under a delegate not yet released, and QML
             // hands that back as undefined; every row reader in the tree tests against a real null.
             row: root.pane ? root.pane.rowFor(listingIndex) : root.rows[index] !== undefined ? root.rows[index] : null
@@ -277,7 +279,7 @@ Item {
         visible: root.renaming
         x: root.renameLeft
         y: root.renameViewIndex * Theme.fileRowHeight
-        width: Math.max(0, view.width - root.renameLeft - root.renameRight)
+        width: Math.max(0, Scroll.contentWidth(view.width, Theme.spacing.rowPaddingX) - root.renameLeft - root.renameRight)
         height: Theme.fileRowHeight
         z: 1
         color: Theme.color.surface
@@ -296,7 +298,7 @@ Item {
         active: root.renaming
         x: root.renameLeft
         y: root.renameViewIndex * Theme.fileRowHeight
-        width: Math.max(0, view.width - root.renameLeft - root.renameRight)
+        width: Math.max(0, Scroll.contentWidth(view.width, Theme.spacing.rowPaddingX) - root.renameLeft - root.renameRight)
         height: Theme.fileRowHeight
         z: 2
         sourceComponent: Flea.RenameField {

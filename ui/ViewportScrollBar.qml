@@ -24,6 +24,8 @@ Item {
                                                               root.trackLength, Theme.hitMin)
     readonly property bool overflow: Scroll.range(root.contentLength, root.viewportLength) > Scroll.OVERFLOW_PX
     readonly property bool dragging: pointer.pressed && pointer.onHandle
+    // What the lane test reads beside the bar's own rect: the knob's drawn box in window pixels.
+    readonly property alias knobItem: handle
     // Finder's overlay scroller: drawn only while the view moves, the pointer is in the lane or a press is down.
     property bool moving: false
     // A new listing resets the position in the same frame its length changes, which is not a scroll.

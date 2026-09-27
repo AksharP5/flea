@@ -83,8 +83,8 @@ ShellRoot {
         for (var g = 0; g < grids.length; g++) {
             var grid = grids[g]
             var at = "at width " + grid.width
-            var expColumns = GridGeometry.columnsFor(grid.width, minCell, thumbPx, padX, gap)
-            var expCell = GridGeometry.cellWidthFor(grid.width, expColumns, gap)
+            var expColumns = GridGeometry.columnsFor(grid.width, minCell, thumbPx, padX, gap, padX)
+            var expCell = GridGeometry.cellWidthFor(grid.width, expColumns, gap, padX)
             if (grid.leftMargin !== gap)
                 failures.push("leftMargin " + grid.leftMargin + " " + at)
             if (grid.topMargin !== gap)
@@ -104,9 +104,18 @@ ShellRoot {
                 failures.push("first frame x " + (pt.x + hairline) + " inside the gap " + at)
             if (pt.y + hairline < gap)
                 failures.push("first frame y " + (pt.y + hairline) + " inside the gap " + at)
+            // The scroll lane stays clear: the last tile of the first row ends short of it.
+            var last = grid.itemAtIndex(expColumns - 1)
+            if (last === null) {
+                failures.push("no delegate at index " + (expColumns - 1) + " " + at)
+            } else {
+                var end = last.mapToItem(grid, last.width, 0)
+                if (end.x > grid.width - padX + 1)
+                    failures.push("last tile ends at " + end.x + ", the lane starts at " + (grid.width - padX) + " " + at)
+            }
         }
         if (failures.length === 0)
-            console.log("GRID_GAP PASS widths=500,800,1200 gap=" + gap + " columns=" + narrow.columns + "," + middle.columns + "," + wide.columns)
+            console.log("GRID_GAP PASS widths=500,800,1200 gap=" + gap + " lane=" + padX + " columns=" + narrow.columns + "," + middle.columns + "," + wide.columns)
         for (var f = 0; f < failures.length; f++)
             console.log("GRID_GAP FAIL " + failures[f])
         Quickshell.execDetached(["kill", String(Quickshell.processId)])

@@ -71,4 +71,17 @@ function run(check) {
     check("a clamped handle clamps a drag past the track to the last page", Scroll.positionForHandle(900, 0, 100000, 400, 400, 24), 99600)
     check("a clamped handle removes a non-zero origin before mapping", Scroll.handleOffset(49900, 100, 100000, 400, 400, 24), 188)
     check("a clamped handle adds the origin back to a dragged position", Scroll.positionForHandle(188, 100, 100000, 400, 400, 24), 49900)
+
+    // The lane every scrolling listing reserves at its right edge: rowPaddingX wide, whether or
+    // not the bar shows, so rows never reflow and the last column never sits under the bar.
+    check("the lane is the row padding itself", Scroll.lane(14), 14)
+    check("the lane scales with text size", Scroll.lane(16), 16)
+    check("no padding leaves no lane", Scroll.lane(0), 0)
+    check("garbage leaves no lane", Scroll.lane("x"), 0)
+    // The width content may use: the view less the lane it always keeps clear.
+    // Sample input: contentWidth(700, 14) is 686, a 700 px listing holding 686 px of rows.
+    check("content ends one lane short of the view", Scroll.contentWidth(700, 14), 686)
+    check("content fills a view with no padding", Scroll.contentWidth(700, 0), 700)
+    check("a view narrower than its lane holds nothing", Scroll.contentWidth(9, 14), 0)
+    check("garbage holds nothing", Scroll.contentWidth("x", "y"), 0)
 }

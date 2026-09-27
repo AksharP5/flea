@@ -54,6 +54,7 @@ Flickable {
 
     Item {
         id: holder
-        width: root.width
+        // The scroll lane stays clear at the right edge, the same rule every listing follows.
+        width: Math.max(0, root.width - Theme.spacing.rowPaddingX)
     }
 }
