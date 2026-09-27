@@ -2521,7 +2521,7 @@ the single journalled step; `src/backend/photosreq.rs` at 43, `src/backend/proto
 Fsinfoearly moves one recorded ceiling, re-derived with `wc -l`: `src/backend/run.rs` 455 to
 469 for the slow-mount hook (the `FsInfo` owner, its `Event::FsInfo` arm, the `list` hook ahead of
 the scan and the `fsinfo` answer that never blocks). The worker is the new
-`src/backend/fsinforeq.rs` at 301, over the soft budget and inside the hard cap; `src/backend/extclass.rs` stands at 219
+`src/backend/fsinforeq.rs` at 319, over the soft budget and inside the hard cap; `src/backend/extclass.rs` stands at 219
 with `gvfs_root` and `classify_entry`, and `src/backend/mountinfo.rs` at 142 carries the mount point.
 
 ## The key table is generated

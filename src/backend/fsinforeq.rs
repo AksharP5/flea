@@ -17,6 +17,8 @@ const KNOWN_MAX: usize = 64;
 pub struct Done {
     pub root: PathBuf,
     pub dir: PathBuf,
+    // Which statfs this is, so a hung one landing late is told apart from its replacement.
+    pub seq: u64,
     pub info: Option<Info>,
 }
 
@@ -28,10 +30,12 @@ pub struct FsInfo {
     reader: Reader,
     // Figures per folder, because an sftp host or a phone's storages answer differently below one mount root.
     known: HashMap<PathBuf, Option<Info>>,
-    // One statfs per mount root at a time, with its start and folder, so fast navigation never piles round trips on the daemon.
-    inflight: HashMap<PathBuf, (Instant, PathBuf)>,
+    // One statfs per mount root at a time, with its start and number, so fast navigation never piles round trips on the daemon.
+    inflight: HashMap<PathBuf, (Instant, u64)>,
     // Mount roots asked for again while their statfs was busy; the folder on screen is read when it lands.
     waiting: HashSet<PathBuf>,
+    // The number the next statfs takes.
+    seq: u64,
 }
 
 impl FsInfo {
@@ -40,7 +44,7 @@ impl FsInfo {
     }
 
     pub fn with_reader(events: Sender<Event>, reader: Reader) -> Self {
-        FsInfo { events, reader, known: HashMap::new(), inflight: HashMap::new(), waiting: HashSet::new() }
+        FsInfo { events, reader, known: HashMap::new(), inflight: HashMap::new(), waiting: HashSet::new(), seq: 0 }
     }
 
     // Before the scan, so a share's statfs runs beside its gio listing; a kernel mount waits for fsinfo, keeping local lists free of a mountinfo read.
@@ -78,21 +82,22 @@ impl FsInfo {
             self.waiting.insert(root);
             return;
         }
-        let (events, reader, key, asked) = (self.events.clone(), Arc::clone(&self.reader), root.clone(), dir.clone());
+        self.seq += 1;
+        let (events, reader, key, seq) = (self.events.clone(), Arc::clone(&self.reader), root.clone(), self.seq);
         let worker = std::thread::Builder::new().name("flea-fsinfo".into()).spawn(move || {
             let info = reader(dir.clone());
-            let _ = events.send(Event::FsInfo(Done { root: key, dir, info }));
+            let _ = events.send(Event::FsInfo(Done { root: key, dir, seq, info }));
         });
         // corner: a spawn that fails records nothing, so the next ask tries again and answers unknown meanwhile.
         if worker.is_ok() {
-            self.inflight.insert(root, (Instant::now(), asked));
+            self.inflight.insert(root, (Instant::now(), seq));
         }
     }
 
     // The figures to print, only for the folder on screen and only when they moved since its last answer.
     pub fn finish(&mut self, done: Done, base: &Path) -> Option<Option<Info>> {
         // A hung statfs landing late never clears the newer one that replaced it.
-        if self.inflight.get(&done.root).is_some_and(|(_, dir)| *dir == done.dir) {
+        if self.inflight.get(&done.root).is_some_and(|(_, seq)| *seq == done.seq) {
             self.inflight.remove(&done.root);
         }
         if self.waiting.remove(&done.root) && base != done.dir && base.starts_with(&done.root) {
@@ -190,7 +195,7 @@ mod tests {
     fn unchanged_figures_print_nothing_and_moved_ones_print() {
         let (mut fs, _rx, _) = counted(0, 7);
         let dir = share_dir("a");
-        let done = |free| Done { root: PathBuf::from(SHARE), dir: share_dir("a"), info: figures(free) };
+        let done = |free| Done { root: PathBuf::from(SHARE), dir: share_dir("a"), seq: 0, info: figures(free) };
         assert!(fs.finish(done(7), &dir).is_some(), "the first figures print");
         assert!(fs.finish(done(7), &dir).is_none(), "the answer already carried these");
         assert!(fs.finish(done(5), &dir).is_some(), "a copy to the share moved them");
@@ -199,7 +204,7 @@ mod tests {
     #[test]
     fn a_folder_the_client_has_left_prints_nothing() {
         let (mut fs, _rx, _) = counted(0, 7);
-        let done = Done { root: PathBuf::from(SHARE), dir: share_dir("back"), info: figures(7) };
+        let done = Done { root: PathBuf::from(SHARE), dir: share_dir("back"), seq: 0, info: figures(7) };
         assert!(fs.finish(done, Path::new("/home/gm")).is_none(), "a left folder's figures name the wrong place");
         let (info, _) = fs.answer_in(&share_dir("back"), "");
         assert_eq!(info.map(|i| i.free), Some(7), "but coming back answers them at once");
@@ -244,16 +249,29 @@ mod tests {
     fn a_folder_left_behind_a_hung_statfs_is_never_read() {
         let (mut fs, rx, calls) = counted(0, 7);
         let root = PathBuf::from(SHARE);
-        fs.inflight.insert(root.clone(), (Instant::now(), share_dir("a")));
+        fs.inflight.insert(root.clone(), (Instant::now(), 90));
         fs.list_arrived(&share_dir("b"));
-        fs.inflight.insert(root.clone(), (Instant::now().checked_sub(FSINFO_DEADLINE + Duration::from_secs(1)).unwrap(), share_dir("a")));
+        fs.inflight.insert(root.clone(), (Instant::now().checked_sub(FSINFO_DEADLINE + Duration::from_secs(1)).unwrap(), 90));
         fs.list_arrived(&share_dir("c"));
         let done = next_done(&rx);
         assert_eq!(done.dir, share_dir("c"));
         let _ = fs.finish(done, &share_dir("c"));
-        let _ = fs.finish(Done { root: root.clone(), dir: share_dir("a"), info: figures(7) }, &share_dir("c"));
+        let _ = fs.finish(Done { root: root.clone(), dir: share_dir("a"), seq: 90, info: figures(7) }, &share_dir("c"));
         std::thread::sleep(Duration::from_millis(100));
         assert_eq!(calls.load(Ordering::SeqCst), 1, "b, left behind the hung statfs, was read anyway");
+    }
+
+    #[test]
+    fn a_hung_statfs_landing_late_never_frees_its_replacement_slot() {
+        let (mut fs, rx, calls) = counted(300, 7);
+        let root = PathBuf::from(SHARE);
+        fs.inflight.insert(root.clone(), (Instant::now().checked_sub(FSINFO_DEADLINE + Duration::from_secs(1)).unwrap(), 90));
+        fs.list_arrived(&share_dir("a"));
+        let _ = fs.finish(Done { root: root.clone(), dir: share_dir("a"), seq: 90, info: figures(7) }, &share_dir("a"));
+        fs.list_arrived(&share_dir("b"));
+        std::thread::sleep(Duration::from_millis(100));
+        assert_eq!(calls.load(Ordering::SeqCst), 1, "the hung statfs's late landing let a second one start beside its replacement");
+        let _ = next_done(&rx);
     }
 
     #[test]
@@ -269,7 +287,7 @@ mod tests {
     #[test]
     fn a_hung_statfs_past_the_deadline_lets_the_next_ask_try_again() {
         let (mut fs, _rx, calls) = counted(0, 7);
-        fs.inflight.insert(PathBuf::from(SHARE), (Instant::now().checked_sub(FSINFO_DEADLINE + Duration::from_secs(1)).unwrap(), share_dir("hung")));
+        fs.inflight.insert(PathBuf::from(SHARE), (Instant::now().checked_sub(FSINFO_DEADLINE + Duration::from_secs(1)).unwrap(), 90));
         fs.list_arrived(&share_dir("a"));
         std::thread::sleep(Duration::from_millis(100));
         assert_eq!(calls.load(Ordering::SeqCst), 1, "a presumed hung statfs does not hold the share's figures forever");
