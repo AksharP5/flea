@@ -321,3 +321,20 @@ fn a_copy_onto_rclone_says_it_uploads_in_the_background_and_never_claims_the_dri
     assert_eq!(done.note, RCLONE_NOTE, "the verdict names the background upload: {:?}", done.note);
     assert!(rx.try_iter().next().is_none(), "no writing phase on an rclone target");
 }
+
+#[test]
+fn a_move_confirms_only_the_folders_its_destination_filled() {
+    test_reset();
+    let d = TestDir::new("flushfor");
+    std::fs::create_dir_all(d.join("src")).unwrap();
+    std::fs::create_dir_all(d.join("dst/tree")).unwrap();
+    test_mark_durable(d.path());
+    let mut ctx = Ctx::begin(&d.join("dst/tree"));
+    ctx.touch(&d.join("src"));
+    ctx.touch(&d.join("dst/tree"));
+    ctx.touch(&d.join("dst"));
+    test_reset_counts();
+    ctx.flush_dirs_for(&d.join("dst/tree")).unwrap();
+    assert_eq!(test_counts().1, 2, "the tree and its parent, never the source's folder");
+    test_reset();
+}

@@ -139,6 +139,22 @@ impl Ctx {
         dirs
     }
 
+    // Only the touched folders a copy to dst filled, so a move confirms its destination without the source side.
+    pub fn flush_dirs_for(&self, dst: &Path) -> std::io::Result<()> {
+        let mut first: Option<std::io::Error> = None;
+        for dir in self.ordered() {
+            if dir.starts_with(dst) || Some(dir.as_path()) == dst.parent() {
+                if let Err(e) = fsync_dir(&dir) {
+                    first.get_or_insert(e);
+                }
+            }
+        }
+        match first {
+            Some(e) => Err(e),
+            None => Ok(()),
+        }
+    }
+
     // Every touched directory, best effort per directory: one bad folder never skips the rest.
     pub fn flush_dirs(&self) -> std::io::Result<()> {
         let mut first: Option<std::io::Error> = None;

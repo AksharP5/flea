@@ -390,7 +390,7 @@ pub(crate) fn move_cross_device(src: &Path, dst: &Path, p: &mut Progress) -> Res
 // The folders copy_any touched, or the parent with no context; a failure keeps the source.
 fn confirm_dest(p: &Progress, dst: &Path) -> Result<(), FleaError> {
     let failed = match p.durability.as_ref() {
-        Some(ctx) => ctx.flush_dirs().is_err(),
+        Some(ctx) => ctx.flush_dirs_for(dst).is_err(),
         None => dst
             .parent()
             .map(crate::backend::durable::fsync_dir)
