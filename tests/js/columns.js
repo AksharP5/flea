@@ -1,4 +1,5 @@
 .import "../../ui/js/Columns.js" as Columns
+.import "../../ui/js/ColumnFit.js" as ColumnFit
 .import "../../ui/js/Picker.js" as Picker
 
 // Below about 659 px of window the four fixed columns claimed the whole row and the filename had a
@@ -112,6 +113,62 @@ function run(check) {
           "name,mode,size,date,kind")
     check("the name is in the set even when everything else is gone",
           Columns.names({ mode: false, size: false, date: false, kind: false }), "name")
+
+    runColumnCount(check)
+    runListWidths(check)
+}
+
+// ColumnsWidth board, GM ruling on #167 and #69: the columns view's count follows the
+// window width, 2 below 900, 3 by default, 4 from 1700 and 5 from 2300, capped by the
+// View section's Columns view limit, which ships at 5.
+function runColumnCount(check) {
+    check("below 900 px the view draws 2 columns", Columns.columnCountForWidth(899, 5), 2)
+    check("at 900 px the view draws 3 columns", Columns.columnCountForWidth(900, 5), 3)
+    check("at 1700 px the view draws 4 columns", Columns.columnCountForWidth(1700, 5), 4)
+    check("at 2300 px the view draws 5 columns", Columns.columnCountForWidth(2300, 5), 5)
+    check("just under each step stays down", Columns.columnCountForWidth(1699, 5)
+        + "|" + Columns.columnCountForWidth(2299, 5), "3|4")
+    check("the limit caps a wide window", Columns.columnCountForWidth(2300, 3), 3)
+    check("the limit caps a narrow window too", Columns.columnCountForWidth(1200, 2), 2)
+    check("a limit below the floor still draws 2", Columns.columnCountForWidth(2300, 1), 2)
+    check("a missing limit reads as the shipped 5", Columns.columnCountForWidth(2300), 5)
+    check("2 columns need no ancestor", Columns.ancestorsForCount(2), 0)
+    check("3 columns read one ancestor", Columns.ancestorsForCount(3), 1)
+    check("4 columns read two ancestors", Columns.ancestorsForCount(4), 2)
+    check("5 columns read three ancestors", Columns.ancestorsForCount(5), 3)
+}
+
+// ListColumns040 board: a dragged edge clamps, and a double click fits the widest value
+// the window holds, never a directory-wide scan.
+function runListWidths(check) {
+    check("a drag inside the rails lands as drawn", Columns.clampListWidth(100), 100)
+    check("a drag under the floor clamps to it", Columns.clampListWidth(10), Columns.MIN_LIST_WIDTH)
+    check("a drag past the ceiling clamps to it", Columns.clampListWidth(9999), Columns.MAX_LIST_WIDTH)
+    check("a drag rounds to whole pixels", Columns.clampListWidth(100.6), 101)
+    check("autofit takes the widest held cell", Columns.autofitWidth([70, 120, 90], 70), 120)
+    check("autofit clamps a wide cell to the ceiling",
+        Columns.autofitWidth([9999], 70), Columns.MAX_LIST_WIDTH)
+    check("autofit on no held rows keeps the column", Columns.autofitWidth([], 70), 70)
+
+    runColumnFit(check)
+}
+
+// ColumnFit.cellText names the same strings ui/Row.qml draws, so the header's autofit
+// measures what the rows show: a link reads its target length, a folder its walk size.
+function runColumnFit(check) {
+    check("a file fits its size", ColumnFit.cellText("size", {p: 33188, d: false, s: 18000}, [], null), "18.0 kB")
+    check("a link fits its kind, not its target length",
+        ColumnFit.cellText("size", {p: 41453, d: false, s: 18}, [], null), "link")
+    check("a folder without a walk fits the bare mark",
+        ColumnFit.cellText("size", {p: 16877, d: true, s: 60}, [], null), "·")
+    check("a folder with a walk fits its size",
+        ColumnFit.cellText("size", {p: 16877, d: true, s: 60}, [], {bytes: 124700000, partial: false}), "124.7 MB")
+    check("a partial walk keeps its mark",
+        ColumnFit.cellText("size", {p: 16877, d: true, s: 60}, [], {bytes: 1000, partial: true}), ">1.0 kB")
+    check("a row with no mtime fits the bare mark",
+        ColumnFit.cellText("date", {m: null}, [], null), "--")
+    check("a kind past the dictionary reads empty, never a crash",
+        ColumnFit.cellText("kind", {k: 99}, ["File"], null), "")
 }
 
 // SendPicker.html draws a chooser row as the name, a 70 px size and an 80 px date, and nothing

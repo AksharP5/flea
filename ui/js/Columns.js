@@ -53,6 +53,81 @@ function dualSet(width, t, hidden) {
     return {mode: false, kind: false, size: showSize, date: showDate}
 }
 
+// ColumnsWidth board, #167 and #69: the columns view's count follows the window width,
+// 2 below 900, 3 by default, 4 from 1700 and 5 from 2300, capped by Settings View's
+// Columns view limit, which ships at 5. Sample input: (899, 5) answers 2.
+var COUNT_4_AT = 1700
+var COUNT_5_AT = 2300
+var COUNT_NARROW_AT = 900
+var COUNT_MIN = 2
+var COUNT_MAX = 5
+
+// The limit is the stored segment, so a stored number clamps to 2 to 5 and anything
+// else reads as the shipped 5.
+function cappedLimit(limit) {
+    if (typeof limit === "undefined" || limit === null)
+        return COUNT_MAX
+    var n = Math.floor(Number(limit))
+    if (!(n >= COUNT_MIN) && !(n <= COUNT_MAX))
+        return COUNT_MAX
+    if (n < COUNT_MIN)
+        return COUNT_MIN
+    if (n > COUNT_MAX)
+        return COUNT_MAX
+    return n
+}
+
+// One integer for a window of this width, never above the limit. Resizing re-lays the
+// columns in one frame and re-reads nothing: the listing is untouched, only ancestors peek.
+function columnCountForWidth(width, limit) {
+    var count = width < COUNT_NARROW_AT ? 2 : width < COUNT_4_AT ? 3
+        : width < COUNT_5_AT ? 4 : 5
+    var cap = cappedLimit(limit)
+    if (count > cap)
+        count = cap
+    if (count < COUNT_MIN)
+        count = COUNT_MIN
+    return count
+}
+
+// Extra columns are ancestors, read with the same viewport-scoped peek as the parent today.
+function ancestorsForCount(count) {
+    var n = Math.floor(Number(count))
+    if (!(n >= COUNT_MIN))
+        return 0
+    return Math.min(n, COUNT_MAX) - 2
+}
+
+// ListColumns040 board: a dragged edge clamps to the rails, and a double click fits the
+// widest value the window holds, never a directory-wide scan. Sample input: 9999 clamps.
+var MIN_LIST_WIDTH = 48
+var MAX_LIST_WIDTH = 480
+
+// One whole pixel inside the rails, whatever the drag handed in.
+function clampListWidth(px) {
+    var n = Math.round(Number(px))
+    if (!(n >= 0))
+        return MIN_LIST_WIDTH
+    if (n < MIN_LIST_WIDTH)
+        return MIN_LIST_WIDTH
+    if (n > MAX_LIST_WIDTH)
+        return MAX_LIST_WIDTH
+    return n
+}
+
+// The widest held cell, clamped; an empty window keeps the column it has.
+function autofitWidth(widths, fallback) {
+    var best = Math.round(Number(fallback))
+    if (!(best >= 0))
+        best = MIN_LIST_WIDTH
+    for (var i = 0; i < (widths || []).length; i++) {
+        var w = Math.round(Number(widths[i]))
+        if (w >= 0 && w > best)
+            best = w
+    }
+    return clampListWidth(best)
+}
+
 function names(s) {
     var out = ["name"]
     for (var i = DROP_ORDER.length - 1; i >= 0; i--) {

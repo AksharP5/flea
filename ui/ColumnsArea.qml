@@ -1,6 +1,7 @@
 import QtQuick
 import qs.Commons
 import "." as Flea
+import "js/Columns.js" as Columns
 import "js/ExtThumbs.js" as ExtThumbs
 import "js/Focus.js" as Focus
 import "js/Nav.js" as Nav
@@ -28,6 +29,9 @@ Item {
     property int peekVersion: 0
 
     readonly property string parentPath: Nav.parentOf(root.pane.path)
+    // Extra columns are ancestors, oldest first, each with the parent column's own peek.
+    readonly property string grandparentPath: Nav.parentOf(root.parentPath)
+    readonly property string greatGrandparentPath: Nav.parentOf(root.grandparentPath)
     // The meta the preview column names: pixels, line count, symlink target, for the cursor row only.
     property var cursorMeta: null
     readonly property var cursorRow: root.pane.rowFor(root.pane.cursorIndex)
@@ -45,7 +49,19 @@ Item {
 
     // A third of the view for each of the two fixed columns; the third takes the remainder, so
     // a width that does not divide by three leaves no gap. shell.qml's empty hero takes it too.
-    readonly property int columnWidth: Math.floor(root.width / 3)
+    // ColumnsWidth board, #167 and #69: the count follows the window width, 2 below 900,
+    // 3 by default, 4 from 1700 and 5 from 2300, capped by Settings View's limit at 5.
+    // Resizing re-lays the columns in one frame and re-reads nothing: only widths move.
+    readonly property int columnsLimit: ViewState.state.columnsLimit !== undefined ? ViewState.state.columnsLimit : 5
+    readonly property int columnCount: Columns.columnCountForWidth(root.width, root.columnsLimit)
+    readonly property int columnWidth: Math.max(1, Math.floor(root.width / Math.max(1, root.columnCount)))
+    // Ancestors shown, oldest first: 2 hides the parent, 3 draws it, 4 adds the
+    // grandparent and 5 the great-grandparent.
+    readonly property bool showGreatGrandparent: root.columnCount >= 5
+    readonly property bool showGrandparent: root.columnCount >= 4
+    readonly property bool showParent: root.columnCount >= 3
+    readonly property int shownBefore: (root.showGreatGrandparent ? 1 : 0) + (root.showGrandparent ? 1 : 0) + (root.showParent ? 1 : 0) + 1
+    readonly property int activeX: (root.shownBefore - 1) * root.columnWidth
 
     // A read of peeked that a binding re-evaluates when a peek lands; peekVersion is the trigger.
     function rowsFor(path) {
@@ -69,7 +85,12 @@ Item {
     }
 
     // Both neighbours are asked for on every move; ask() is a no-op for one already answered.
+    // Extra ancestors peek the same way, viewport-scoped, so a wide window reads more of the path.
     function refreshNeighbours() {
+        if (root.showGreatGrandparent)
+            root.ask(root.greatGrandparentPath)
+        if (root.showGrandparent)
+            root.ask(root.grandparentPath)
         root.ask(root.parentPath)
         root.ask(root.childPath)
         root.askMeta()
@@ -155,6 +176,8 @@ Item {
 
     // For ui/Ipc.qml: the peek columns' rows and the child column's empty tile, which pane.visibleItemFor cannot reach.
     function parentItemAt(index) { return parentColumn.itemAtIndex(index) }
+    function grandparentItemAt(index) { return grandparentColumn.itemAtIndex(index) }
+    function greatGrandparentItemAt(index) { return greatGrandparentColumn.itemAtIndex(index) }
     function childItemAt(index) { return childColumn.itemAtIndex(index) }
     function childEmptyItem() { return childColumn.emptyItem }
     function frameItem() { return preview.frameItem }
@@ -222,6 +245,8 @@ Item {
     onParentPathChanged: root.refreshNeighbours()
     // The rows/cursor move can early-return on values this binding had not settled yet, so its own change re-moves with fresh ones.
     onChildPathChanged: { root.refreshNeighbours(); root.moveThird() }
+    // Widening over a step shows an ancestor never asked for; ask() stays a no-op for the rest.
+    onColumnCountChanged: root.refreshNeighbours()
     Connections {
         target: root.pane
         function onCursorIndexChanged() { root.followCursor() }
@@ -268,11 +293,44 @@ Item {
     Row {
         anchors.fill: parent
 
+        // The great-grandparent, only on a window wide enough for five columns. Each column
+        // keeps its own scrollbar lane, and no line sits between columns, as 0.3.4 draws none.
+        Flea.ColumnPane {
+            id: greatGrandparentColumn
+            visible: root.showGreatGrandparent
+            width: root.showGreatGrandparent ? root.columnWidth : 0
+            height: parent.height
+            rows: root.rowsFor(root.greatGrandparentPath)
+            lockedMode: root.deniedMode(root.greatGrandparentPath)
+            drawsEmpty: root.answered(root.greatGrandparentPath)
+            liftedName: Nav.leafOf(root.grandparentPath)
+            dim: true
+            onActivated: function (name, isDir) { root.activateNeighbour(root.greatGrandparentPath, name, isDir) }
+            onNeighbourMenuRequested: function (name) { root.menuOnNeighbour(root.greatGrandparentPath, name) }
+        }
+
+        // The grandparent, only on a window wide enough for four columns.
+        Flea.ColumnPane {
+            id: grandparentColumn
+            visible: root.showGrandparent
+            width: root.showGrandparent ? root.columnWidth : 0
+            height: parent.height
+            rows: root.rowsFor(root.grandparentPath)
+            lockedMode: root.deniedMode(root.grandparentPath)
+            drawsEmpty: root.answered(root.grandparentPath)
+            liftedName: Nav.leafOf(root.parentPath)
+            dim: true
+            onActivated: function (name, isDir) { root.activateNeighbour(root.grandparentPath, name, isDir) }
+            onNeighbourMenuRequested: function (name) { root.menuOnNeighbour(root.grandparentPath, name) }
+        }
+
         // The parent, showing where the current directory sits among its own siblings. Its own row
         // for the current directory is the cursor trail: lifted like a hover, never accented.
+        // Below 900 px the parent hides and the active column takes its slot.
         Flea.ColumnPane {
             id: parentColumn
-            width: root.columnWidth
+            visible: root.showParent
+            width: root.showParent ? root.columnWidth : 0
             height: parent.height
             rows: root.rowsFor(root.parentPath)
             lockedMode: root.deniedMode(root.parentPath)
@@ -303,7 +361,7 @@ Item {
         // The cursor row: what is inside it when it is a directory, what it is when it is a file.
         Flea.PreviewSwap {
             id: thirdSwap
-            width: root.width - 2 * root.columnWidth
+            width: root.width - root.shownBefore * root.columnWidth
             height: parent.height
             burstEnds: true
             ready: root.thirdReady

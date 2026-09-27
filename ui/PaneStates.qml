@@ -22,7 +22,7 @@ Item {
         // view's 1364: the animation jumped a third of the window on a view switch and landed on
         // the divider between the two slots. Over the active column it lands at 1363, so all three
         // views draw it in the same place and none of them draws it on a rule.
-        x: root.pane.listSlot.x + (root.pane.viewMode === "columns" && root.pane.columnsArea ? root.pane.columnsArea.columnWidth : 0)
+        x: root.pane.listSlot.x + (root.pane.viewMode === "columns" && root.pane.columnsArea ? root.pane.columnsArea.activeX : 0)
         y: root.pane.listSlot.y
         width: root.pane.viewMode === "columns" && root.pane.columnsArea
                ? root.pane.columnsArea.columnWidth : root.pane.listSlot.width

@@ -41,8 +41,8 @@ src/tui/actions.rs 1021
 src/tui/input.rs 449
 src/tui/model.rs 1247
 src/tui/render.rs 889
-src/uischema.rs 408
-src/uistate.rs 475
+src/uischema.rs 424
+src/uistate.rs 518
 src/uistore.rs 483
 src/vulkan.rs 620
 tests/js/focus.js 406
@@ -54,7 +54,7 @@ ui/Backend.qml 425
 ui/ChromeBar.qml 468
 ui/ContextMenu.qml 578
 ui/ConvertDialog.qml 440
-ui/Ipc.qml 802
+ui/Ipc.qml 813
 ui/NetworkDialog.qml 449
 ui/NetworkMounts.qml 838
 ui/OpenWithDialog.qml 592
@@ -74,10 +74,10 @@ ui/TrashView.qml 474
 ui/WindowBody.qml 546
 ui/js/Filter.js 253
 ui/js/Focus.js 359
-ui/js/Keymap.js 313
+ui/js/Keymap.js 314
 ui/js/Menu.js 335
 ui/js/Ops.js 371
-ui/js/Settings.js 428"
+ui/js/Settings.js 431"
 
 status=0
 

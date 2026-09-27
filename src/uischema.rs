@@ -6,6 +6,8 @@ pub const DEFAULTS: &str = r#"{
   "view": "list",
   "density": "compact",
   "columns": ["name", "size", "date"],
+  "columnsLimit": 5,
+  "columnWidths": {},
   "addressBar": "breadcrumb",
   "sort": { "key": "name", "reverse": false },
   "rememberSort": true,
@@ -72,6 +74,8 @@ pub enum Rule {
     Ids,
     Count(f64, f64),
     TextSize,
+    // ListColumns040: a dragged edge per column, clamped to the rails ui/js/Columns.js draws.
+    ColumnWidths,
     // Any whole number, so a newer Flea's higher stamp survives this one's write; no patch may set it.
     Version,
     // A folder path to its own sort order, at most MAX_FOLDER_SORTS entries; see folderSorts above.
@@ -83,6 +87,12 @@ pub enum Rule {
 pub const STATE_VERSION: &str = "stateVersion";
 
 pub const COLUMN_KEYS: &[&str] = &["name", "mode", "size", "date", "kind"];
+
+// ListColumns040: the four resizable list columns and the rails a drag clamps to,
+// the same pair ui/js/Columns.js MIN_LIST_WIDTH and MAX_LIST_WIDTH name.
+pub const COLUMN_WIDTH_KEYS: [&str; 4] = ["mode", "size", "date", "kind"];
+pub const COLUMN_WIDTH_MIN: f64 = 48.0;
+pub const COLUMN_WIDTH_MAX: f64 = 480.0;
 
 pub const SORT: &[(&str, Rule)] = &[("key", Rule::Word(&["name", "size", "date", "kind"])), ("reverse", Rule::Bool)];
 
@@ -148,6 +158,9 @@ pub const SCHEMA: &[(&str, Rule)] = &[
     ("view", Rule::Word(&["list", "columns", "grid", "dual"])),
     ("density", Rule::Word(&["tight", "compact", "normal", "comfortable"])),
     ("columns", Rule::Columns),
+    // ColumnsWidth board: 2 to 5 columns from the window width, capped here, shipping at 5.
+    ("columnsLimit", Rule::Count(2.0, 5.0)),
+    ("columnWidths", Rule::ColumnWidths),
     ("addressBar", Rule::Word(&["path", "breadcrumb"])),
     ("sort", Rule::Group(SORT)),
     ("rememberSort", Rule::Bool),
@@ -235,7 +248,7 @@ mod tests {
         assert_eq!(
             keys,
             [
-                "view", "density", "columns", "addressBar", "sort", "rememberSort", "folderSorts",
+                "view", "density", "columns", "columnsLimit", "columnWidths", "addressBar", "sort", "rememberSort", "folderSorts",
                 "dual", "foldersFirst", "groupByKind", "hidden", "hiddenLast", "highlightToday", "wrapAtEnds", "keyHints", "startIn", "startFolder",
                 "lastPath", "newTab", "trashAutoEmpty", "trashSweptOn", "places", "shelf",
                 "preview", "keys",
@@ -262,6 +275,9 @@ mod tests {
         assert_eq!(d.get("trashSweptOn").and_then(Json::as_f64), Some(0.0));
         let cols: Vec<&str> = d.get("columns").and_then(Json::as_array).expect("columns").iter().filter_map(Json::as_str).collect();
         assert_eq!(cols, ["name", "size", "date"]);
+        // ColumnsWidth ships at 5, so width alone decides; ListColumns040 remembers nothing yet.
+        assert_eq!(d.get("columnsLimit").and_then(Json::as_f64), Some(5.0));
+        assert_eq!(d.get("columnWidths").and_then(Json::as_object).map(<[(String, Json)]>::len), Some(0));
         assert_eq!(d.get("sort").and_then(|s| s.get("key")).and_then(Json::as_str), Some("name"));
         assert_eq!(d.get("sort").and_then(|s| s.get("reverse")).and_then(Json::as_bool), Some(false));
         // Sorting release: hidden files keep today's order, and each folder remembers its sort.

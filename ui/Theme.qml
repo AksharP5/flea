@@ -90,18 +90,19 @@ Singleton {
     // Trash draws its Deleted cell at body, and body/bodySmall is not one ratio across the size stops.
     TextMetrics { id: bodyGlyphMetrics; font.family: Style.font.family; font.pixelSize: root.font.body; text: "0" }
 
-    // The header and every row read these, so the two cannot drift apart.
+    // The header and every row read these, so the two cannot drift apart. A dragged edge
+    // writes ui.json's columnWidths, which wins here; an empty map keeps the measured widths.
     readonly property QtObject column: QtObject {
         // mode is a permanent column per the operator's ruling; Row and Header both read this width.
-        readonly property int mode: Math.round(root.modeChars * glyphMetrics.advanceWidth)
-        readonly property int size: Math.round(root.sizeChars * glyphMetrics.advanceWidth)
-        readonly property int date: Math.round(root.dateChars * glyphMetrics.advanceWidth)
+        readonly property int mode: ViewState.state.columnWidths && ViewState.state.columnWidths.mode !== undefined ? Math.round(ViewState.state.columnWidths.mode) : Math.round(root.modeChars * glyphMetrics.advanceWidth)
+        readonly property int size: ViewState.state.columnWidths && ViewState.state.columnWidths.size !== undefined ? Math.round(ViewState.state.columnWidths.size) : Math.round(root.sizeChars * glyphMetrics.advanceWidth)
+        readonly property int date: ViewState.state.columnWidths && ViewState.state.columnWidths.date !== undefined ? Math.round(ViewState.state.columnWidths.date) : Math.round(root.dateChars * glyphMetrics.advanceWidth)
         // Trash's Deleted column: the same sixteen characters in the size that draws them, ceil because a rounded width elides at base 14.
         readonly property int trashDate: Math.ceil(root.dateChars * bodyGlyphMetrics.advanceWidth)
         // The send picker's own, anchored the way kind below it is rather than counted in characters.
         readonly property int pickerDate: Math.round(root.pickerDateBaseWidth * root.font.bodySmall / root.pickerDateBaseBodySmall)
         // Kind text varies too much for a character count, so its base is a pixel width scaled by the same ratio bodySmall already is.
-        readonly property int kind: Math.round(root.kindBaseWidth * root.font.bodySmall / 12)
+        readonly property int kind: ViewState.state.columnWidths && ViewState.state.columnWidths.kind !== undefined ? Math.round(ViewState.state.columnWidths.kind) : Math.round(root.kindBaseWidth * root.font.bodySmall / 12)
         // Not a column: the floor under the name, which the four above drop one by one to protect.
         readonly property int nameMin: Math.round(root.nameMinChars * glyphMetrics.advanceWidth)
     }

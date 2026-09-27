@@ -50,7 +50,7 @@ out=$(flea_ui 2>&1); rc=$?
 check "a read exits 0" "0" "$rc"
 check "a read answers the shipped view" "1" "$(echo "$out" | grep -c '"view": "list"')"
 check "a read answers the shipped menu.hidden" "1" "$(echo "$out" | grep -c '"copypath"')"
-check "a read answers every top-level key" "25" "$(echo "$out" | grep -c '^  "')"
+check "a read answers every top-level key" "31" "$(echo "$out" | grep -c '^  "')"
 check "a read leaves no state file behind" "0" "$([ -e "$UI" ] && echo 1 || echo 0)"
 
 # The window paints a first launch before any file exists, so the two fallbacks it holds have to be
@@ -98,7 +98,7 @@ check "a patch writes the file" "1" "$([ -f "$UI" ] && echo 1 || echo 0)"
 # 240 is not a stop, so src/uistate.rs Rule::SidebarWidth snaps it down to 224: this asserted the
 # raw number and had been failing since the snap was written, which is why it pins the snap now.
 check "the stored file carries the patched width, snapped to a stop" "1" "$(grep -c '"sidebarWidth": 224' "$UI")"
-check "the stored file keeps every other key" "25" "$(grep -c '^  "' "$UI")"
+check "the stored file keeps every other key" "31" "$(grep -c '^  "' "$UI")"
 check "the state file is owner only" "600" "$(stat -c '%a' "$UI")"
 check "the state directory is owner only" "700" "$(stat -c '%a' "$STATE/flea")"
 # ls -A: ui.json and its lock, and no temp file left behind by the rename.
@@ -187,6 +187,18 @@ printf '{"columns":["name","size","size"],"density":"comfortable"}\n' > "$UI"
 out=$(flea_ui 2>&1)
 check "a duplicated column in the file falls back to the shipped set" "1" "$(echo "$out" | tr -d ' \n' | grep -c '"columns":\["name","size","date"\]')"
 check "the key beside the refused columns array stands" "1" "$(echo "$out" | grep -c '"density": "comfortable"')"
+
+# ColumnsWidth caps the count at 5 and ListColumns040 remembers a dragged edge per column.
+fresh
+out=$(flea_ui '{"columnsLimit":3,"columnWidths":{"size":120}}' 2>&1); rc=$?
+check "a column limit and width patch exits 0" "0" "$rc"
+check "the limit landed" "1" "$(grep -c '"columnsLimit": 3' "$UI")"
+check "the width landed" "1" "$(tr -d ' \n' < "$UI" | grep -c '"columnWidths":{"size":120}')"
+for bad_column_key in '{"columnsLimit":1}' '{"columnsLimit":6}' '{"columnWidths":{"size":47}}' '{"columnWidths":{"name":100}}'; do
+  out=$(flea_ui "$bad_column_key" 2>&1); rc=$?
+  check "a column value outside its rails exits 2: $bad_column_key" "2" "$rc"
+  check "and names the key it refused: $bad_column_key" "1" "$(echo "$out" | grep -c 'column')"
+done
 
 # The path is predictable, so a link planted at it is refused and what it points at is untouched.
 fresh
@@ -317,7 +329,7 @@ check "and the read still answers the full default shape" "1" "$(flea_ui 2>&1 | 
 out=$(flea_ui '{"hidden":true}' 2>&1); rc=$?
 check "a patch onto that same file exits 0" "0" "$rc"
 check "and does not leave the operator's bytes" "1" "$([ "$(sha256sum "$UI" | cut -d' ' -f1)" != "$broken_sha" ] && echo 1 || echo 0)"
-check "it writes the full default document instead" "25" "$(grep -c '^  "' "$UI")"
+check "it writes the full default document instead" "31" "$(grep -c '^  "' "$UI")"
 check "so the hand-written key is gone" "1" "$(grep -c '"density": "compact"' "$UI")"
 check "and the patch itself landed" "1" "$(grep -c '"hidden": true' "$UI")"
 

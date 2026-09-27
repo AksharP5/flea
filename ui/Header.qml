@@ -1,6 +1,9 @@
 import QtQuick
 import qs.Commons
 import qs.Ui
+import "." as Flea
+import "js/ColumnFit.js" as ColumnFit
+import "js/Columns.js" as Columns
 
 // The column header renders sort state and owns none of it, so Pane stays the one state owner.
 Item {
@@ -18,6 +21,15 @@ Item {
     // The click ui/js/Sort.js answers. The header owns no sort state, so it only says which column
     // was hit; the key is the protocol's own, which is why Modified sends "mtime".
     signal sortRequested(string key)
+
+    // The pane whose held rows a double click fits, set by ui/Pane.qml. Null in the picker's own
+    // header use, where no resize is offered.
+    property var pane: null
+    // A drag in flight: the key it moves and the press point in header pixels, so the column
+    // follows the pointer live and lands once, a layout change with no backend traffic.
+    property string dragKey: ""
+    property real dragStartX: 0
+    property real dragStartWidth: 0
 
     // A right click over the titles opens the pane's one ContextMenu with the column toggles and
     // the hidden toggle; a left click still sorts, and sortable still gates everything on a search.
@@ -138,6 +150,82 @@ Item {
         onTapped: function (eventPoint) { root.menuRequested(eventPoint.scenePosition) }
     }
 
+    // ListColumns040 board: each fixed column's left hairline carries a grab zone, with the
+    // resize cursor and an accent hairline on hover or drag. A drag moves only the layout
+    // binding the rows already share, and a double click fits the widest held value through
+    // ui/js/Columns.js, never a directory-wide scan. Hidden while a search owns the strip,
+    // in the dual view, or where the picker reuses this header with no pane.
+    Flea.ResizeHandle {
+        id: modeHandle
+        visible: root.cols.mode && !root.dualMode && root.sortable && root.pane !== null
+        anchors.left: headerMode.left
+        anchors.leftMargin: -4
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        z: 3
+        columnKey: "mode"
+        hot: root.dragKey === "mode"
+        onPressed: function (mouse) { root.beginDrag("mode", modeHandle, mouse) }
+        onMoved: function (mouse) { root.moveDrag("mode", modeHandle, mouse) }
+        onReleased: root.endDrag()
+        onDoubleClicked: root.autofitColumn("mode")
+    }
+
+    Flea.ResizeHandle {
+        id: sizeHandle
+        visible: root.cols.size && !root.dualMode && root.sortable && root.pane !== null
+        anchors.left: headerSize.left
+        anchors.leftMargin: -4
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        z: 3
+        columnKey: "size"
+        hot: root.dragKey === "size"
+        onPressed: function (mouse) { root.beginDrag("size", sizeHandle, mouse) }
+        onMoved: function (mouse) { root.moveDrag("size", sizeHandle, mouse) }
+        onReleased: root.endDrag()
+        onDoubleClicked: root.autofitColumn("size")
+    }
+
+    Flea.ResizeHandle {
+        id: dateHandle
+        visible: root.cols.date && !root.dualMode && root.sortable && root.pane !== null
+        anchors.left: headerDate.left
+        anchors.leftMargin: -4
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        z: 3
+        columnKey: "date"
+        hot: root.dragKey === "date"
+        onPressed: function (mouse) { root.beginDrag("date", dateHandle, mouse) }
+        onMoved: function (mouse) { root.moveDrag("date", dateHandle, mouse) }
+        onReleased: root.endDrag()
+        onDoubleClicked: root.autofitColumn("date")
+    }
+
+    Flea.ResizeHandle {
+        id: kindHandle
+        visible: root.cols.kind && !root.dualMode && root.sortable && root.pane !== null
+        anchors.left: headerKind.left
+        anchors.leftMargin: -4
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        z: 3
+        columnKey: "kind"
+        hot: root.dragKey === "kind"
+        onPressed: function (mouse) { root.beginDrag("kind", kindHandle, mouse) }
+        onMoved: function (mouse) { root.moveDrag("kind", kindHandle, mouse) }
+        onReleased: root.endDrag()
+        onDoubleClicked: root.autofitColumn("kind")
+    }
+
+    // Caption type, the same face the rows measure their cells in.
+    TextMetrics {
+        id: fitMetrics
+        font.family: Theme.font.family
+        font.pixelSize: Theme.font.caption
+    }
+
     Rectangle {
         anchors.bottom: parent.bottom
         anchors.left: parent.left
@@ -153,6 +241,87 @@ Item {
             return label
         }
         return label + " " + (root.sortDesc ? "▾" : "▴")
+    }
+
+    // The stored width a drag or a fit wrote, or the measured one when nothing did.
+    function currentWidthOf(key) { return Theme.column[key] }
+
+    // One remembered edge: clamped to the rails and written once, so a drag is layout only.
+    function writeWidth(key, px) {
+        var next = Columns.clampListWidth(px)
+        var cur = (ViewState.state.columnWidths || ({}))[key]
+        if (cur === next)
+            return
+        var obj = {}
+        var stored = ViewState.state.columnWidths || {}
+        for (var k in stored) obj[k] = stored[k]
+        obj[key] = next
+        ViewState.changeKey("columnWidths", obj)
+    }
+
+    function beginDrag(key, handle, mouse) {
+        root.dragKey = key
+        root.dragStartX = handle.mapToItem(root, mouse.x, mouse.y).x
+        root.dragStartWidth = root.currentWidthOf(key)
+    }
+
+    function moveDrag(key, handle, mouse) {
+        if (root.dragKey !== key)
+            return
+        var x = handle.mapToItem(root, mouse.x, mouse.y).x
+        // A press that never travels is a click, not a drag, and writes nothing.
+        if (Math.abs(x - root.dragStartX) < 1)
+            return
+        root.writeWidth(key, root.dragStartWidth + x - root.dragStartX)
+    }
+
+    function endDrag() { root.dragKey = "" }
+
+    // The same strings ui/Row.qml draws, measured in the cells' own caption face over the rows
+    // the window holds and nothing else.
+    function fittedWidth(key) {
+        var widths = []
+        for (var i = 0; i < root.pane.rows.length; i++) {
+            var row = root.pane.rows[i]
+            if (!row)
+                continue
+            fitMetrics.text = ColumnFit.cellText(key, row, root.pane.kindNames,
+                ColumnFit.dirSizeFor(root.pane.dirSizeState, root.pane.held, i))
+            widths.push(Math.ceil(fitMetrics.advanceWidth))
+        }
+        if (widths.length === 0)
+            return -1
+        return Columns.autofitWidth(widths, root.currentWidthOf(key))
+    }
+
+    // A double click fits one column; F4 fits every drawn one in a single write.
+    function autofitColumn(key) {
+        if (!root.pane || root.dualMode || !root.sortable || !root.cols[key])
+            return
+        var next = root.fittedWidth(key)
+        if (next >= 0)
+            root.writeWidth(key, next)
+    }
+
+    function autofitAll() {
+        if (!root.pane || root.dualMode || !root.sortable)
+            return
+        var obj = {}
+        var stored = ViewState.state.columnWidths || {}
+        for (var k in stored) obj[k] = stored[k]
+        var changed = false
+        var keys = ["mode", "size", "date", "kind"]
+        for (var i = 0; i < keys.length; i++) {
+            if (!root.cols[keys[i]])
+                continue
+            var next = root.fittedWidth(keys[i])
+            if (next >= 0 && obj[keys[i]] !== next) {
+                obj[keys[i]] = next
+                changed = true
+            }
+        }
+        if (changed)
+            ViewState.changeKey("columnWidths", obj)
     }
 
     // What the header case reads, built from the same values the header renders.

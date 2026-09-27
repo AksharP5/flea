@@ -478,6 +478,11 @@ QtObject {
                 return ""
             return Math.round(item.x) + "|" + Math.round(item.width)
         }
+        // ListColumns040 board: the pointer's own target for an edge drag or double click.
+        function headerCellCentre(name: string): string {
+            var item = root.pane.header.cell(name)
+            return item ? root.fleaWindow.centreOf(item) : ""
+        }
         // The header's drawn columns beside a row's. Both resolve theirs from their own width
         // through Theme.columns, so a disagreement shows up here rather than as a stray column.
         function columnSet(i: int): string {
@@ -530,6 +535,12 @@ QtObject {
         function columnChildMarkRect(): string { var e = root.columns ? root.columns.childEmptyItem() : null; return e ? root.fleaWindow.rectOf(e.markItem) : "" }
         function columnChildRowCentre(i: int): string { return root.columns ? root.fleaWindow.centreOf(root.columns.childItemAt(i)) : "" }
         function columnParentRowCentre(i: int): string { return root.columns ? root.fleaWindow.centreOf(root.columns.parentItemAt(i)) : "" }
+        // ColumnsWidth board: the live count and the deeper ancestors a wide window shows.
+        function columnCount(): int { return root.columns ? root.columns.columnCount : 0 }
+        function columnGrandparentRowCentre(i: int): string { return root.columns ? root.fleaWindow.centreOf(root.columns.grandparentItemAt(i)) : "" }
+        function columnGreatGrandparentRowCentre(i: int): string { return root.columns ? root.fleaWindow.centreOf(root.columns.greatGrandparentItemAt(i)) : "" }
+        // ListColumns040 board: the stored edge widths beside the drawn header and row sets.
+        function columnWidths(): string { return JSON.stringify(ViewState.state.columnWidths || {}) }
         function rowIcon(i: int): string {
             var item = root.pane.itemFor(i)
             return item ? String(item.iconUrl) : ""

@@ -4284,7 +4284,160 @@ case_header() {
     kill_flea
 }
 
-# contentWidth exceeds width only when elide is missing, since elide always caps it to width; this guards elide, not sizing.
+# ListColumns040: dragging a column edge resizes it, remembers the width, and never sorts.
+# The drag is closed-loop, one 10 px step at a time against the live header rect, because
+# ydotool relative motion is accelerated and an open-loop step count cannot name a distance.
+column_drag_to() {
+    local key="$1" target="$2" tries="$3"
+    local rect _x w
+    for (( _drag_i = 0; _drag_i < tries; _drag_i++ )); do
+        IFS='|' read -r _x w <<< "$(ipc headerCellRect "$key")"
+        if (( target >= 0 )); then
+            (( w >= target )) && return 0
+        else
+            (( w <= -target )) && return 0
+        fi
+        YDOTOOL_SOCKET="$XDG_RUNTIME_DIR/.ydotool_socket" ydotool mousemove -x "$4" -y 0 >/dev/null 2>&1 \
+            || fail "columnresize: the drag step failed"
+        sleep 0.1
+    done
+    IFS='|' read -r _x w <<< "$(ipc headerCellRect "$key")"
+    printf '%s' "$w"
+}
+
+case_columnresize() {
+    local dir="$fixture_root/columnresize"
+    sandbox_scratch "$dir"
+    printf 'alpha\n' > "$dir/alpha.txt"
+    printf 'beta\n' > "$dir/beta.txt"
+    printf 'gamma\n' > "$dir/gamma.txt"
+    seed_ui_state "$fixture_root/columnresize-state" '{"view":"list"}'
+    launch "$dir"
+    wait_listing 3
+    local before_mark before_w
+    before_mark=$(ipc sortMark)
+    IFS='|' read -r _x before_w <<< "$(ipc headerCellRect size)"
+    [[ "$before_w" =~ ^[0-9]+$ ]] || fail "columnresize: the size header has no width, got $before_w"
+
+    # The hairline is the cell's left edge; the grab zone spans 4 px either side of it.
+    local cx cy cell_w edge_x wx wy ww wh
+    read -r cx cy <<< "$(ipc headerCellCentre size)"
+    [[ -n "$cx" && -n "$cy" ]] || fail "columnresize: the size header has no centre"
+    IFS='|' read -r _x cell_w <<< "$(ipc headerCellRect size)"
+    edge_x=$(( cx - cell_w / 2 ))
+    read -r wx wy ww wh < <(window_box) || fail "native window coordinates unavailable"
+    omarchy-drive move "$(( wx + edge_x ))" "$(( wy + cy ))" >/dev/null
+    YDOTOOL_SOCKET="$XDG_RUNTIME_DIR/.ydotool_socket" ydotool click 0x40 >/dev/null 2>&1 \
+        || fail "columnresize: the edge press failed"
+    # Closed-loop: ydotool relative motion is accelerated, so the rect decides when to stop.
+    column_drag_to size "$(( before_w + 40 ))" 12 10
+    YDOTOOL_SOCKET="$XDG_RUNTIME_DIR/.ydotool_socket" ydotool click 0x80 >/dev/null 2>&1 \
+        || fail "columnresize: the edge release failed"
+    settle
+    local grown_w
+    IFS='|' read -r _x grown_w <<< "$(ipc headerCellRect size)"
+    printf 'COLUMNRESIZE before=%s grown=%s mark=%s\n' "$before_w" "$grown_w" "$(ipc sortMark)"
+    shot columnresize-drag
+    (( grown_w >= before_w + 30 && grown_w <= before_w + 70 )) \
+        || fail "columnresize: a +40 drag moved size from $before_w to $grown_w"
+    [[ "$(ipc sortMark)" == "$before_mark" ]] \
+        || fail "columnresize: the drag sorted, mark is $(ipc sortMark)"
+    [[ "$(ipc columnWidths | jq -er '.size')" == "$grown_w" ]] \
+        || fail "columnresize: the seam reports $(ipc columnWidths), the header draws $grown_w"
+    local stored=""
+    for _attempt in $(seq 1 60); do
+        stored=$(jq -er '.columnWidths.size // empty' "$XDG_STATE_HOME/flea/ui.json" 2>/dev/null || true)
+        [[ "$stored" == "$grown_w" ]] && break
+        sleep 0.05
+    done
+    [[ "$stored" == "$grown_w" ]] \
+        || fail "columnresize: ui.json remembers $stored, the header draws $grown_w"
+    [[ "$(ipc rowCellOverflow 0)" == "0|0|0|0" ]] \
+        || fail "columnresize: a cell painted past its resized column, $(ipc rowCellOverflow 0)"
+
+    # To the floor: steps continue until the rails clamp it at exactly 48, whatever the start.
+    read -r cx cy <<< "$(ipc headerCellCentre size)"
+    IFS='|' read -r _x cell_w <<< "$(ipc headerCellRect size)"
+    edge_x=$(( cx - cell_w / 2 ))
+    omarchy-drive move "$(( wx + edge_x ))" "$(( wy + cy ))" >/dev/null
+    YDOTOOL_SOCKET="$XDG_RUNTIME_DIR/.ydotool_socket" ydotool click 0x40 >/dev/null 2>&1 \
+        || fail "columnresize: the floor press failed"
+    column_drag_to size -48 24 -10
+    YDOTOOL_SOCKET="$XDG_RUNTIME_DIR/.ydotool_socket" ydotool click 0x80 >/dev/null 2>&1 \
+        || fail "columnresize: the floor release failed"
+    settle
+    local floored_w
+    IFS='|' read -r _x floored_w <<< "$(ipc headerCellRect size)"
+    printf 'COLUMNRESIZE floored=%s\n' "$floored_w"
+    shot columnresize-floor
+    [[ "$floored_w" == "48" ]] || fail "columnresize: a drag past the floor landed at $floored_w, not 48"
+
+    kill_flea
+}
+
+# ListColumns040: a double click fits the widest held value, and F4 fits every drawn column.
+# Neither scans the directory: the fit reads the held window alone, so extra files off screen
+# never move it.
+case_columnautofit() {
+    local dir="$fixture_root/columnautofit"
+    sandbox_scratch "$dir"
+    mkdir -p "$dir/subdir"
+    printf 'alpha\n' > "$dir/alpha.txt"
+    : > "$dir/photo.jpg"
+    truncate -s 1500000000 "$dir/big.bin"
+    # Kind alone is widened: every other column keeps its floor, so the set still draws whole.
+    seed_ui_state "$fixture_root/columnautofit-state" '{"view":"list","columnWidths":{"kind":200}}'
+    launch "$dir"
+    wait_listing 4
+    local before_mark before_w
+    before_mark=$(ipc sortMark)
+    IFS='|' read -r _x before_w <<< "$(ipc headerCellRect kind)"
+    [[ "$before_w" == "200" ]] || fail "columnautofit: kind did not take its seeded 200, got $before_w"
+
+    local cx cy cell_w edge_x wx wy ww wh
+    read -r cx cy <<< "$(ipc headerCellCentre kind)"
+    [[ -n "$cx" && -n "$cy" ]] || fail "columnautofit: the kind header has no centre"
+    IFS='|' read -r _x cell_w <<< "$(ipc headerCellRect kind)"
+    edge_x=$(( cx - cell_w / 2 ))
+    read -r wx wy ww wh < <(window_box) || fail "native window coordinates unavailable"
+    omarchy-drive click "$(( wx + edge_x ))" "$(( wy + cy ))" left --double >/dev/null
+    settle
+    local fitted_w
+    IFS='|' read -r _x fitted_w <<< "$(ipc headerCellRect kind)"
+    printf 'COLUMNAUTOFIT kind before=%s fitted=%s mark=%s\n' "$before_w" "$fitted_w" "$(ipc sortMark)"
+    shot columnautofit-double
+    (( fitted_w < before_w && fitted_w >= 48 )) \
+        || fail "columnautofit: a double click left kind at $fitted_w, not fitted under $before_w"
+    [[ "$(ipc sortMark)" == "$before_mark" ]] \
+        || fail "columnautofit: the double click sorted, mark is $(ipc sortMark)"
+    local stored=""
+    for _attempt in $(seq 1 60); do
+        stored=$(jq -er '.columnWidths.kind // empty' "$XDG_STATE_HOME/flea/ui.json" 2>/dev/null || true)
+        [[ "$stored" == "$fitted_w" ]] && break
+        sleep 0.05
+    done
+    [[ "$stored" == "$fitted_w" ]] \
+        || fail "columnautofit: ui.json remembers $stored, the header draws $fitted_w"
+    [[ "$(ipc rowCellOverflow 0)" == "0|0|0|0" ]] \
+        || fail "columnautofit: a cell painted past its fitted column, $(ipc rowCellOverflow 0)"
+
+    # F4 fits every drawn column in one write, and a second F4 is a no-op.
+    key -k F4 >/dev/null
+    settle
+    local widths_once widths_twice
+    widths_once=$(ipc columnWidths)
+    printf 'COLUMNAUTOFIT f4=%s\n' "$widths_once"
+    shot columnautofit-f4
+    [[ "$(jq -er 'keys | length' <<< "$widths_once")" -ge 1 ]] \
+        || fail "columnautofit: F4 fitted nothing, $widths_once"
+    key -k F4 >/dev/null
+    settle
+    widths_twice=$(ipc columnWidths)
+    [[ "$widths_twice" == "$widths_once" ]] \
+        || fail "columnautofit: a second F4 moved $widths_once to $widths_twice"
+
+    kill_flea
+}
 case_overflow() {
     local dir="$fixture_root/overflow"
     sandbox_scratch "$dir"
@@ -10203,7 +10356,7 @@ case_previewviews() {
 . "$repo/tests/ui-transfer-live.sh"
 
 declare -a wanted=("$@")
-[[ ${#wanted[@]} -eq 0 ]] && wanted=(cursor scroll scrollbar terminal open rows click ctrlclick viewrestart dd collide sortrestart duallaunch dirsortstale editplace mute placemenu runscript unmounted sidebar menu background hidden selection watch optical select colour lifted icons thumbs hashcache stale nosweep oem header overflow focus preview pdffocus network netmark networkauth networktimeout gvfs sharebrowser unmount phones trasharm eject rename renamelife taildrop providers grid columns operations tabs openterminal renderer settings makedefault scrolllane clickthrough wheelunder overlays views formats previewviews hangshare openwithdesign noblank previewswap transferlive)
+[[ ${#wanted[@]} -eq 0 ]] && wanted=(cursor scroll scrollbar terminal open rows click ctrlclick viewrestart dd collide sortrestart duallaunch dirsortstale editplace mute placemenu runscript unmounted sidebar menu background hidden selection watch optical select colour lifted icons thumbs hashcache stale nosweep oem header columnresize columnautofit overflow focus preview pdffocus network netmark networkauth networktimeout gvfs sharebrowser unmount phones trasharm eject rename renamelife taildrop providers grid columns operations tabs openterminal renderer settings makedefault scrolllane clickthrough wheelunder overlays views formats previewviews hangshare openwithdesign noblank previewswap transferlive)
 
 : > "$run_log"
 : > "$flea_log"

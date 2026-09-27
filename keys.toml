@@ -536,7 +536,7 @@ find = ["filter", "search", "reveal", "sortNext", "sortReverse", "pathBar"]
 change = ["copy", "cut", "paste", "movePaste", "duplicate", "rename", "trash",
           "deletePermanently", "undo", "redo", "newFolder", "copydirpath", "toggleSelect",
           "selectAll", "extendDown", "extendUp", "menu", "properties", "addNetwork", "eject",
-          "openTerminal", "settings"]
+          "openTerminal", "settings", "autofitColumns"]
 
 # The digit range, expanded by the generator into tab1 through tab9.
 [digits]
@@ -630,6 +630,11 @@ label = "paste"
 keys = "r"
 action = "rename"
 label = "rename"
+
+[[sheet]]
+keys = "F4"
+action = "autofitColumns"
+label = "autofit columns"
 
 [[sheet]]
 keys = "dd"
@@ -1444,6 +1449,18 @@ action = "menu"
 label = "context menu"
 frontend = "all"
 context = "listing,rail"
+
+# ListColumns040: F4 fits every drawn list column to the widest held value, the keyboard
+# twin of the header's double click. GUI only: the terminal's columns are its own grid.
+[[preset]]
+name = "all"
+mods = "none"
+key = "F4"
+keys = "F4"
+action = "autofitColumns"
+label = "autofit columns"
+frontend = "gui"
+context = "listing"
 
 [[preset]]
 name = "all"

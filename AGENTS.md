@@ -2741,6 +2741,20 @@ suite to `tests/js/buttons.js` at 41 lines, each inside both budgets, rather tha
 `ui/TransferCard.qml` falls to 239 and `ui/PickerSave.qml` to 177 as their hand-built buttons
 leave, and `ui/MenuActionDialog.qml` stands at 307, over the soft budget and under the hard cap.
 
+Columns moves seven recorded ceilings, each re-derived with `wc -l`. `src/uischema.rs` 408
+to 424 for the `columnsLimit` cap and the `columnWidths` map with its defaults, rules and edge
+tests. `src/uistate.rs` 475 to 518 for the `ColumnWidths` rule, its rails validation and the
+limit-and-widths patch tests. `ui/js/Settings.js` 427 to 430 for the View group's Columns view
+limit segment. `ui/Pane.qml` 704 to 706 for the held rows the header's fits read. `ui/Ipc.qml`
+802 to 808 for the live count, the two deeper ancestor centres and the stored widths, then to
+813 for the header cell centre the edge-drag case clicks through. `ui/js/Focus.js`
+339 to 345 for the F4 autofit route, and `ui/js/Keymap.js` 313 to 314 for its generated row.
+The count, clamp and fit live in `ui/js/Columns.js` at 139 lines, the fit strings in the new
+`ui/js/ColumnFit.js` at 32 lines, the grab zone in the new `ui/ResizeHandle.qml` at 40 lines with
+its own `ui/qmldir` line, `ui/Header.qml` takes the handles and the fits at 346 lines and
+`ui/ColumnsArea.qml` the ancestor columns at 373 lines, all inside their budgets; `ui/Theme.qml`
+reads the stored widths at 399 lines, one over its last note and still under the hard cap.
+
 ## The key table is generated
 
 `keys.toml` at the repository root is the single source of truth for every binding.

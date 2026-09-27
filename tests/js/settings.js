@@ -236,6 +236,8 @@ function runCompletionRows(check) {
     check("wrapping explains the boundary before it is enabled", find(view, "wrapAtEnds").caption, "arrow-up at the top")
     check("Highlight today's dates ships off", find(view, "highlightToday").label + "|" + find(view, "highlightToday").on, "Highlight today's dates|false")
     check("and a stored on reads back on", find(Settings.rows("view", { data: { highlightToday: true } }), "highlightToday").on, true)
+    check("Columns view limit ships at 5", find(view, "columnsLimit").selected, 5)
+    check("and a stored cap reads back", find(Settings.rows("view", { data: { columnsLimit: 3 } }), "columnsLimit").selected, 3)
     check("save feedback is a separate footer", view[view.length - 1].footer, true)
 
     // Settings > View > Opening, which is where a window and a new tab begin. ui/js/Startup.js turns the values into a path and tests/js/startup.js drives that; this is only what the panel draws.

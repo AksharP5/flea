@@ -1,7 +1,7 @@
 // The ui.json merges with no disk in them: read a file onto the defaults, apply one caller patch,
 // and carry 0.1.3's view.json across.
 use crate::jsondoc::{self, Json};
-use crate::uischema::{defaults, Rule, COLUMN_KEYS, OPTIONAL_COLUMNS, SCHEMA, TEXT_SIZE_STOPS, SIDEBAR_STOPS, SORT_KEYS, MAX_FOLDER_SORTS};
+use crate::uischema::{defaults, Rule, COLUMN_KEYS, COLUMN_WIDTH_KEYS, COLUMN_WIDTH_MAX, COLUMN_WIDTH_MIN, OPTIONAL_COLUMNS, SCHEMA, TEXT_SIZE_STOPS, SIDEBAR_STOPS, SORT_KEYS, MAX_FOLDER_SORTS};
 
 // Never fails: a file this cannot read is a file whose every key falls back to the shipped default.
 pub fn from_file(text: &str) -> Json {
@@ -159,6 +159,7 @@ fn fits(rule: &Rule, value: &Json) -> bool {
         },
         Rule::Ids => every_string(value, is_action_id),
         Rule::FolderSorts => is_folder_sorts(value),
+        Rule::ColumnWidths => is_column_widths(value),
         Rule::Count(low, high) => match value.as_f64() {
             Some(n) => n.fract() == 0.0 && n >= *low && n <= *high,
             None => false,
@@ -205,6 +206,19 @@ fn is_action_id(s: &str) -> bool {
 // A remembered pane is somewhere the restore can list: an absolute path, or a URI naming its root.
 fn is_a_place(s: &str) -> bool {
     s.starts_with('/') || s.contains("://")
+}
+
+// ListColumns040's remembered widths: each entry a resizable column key to whole pixels
+// inside the rails, so a hand edit outside them costs the key its default rather than drawing it.
+// Sample input: {"size": 120, "date": 140}.
+fn is_column_widths(value: &Json) -> bool {
+    match value.as_object() {
+        Some(pairs) => pairs.iter().all(|(key, width)| {
+            COLUMN_WIDTH_KEYS.contains(&key.as_str())
+                && width.as_f64().is_some_and(|n| n.is_finite() && n >= COLUMN_WIDTH_MIN && n <= COLUMN_WIDTH_MAX)
+        }),
+        None => false,
+    }
 }
 
 // The per-folder sort map: each key a place, each value a sort order in sort's own shape.
@@ -428,6 +442,35 @@ mod tests {
         let read = from_file(r#"{"columns":["size","size"],"density":"comfortable"}"#);
         let cols: Vec<&str> = read.get("columns").and_then(Json::as_array).expect("columns").iter().filter_map(Json::as_str).collect();
         assert_eq!(cols, ["name", "size", "date"]);
+        assert_eq!(read.get("density").and_then(Json::as_str), Some("comfortable"));
+    }
+
+    // ColumnsWidth caps the count at 5 and ListColumns040 remembers a dragged edge per column.
+    #[test]
+    fn a_column_limit_caps_and_a_width_remembers_only_its_own_rails() {
+        let current = from_file("{}");
+        for good in [r#"{"columnsLimit":2}"#, r#"{"columnsLimit":5}"#,
+                     r#"{"columnWidths":{}}"#,
+                     r#"{"columnWidths":{"size":120}}"#,
+                     r#"{"columnWidths":{"mode":48,"size":70,"date":480,"kind":130}}"#] {
+            let p = jsondoc::parse(good).expect("patch parses");
+            assert!(patched(&current, &p).is_ok(), "{} is a column value", good);
+        }
+        for (bad, named) in [(r#"{"columnsLimit":1}"#, "columnsLimit"),
+                             (r#"{"columnsLimit":6}"#, "columnsLimit"),
+                             (r#"{"columnsLimit":"5"}"#, "columnsLimit"),
+                             (r#"{"columnWidths":{"size":47}}"#, "columnWidths"),
+                             (r#"{"columnWidths":{"size":481}}"#, "columnWidths"),
+                             (r#"{"columnWidths":{"name":100}}"#, "columnWidths"),
+                             (r#"{"columnWidths":[]}"#, "columnWidths")] {
+            let p = jsondoc::parse(bad).expect("patch parses");
+            let message = patched(&current, &p).expect_err("the patch must be refused");
+            assert!(message.contains(named), "{} should name {}, got {}", bad, named, message);
+        }
+        // A file carrying one costs that key its own default, and the key beside it still stands.
+        let read = from_file(r#"{"columnsLimit":9,"columnWidths":{"size":10},"density":"comfortable"}"#);
+        assert_eq!(read.get("columnsLimit").and_then(Json::as_f64), Some(5.0));
+        assert_eq!(read.get("columnWidths").and_then(Json::as_object).map(<[(String, Json)]>::len), Some(0));
         assert_eq!(read.get("density").and_then(Json::as_str), Some("comfortable"));
     }
 

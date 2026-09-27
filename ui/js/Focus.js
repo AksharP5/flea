@@ -175,6 +175,12 @@ function act(action, root, menuId, paths) {
     // The header answers the same two through ui/Pane.qml, so the key and the click share one route.
     case "sortNext": Sort.next(root); return
     case "sortReverse": Sort.reverse(root); return
+    // ListColumns040: F4 fits every drawn list column to the widest held value, the key twin
+    // of the header's double click; anywhere but the list view it says where that lives.
+    case "autofitColumns":
+        if (root.viewMode === "list") root.header.autofitAll()
+        else root.message("Autofit needs the list view.", false)
+        return
     case "addNetwork": if (root.sidebar) root.sidebar.addRequested(); return
     case "eject": Eject.release(root, root.sidebar, false); return
     // Finder's Cmd+1/2/3; the chrome's three buttons write the same property, so they follow.
