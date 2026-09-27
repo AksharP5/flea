@@ -2082,7 +2082,7 @@ inside the soft budget. `tests/js/nav.js` holds its new locked cases at 299, one
 Eject with a hidden rail raises three recorded ceilings rather than keeping a poller alive.
 `ui/Pane.qml` goes from its recorded 673 to 676 for the `ejectHidden` route into the rail,
 `ui/WindowBody.qml` from its recorded 487 to 497 for the mid-dialog rail-hide guards on the
-network save and the share-browser mount, and `tests/js/focus.js` from its recorded 374 to 403
+network save and the share-browser mount, and `tests/js/focus.js` from its recorded 374 to 403 (404 once the Photos row joined it)
 for the hidden-rail release, completion and not-inside cases. `ui/PaneRail.qml` holds the
 transient one-shot host at 152, inside the soft budget, and `ui/js/Eject.js` stays at 153,
 inside its own. Each count re-derived with `wc -l` at the commit that recorded it.
