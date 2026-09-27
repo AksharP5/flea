@@ -19,6 +19,10 @@ Item {
     property string thumb: ""
     // True once no thumbnail is coming: the backend answered with none, or never offered one at all.
     property bool noThumbComing: false
+    // A move cleared the row and its settle is running, so the column is loading, not showing a file with no preview.
+    property bool pending: false
+    // Set by ui/PreviewSwap.qml when a hold ran out, which already spent LoadingState's own hold-off.
+    property bool loadingHeldOff: false
     property int selectionCount: 0
     property var selectedRows: []
     // The row's own absolute path, which the PDF page needs and nothing else here does.
@@ -54,7 +58,7 @@ Item {
 
     // Loading and Error are states the column reaches on its own: loading while the facts are still
     // in flight, and error when the thing it was going to draw could not be read at all.
-    readonly property bool busy: root.row !== null && root.row.d !== true && root.meta === null
+    readonly property bool busy: root.pending || (root.row !== null && root.row.d !== true && root.meta === null)
     readonly property string failure: lines.readFailed || root.pdfFailed
         ? "This file could not be read."
         : (root.meta && root.meta.archiveFailed ? "This archive could not be read." : "")
@@ -63,6 +67,7 @@ Item {
     // a folder of anything else builds no PdfDocument at all.
     readonly property int pdfPages: pdfLoader.item ? pdfLoader.item.pageCount : 0
     readonly property bool pdfFailed: pdfLoader.item ? pdfLoader.item.failed : false
+    readonly property bool pdfDrawn: pdfLoader.item ? pdfLoader.item.shownPage >= 0 : false
 
     readonly property string previewState: Facts.state(root.row, root.selectionCount, root.busy, root.failure, root.kindName)
     readonly property var factRows: root.previewState === Facts.MULTI
@@ -247,6 +252,7 @@ Item {
             Flea.LoadingState {
                 anchors.fill: parent
                 visible: root.previewState === Facts.LOADING
+                heldOff: root.loadingHeldOff
             }
 
             // The one sentence an error is, in the theme's error role; the facts below still show. An office file's
@@ -431,7 +437,7 @@ Item {
         case Facts.LOADING:
             return false
         case Facts.PDF:
-            return !pdfLoader.item || pdfLoader.item.shownPage < 0
+            return !root.pdfDrawn
         case Facts.TEXT:
         case Facts.CODE:
             return lines.blank

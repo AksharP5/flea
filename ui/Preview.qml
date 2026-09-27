@@ -4,6 +4,7 @@ import "." as Flea
 import "js/Facts.js" as Facts
 import "js/Kinds.js" as Kinds
 import "js/Motion.js" as Motion
+import "js/PreviewSwap.js" as PreviewSwap
 
 // The overlay lives inside the Flea window, Finder's Quick Look shape: a second window breaks omarchy-drive focus flea and every test that narrows on it.
 Item {
@@ -66,6 +67,10 @@ Item {
         if (root.kind === "text") return textPane.status
         return "This file cannot be previewed."
     }
+    // The swap's answer: nothing loading, and a PDF with a page on screen or refused.
+    readonly property bool lookReady: !root.active || PreviewSwap.lookReady(root.status, root.isPdf,
+        root.pdfItem !== null && root.pdfItem.shownPage >= 0, root.pdfItem !== null && root.pdfItem.failed)
+    function swapState() { return swap.describe() }
 
     property string pendingPath: ""
     property string pendingIcon: ""
@@ -116,16 +121,19 @@ Item {
         root.load(newPath, newIcon, newSize, newKind)
     }
 
+    // The picture is taken now, so the settled load below changes the panes under it.
     function follow(newPath, newIcon, newSize, newKind) {
         root.pendingPath = newPath
         root.pendingIcon = newIcon
         root.pendingSize = newSize
         root.pendingKind = newKind
+        if (root.active) swap.hold(null, newPath)
         followSettle.restart()
     }
 
     // Dropping the loader's source is what stops playback: media dies with the loader.
     function close() {
+        swap.cancel()
         followSettle.stop()
         stripHideTimer.stop()
         root.active = false
@@ -142,13 +150,28 @@ Item {
         if (root.pane) root.pane.listArea.forceActiveFocus()
     }
 
+    // Under the held picture when a move took one; Space's own open has none and draws as it builds.
     function load(newPath, newIcon, newSize, newKind) {
+        var show = function () { root.show(newPath, newIcon, newSize, newKind) }
+        if (swap.holding || swap.capturing)
+            swap.hold(show, newPath, true)
+        else
+            show()
+        swap.start(Kinds.quickLookKind(newIcon, newPath) === Kinds.PDF)
+    }
+
+    function show(newPath, newIcon, newSize, newKind) {
+        root.kind = Kinds.quickLookKind(newIcon, newPath)
+        // A pane of another kind goes before the path moves, or it tries to open a file it cannot draw: an image
+        // pane handed a video logged "Unsupported image format" on every move from a picture to a clip.
+        if (!root.isMedia) mediaLoader.source = ""
+        if (!root.isPdf) pdfLoader.source = ""
+        if (!root.isImage) imageLoader.source = ""
         root.path = newPath
         root.iconName = newIcon
         root.size = newSize
         // MediaPdf rule 6: the overlay is the bigger surface, so it says at least what the column says, and the kind is the caller's because the backend named it for that row.
         root.kindName = newKind || ""
-        root.kind = Kinds.quickLookKind(newIcon, newPath)
         root.active = true
         mediaLoader.source = root.isMedia ? "PreviewMedia.qml" : ""
         pdfLoader.source = root.isPdf ? "PdfViewer.qml" : ""
@@ -281,137 +304,149 @@ Item {
             }
         }
 
-        Flea.PreviewText {
-            id: textPane
+        // Every kind's pane, drawn through the swap, so moving to the next file holds this one's picture until that one is whole.
+        Flea.PreviewSwap {
+            id: swap
             anchors.fill: parent
-            anchors.margins: Theme.spacing.gap
-            active: root.kind === "text"
-            path: root.path
-            size: root.size
-        }
+            ready: root.lookReady
+            // The surface's own fill, inside its hairline, so the live border and rounded corners show round the picture.
+            ground: surface.color
+            groundInset: surface.border.width
+            groundRadius: Math.max(0, surface.radius - surface.border.width)
 
-        Loader {
-            id: mediaLoader
-            anchors.fill: parent
-            onLoaded: {
-                item.path = Qt.binding(function () { return root.path })
-                item.kind = Qt.binding(function () { return root.kind })
-                item.size = Qt.binding(function () { return root.size })
-                item.kindName = Qt.binding(function () { return root.kindName })
-                item.rate = Qt.binding(function () { return root.mediaRate })
-            }
-        }
-
-        // source rather than sourceComponent, so a file is decoded only while an image is open and its texture goes with the item.
-        Loader {
-            id: imageLoader
-            anchors.fill: parent
-            onLoaded: {
-                item.turn = Qt.binding(function () { return root.imageTurn })
-                item.path = Qt.binding(function () { return root.path })
-            }
-        }
-
-        // The canvas's PdfViewer, source not sourceComponent, so QtQuick.Pdf loads on the first PDF and never for a folder without one.
-        Loader {
-            id: pdfLoader
-            anchors.fill: parent
-            onLoaded: {
-                item.path = Qt.binding(function () { return root.path })
-                item.active = true
-                item.forceActiveFocus()
-            }
-        }
-
-        Connections {
-            target: pdfLoader.item
-            function onClosed() { root.close() }
-        }
-
-        // The canvas's Archive tile at Quick Look size: the name, the count the index gave, then the entries.
-        Column {
-            id: archivePane
-            anchors.fill: parent
-            anchors.margins: Theme.spacing.rowPaddingX
-            spacing: Theme.spacing.gap
-            visible: root.isArchive && root.archiveMeta !== null && !root.archiveFailed
-
-            // corner: a filename is arbitrary text, so PlainText, the same rule every name on this surface follows.
-            Text {
-                width: parent.width
-                text: root.path.substring(root.path.lastIndexOf("/") + 1)
-                color: Theme.color.foreground
-                font.family: Theme.font.family
-                font.pixelSize: Theme.font.body
-                textFormat: Text.PlainText
-                elide: Text.ElideMiddle
+            Flea.PreviewText {
+                id: textPane
+                anchors.fill: parent
+                anchors.margins: Theme.spacing.gap
+                active: root.kind === "text"
+                path: root.path
+                size: root.size
             }
 
-            Text {
-                width: parent.width
-                text: Facts.archiveLine(root.archiveMeta)
-                color: Theme.color.muted
-                font.family: Theme.font.family
-                font.pixelSize: Theme.font.caption
-                textFormat: Text.PlainText
+            Loader {
+                id: mediaLoader
+                anchors.fill: parent
+                onLoaded: {
+                    item.path = Qt.binding(function () { return root.path })
+                    item.kind = Qt.binding(function () { return root.kind })
+                    item.size = Qt.binding(function () { return root.size })
+                    item.kindName = Qt.binding(function () { return root.kindName })
+                    item.rate = Qt.binding(function () { return root.mediaRate })
+                }
             }
 
-            Flea.PreviewArchive {
-                width: parent.width
-                height: parent.height - y
-                meta: root.archiveMeta
-            }
-        }
-
-        // Declined, or an archive whose index could not be read: a mark over the sentence, never a bare surface.
-        Column {
-            anchors.centerIn: parent
-            width: parent.width - 2 * Theme.spacing.rowPaddingX
-            spacing: Theme.spacing.gap
-            visible: root.kind === "unsupported" || root.archiveFailed
-
-            Flea.Glyph {
-                anchors.horizontalCenter: parent.horizontalCenter
-                // The overlay declining is a pane state standing alone, which States.dc.html draws at 40.
-                maxSize: Theme.stateMarkSize
-                width: Theme.stateMarkSize
-                height: Theme.stateMarkSize
-                name: root.archiveFailed ? "alert" : "file"
-                color: root.archiveFailed ? Theme.color.error : Theme.color.muted
+            // source rather than sourceComponent, so a file is decoded only while an image is open and its texture goes with the item.
+            Loader {
+                id: imageLoader
+                anchors.fill: parent
+                onLoaded: {
+                    item.turn = Qt.binding(function () { return root.imageTurn })
+                    item.path = Qt.binding(function () { return root.path })
+                }
             }
 
-            Text {
-                width: parent.width
-                horizontalAlignment: Text.AlignHCenter
-                text: root.status
-                color: root.archiveFailed ? Theme.color.foreground : Theme.color.muted
-                font.family: Theme.font.family
-                font.pixelSize: Theme.font.body
-                textFormat: Text.PlainText
-                wrapMode: Text.Wrap
+            // The canvas's PdfViewer, source not sourceComponent, so QtQuick.Pdf loads on the first PDF and never for a folder without one.
+            Loader {
+                id: pdfLoader
+                anchors.fill: parent
+                onLoaded: {
+                    item.path = Qt.binding(function () { return root.path })
+                    item.active = true
+                    item.forceActiveFocus()
+                }
             }
-        }
 
-        // Media still buffering or an image still decoding shows the crawl; LoadingState's hold-off keeps a fast local open from flashing it.
-        Flea.LoadingState {
-            anchors.fill: parent
-            visible: (root.isMedia || root.isImage || root.isArchive) && root.status === "loading"
-        }
+            Connections {
+                target: pdfLoader.item
+                function onClosed() { root.close() }
+            }
 
-        // MediaStrip unframed: quiet over the video, permanent on audio, and the column draws the framed form of the same file.
-        Flea.MediaStrip {
-            id: mediaStrip
-            visible: root.isMedia && (root.kind === "audio" || root.stripShown)
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.bottom: parent.bottom
-            framed: false
-            playing: root.status === "playing"
-            position: root.position
-            duration: root.duration
-            onToggled: root.togglePlay()
-            onSeeked: function (ms) { root.seekTo(ms) }
-            onTouched: root.revealStrip()
+            // The canvas's Archive tile at Quick Look size: the name, the count the index gave, then the entries.
+            Column {
+                id: archivePane
+                anchors.fill: parent
+                anchors.margins: Theme.spacing.rowPaddingX
+                spacing: Theme.spacing.gap
+                visible: root.isArchive && root.archiveMeta !== null && !root.archiveFailed
+
+                // corner: a filename is arbitrary text, so PlainText, the same rule every name on this surface follows.
+                Text {
+                    width: parent.width
+                    text: root.path.substring(root.path.lastIndexOf("/") + 1)
+                    color: Theme.color.foreground
+                    font.family: Theme.font.family
+                    font.pixelSize: Theme.font.body
+                    textFormat: Text.PlainText
+                    elide: Text.ElideMiddle
+                }
+
+                Text {
+                    width: parent.width
+                    text: Facts.archiveLine(root.archiveMeta)
+                    color: Theme.color.muted
+                    font.family: Theme.font.family
+                    font.pixelSize: Theme.font.caption
+                    textFormat: Text.PlainText
+                }
+
+                Flea.PreviewArchive {
+                    width: parent.width
+                    height: parent.height - y
+                    meta: root.archiveMeta
+                }
+            }
+
+            // Declined, or an archive whose index could not be read: a mark over the sentence, never a bare surface.
+            Column {
+                anchors.centerIn: parent
+                width: parent.width - 2 * Theme.spacing.rowPaddingX
+                spacing: Theme.spacing.gap
+                visible: root.kind === "unsupported" || root.archiveFailed
+
+                Flea.Glyph {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    // The overlay declining is a pane state standing alone, which States.dc.html draws at 40.
+                    maxSize: Theme.stateMarkSize
+                    width: Theme.stateMarkSize
+                    height: Theme.stateMarkSize
+                    name: root.archiveFailed ? "alert" : "file"
+                    color: root.archiveFailed ? Theme.color.error : Theme.color.muted
+                }
+
+                Text {
+                    width: parent.width
+                    horizontalAlignment: Text.AlignHCenter
+                    text: root.status
+                    color: root.archiveFailed ? Theme.color.foreground : Theme.color.muted
+                    font.family: Theme.font.family
+                    font.pixelSize: Theme.font.body
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                }
+            }
+
+            // Media still buffering or an image still decoding shows the crawl; LoadingState's hold-off keeps a fast local open from flashing it.
+            Flea.LoadingState {
+                anchors.fill: parent
+                visible: (root.isMedia || root.isImage || root.isArchive) && root.status === "loading"
+                heldOff: swap.fellBack
+            }
+
+            // MediaStrip unframed: quiet over the video, permanent on audio, and the column draws the framed form of the same file.
+            Flea.MediaStrip {
+                id: mediaStrip
+                visible: root.isMedia && (root.kind === "audio" || root.stripShown)
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                framed: false
+                playing: root.status === "playing"
+                position: root.position
+                duration: root.duration
+                onToggled: root.togglePlay()
+                onSeeked: function (ms) { root.seekTo(ms) }
+                onTouched: root.revealStrip()
+            }
         }
     }
 }

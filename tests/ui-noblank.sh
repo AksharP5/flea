@@ -145,3 +145,84 @@ SH
     printf 'NOBLANK enter=ok doubleclick=ok backspace=ok held=ok slow=ok grid=ok columns=ok %s\n' "$(noblank_state)"
     kill_flea
 }
+
+# The preview swap, AGENTS.md "The preview swap". Before it, a cursor move drew the
+# next preview half-built: v0.3.4 shows 145 to 151 mid frames over 18 column moves and
+# 13 to 15 over 16 Quick Look moves headless. The column holds the old picture until
+# the new preview is whole and falls back to loading past Swap.HOLD_MS; Quick Look
+# holds in follow() the same way. This reads ui/Ipc.qml previewSwapState, the same
+# record tests/preview-swap.sh judges headless: holds, fallbacks and midFrames.
+case_previewswap() {
+    local dir="$fixture_root/previewswap"
+    sandbox_scratch "$dir"
+    mkdir -p "$dir/0-folder"
+    : > "$dir/a-image.jpg"
+    : > "$dir/b-video.mp4"
+    : > "$dir/c-doc.pdf"
+    printf 'hello from flea\n' > "$dir/d-notes.txt"
+    printf 'fn main() {}\n' > "$dir/e-main.rs"
+    : > "$dir/f-report.odt"
+    : > "$dir/g-font.ttf"
+    : > "$dir/h-archive.zip"
+    : > "$dir/i-photo.png"
+
+    seed_ui_state "$fixture_root/previewswap-state" '{"keys":"default","view":"columns"}'
+    launch "$dir"
+    wait_listing 10
+    settle
+    [[ "$(ipc viewMode)" == columns ]] || fail "previewswap: fixture did not open its columns view"
+
+    local before after before_mid after_mid
+    before=$(ipc previewSwapState)
+    # Walk the whole preview row: each j holds the old picture until the new one is whole.
+    goto_row 0
+    settle
+    local i
+    for i in $(seq 1 9); do
+        key j >/dev/null
+        settle
+    done
+    for i in $(seq 1 9); do
+        key k >/dev/null
+        settle
+    done
+    shot previewswap-column-landed
+    after=$(ipc previewSwapState)
+    before_mid=$(jq -r '.column.midFrames // 0' <<< "$before")
+    after_mid=$(jq -r '.column.midFrames // 0' <<< "$after")
+    [[ "$(jq -r '.column.holds // 0' <<< "$after")" -gt "$(jq -r '.column.holds // 0' <<< "$before")" ]] \
+        || fail "previewswap: the column walk took no hold; before $before after $after"
+    [[ "$after_mid" == "$before_mid" ]] \
+        || fail "previewswap: the column walk drew $((after_mid - before_mid)) half-built frame(s); before $before after $after"
+    printf 'PREVIEWSWAP column holds=%s mid=%s fallbacks=%s\n' \
+        "$(jq -r '.column.holds' <<< "$after")" "$after_mid" "$(jq -r '.column.fallbacks' <<< "$after")"
+
+    # Quick Look follows the cursor the same way: Space opens, j/k move under the held picture.
+    goto_row 1
+    settle
+    key -k space >/dev/null
+    settle
+    [[ "$(ipc previewOpen)" == "true" ]] || fail "previewswap: space did not open Quick Look"
+    before=$(ipc previewSwapState)
+    key j >/dev/null
+    settle
+    key j >/dev/null
+    settle
+    key k >/dev/null
+    settle
+    shot previewswap-look-landed
+    key -k Escape >/dev/null
+    settle
+    after=$(ipc previewSwapState)
+    before_mid=$(jq -r '.look.midFrames // 0' <<< "$before")
+    after_mid=$(jq -r '.look.midFrames // 0' <<< "$after")
+    [[ "$(jq -r '.look.holds // 0' <<< "$after")" -gt "$(jq -r '.look.holds // 0' <<< "$before")" ]] \
+        || fail "previewswap: Quick Look took no hold across its moves; before $before after $after"
+    [[ "$after_mid" == "$before_mid" ]] \
+        || fail "previewswap: Quick Look drew $((after_mid - before_mid)) half-built frame(s); before $before after $after"
+    printf 'PREVIEWSWAP look holds=%s mid=%s fallbacks=%s\n' \
+        "$(jq -r '.look.holds' <<< "$after")" "$after_mid" "$(jq -r '.look.fallbacks' <<< "$after")"
+
+    printf 'PREVIEWSWAP column=ok look=ok %s\n' "$(ipc previewSwapState)"
+    kill_flea
+}

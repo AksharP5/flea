@@ -425,6 +425,7 @@ QtObject {
                     visible: control.visible, centre: root.fleaWindow.centreOf(control) } }) })
         }
         function previewExpanded(): string { var p = root.pane.preview.pdfItem; return p ? String(p.expanded) : "" }
+        function previewSwapState(): string { return JSON.stringify({ column: root.columns ? root.columns.swapState() : null, look: root.pane.preview.swapState() }) }
         function previewSelectionState(): string {
             var column = root.pane.previewColumnItem
             return JSON.stringify({view: root.pane.viewMode, width: root.pane.listSlot.width,

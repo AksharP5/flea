@@ -58,6 +58,7 @@ import "themes.js" as ThemesSuite
 import "transfer.js" as TransferSuite
 import "sort.js" as SortSuite
 import "swap.js" as SwapSuite
+import "previewswap.js" as PreviewSwapSuite
 import "startup.js" as StartupSuite
 import "status.js" as StatusSuite
 import "permissions.js" as PermissionsSuite
@@ -103,7 +104,7 @@ Item {
             ["palette", PaletteSuite], ["pathbar", PathBarSuite], ["places", PlacesSuite], ["placemenu", PlaceMenuSuite], ["rail", RailSuite], ["scripts", ScriptsSuite],
             ["phones", PhonesSuite],
             ["picker", PickerSuite],
-            ["previewkeys", PreviewKeysSuite],
+            ["previewkeys", PreviewKeysSuite], ["previewswap", PreviewSwapSuite],
             ["protocols", ProtocolsSuite], ["railkeys", RailKeysSuite],
             ["recent", RecentSuite],
             ["renderer", RendererSuite],

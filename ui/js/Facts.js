@@ -30,8 +30,9 @@ function state(row, selectionCount, loading, errorText, kindName) {
     if (selectionCount > 1) {
         return MULTI
     }
+    // A row cleared by a move is still loading, which the column draws rather than a file with no preview.
     if (!row) {
-        return UNSUPPORTED
+        return loading ? LOADING : UNSUPPORTED
     }
     if (errorText && errorText.length > 0) {
         return ERROR

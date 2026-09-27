@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Pdf
 import qs.Commons
 import "js/Format.js" as Format
+import "js/PreviewSwap.js" as PreviewSwap
 import "js/Swap.js" as Swap
 
 // A page of a PDF, rendered into the preview column's frame. QtPdf ships inside the already
@@ -77,7 +78,7 @@ Item {
     // carrier device under Qt's own reader thread, which aborts the process, so a walk through a
     // folder of PDFs settles before a document is opened rather than opening one per cursor step.
     property string opened: ""
-    readonly property int settleMs: 120
+    readonly property int settleMs: PreviewSwap.DOCUMENT_SETTLE_MS
     onActiveChanged: pdfSettle.restart()
     Timer {
         id: pdfSettle

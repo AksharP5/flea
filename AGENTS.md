@@ -415,6 +415,51 @@ red with no sentence where it cannot act, a folder owned by somebody else or a m
 stays plain where its owner may still fix it, which is the way back in. `tests/js/menu.js` pins the
 rows and the absent parent rows, `tests/js/nav.js` the target.
 
+## The preview swap
+
+A cursor move drew the next preview half-built: v0.3.4 shows 145 to 151 mid frames over 18 column
+moves and 13 to 15 over 16 Quick Look moves, measured headless through `tests/preview-swap.sh`.
+`ui/PreviewSwap.qml` owns the hold and `ui/js/PreviewSwap.js` decides. The host's children go into a
+content Item; a Loader creates a ShaderEffectSource on it only while a hold runs, `live: false`,
+`hideSource`, `visible`. `scheduledUpdateCompleted` means the capture is done, and only then do the
+queued changes run under the picture. The layer exists only while a hold does, so a settled preview
+draws directly and costs no texture. A `ground` Rectangle in the backdrop colour sits under the panes
+while holding, inset by the border width with the matching corner radius on Quick Look, because text
+in the layer blends against transparent and draws heavier without it. A capture guard gives up after
+100 ms (`CAPTURE_MS`) if the window is not drawing, and the change goes ahead unheld.
+
+Three traps are load bearing. Set `holding = true` before `capturing = false`: the other order
+re-creates the layer and captures the half-built state. On release, unhide first and destroy the layer
+one `frameSwapped` later: destroying a layer that hides its source drew one blank frame. A reused
+layer must call `scheduleUpdate()`. Clicks, hover and the wheel are blocked while held by a MouseArea
+over the picture.
+
+The column holds with `burstEnds: true` on the key `path + "\n" + cursorIndex`. The hold starts on the
+move, the settle runs from the key through `armSettle` and is not pushed back one frame, and `clear`
+runs after the capture so `pending` makes `Facts.state(null, loading)` return LOADING. A folder shows
+through the deferred `shownIsDir` and `shownChildPath`; a folder whose peek already answered lands at
+once with no hold. A different key during a column hold is held j: it gives the picture up, the
+loading state stays live with `heldOff` until `loadSelection`, which holds again with `atWork`. The
+cap is `Swap.HOLD_MS` counted from the start of the preview's own work, `load()` or the folder peek,
+plus `DOCUMENT_SETTLE_MS` (120) for a PDF. Quick Look holds in `follow()` with no apply, `load()`
+mutates under the picture and then calls `start(isPdf)`, held j joins the hold with the old preview
+staying, and `close()` calls `cancel()` so nothing queued runs. Space's own open has no hold and draws
+as it builds.
+
+`columnReady` waits for LOADING never, an image for its cache file, or with none coming the original
+`frameThumb` decodes itself, drawn or refused (Ready or Error), a video for its poster or none coming,
+a PDF for `shownPage >= 0` or failure, text and code for `PreviewLines.loading` false, an archive for
+its meta, and symlink, audio, unsupported and multi for the facts alone; a folder waits for
+`answered(shownChildPath)`. `lookReady` waits for `status` not loading, and a PDF also for
+`shownPage >= 0` or failure. `tests/js/previewswap.js` drives the moves, the cap, the frame kinds and
+every ready rule; mutating `columnReady` reddens it. `tests/preview-swap.sh` grabs the swap item
+headless over folder, jpg, mp4, pdf, txt, rs, odt, ttf, zip and png on both surfaces and asserts 0 mid
+frames. `tests/ui-noblank.sh` reads `previewSwapState` (holds, fallbacks, midFrames) live.
+
+**// corner: the move to the PNG keeps 2 mid frames by design.** At full-resolution grabs the sharper
+original replacing the cache file draws twice between the settled frames. It is the decode finishing,
+not a half-built preview, and the count is pinned rather than fixed.
+
 ## Why the listing is an arena
 
 `Listing` (`listing.rs`) holds one `String` with every entry's name written back to
@@ -2280,6 +2325,14 @@ it is one job, header bytes in and stored dimensions plus orientation out, so it
 `orient` slot on the line plus its test. `ui/Preview.qml` 391 to 417 for `imageRow`, `imageTurn`,
 `askImage()` and the `turn`-before-`path` bind. `ui/PreviewColumn.qml` 478 to 480 for the `turned`
 swap on its original fallback; `ui/PreviewImage.qml` stays inside its budget at 98.
+
+The preview swap records three ceiling moves, each re-derived with `wc -l` at the commit that
+recorded it. `ui/Preview.qml` 417 to 452 for the swap wrapper round the Quick Look panes, the
+`load`/`show` split and `lookReady`; it crosses the 400 hard cap, so the ceiling above is its
+recorded exception. `ui/PreviewColumn.qml` 480 to 486 for `pending`, `loadingHeldOff`, `pdfDrawn`
+and the fallback's `heldOff`. `ui/Ipc.qml` 791 to 792 for the `previewSwapState` reader. The new
+`ui/PreviewSwap.qml` (238), `ui/js/PreviewSwap.js` (72) and `tests/js/previewswap.js` (70) sit inside
+their budgets and carry no ceiling.
 
 ## The key table is generated
 

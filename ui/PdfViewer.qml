@@ -35,6 +35,8 @@ Item {
     readonly property int page: pdf.page
     readonly property int pageCount: pdf.pageCount
     readonly property bool failed: pdf.failed
+    // The page on screen, -1 before the first render: ui/Preview.qml's swap waits for it.
+    readonly property int shownPage: pdf.shownPage
     readonly property real pdfScrollY: pageFlick.contentY
 
     // The canvas draws no scale readout, so the ladder is the whole zoom contract: one step a press,

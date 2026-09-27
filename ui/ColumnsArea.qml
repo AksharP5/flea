@@ -34,6 +34,14 @@ Item {
     readonly property string childPath: root.cursorIsDir
         ? root.pane.join(root.pane.path, root.cursorRow.n) : ""
 
+    // What the third column shows: the cursor row as of the last swap, so a picture is taken before it changes.
+    property bool shownHasRow: false
+    property bool shownIsDir: false
+    property string shownChildPath: ""
+    // The swap's answer for the third column: the folder's rows in, or the file's preview whole.
+    readonly property bool thirdReady: root.shownIsDir ? root.answered(root.shownChildPath)
+        : (!root.shownHasRow || !ViewState.previewColumn || preview.ready)
+
     // A third of the view for each of the two fixed columns; the third takes the remainder, so
     // a width that does not divide by three leaves no gap. shell.qml's empty hero takes it too.
     readonly property int columnWidth: Math.floor(root.width / 3)
@@ -70,6 +78,41 @@ Item {
     // One row, only when the preview column is actually the surface showing: the same no-sweep rule
     // thumb and dirsize already follow.
     function askMeta() { preview.followSelection() }
+
+    function showCursorRow() {
+        root.shownHasRow = root.cursorRow !== null
+        root.shownIsDir = root.cursorIsDir
+        root.shownChildPath = root.childPath
+    }
+
+    // A folder whose rows are already here lands at once; any other change of what the third column shows is held.
+    function moveThird() {
+        if (root.cursorIsDir === root.shownIsDir && root.childPath === root.shownChildPath
+                && (root.cursorRow !== null) === root.shownHasRow)
+            return
+        var idle = !thirdSwap.capturing && !thirdSwap.holding
+        var nothingShown = !ViewState.previewColumn && !root.cursorIsDir && !root.shownIsDir
+        if (idle && (nothingShown || (root.cursorIsDir && root.answered(root.childPath)))) {
+            root.showCursorRow()
+            return
+        }
+        thirdSwap.hold(root.showCursorRow, root.swapKey())
+        // A folder's own work is its peek, asked already; a file's starts with its settle, which runs from the key.
+        if (root.cursorIsDir)
+            thirdSwap.start(false)
+        else
+            preview.armSettle()
+    }
+
+    function swapKey() { return root.pane.path + "\n" + root.pane.cursorIndex }
+
+    // The third column first, so a hold is in place before the preview clears under it.
+    function followCursor() {
+        root.moveThird()
+        root.askMeta()
+    }
+
+    function swapState() { return thirdSwap.describe() }
 
     // The listArea contract every caller of the pane's own navigation uses: the listing's column plans its own viewport's thumbnails, the way the list and the grid do.
     function primeSettle() { active.primeSettle() }
@@ -163,14 +206,14 @@ Item {
     onChildPathChanged: root.refreshNeighbours()
     Connections {
         target: root.pane
-        function onCursorIndexChanged() { root.askMeta() }
+        function onCursorIndexChanged() { root.followCursor() }
         // A meta asked before the new listing landed is answered with silence, because the row index
         // is outside the listing the backend still holds. The rows arriving is what re-asks it, and
         // only when nothing has answered yet, so the column cannot sit on Loading and a landing that
         // already has its facts does not ask a second time and race its own reply.
-        function onRowsChanged() { if (root.cursorMeta === null) root.askMeta() }
+        function onRowsChanged() { root.followCursor() }
     }
-    Component.onCompleted: root.refreshNeighbours()
+    Component.onCompleted: { root.showCursorRow(); root.refreshNeighbours() }
     // The view is built with the pane and only shown later, so neither path nor cursor has changed
     // by the time it first appears; becoming visible is the trigger that asks for everything.
     onVisibleChanged: if (visible) root.refreshNeighbours()
@@ -240,26 +283,31 @@ Item {
         }
 
         // The cursor row: what is inside it when it is a directory, what it is when it is a file.
-        Item {
+        Flea.PreviewSwap {
+            id: thirdSwap
             width: root.width - 2 * root.columnWidth
             height: parent.height
+            burstEnds: true
+            ready: root.thirdReady
+            ground: Theme.color.background
 
             Flea.ColumnPane {
                 id: childColumn
                 anchors.fill: parent
-                visible: root.cursorIsDir
-                rows: root.rowsFor(root.childPath)
-                lockedMode: root.deniedMode(root.childPath)
-                drawsEmpty: root.answered(root.childPath)
-                onActivated: function (name, isDir) { root.activateNeighbour(root.childPath, name, isDir) }
-                onNeighbourMenuRequested: function (name) { root.menuOnNeighbour(root.childPath, name) }
+                visible: root.shownIsDir
+                rows: root.rowsFor(root.shownChildPath)
+                lockedMode: root.deniedMode(root.shownChildPath)
+                drawsEmpty: root.answered(root.shownChildPath)
+                onActivated: function (name, isDir) { root.activateNeighbour(root.shownChildPath, name, isDir) }
+                onNeighbourMenuRequested: function (name) { root.menuOnNeighbour(root.shownChildPath, name) }
             }
 
             Flea.SelectionPreview {
                 id: preview
                 anchors.fill: parent
-                visible: root.cursorRow !== null && !root.cursorIsDir && ViewState.previewColumn
+                visible: root.shownHasRow && !root.shownIsDir && ViewState.previewColumn
                 pane: root.pane
+                swap: thirdSwap
                 onThumbsApplied: function (work) { root.thumbsApplied(work) }
             }
         }

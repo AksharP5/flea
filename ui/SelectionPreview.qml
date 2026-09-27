@@ -4,6 +4,7 @@ import "js/Facts.js" as Facts
 import "js/Thumbs.js" as Thumbs
 import "js/Keymap.js" as Keymap
 import "js/PreviewKeys.js" as PreviewKeys
+import "js/PreviewSwap.js" as PreviewSwap
 
 // Selection loading is independent of column visibility and the separate Quick Look overlay.
 Flea.PreviewColumn {
@@ -13,6 +14,9 @@ Flea.PreviewColumn {
     property string loadedDirectory: ""
     property string loadedIdentity: ""
     property int pendingToken: 0
+    // ui/ColumnsArea.qml's third-column swap, which then drives the cursor moves; null leaves every change immediate.
+    property var swap: null
+    property string settleKey: ""
     signal thumbsApplied(var work)
     onExpandRequested: {
         if (!root.row || !root.pane) return
@@ -48,13 +52,60 @@ Flea.PreviewColumn {
     thumb: root.pane && root.loadedIndex >= 0 ? Thumbs.fileFor(root.pane.thumbState, root.loadedIndex) : ""
     noThumbComing: root.row !== null && (root.row.t !== true || !root.pane
         || Thumbs.refused(root.pane.thumbState, root.loadedIndex))
+    loadingHeldOff: root.swap !== null && root.swap.fellBack
+
+    // What the swap waits for: the cursor row's preview whole, or nothing more coming for it.
+    readonly property bool ready: {
+        if (root.pane === null || root.row === null)
+            return !root.pending
+        if (root.loadedIndex !== root.pane.cursorIndex)
+            return false
+        return PreviewSwap.columnReady({ state: root.previewState, thumb: root.thumb.length > 0,
+            frame: root.frameStatus, noThumbComing: root.noThumbComing, pdfDrawn: root.pdfDrawn,
+            pdfFailed: root.pdfFailed, linesLoading: root.linesItem.loading, meta: root.meta !== null })
+    }
 
     function identity(row) {
         return row ? JSON.stringify([row.n, row.s, row.m, row.p, row.i]) : ""
     }
 
+    function swapKey() { return root.pane.path + "\n" + root.pane.cursorIndex }
+
+    // The settle runs from the key, and a second call for the same row does not push it back.
+    function armSettle() {
+        if (!ViewState.previewAutomatic || !root.pane)
+            return
+        var key = root.swapKey()
+        if (settle.running && root.settleKey === key)
+            return
+        root.settleKey = key
+        settle.restart()
+    }
+
     function clear() {
         settle.stop()
+        root.clearShown()
+    }
+
+    // A move's clear: the loading state stands under the swap's picture until the settle loads the new row.
+    function clearForMove() {
+        root.clearShown()
+        root.pending = true
+    }
+
+    // Any change of what the cursor row is: the old preview goes, under the swap's picture where there is one.
+    function replace() {
+        if (root.swap && ViewState.previewAutomatic && root.canRead) {
+            root.armSettle()
+            root.swap.hold(root.clearForMove, root.swapKey())
+            return
+        }
+        root.clear()
+        if (root.canRead) root.armSettle()
+    }
+
+    function clearShown() {
+        root.pending = false
         root.pendingToken = 0
         root.loadedIndex = -1
         root.loadedDirectory = ""
@@ -72,17 +123,23 @@ Flea.PreviewColumn {
         var candidate = root.pane.rowFor(root.pane.cursorIndex)
         if (root.loadedDirectory === root.pane.path && root.loadedIndex === root.pane.cursorIndex
                 && root.loadedIdentity === root.identity(candidate)) return
-        root.clear()
-        if (ViewState.previewAutomatic) settle.restart()
+        root.replace()
     }
 
     // Ctrl+Space calls this directly; automatic selection reaches it only after selection settles.
     function loadSelection() {
         if (!root.canRead) return
+        if (root.swap) root.swap.hold(root.load, root.swapKey(), true)
+        else root.load()
+    }
+
+    // The swap is told the new preview's work has begun, so its cap counts from here, a PDF's after its document settle.
+    function load() {
+        if (!root.canRead) return
         var pane = root.pane
         var current = pane.rowFor(pane.cursorIndex)
         root.clear()
-        if (!current) return
+        if (!current) { root.startSwap(false); return }
         root.loadedIndex = pane.cursorIndex
         root.loadedDirectory = pane.path
         root.loadedIdentity = root.identity(current)
@@ -91,8 +148,9 @@ Flea.PreviewColumn {
         root.kindName = pane.kindNames[current.k] || ""
         root.selectionCount = pane.selectionCount()
         root.selectedRows = pane.selectedIndices().map(function (index) { return pane.rowFor(index) }).filter(function (row) { return row !== null })
-        if (current.d || root.selectionCount > 1) return
+        if (current.d || root.selectionCount > 1) { root.startSwap(false); return }
         var kind = Facts.state(current, 1, false, "", root.kindName)
+        root.startSwap(kind === Facts.PDF)
         root.pendingToken = pane.backend.askMeta(root.loadedIndex, kind === Facts.TEXT || kind === Facts.CODE,
             kind === Facts.VIDEO || kind === Facts.AUDIO, kind === Facts.ARCHIVE)
         if (current.t && pane.thumbState.file[root.loadedIndex] === undefined) {
@@ -101,6 +159,8 @@ Flea.PreviewColumn {
             pane.backend.thumb(work.ask)
         }
     }
+
+    function startSwap(isPdf) { if (root.swap) root.swap.start(isPdf) }
 
     Timer {
         id: settle
@@ -121,14 +181,16 @@ Flea.PreviewColumn {
     }
     Connections {
         target: root.pane
-        function onCursorIndexChanged() { root.followSelection() }
+        // With a swap, ui/ColumnsArea.qml calls followSelection after it has put the hold in place.
+        function onCursorIndexChanged() { if (!root.swap) root.followSelection() }
         function onRowsChanged() {
             if (root.loadedIndex >= 0 && root.loadedIdentity !== root.identity(root.pane.rowFor(root.loadedIndex)))
-                root.clear()
-            root.followSelection()
+                root.replace()
+            else if (!root.swap)
+                root.followSelection()
         }
-        function onPathChanged() { root.clear(); root.followSelection() }
-        function onSelectionVersionChanged() { root.clear(); root.followSelection() }
+        function onPathChanged() { root.replace() }
+        function onSelectionVersionChanged() { root.replace() }
     }
     Connections {
         target: root.pane ? root.pane.backend : null
