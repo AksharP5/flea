@@ -70,7 +70,10 @@ fn stat_range_with(
 // A prefetched gio row answers without a stat; anything else runs the injected stat function.
 fn cached_or(base: &Path, l: &Listing, i: usize, stat: &(impl Fn(&Path, &str) -> Meta + Sync)) -> Meta {
     if let Some(c) = l.meta_cache.get(l.name(i)) {
-        return Meta { size: c.size, mtime: c.mtime, mode: c.mode, target_is_dir: false, target: c.target.clone(), dev: c.dev };
+        // corner: a cached symlink pays meta_one's one follow-stat so a linked folder draws as one.
+        let target_is_dir = l.spans.get(i).is_some_and(|s| s.is_symlink)
+            && base.join(l.name(i)).metadata().map(|t| t.is_dir()).unwrap_or(false);
+        return Meta { size: c.size, mtime: c.mtime, mode: c.mode, target_is_dir, target: c.target.clone(), dev: c.dev };
     }
     stat(base, l.name(i))
 }

@@ -7,11 +7,11 @@ use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-// Sample input: gio list -u -a standard::type,standard::size,time::modified,standard::symlink-target --nofollow-symlinks <path>
-const GIO_ATTRS: &str = "standard::type,standard::size,time::modified,standard::symlink-target";
+// Sample input: gio list -u -a standard::type,standard::size,time::modified,standard::symlink-target,unix::mode --nofollow-symlinks <path>
+const GIO_ATTRS: &str = "standard::type,standard::size,time::modified,standard::symlink-target,unix::mode";
 // A 10k NAS folder answers in about 1.1 s; 15 s bounds a hung daemon without cutting one off.
 pub const GIO_TIMEOUT: Duration = Duration::from_secs(15);
-// Modes matching what the smb FUSE stat reports, so icons and rows agree with the stat path.
+// Fallback modes for a gio that omits unix::mode, matching what the SMB FUSE stat reports.
 const MODE_FILE: u32 = 0o100700;
 const MODE_DIR: u32 = 0o40700;
 const MODE_LINK: u32 = 0o120777;
@@ -23,6 +23,8 @@ pub struct GvfsRow {
     pub size: u64,
     pub mtime: i64,
     pub target: String,
+    // Decimal st_mode as gio reported it, None when the backend omitted the key.
+    pub unix_mode: Option<u32>,
 }
 
 // One prefix check, so local and USB paths take exactly today's code past it.
@@ -148,7 +150,13 @@ pub fn parse_line(line: &str, hidden: bool) -> Result<Option<GvfsRow>, String> {
             target = unescape_target(&rest[..end]);
         }
     }
-    Ok(Some(GvfsRow { name, is_dir, is_symlink, size, mtime, target }))
+    // corner: only a parsed decimal unix::mode replaces the fallback; absent or garbled keeps it.
+    let mode_key = "unix::mode=";
+    let unix_mode = attrs.find(mode_key).and_then(|at| {
+        let rest = &attrs[at + mode_key.len()..];
+        rest[..rest.find(' ').unwrap_or(rest.len())].parse::<u32>().ok()
+    });
+    Ok(Some(GvfsRow { name, is_dir, is_symlink, size, mtime, target, unix_mode }))
 }
 
 // One gio child per listing; any failure falls back to readdir and says nothing to the user.
@@ -218,7 +226,8 @@ pub(crate) fn build_listing(text: &str, hidden: bool, path: &str) -> Result<List
         match parse_line(line, hidden)? {
             None => {}
             Some(row) => {
-                let mode = mode_for(row.is_dir, row.is_symlink);
+                // A reported unix::mode is the backend's own stat; without it the SMB constants stay.
+                let mode = row.unix_mode.unwrap_or_else(|| mode_for(row.is_dir, row.is_symlink));
                 let index = l.len();
                 l.push(&row.name, row.is_dir);
                 l.spans[index].is_symlink = row.is_symlink;
@@ -245,6 +254,7 @@ mod tests {
         assert_eq!((row.size, row.mtime), (10, 1790537811));
         assert!(!row.is_dir && !row.is_symlink);
         assert!(row.target.is_empty());
+        assert_eq!(row.unix_mode, None, "no unix::mode key means the SMB fallback stays");
         assert_eq!(mode_for(row.is_dir, row.is_symlink), 0o100700);
     }
 
@@ -346,6 +356,32 @@ mod tests {
         assert_eq!((cached.size, cached.mtime, cached.mode), (1, 300, 0o120777));
         assert_eq!(cached.target, "a.txt");
         assert_eq!(l.meta_cache.get("a.txt").expect("file cached").size, 3);
+    }
+
+    #[test]
+    fn a_gio_run_reporting_unix_mode_caches_real_modes() {
+        let d = TestDir::new("gvfs-unixmode");
+        let fake = fake_gio(&d, "gio", "#!/bin/sh\nprintf '%s\\n' 'smb://h/share/plain.txt\t6\t(regular)\ttime::modified=100 unix::mode=33188' 'smb://h/share/l\t6\t(symlink)\tstandard::is-symlink=TRUE standard::symlink-target=plain.txt time::modified=100 unix::mode=41471' 'smb://h/share/odd.txt\t6\t(regular)\ttime::modified=100 unix::mode=notanumber'\n");
+        let (l, _) = list_via_gio(d.path().to_str().unwrap(), false, &fake, Duration::from_secs(5)).unwrap();
+        assert_eq!(l.meta_cache.get("plain.txt").expect("file cached").mode, 33188, "0644, not the 0700 fallback");
+        assert_eq!(l.meta_cache.get("l").expect("link cached").mode, 41471, "the link's own 0o120777");
+        assert!(l.spans[1].is_symlink, "the symlink bit still rides in the span");
+        assert_eq!(l.meta_cache.get("odd.txt").expect("odd row cached").mode, 0o100700, "a garbled mode keeps the fallback");
+    }
+
+    #[test]
+    fn a_cached_symlink_to_a_folder_reports_target_is_dir() {
+        use std::os::unix::fs::symlink;
+        let d = TestDir::new("gvfs-linkdir");
+        std::fs::create_dir(d.join("realdir")).unwrap();
+        symlink("realdir", d.join("linkdir")).unwrap();
+        symlink("nowhere", d.join("broken")).unwrap();
+        let text = "smb://h/share/realdir\t4096\t(directory)\ttime::modified=100 unix::mode=16832\nsmb://h/share/linkdir\t6\t(symlink)\tstandard::is-symlink=TRUE standard::symlink-target=realdir time::modified=100 unix::mode=41471\nsmb://h/share/broken\t6\t(symlink)\tstandard::is-symlink=TRUE standard::symlink-target=nowhere time::modified=100 unix::mode=41471\n";
+        let l = build_listing(text, false, d.path().to_str().unwrap()).unwrap();
+        let (metas, _) = crate::backend::meta::stat_range(d.path(), &l, 0, 3);
+        assert!(!metas[0].target_is_dir, "a real directory carries d itself, not the symlink flag");
+        assert!(metas[1].target_is_dir, "a cached symlink to a folder must draw the folder icon");
+        assert!(!metas[2].target_is_dir, "a broken cached link resolves to nothing");
     }
 
     #[test]
