@@ -1980,6 +1980,11 @@ soft budget and not the hard cap. The row spends the last line of `ui/SettingsPa
 raises `ui/SettingsRow.qml`'s from 409 to 410 for the note that elides on one line instead of wrapping. `src/update.rs` is 301 lines with its tests in `src/update_tests.rs`, over the soft budget and
 not the hard cap; the seam if it needs one is the six parsers of what each command printed.
 
+Durable copies record two ceilings, each re-derived with `wc -l` on the integrated 0.3.6 branch.
+`src/backend/copyfile.rs` 404 for the per-file sync a removable or network destination takes, and
+`src/backend/opsreq.rs` 402 for carrying the batch's durability context and its verdict on the
+done line; the policy itself is all `src/backend/durable.rs`.
+
 0.3.6's folder jump records three ceilings, each re-derived with `wc -l` at the commit that recorded
 it. `ui/ChromeBar.qml` 421 to 438 for the jump's request signal and alias, the strip's rise over the
 listing while the dropdown shows, the field's `Keys.forwardTo` and the `PathJump` it owns with its decline back to the typed path; the dropdown,
