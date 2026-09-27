@@ -40,18 +40,7 @@ pub fn stat_range(base: &Path, l: &Listing, start: usize, count: usize) -> (Vec<
 
 // slow_ms is the pass cost above which the remainder goes to threads; tests pass 0 or infinity.
 fn stat_range_at(base: &Path, l: &Listing, start: usize, count: usize, slow_ms: f64) -> (Vec<Meta>, f64) {
-    let t = Instant::now();
-    let end = start.saturating_add(count).min(l.len());
-    let start = start.min(end);
-    let mut out = Vec::with_capacity(end - start);
-    for i in start..end {
-        out.push(cached_or(base, l, i, &meta_one));
-        if t.elapsed().as_secs_f64() * 1000.0 >= slow_ms && end - (i + 1) > 1 {
-            out.extend(stat_parallel(base, l, i + 1, end));
-            break;
-        }
-    }
-    (out, t.elapsed().as_secs_f64() * 1000.0)
+    stat_range_with(base, l, start, count, slow_ms, meta_one)
 }
 
 // The test seam: stat names the per-row function, so a counting or slow stub observes the trigger.
@@ -87,10 +76,6 @@ fn cached_or(base: &Path, l: &Listing, i: usize, stat: &(impl Fn(&Path, &str) ->
 }
 
 // Contiguous chunks, joined in order, so the rows come back exactly as the serial walk returns them.
-fn stat_parallel(base: &Path, l: &Listing, start: usize, end: usize) -> Vec<Meta> {
-    stat_parallel_with(base, l, start, end, &meta_one)
-}
-
 fn stat_parallel_with(
     base: &Path,
     l: &Listing,
