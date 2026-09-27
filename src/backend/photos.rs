@@ -4,7 +4,7 @@ use crate::backend::mime::Db;
 use std::path::PathBuf;
 use std::time::Instant;
 
-// Entries per tick, so a 5,000-photo Camera folder on a slow MTP mount never blocks photoscancel.
+// Entries and folder opens per tick, so neither a 5,000-photo folder nor 1,000 empty ones on MTP block photoscancel.
 const ENTRIES_PER_TICK: usize = 100;
 
 // A directory a tick stopped inside, kept open so the next tick resumes it.
@@ -48,6 +48,7 @@ impl Photos {
                 Some(open) => open,
                 None => match self.pending.pop() {
                     Some(rel) => {
+                        entries += 1;
                         let dir = if rel.is_empty() { self.root.clone() } else { self.root.join(&rel) };
                         // corner: an unreadable directory is skipped in silence, as scan.rs's phase one skips an unreadable entry.
                         match std::fs::read_dir(&dir) {
@@ -287,6 +288,21 @@ mod tests {
         assert!(l.len() < total, "the tick left photos unread for the next tick");
         while !w.step(&mut l, &mime) {}
         assert_eq!(l.len(), total, "the kept ReadDir resumes until every photo arrives");
+    }
+
+    #[test]
+    fn a_tick_counts_folder_opens_so_empty_folders_never_block_a_cancel() {
+        let d = TestDir::new("photosopens");
+        let total = ENTRIES_PER_TICK + 50;
+        for i in 0..total {
+            d.dir(&format!("DCIM/d{i}"));
+        }
+        let mime = mime();
+        let mut w = Photos::new(&d.join("DCIM").to_str().unwrap().to_string(), false);
+        w.pending = (0..total).map(|i| format!("d{i}")).collect();
+        let mut l = Listing::new();
+        assert!(!w.step(&mut l, &mime), "one tick cannot open every empty folder");
+        assert!(w.pending.len() >= total - ENTRIES_PER_TICK, "one tick opened {} folders", total - w.pending.len());
     }
 
     #[test]

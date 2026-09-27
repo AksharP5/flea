@@ -2513,7 +2513,7 @@ Fix2-photosmove moves two recorded ceilings, each re-derived with `wc -l`:
 `src/backend/copyfile.rs` 404 to 428 for the EXDEV confirm before the remove (`move_cross_device`
 with its `confirm_dest`, which flushes the touched folders or the parent when no context is set
 and answers `DIR_UNCONFIRMED` keeping the source), and `src/backend/copyfile_tests.rs` new at
-411 for the two tests that pin it. `src/backend/photos.rs` stands at 333, over the soft budget
+411 for the two tests that pin it. `src/backend/photos.rs` stands at 349, over the soft budget
 and under the hard cap, for the entry-bounded tick with its kept `ReadDir`; `src/backend/redo.rs` falls 329 to 327 for
 the single journalled step; `src/backend/photosreq.rs` at 43, `src/backend/proto.rs` at 294 and
 `src/backend/proto_tests.rs` at 298 stay inside their budgets.
