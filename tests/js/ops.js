@@ -372,4 +372,19 @@ function run(check) {
     check("an idle transfer is not running and has nothing to draw",
           Ops.emptyTransfer().running + " " + Ops.emptyTransfer().done + " " + Ops.emptyTransfer().total,
           "false 0 0")
+
+    // CloudMounts: a copy onto an rclone mount lands in rclone's cache first, so the done
+    // line names the background upload and never claims the drive confirmed it.
+    check("a copy onto rclone says it uploads in the background",
+          Ops.transferDone({ moving: false, n: 5 }, 5, 0, 0, false, false, "rclone uploads them in the background"),
+          "Copied 5 items · rclone uploads them in the background · z undoes")
+    check("an unconfirmed folder says so the same way",
+          Ops.transferDone({ moving: false, n: 2 }, 2, 0, 0, false, false, "copied, but the drive did not confirm the folder"),
+          "Copied 2 items · copied, but the drive did not confirm the folder · z undoes")
+    check("a verdict note with nothing landed stays unsaid",
+          Ops.transferDone({ moving: false, n: 2 }, 0, 2, 0, false, false, "rclone uploads them in the background"),
+          "Copied 0 of 2 · 2 failed")
+    check("no verdict note leaves the shipped line alone",
+          Ops.transferDone({ moving: false, n: 2 }, 2, 0, 0, false, false, ""),
+          "Copied 2 items · z undoes")
 }

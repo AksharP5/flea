@@ -35,14 +35,15 @@ src/uistore.rs 483
 src/vulkan.rs 620
 tests/js/focus.js 404
 tests/js/mounts.js 383
-tests/js/ops.js 384
+tests/js/ops.js 390
+tests/js/status.js 304
 ui/Backend.qml 435
 ui/ChromeBar.qml 438
 ui/ContextMenu.qml 570
 ui/ConvertDialog.qml 440
 ui/Ipc.qml 796
 ui/NetworkDialog.qml 449
-ui/NetworkMounts.qml 703
+ui/NetworkMounts.qml 727
 ui/OpenWithDialog.qml 588
 ui/Pane.qml 702
 ui/PaneMenuActions.qml 404
@@ -54,14 +55,14 @@ ui/Preview.qml 456
 ui/Row.qml 421
 ui/SettingsPanel.qml 542
 ui/SettingsRow.qml 410
-ui/Sidebar.qml 553
+ui/Sidebar.qml 569
 ui/StatusBar.qml 446
 ui/TrashView.qml 467
 ui/WindowBody.qml 507
 ui/js/Filter.js 253
 ui/js/Focus.js 339
 ui/js/Keymap.js 313
-ui/js/Ops.js 367
+ui/js/Ops.js 371
 ui/js/Settings.js 427"
 
 status=0

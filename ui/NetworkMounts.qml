@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import "js/Errors.js" as Errors
+import "js/Cloud.js" as Cloud
 import "js/Mounts.js" as Mounts
 import "js/Photos.js" as Photos
 import "js/Protocols.js" as Protocols
@@ -206,8 +207,18 @@ Item {
     MountListing {
         id: listing
         environment: root.gioEnvironment
-        // Assign before the rebuild reads it, the order the poll always had.
-        onListed: { root._mountListing = listing.text; root.rebuild() }
+        // Cloud rows ride the same five second rhythm: the mount table is a file read, so
+        // nothing new runs. The reload blocks for the same reason ui/Sidebar.qml's own
+        // reloadBookmarks does: a rebuild must read the write it caused.
+        onListed: { root._mountListing = listing.text; cloudFile.reload(); cloudFile.waitForJob(); root.rebuild() }
+    }
+
+    // /proc/self/mountinfo, read on the listing's own poll for ui/js/Cloud.js's FUSE rows.
+    // A FileView watch is not set up: proc files report no change events, so the poll drives it.
+    FileView {
+        id: cloudFile
+        path: "/proc/self/mountinfo"
+        printErrors: false
     }
 
     // The saved places file is ui/NetworkPlaces.qml's, the only writer of it in this Service.
@@ -275,15 +286,28 @@ Item {
         if (root.dropboxPath.length > 0) {
             out.push({ path: root.dropboxPath, label: "Dropbox", group: "network", kind: "dropbox", uri: "", mounted: true, glyph: "" })
         }
+        // CloudMounts: a FUSE mount inside the home folder shows under its folder's name,
+        // the way gio lists its own mounts. No menu at defaults, like Dropbox's row: the
+        // tool that made the mount owns it, so Flea never mounts, unmounts or configures it.
+        var clouds = Cloud.parseCloudMounts(cloudFile.text(), Quickshell.env("HOME"))
+        for (var c = 0; c < clouds.length; c++) {
+            out.push({ path: clouds[c].path, label: Mounts.leaf(clouds[c].path), group: "network",
+                       kind: "cloud", uri: "", mounted: true, glyph: "server" })
+        }
         // Every five seconds forever, so an unchanged poll must not assign: see Mounts.sameEntries.
         if (!Mounts.sameEntries(root.entries, out))
             root.entries = out
     }
 
     // A favourite's path is already real; a share needs mounting (if not live) then resolving.
+    // A cloud row's path is already real too: its mount is the tool that made it, not Flea's.
     function activate(index) {
         var e = root.entries[index]
         if (!e) return
+        if (e.kind === "cloud") {
+            root.opened(e.path, root.origin)
+            return
+        }
         if (e.kind === "share") {
             root.openShare(e.uri, e.mounted, e.label)
             return

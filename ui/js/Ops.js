@@ -67,13 +67,17 @@ function progressLine(t) {
     return t.name.length > 0 ? Transfer.head(t) + " · " + t.name : Transfer.head(t)
 }
 
-function transferDone(t, ok, failed, skipped, cancelled) {
+function transferDone(t, ok, failed, skipped, cancelled, durable, note) {
     var verb = t.moving ? "Moved " : "Copied "
     var partial = failed > 0 || skipped > 0 || cancelled
     var line = verb + (partial ? Format.count(ok) + " of " + Format.count(t.n) : items(ok))
     if (failed > 0) line += " · " + Format.count(failed) + " failed"
     if (skipped > 0) line += " · " + Format.count(skipped) + " skipped"
     if (cancelled) line += " · cancelled"
+    // The durable verdict's own note rides ahead of the undo hint, so the strip draws
+    // "Copied N items" with "<note> · z undoes" beside it. Only what landed is said:
+    // a verdict note with nothing copied stays unsaid.
+    if (ok > 0 && String(note || "").length > 0) line += " · " + note
     return line + (ok > 0 ? Status.UNDO_HINT : "")
 }
 

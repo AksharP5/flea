@@ -34,7 +34,9 @@ function route(root, message) {
         // err rides only on a failure, so an ok item has no field to read here.
         root.transferItem(message.id, message.index, message.name, message.ok, message.err || "")
     } else if (message.t === "transferdone") {
-        root.transferDone(message.id, message.ok, message.failed, message.skipped, message.cancelled, message.retryPaths || [])
+        // durable stays unread until a "written to the drive" sentence exists; note already
+        // has one, the verdict's own, which ui/js/Ops.js draws ahead of the undo hint.
+        root.transferDone(message.id, message.ok, message.failed, message.skipped, message.cancelled, message.retryPaths || [], message.durable === true, message.note || "")
     } else if (message.t === "collisions") {
         root.collisions(message.id, message.total, message.names || [])
     } else if (message.t === "trashed") {

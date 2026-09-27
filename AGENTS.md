@@ -2104,6 +2104,18 @@ the commit that recorded it.
 
 Issue 194 takes `ui/NetworkMounts.qml` from its recorded 560 to 656 for the smb FUSE guard and the repair that peeks gio's folder, then opens the matching entry out of the FUSE root through backend.peek instead of reading a wrong mount as an unreadable directory, and `ui/WindowBody.qml` from its recorded 487 to 497 for routing a typed network address to the rail's own open-a-share path instead of a local listing. The matching lives in `ui/js/Protocols.js`, 202 to 296, and the bar's hand-back in `ui/js/PathBar.js`, 204 to 214, both over the soft budget and under the hard cap. Each count re-derived with `wc -l`.
 
+RailEject and CloudMounts raise five recorded ceilings rather than splitting a sixth file.
+`ui/NetworkMounts.qml` goes from its recorded 674 to 698 for the cloud FileView on
+`/proc/self/mountinfo`, the FUSE rows it merges after Dropbox, and the cloud activation that
+opens the mountpoint directly; `ui/Sidebar.qml` from its recorded 545 to 561 for `ejectRow`
+and its two repeater wirings; `ui/js/Ops.js` from its recorded 367 to 371 for the verdict
+note on the done line; `tests/js/ops.js` from its recorded 384 to 390 for that sentence's
+four checks; and `tests/js/status.js` crosses the hard cap at 304 for the secondary-lane
+checks, recorded rather than split. The mark predicate went to `ui/js/Eject.js`, 153 to 179,
+the cloud table to the new `ui/js/Cloud.js`, 67 lines inside both budgets, the hint split to
+`ui/js/Status.js`, 188 to 199, and the rclone verdict to `src/backend/durable.rs`, 223 to 249,
+each inside its budget. Each count re-derived with `wc -l`.
+
 `src/backend/ops.rs` split to `src/backend/renamecompat.rs` at 455: composing PR 35's safe rclone
 rename into the release tree put the rename exception over the 400-line hard cap, so the exception
 and its tests moved to the module that already owned classifying which rename failures need it.

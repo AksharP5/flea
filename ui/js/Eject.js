@@ -1,6 +1,7 @@
 .pragma library
 
 .import "Mounts.js" as Mounts
+.import "Protocols.js" as Protocols
 
 // Sample input: the lsblk --json body ui/js/Mounts.js "parseDevices" reads, taken again after
 // gio mount -e returned for /dev/sda1:
@@ -124,6 +125,31 @@ function sentence(v, label, others) {
         return { text: label + " could not be ejected; " + rest.join(", ") + " on the same drive" + tail, isError: true }
     }
     return { text: "Could not confirm " + label + " was ejected; do not unplug it yet.", isError: true }
+}
+
+// Which rail rows draw the 15 px eject mark in the status square's 12 px trailing slot.
+// Sample input: rail entries as ui/NetworkMounts.qml and ui/DeviceMounts.qml build them,
+// {label:"NAS", group:"network", kind:"share", uri:"smb://h/data/", mounted:true}.
+// A mounted drive the operator can pull out and a mounted share gio can unmount draw the
+// mark in place of the square, so the label keeps its column. NFS needs root to unmount,
+// a phone keeps its square, a cloud row keeps its own, and anything unmounted keeps its
+// half-strength square.
+function releasable(entry) {
+    if (!entry || entry.mounted !== true)
+        return false
+    if (entry.group === "device" && entry.kind === "volume")
+        return entry.removable === true
+    if (entry.group === "network" && entry.kind === "share")
+        return Protocols.schemeOf(entry.uri) !== "nfs"
+    return false
+}
+
+// The one-click release the mark fires: Eject for a drive, Unmount for a share, the same
+// rows Mounts.railMenu offers and release below reaches from Ctrl+E.
+function releaseAction(entry) {
+    if (!releasable(entry))
+        return ""
+    return entry.group === "device" ? "eject" : "unmount"
 }
 
 // Finder's Cmd+E with Cmd read as Ctrl: from the rail it releases the cursor row, from a listing the

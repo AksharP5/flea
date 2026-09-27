@@ -14,6 +14,11 @@ thread_local! {
     static DIR_FLUSHES: Cell<usize> = const { Cell::new(0) };
 }
 
+// Sample input: "fuse.rclone" trues, "fuse.sshfs" falses.
+pub fn fstype_is_rclone(fstype: &str) -> bool {
+    fstype.to_ascii_lowercase().contains("rclone")
+}
+
 // Sample input: "vfat" trues, "ext4" falses.
 pub fn fat_name_is_durable(name: &str) -> bool {
     let lower = name.to_ascii_lowercase();
@@ -52,6 +57,14 @@ fn seam_flush(_dir: bool) -> bool {
     false
 }
 
+// True when the destination is an rclone mount: the copy lands in rclone's cache first,
+// so an fsync here would force the upload the verdict below says happens in the background.
+pub fn dest_is_rclone(dest: &Path) -> bool {
+    std::fs::read_to_string("/proc/self/mountinfo").is_ok_and(|body| {
+        crate::backend::mountinfo::mount_entry_in(dest, &body).is_some_and(|e| fstype_is_rclone(&e.fstype))
+    })
+}
+
 // True when the destination needs its bytes confirmed: usb, phone, network, or vfat/exfat/ntfs.
 pub fn dest_is_durable(dest: &Path) -> bool {
     if forced(dest) {
@@ -79,18 +92,27 @@ pub fn dest_is_durable(dest: &Path) -> bool {
 // The done line's own words for a folder the drive would not confirm, printable as-is.
 pub const DIR_UNCONFIRMED: &str = "copied, but the drive did not confirm the folder";
 
+// The done line's own words for a copy onto rclone, printable as-is: the files landed in
+// rclone's cache and its own upload follows, so the UI never claims the drive confirmed them.
+pub const RCLONE_NOTE: &str = "rclone uploads them in the background";
+
 // One operation's durability, created from its destination and carried down through Progress.
 pub struct Ctx {
     pub durable: bool,
+    pub rclone: bool,
     pub file_failed: bool,
     touched: HashSet<PathBuf>,
     last: Option<PathBuf>,
 }
 
 impl Ctx {
-    // Classified once per operation, so a copy never classifies per file.
+    // Classified once per operation, so a copy never classifies per file. An rclone target
+    // is not durable: every fsync on it would force a synchronous upload of what the note
+    // above says uploads in the background.
     pub fn begin(dest: &Path) -> Ctx {
-        Ctx { durable: dest_is_durable(dest), file_failed: false, touched: HashSet::new(), last: None }
+        let rclone = dest_is_rclone(dest);
+        Ctx { durable: !rclone && dest_is_durable(dest), rclone, file_failed: false,
+            touched: HashSet::new(), last: None }
     }
 
     // One entry per directory however many files land in it: a 100,000-file copy into one
@@ -165,8 +187,12 @@ pub struct Finish {
 }
 
 // After the last file: one writing line, then every touched directory. Cancel is not
-// honoured here because every file is already complete.
+// honoured here because every file is already complete. An rclone target answers its note
+// with no flush at all, so neither the writing phase nor a "written to the drive" line exists for it.
 pub fn finish(id: usize, tx: &std::sync::mpsc::Sender<crate::backend::opsreq::OpMsg>, ctx: &Ctx, dest: &Path) -> Finish {
+    if ctx.rclone {
+        return Finish { ok: false, note: RCLONE_NOTE.to_string() };
+    }
     if !ctx.durable {
         return Finish { ok: false, note: String::new() };
     }

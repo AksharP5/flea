@@ -558,7 +558,8 @@ on how deep a folder is.
 **Copies onto removable, phone and network targets are durable before "done".** When the
 destination classes usb, phone or network, or its filesystem is vfat, exfat or ntfs, each file is
 fsync'd after its last write and every directory Flea created or wrote into is fsync'd before the
-transfer reports done. Local btrfs and ext4 targets keep today's behaviour. A failed file fsync fails
+transfer reports done. An rclone mount is the exception: the copy lands in rclone's cache first,
+so no fsync forces its upload and the done line names the background upload instead. Local btrfs and ext4 targets keep today's behaviour. A failed file fsync fails
 that item like any other copy error and journals the partial for undo. The same rule covers a
 same-directory duplicate, a redo of a copy, and a same-filesystem rename onto a durable target:
 the new files are fsync'd, and the destination directory (and the source directory for a move)
@@ -1214,9 +1215,10 @@ and an item a `collide` move would have put back where it already is. A cancelle
 put-back failed is counted in `failed` instead, see `transfer`. `cancelled` is true when a
 `transfercancel`, a `quit` or stdin closing ended it early. `durable` is true only when the
 destination needed durability and every flush succeeded, so the UI can say "written to the drive";
-local targets report false and never claim it. `note` carries the sentence the UI prints when the
-files landed but a folder flush did not, `copied, but the drive did not confirm the folder`, and
-is empty otherwise.
+local targets report false and never claim it, and so do rclone ones, which skip the flush by design.
+`note` carries the sentence the UI prints beside the done count: `copied, but the drive did not
+confirm the folder` when the files landed but a folder flush did not, and `rclone uploads them in
+the background` for a copy onto an rclone mount, and is empty otherwise.
 
 ### trashed
 

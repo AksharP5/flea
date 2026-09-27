@@ -296,3 +296,28 @@ fn redo_of_a_copy_confirms_the_file_again() {
     assert!(copy.exists(), "redo put the copy back");
     assert_eq!(test_counts().0, 1, "redo fsyncs its file on a durable target: {:?}", test_counts());
 }
+
+#[test]
+fn an_rclone_fstype_counts_and_nothing_else_does() {
+    assert!(fstype_is_rclone("fuse.rclone"));
+    assert!(fstype_is_rclone("FUSE.RCLONE"), "the mount table never promises a case");
+    assert!(!fstype_is_rclone("fuse.sshfs"));
+    assert!(!fstype_is_rclone("fuse.gvfsd-fuse"));
+    assert!(!fstype_is_rclone("ext4"));
+    assert!(!fstype_is_rclone(""));
+}
+
+#[test]
+fn a_copy_onto_rclone_says_it_uploads_in_the_background_and_never_claims_the_drive() {
+    use std::sync::mpsc::channel;
+    test_reset();
+    let d = TestDir::new("durable-rclone-note");
+    let out = d.dir("out");
+    let ctx = Ctx { durable: false, rclone: true, file_failed: false,
+        touched: std::collections::HashSet::new(), last: None };
+    let (tx, rx) = channel();
+    let done = finish(9, &tx, &ctx, &out);
+    assert!(!done.ok, "an rclone copy never claims the drive confirmed it");
+    assert_eq!(done.note, RCLONE_NOTE, "the verdict names the background upload: {:?}", done.note);
+    assert!(rx.try_iter().next().is_none(), "no writing phase on an rclone target");
+}

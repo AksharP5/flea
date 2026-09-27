@@ -4,6 +4,7 @@ import Quickshell.Io
 import qs.Commons
 import "." as Flea
 import "js/Icons.js" as Icons
+import "js/Eject.js" as Eject
 import "js/Mounts.js" as Mounts
 import "js/Photos.js" as Photos
 import "js/Places.js" as Places
@@ -198,6 +199,19 @@ Item {
     // ui/ShareBrowser.qml's own Enter action calls this with the resolved share uri; not yet one of root.entries, so it goes straight to NetworkMounts's own open-a-share path.
     function mountShare(uri, label, origin) {
         mounts.openChildShare(uri, label, origin)
+    }
+
+    // The eject mark's one click: Eject for a drive, Unmount for a share. The release
+    // row itself is named rather than rows[0], which an unmounted-switch volume's Open
+    // would win; Eject.releaseAction and Mounts.railKey are what Ctrl+E reads too.
+    function ejectRow(index) {
+        var entry = root.entries[index]
+        if (!entry)
+            return
+        var action = Eject.releaseAction(entry)
+        if (action.length === 0)
+            return
+        root.releaseChosen(action, Mounts.railKey(entry))
     }
 
     // Right click is the whole affordance, and which rows offer what is ui/js/Mounts.js "rowMenu"'s: a row with nothing to offer opens no menu at all.
@@ -485,6 +499,7 @@ Item {
                     focused: root.focused
                     renaming: (index + root.placesEntries.length) === root.renamingIndex
                     onActivated: function (idx) { root.activate(idx + root.placesEntries.length) }
+                    onEjectRequested: function (idx) { root.ejectRow(idx + root.placesEntries.length) }
                     onMenuRequested: function (idx, pos) { root.openRailMenu(idx + root.placesEntries.length, pos) }
                     onRenameCommitted: function (idx, text) { root.commitRename(idx + root.placesEntries.length, text) }
                     onRenameCancelled: root.cancelRename()
@@ -519,6 +534,7 @@ Item {
                     cursor: (index + root.placesEntries.length + root.networkEntries.length) === root.cursorIndex
                     focused: root.focused
                     onActivated: function (idx) { root.activate(idx + root.placesEntries.length + root.networkEntries.length) }
+                    onEjectRequested: function (idx) { root.ejectRow(idx + root.placesEntries.length + root.networkEntries.length) }
                     onMenuRequested: function (idx, pos) { root.openRailMenu(idx + root.placesEntries.length + root.networkEntries.length, pos) }
                 }
             }

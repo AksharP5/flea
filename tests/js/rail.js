@@ -1,5 +1,7 @@
 .import "../../ui/js/Devices.js" as Devices
 .import "../../ui/js/Mounts.js" as Mounts
+.import "../../ui/js/Eject.js" as Eject
+.import "../../ui/js/Cloud.js" as Cloud
 
 // RailAdditions rules 1 and 2: the volumes nothing has mounted, behind their own switch, and the
 // menu those rows carry. Split out of tests/js/devices.js, which keeps the 0.2.1 rail's own parse.
@@ -61,5 +63,40 @@ function run(check) {
           "Eject")
     check("and an unmounted one opens no menu at all",
           Mounts.railMenu({ group: "device", kind: "volume", mounted: false, removable: true }).length, 0)
+
+    // CloudMounts: a FUSE mount inside the home folder shows in NETWORK under its
+    // folder's name. Sample input, /proc/self/mountinfo lines (id parent maj:min root
+    // mountpoint options, then fstype source superoptions):
+    // 23 1 8:1 / /home/u/gdrive rw,nosuid,nodev - fuse.rclone remote: rw,user_id=1000,group_id=1000
+    // 24 1 8:1 / /home/u/My\040Drive rw,nosuid,nodev - fuse.rclone remote: rw,user_id=1000,group_id=1000
+    // 31 1 0:27 / /home/u/ProtonDrive rw,nosuid,nodev - fuse.protondrive proton: rw,user_id=1000
+    // 18 1 8:1 / /home/u rw,nosuid,nodev - btrfs /dev/sda1 rw
+    // 40 1 0:40 / /run/user/1000/gvfs rw,nosuid,nodev - fuse.gvfsd-fuse gvfsd-fuse rw,user_id=1000
+    var mountsBody = "23 1 8:1 / /home/u/gdrive rw,nosuid,nodev - fuse.rclone remote: rw,user_id=1000,group_id=1000\n"
+        + "24 1 8:1 / /home/u/My\\040Drive rw,nosuid,nodev - fuse.rclone remote: rw,user_id=1000,group_id=1000\n"
+        + "31 1 0:27 / /home/u/ProtonDrive rw,nosuid,nodev - fuse.protondrive proton: rw,user_id=1000\n"
+        + "18 1 8:1 / /home/u rw,nosuid,nodev - btrfs /dev/sda1 rw\n"
+        + "40 1 0:40 / /run/user/1000/gvfs rw,nosuid,nodev - fuse.gvfsd-fuse gvfsd-fuse rw,user_id=1000\n"
+    var clouds = Cloud.parseCloudMounts(mountsBody, "/home/u")
+    check("three FUSE mounts inside home parse to three rows", clouds.length, 3)
+    check("the first row names the folder's own path", clouds[0].path, "/home/u/gdrive")
+    check("an octal escape decodes to the folder's real name", clouds[1].path, "/home/u/My Drive")
+    check("the home directory itself is not a cloud mount",
+          clouds.some(function (c) { return c.path === "/home/u" }), false)
+    check("the gvfs FUSE mount is not inside home and stays out",
+          clouds.some(function (c) { return c.path.indexOf("/run/") === 0 }), false)
+    check("an empty body parses to nothing", Cloud.parseCloudMounts("", "/home/u").length, 0)
+    check("garbage parses to nothing", Cloud.parseCloudMounts("not mountinfo at all\n", "/home/u").length, 0)
+    check("no home means no rows", Cloud.parseCloudMounts(mountsBody, "").length, 0)
+    check("a stacked mountpoint names one row, not two",
+          Cloud.parseCloudMounts(mountsBody + "44 1 0:44 / /home/u/gdrive rw - fuse.rclone remote: rw\n", "/home/u").length, 3)
+
+    // The row itself: a server mark and a green square, and no menu at defaults, like
+    // Dropbox's row, because the tool that made the mount owns it.
+    var grow = { label: "gdrive", group: "network", kind: "cloud", uri: "", path: "/home/u/gdrive", mounted: true, glyph: "server" }
+    check("a cloud row draws the server mark", grow.glyph, "server")
+    check("a cloud row offers no menu row", Mounts.railMenu(grow).length, 0)
+    check("and no right-click row either", Mounts.rowMenu(grow).length, 0)
+    check("and no eject mark either", Eject.releasable(grow), false)
 }
 

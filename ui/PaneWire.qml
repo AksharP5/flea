@@ -285,11 +285,11 @@ Item {
         }
 
         // Sample input: {"t":"transferdone","id":12,"ok":1,"failed":1,"skipped":0,"cancelled":false}
-        function onTransferDone(id, ok, failed, skipped, cancelled, retryPaths) {
+        function onTransferDone(id, ok, failed, skipped, cancelled, retryPaths, durable, note) {
             if (id !== pane.transfer.id) {
                 return
             }
-            var line = Ops.transferDone(pane.transfer, ok, failed, skipped, cancelled)
+            var line = Ops.transferDone(pane.transfer, ok, failed, skipped, cancelled, durable, note)
             var unreportedFailure = failed > 1 || (failed > 0 && !pane.transfer.failureReported)
             pane.transfer = Ops.emptyTransfer()
             pane.sticky("")

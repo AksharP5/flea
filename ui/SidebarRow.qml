@@ -1,5 +1,6 @@
 import QtQuick
 import qs.Commons
+import "js/Eject.js" as Eject
 import "js/Format.js" as Format
 
 // One rail row, shared by the Favorites, Network and Devices groups so the three read alike; see
@@ -15,6 +16,10 @@ Item {
     property bool renaming: false
 
     signal activated(int index)
+    // A click on the eject mark releases the row at once, the same Eject or Unmount the
+    // menu row and Ctrl+E take; carrying the index, because the rail rebuilds on its poll
+    // and a position taken later can name a different row.
+    signal ejectRequested(int index)
     // Right click asks the rail to raise the menu over this row, carrying the point it opens at.
     // The rail decides what the menu offers and opens none on a row with nothing to release. It is
     // ui/Pane.qml's own single ui/ContextMenu.qml: a second instance in this tree took the keyboard
@@ -137,6 +142,9 @@ Item {
     // What the editor holds right now, for tests through ui/Ipc.qml's railRenameEditorText.
     readonly property string editorText: renameLoader.item ? renameLoader.item.current : ""
     readonly property bool editorShown: renameLoader.item !== null && renameLoader.item.visible
+    // RailEject: a mounted drive or SMB share draws the 15 px eject mark in place of
+    // the square, so the label keeps its column; anything else keeps what it drew.
+    readonly property bool showsEject: Eject.releasable(root.modelData)
     // The rail's real trailing indicator slot, so ui/Ipc.qml measures this dot instead of recomputing it.
     readonly property Item indicatorSlot: dot
     readonly property Item detailItem: detailText
@@ -174,13 +182,39 @@ Item {
         // Green once gio mount -l lists it, muted at half strength while it is only a bookmark waiting
         // to be mounted. A square, not a disc: the cut is hard corners, and the canvas draws it square.
         Rectangle {
-            visible: root.showsDot
+            visible: root.showsDot && !root.showsEject
             anchors.centerIn: parent
             width: root.dotSize
             height: root.dotSize
             color: root.modelData.mounted ? Theme.color.executable : Theme.color.muted
             opacity: root.modelData.mounted ? 1 : root.unmountedOpacity
         }
+
+        // The one-click release: the eject mark in the square's own slot, muted at rest and
+        // foreground under the cursor, the way a lifted row's metadata is.
+        Glyph {
+            visible: root.showsEject
+            anchors.centerIn: parent
+            name: "eject"
+            color: root.cursor ? Theme.color.foreground : Theme.color.muted
+            width: 15
+            height: 15
+        }
+
+        // The slot itself is the hit target, so a press beside the 15 px ink still releases;
+        // the row's own TapHandler answers every press outside it, exactly as before.
+        TapHandler {
+            acceptedButtons: Qt.LeftButton
+            enabled: root.showsEject
+            onTapped: root.ejectRequested(root.index)
+        }
+    }
+
+    // Whether a scene point lands in the indicator slot, so the row's own tap never
+    // answers a press the mark's tap already took.
+    function ejectAt(scene) {
+        var p = dot.mapFromItem(null, scene.x, scene.y)
+        return p.x >= 0 && p.y >= 0 && p.x < dot.width && p.y < dot.height
     }
 
     TapHandler {
@@ -188,6 +222,10 @@ Item {
         onTapped: function (eventPoint, button) {
             // The field owns clicks inside itself while editing; this only covers the rest of the row.
             if (root.renaming)
+                return
+            // The mark releases on its own left tap; the row must not activate underneath
+            // it, while a right tap still raises the menu it always did.
+            if (button === Qt.LeftButton && root.showsEject && root.ejectAt(eventPoint.scenePosition))
                 return
             // A right click never activates, whatever the row is: it either raised a menu or the
             // row had nothing to offer, and it must not mount and open a stick nobody asked to open.

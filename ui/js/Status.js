@@ -56,16 +56,27 @@ function errorsAt(errors, place) {
     return kept.length === errors.length ? errors : kept
 }
 
+// The durable verdict's own notes, mirrored from src/backend/durable.rs: a done line
+// carrying one draws "Copied N items" with "<note> · z undoes" beside it, the way the
+// CloudMounts board draws the rclone upload sentence.
+var VERDICT_NOTES = ["rclone uploads them in the background", "copied, but the drive did not confirm the folder"]
+
 // Which hint a result carries, if any.
 function hintOf(notice) {
-    if (notice.indexOf(UNDO_HINT) >= 0) {
+    var text = String(notice || "")
+    for (var i = 0; i < VERDICT_NOTES.length; i++) {
+        var tail = " · " + VERDICT_NOTES[i] + UNDO_HINT
+        if (text.length >= tail.length && text.lastIndexOf(tail) === text.length - tail.length)
+            return tail
+    }
+    if (text.indexOf(UNDO_HINT) >= 0) {
         return UNDO_HINT
     }
-    if (notice.indexOf(PASTE_HINT) >= 0) {
+    if (text.indexOf(PASTE_HINT) >= 0) {
         return PASTE_HINT
     }
     var trash = trashHint()
-    if (trash.length > 0 && notice.indexOf(trash) >= 0) {
+    if (trash.length > 0 && text.indexOf(trash) >= 0) {
         return trash
     }
     return ""

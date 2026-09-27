@@ -191,4 +191,29 @@ function run(check) {
           gate(false, false, 800, 800).showNetwork === true && gate(false, false, 800, 800).showDevices === true, true)
     check("a late answer after the deadline changes nothing visible",
           gate(true, false, 5000, 800).showNetwork === true && gate(true, false, 5000, 800).showDevices === true, true)
+
+    // RailEject: a mounted drive or SMB share draws the 15 px eject mark in the square's
+    // slot; NFS keeps its square, phones keep theirs, and anything unmounted keeps its own.
+    var stick = { label: "128GB", group: "device", kind: "volume", device: "/dev/sda1", path: "/run/media/u/128GB", mounted: true, removable: true }
+    var fixedDisk = { label: "Vault", group: "device", kind: "volume", device: "/dev/sdb1", path: "/mnt/vault", mounted: true, removable: false }
+    var smb = { label: "NAS", group: "network", kind: "share", uri: "smb://h/data/", mounted: true }
+    var nfs = { label: "Archive", group: "network", kind: "share", uri: "nfs://h/archive/", mounted: true }
+    var phone = { label: "Pixel", group: "device", kind: "phone", uri: "mtp://x/", path: "/run/user/1000/gvfs/x", mounted: true }
+    var cloud = { label: "gdrive", group: "network", kind: "cloud", uri: "", path: "/home/u/gdrive", mounted: true }
+    check("a mounted removable drive draws the mark", Eject.releasable(stick), true)
+    check("a mounted SMB share draws the mark", Eject.releasable(smb), true)
+    check("an NFS share keeps its square", Eject.releasable(nfs), false)
+    check("a phone keeps its square", Eject.releasable(phone), false)
+    check("a cloud row keeps its square", Eject.releasable(cloud), false)
+    check("a fixed internal volume keeps its square", Eject.releasable(fixedDisk), false)
+    check("an unmounted drive keeps its square", Eject.releasable(idle), false)
+    check("an unmounted share keeps its square", Eject.releasable(bookmark), false)
+    check("no entry at all draws no mark", Eject.releasable(null), false)
+
+    // A click on the mark is the release row itself: Eject for a drive, Unmount for a
+    // share, the same action the menu row and Ctrl+E take.
+    check("the mark on a drive is Eject", Eject.releaseAction(stick), "eject")
+    check("the mark on a share is Unmount", Eject.releaseAction(smb), "unmount")
+    check("a row with no mark has no click action", Eject.releaseAction(nfs), "")
+    check("and neither does a phone", Eject.releaseAction(phone), "")
 }

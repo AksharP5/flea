@@ -283,6 +283,17 @@ function run(check) {
           sourceText("../../ui/js/Focus.js").indexOf('case "undo": Ops.undo(root);') >= 0, true)
     check("a click on z undoes routes through the same Ops.undo",
           sourceText("../../ui/StatusBar.qml").indexOf("Ops.undo(root.pane)") >= 0, true)
+
+    // CloudMounts: the verdict note rides ahead of the undo hint, so the strip draws
+    // "Copied 5 items" with "rclone uploads them in the background · z undoes" beside it.
+    check("a verdict note joins the hint it rides with",
+          Status.hintOf("Copied 5 items · rclone uploads them in the background · z undoes"),
+          " · rclone uploads them in the background · z undoes")
+    check("an unconfirmed folder joins it the same way",
+          Status.hintOf("Copied 2 items · copied, but the drive did not confirm the folder · z undoes"),
+          " · copied, but the drive did not confirm the folder · z undoes")
+    check("a partial failure without a verdict keeps the shipped split",
+          Status.hintOf("Copied 1 of 2 · 1 failed · z undoes"), " · z undoes")
 }
 
 function sourceText(url) {
