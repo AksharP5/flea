@@ -4,6 +4,7 @@ import Quickshell
 import Quickshell.Io
 import qs.Commons
 import "js/Keymap.js" as Keymap
+import "js/RecentDates.js" as RecentDates
 import "js/Settings.js" as Settings
 import "js/TextSize.js" as TextSize
 import "js/UiState.js" as UiState
@@ -77,6 +78,31 @@ QtObject {
     // driveSize and trashCount beside it already read. The other way round drew hints from a state
     // file that never named them.
     readonly property bool keyHints: root.state.keyHints === true
+
+    // Settings > View > Highlight today's dates, off until switched on: absent reads
+    // off, the way keyHints beside it does. On, a stamp from today draws foreground.
+    readonly property bool highlightToday: root.state.highlightToday === true
+
+    // The window-level local-midnight boundary every date cell compares against, in
+    // ms since the epoch. Rows compare one number and never build a Date.
+    property double todayStart: RecentDates.dayStart(Date.now())
+
+    // One one-shot at the next midnight moves the boundary for the whole window, only
+    // while the switch is on; rows never tick. Firing refreshes the start and re-arms.
+    property var midnightTimer: Timer {
+        repeat: false
+        running: root.highlightToday
+        interval: RecentDates.msUntilMidnight(Date.now())
+        onTriggered: {
+            root.todayStart = RecentDates.dayStart(Date.now())
+            root.midnightTimer.interval = RecentDates.msUntilMidnight(Date.now())
+            root.midnightTimer.running = root.highlightToday
+        }
+    }
+    onHighlightTodayChanged: {
+        root.todayStart = RecentDates.dayStart(Date.now())
+        root.midnightTimer.interval = RecentDates.msUntilMidnight(Date.now())
+    }
 
     // The listing's view, "view" in src/uischema.rs, which ui/Pane.qml draws for the first frame so
     // the view the window was left on is the view the next launch opens on. A word this build cannot

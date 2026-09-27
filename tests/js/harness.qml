@@ -48,6 +48,7 @@ import "placemenu.js" as PlaceMenuSuite
 import "protocols.js" as ProtocolsSuite
 import "railkeys.js" as RailKeysSuite
 import "recent.js" as RecentSuite
+import "recentdates.js" as RecentDatesSuite
 import "renderer.js" as RendererSuite
 import "rowcells.js" as RowCellsSuite
 import "scroll.js" as ScrollSuite
@@ -115,6 +116,7 @@ Item {
             ["previewkeys", PreviewKeysSuite], ["previewswap", PreviewSwapSuite],
             ["protocols", ProtocolsSuite], ["railkeys", RailKeysSuite],
             ["recent", RecentSuite],
+            ["recentdates", RecentDatesSuite],
             ["renderer", RendererSuite], ["rowcells", RowCellsSuite],
             ["scroll", ScrollSuite], ["search", SearchSuite],
             ["selection", SelectionSuite], ["settings", SettingsSuite], ["settingsmenus", SettingsMenusSuite], ["settingsshelf", SettingsShelfSuite], ["settingsabout", SettingsAboutSuite],

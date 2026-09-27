@@ -2718,6 +2718,15 @@ no room to grow; `ui/js/Collide.js` and `ui/js/Focus.js` are untouched because t
 spends a cut already cleared the clipboard through `CollideHost.decide`. `ui/GridTile.qml`
 stands at 202, `ui/ColumnRow.qml` at 214 and `ui/Theme.qml` at 398, all inside their budgets.
 
+RecentDates moves two recorded ceilings, each re-derived with `wc -l` at the commit that
+recorded it. `src/uischema.rs` 403 to 408 for the `highlightToday` key with its default,
+rule and edge tests. `ui/Ipc.qml` 796 to 802 for the `rowDateColor` reader the live check
+asserts through. The boundary itself went to the new `ui/js/RecentDates.js`, 34 lines
+inside both budgets, rather than into `ui/js/Format.js`; `ui/RowDate.qml` takes the switch,
+the start and the stamp at 32 lines, `ui/Row.qml` hands them down at 412 of its recorded
+421, `ui/ViewState.qml` owns the midnight timer at 393 under the hard cap, and
+`ui/js/Settings.js` takes the View row at 427, exactly its recorded ceiling.
+
 ## The key table is generated
 
 `keys.toml` at the repository root is the single source of truth for every binding.

@@ -318,6 +318,9 @@ Item {
         dateWidth: root.dateWidth
         ink: root.cellColor()
         cellText: root.dateShown ? root.dateText() : ""
+        highlightToday: ViewState.highlightToday
+        todayStart: ViewState.todayStart
+        mtime: root.row ? root.row.m : null
     }
 
     RowKind {

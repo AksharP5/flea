@@ -41,7 +41,7 @@ src/tui/actions.rs 1021
 src/tui/input.rs 449
 src/tui/model.rs 1247
 src/tui/render.rs 889
-src/uischema.rs 403
+src/uischema.rs 408
 src/uistate.rs 475
 src/uistore.rs 483
 src/vulkan.rs 620
@@ -54,7 +54,7 @@ ui/Backend.qml 425
 ui/ChromeBar.qml 468
 ui/ContextMenu.qml 578
 ui/ConvertDialog.qml 440
-ui/Ipc.qml 801
+ui/Ipc.qml 802
 ui/NetworkDialog.qml 449
 ui/NetworkMounts.qml 838
 ui/OpenWithDialog.qml 588

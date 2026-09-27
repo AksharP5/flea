@@ -57,12 +57,24 @@ function run(check) {
     check("kind still anchors to the row edge", row.indexOf("id: kind") >= 0, true)
     check("the name still ends at the mode cell", row.indexOf("anchors.right: mode.left") >= 0, true)
     // Every drawn property stays a binding: Row hands down shown flags, ink and text,
-    // and each cell file draws only what it was handed.
+    // and each cell file draws only what it was handed. RowDate alone may lift: with
+    // Highlight today's dates on, a stamp from today draws the foreground role.
     check("mode hands down its ink and text", row.indexOf("ink: root.cellColor()") >= 0, true)
     check("size hands down its width", row.indexOf("sizeWidth: root.sizeWidth") >= 0, true)
     check("date hands down its width", row.indexOf("dateWidth: root.dateWidth") >= 0, true)
+    check("date hands down the switch, the start and the stamp",
+        row.indexOf("highlightToday: ViewState.highlightToday") >= 0
+        && row.indexOf("todayStart: ViewState.todayStart") >= 0
+        && row.indexOf("mtime: root.row") >= 0, true)
     check("cells draw the handed text", bodies.every(function (body) { return body.indexOf("text: root.cellText") >= 0 }), true)
-    check("cells draw the handed ink", bodies.every(function (body) { return body.indexOf("color: root.ink") >= 0 }), true)
+    check("mode, size and kind draw the handed ink",
+        bodies[0].indexOf("color: root.ink") >= 0
+        && bodies[1].indexOf("color: root.ink") >= 0
+        && bodies[3].indexOf("color: root.ink") >= 0, true)
+    check("the date keeps the handed ink for older stamps",
+        bodies[2].indexOf("root.ink") >= 0, true)
+    check("and lifts today to the foreground role",
+        bodies[2].indexOf("Theme.color.foreground") >= 0, true)
     // The pixels are the same tokens: caption type, right elide, plain text, right
     // alignment on the three numeric columns, and the by-key cell() lookup still answers all four.
     check("cells keep caption type", bodies.every(function (body) { return body.indexOf("font.pixelSize: Theme.font.caption") >= 0 }), true)

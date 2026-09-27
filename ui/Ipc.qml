@@ -444,6 +444,12 @@ QtObject {
             var item = root.pane.itemFor(i)
             return item ? String(item.cellColor()) : ""
         }
+        // The date cell's drawn ink, which Highlight today's dates can lift above rowCellColor.
+        function rowDateColor(i: int): string {
+            var item = root.pane.itemFor(i)
+            var cell = item ? item.cell("date") : null
+            return cell ? String(cell.color) : ""
+        }
         // Binds the actual defect: an eliding cell's content stays inside width; a broken one does not.
         function rowCellOverflow(i: int): string {
             var item = root.pane.itemFor(i)

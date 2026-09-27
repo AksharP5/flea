@@ -320,6 +320,8 @@ function viewRows(state) {
           value: columns.map(function (key) { return key.charAt(0).toUpperCase() + key.slice(1) }).join(", ") },
         choice("addressBar", "Address bar", undefined, ["path", "breadcrumb"],
                ["Path", "Breadcrumb"], data.addressBar || "breadcrumb"),
+        { kind: "check", id: "highlightToday", label: "Highlight today's dates", glyph: "history",
+          on: data.highlightToday === true },
         { kind: "group", label: "Sorting" },
         choice("sort.key", "Sort by", "sort", ["name", "size", "date", "kind"],
                ["Name", "Size", "Date", "Kind"], sort.key || "name"),

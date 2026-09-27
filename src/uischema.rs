@@ -15,6 +15,7 @@ pub const DEFAULTS: &str = r#"{
   "groupByKind": false,
   "hidden": false,
   "hiddenLast": false,
+  "highlightToday": false,
   "wrapAtEnds": false,
   "keyHints": false,
   "startIn": "home",
@@ -156,6 +157,7 @@ pub const SCHEMA: &[(&str, Rule)] = &[
     ("groupByKind", Rule::Bool),
     ("hidden", Rule::Bool),
     ("hiddenLast", Rule::Bool),
+    ("highlightToday", Rule::Bool),
     ("wrapAtEnds", Rule::Bool),
     // The Menus section's "Show keyboard hints" row: every menu's key column and the empty
     // directory's own tip, off until it is switched on.
@@ -234,7 +236,7 @@ mod tests {
             keys,
             [
                 "view", "density", "columns", "addressBar", "sort", "rememberSort", "folderSorts",
-                "dual", "foldersFirst", "groupByKind", "hidden", "hiddenLast", "wrapAtEnds", "keyHints", "startIn", "startFolder",
+                "dual", "foldersFirst", "groupByKind", "hidden", "hiddenLast", "highlightToday", "wrapAtEnds", "keyHints", "startIn", "startFolder",
                 "lastPath", "newTab", "trashAutoEmpty", "trashSweptOn", "places", "shelf",
                 "preview", "keys",
                 "display", "menu", "updates", "stateVersion"
@@ -248,6 +250,8 @@ mod tests {
         assert_eq!(d.get("foldersFirst").and_then(Json::as_bool), Some(true));
         assert_eq!(d.get("groupByKind").and_then(Json::as_bool), Some(false));
         assert_eq!(d.get("hidden").and_then(Json::as_bool), Some(false));
+        assert_eq!(d.get("hiddenLast").and_then(Json::as_bool), Some(false));
+        assert_eq!(d.get("highlightToday").and_then(Json::as_bool), Some(false));
         assert_eq!(d.get("wrapAtEnds").and_then(Json::as_bool), Some(false));
         assert_eq!(d.get("keyHints").and_then(Json::as_bool), Some(false));
         assert_eq!(d.get("startIn").and_then(Json::as_str), Some("home"));
@@ -325,7 +329,7 @@ mod tests {
         for good in [r#"{"folderSorts":{}}"#,
                      r#"{"folderSorts":{"/home/gm/Work":{"key":"size","reverse":true}}}"#,
                      r#"{"folderSorts":{"smb://nas/isos":{"key":"date","reverse":false}}}"#,
-                     r#"{"rememberSort":false}"#, r#"{"hiddenLast":true}"#] {
+                     r#"{"rememberSort":false}"#, r#"{"hiddenLast":true}"#, r#"{"highlightToday":true}"#] {
             assert!(takes(good).is_ok(), "{} is a value its key takes", good);
         }
         for (bad, named) in [(r#"{"folderSorts":[]}"#, "folderSorts"),
@@ -335,6 +339,7 @@ mod tests {
                              (r#"{"folderSorts":{"/a":{"key":"size","reverse":1}}}"#, "folderSorts"),
                              (r#"{"folderSorts":{"/a":{"key":"size","reverse":false,"by":"x"}}}"#, "folderSorts"),
                              (r#"{"hiddenLast":"yes"}"#, "hiddenLast"),
+                             (r#"{"highlightToday":"yes"}"#, "highlightToday"),
                              (r#"{"rememberSort":1}"#, "rememberSort")] {
             let message = takes(bad).expect_err("the patch must be refused");
             assert!(message.contains(named), "{} should name {}, got {}", bad, named, message);
