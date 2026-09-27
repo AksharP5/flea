@@ -63,7 +63,6 @@ ShellRoot {
     }
 
     function show(row, kindName, extra) {
-        column.readsOriginal = extra.readsOriginal === true
         column.noThumbComing = extra.noThumbComing === true
         column.thumb = extra.thumb || ""
         column.row = row
