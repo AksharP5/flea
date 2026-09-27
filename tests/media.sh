@@ -96,7 +96,8 @@ ask_meta() {
   for i in $(seq 1 $((ANSWER_BOUND * 10))); do
     # The probe's argv carries the directory being asked about, and nothing else this run starts does.
     [ "$PROBE_SEEN" = yes ] || { pgrep -f -- "$dir" >/dev/null 2>&1 && PROBE_SEEN=yes; }
-    if found=$(grep -m1 -o '"w":[0-9]*,"h":[0-9]*,"ms":[0-9]*,"rate":[0-9]*' "$D/out"); then
+    # Sample: {"t":"meta","row":0,"w":1920,"h":1080,"orient":1,"ms":10000,"rate":0,...}, orient riding between h and ms.
+    if found=$(grep -m1 -o '"w":[0-9]*,"h":[0-9]*,"orient":[0-9]*,"ms":[0-9]*,"rate":[0-9]*' "$D/out"); then
       ANSWER=$found
       break
     fi
@@ -118,7 +119,7 @@ SH
 
 echo "--- the control: a real clip still measures ---"
 ask_meta "$D/clip"
-check "a real ffprobe answers the clip's own numbers" '"w":1920,"h":1080,"ms":10000,"rate":0' "$ANSWER"
+check "a real ffprobe answers the clip's own numbers" '"w":1920,"h":1080,"orient":1,"ms":10000,"rate":0' "$ANSWER"
 stop_backend
 
 # A stalled producer and not an empty pipe: the header read consumes the first 8 KiB and returns, ffprobe then blocks on a moov atom that never arrives, and a blocked process burns no CPU so prlimit's own --cpu can never end it.
@@ -130,7 +131,7 @@ check "a probe really ran against the blocked input" "yes" "$PROBE_SEEN"
 check "a blocked input is answered at all" "yes" "$([ "$ANSWER" != NO-ANSWER ] && echo yes || echo no)"
 check "and not before the deadline it is supposed to wait out" "yes" "$([ "$ELAPSED" -ge "$PROBE_FLOOR" ] && echo yes || echo no)"
 check "inside the probe deadline" "yes" "$([ "$ELAPSED" -le "$PROBE_DEADLINE" ] && echo yes || echo no)"
-check "and it measured nothing" '"w":0,"h":0,"ms":0,"rate":0' "$ANSWER"
+check "and it measured nothing" '"w":0,"h":0,"orient":1,"ms":0,"rate":0' "$ANSWER"
 check "no probe outlived the answer" "0" "$(pgrep -c -f -- "$D/blocked/pipe.mp4" 2>/dev/null || true)"
 stop_backend
 kill "$WRITER_PID" 2>/dev/null; WRITER_PID=""
@@ -138,13 +139,13 @@ kill "$WRITER_PID" 2>/dev/null; WRITER_PID=""
 echo "--- a probe that printed plausible numbers and then exited non-zero ---"
 make_stub 1
 ask_meta "$D/clip"
-check "a non-zero probe is not believed" '"w":0,"h":0,"ms":0,"rate":0' "$ANSWER"
+check "a non-zero probe is not believed" '"w":0,"h":0,"orient":1,"ms":0,"rate":0' "$ANSWER"
 stop_backend
 
 echo "--- the same output from a probe that exited zero, so the case above is about the status ---"
 make_stub 0
 ask_meta "$D/clip"
-check "a zero-exit probe is still parsed" '"w":1920,"h":1080,"ms":10000,"rate":48000' "$ANSWER"
+check "a zero-exit probe is still parsed" '"w":1920,"h":1080,"orient":1,"ms":10000,"rate":48000' "$ANSWER"
 stop_backend
 STUB_PATH=""
 
