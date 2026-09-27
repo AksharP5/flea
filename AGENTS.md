@@ -2566,6 +2566,18 @@ Advloop round 5 and its second run take `src/backend/renamecompat.rs` from 412 l
 take-back seam and the test that a copy which will not go back answers `rename`, re-derived with `wc -l`.
 
 The rail's network host fixes take `ui/NetworkMounts.qml` 802 to 803 (one arrival poll) and `ui/WindowBody.qml` 556 to 557 (the RailKeys import), each re-derived with `wc -l`.
+Sorting moves five recorded ceilings, each re-derived with `wc -l` at the commit that recorded
+it. `src/uischema.rs` enters the tool's list at 403 for `hiddenLast`, `rememberSort` and the
+`folderSorts` map with its shape, defaults and cap constants. `src/uistate.rs` 442 to 475 for the
+`FolderSorts` rule, its place-to-order validation and the oldest-first truncation past 500.
+`ui/Backend.qml` 435 to 436 for the folder-order resolution, the remember and forget writers and
+the `hiddenLast` both requests carry. `ui/Pane.qml` 702 to 704 for the `hasFolderSort` binding
+into the menu and the folder-aware `resetSort`. `ui/ContextMenu.qml` 570 to 572 for the
+`hasFolderSort` property the Sort by flyout reads. The map itself went to the new
+`ui/js/FolderSorts.js`, 66 lines inside both budgets, rather than into `ui/js/Menu.js`, which
+takes the flyout row and one call and stands at 300, exactly at the hard cap; `ui/js/Sort.js`
+takes the folder write and the forget branch and stands at 90, and `ui/js/Settings.js` takes
+the two Sorting rows at 425 of its recorded 427.
 
 p036lazy moves four ceilings, each re-derived with `wc -l`: `ui/NetworkMounts.qml` 803 to 851 for the
 lazy bridge Loader with its `source:` URL, the `ensureBridge` builder, the null-guarded readers and the

@@ -12,6 +12,7 @@ import "errors.js" as ErrorsSuite
 import "facts.js" as FactsSuite
 import "filter.js" as FilterSuite
 import "filter-cursor.js" as FilterCursorSuite
+import "foldersorts.js" as FolderSortsSuite
 import "focus.js" as FocusSuite
 import "focus-forward.js" as FocusForwardSuite
 import "focus-grid.js" as FocusGridSuite
@@ -99,6 +100,7 @@ Item {
             ["edmonton", DstSuite],
             ["errors", ErrorsSuite], ["facts", FactsSuite], ["filter", FilterSuite], ["filter-cursor", FilterCursorSuite],
             ["focus", FocusSuite], ["focus-grid", FocusGridSuite], ["focus-forward", FocusForwardSuite],
+            ["foldersorts", FolderSortsSuite],
             ["gridgeometry", GridGeometrySuite],
             ["focus-lines", FocusLinesSuite], ["focus-wrap", FocusWrapSuite],
             ["format", FormatSuite], ["icons", IconsSuite],

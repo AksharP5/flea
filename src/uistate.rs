@@ -1,7 +1,7 @@
 // The ui.json merges with no disk in them: read a file onto the defaults, apply one caller patch,
 // and carry 0.1.3's view.json across.
 use crate::jsondoc::{self, Json};
-use crate::uischema::{defaults, Rule, COLUMN_KEYS, OPTIONAL_COLUMNS, SCHEMA, TEXT_SIZE_STOPS, SIDEBAR_STOPS};
+use crate::uischema::{defaults, Rule, COLUMN_KEYS, OPTIONAL_COLUMNS, SCHEMA, TEXT_SIZE_STOPS, SIDEBAR_STOPS, SORT_KEYS, MAX_FOLDER_SORTS};
 
 // Never fails: a file this cannot read is a file whose every key falls back to the shipped default.
 pub fn from_file(text: &str) -> Json {
@@ -125,6 +125,17 @@ fn normalized(rule: Option<&Rule>, value: &Json) -> Json {
         }
         return Json::Num(format!("{}", nearest));
     }
+    // The map is oldest first, so a write past the cap drops the folders sorted longest ago
+    // rather than refusing: every code path that writes goes through here, including a
+    // hand-written patch, so no path can grow the file past the cap.
+    if matches!(rule, Some(Rule::FolderSorts)) {
+        if let Json::Obj(pairs) = value {
+            if pairs.len() > MAX_FOLDER_SORTS {
+                return Json::Obj(pairs[pairs.len() - MAX_FOLDER_SORTS..].to_vec());
+            }
+        }
+        return value.clone();
+    }
     value.clone()
 }
 
@@ -147,6 +158,7 @@ fn fits(rule: &Rule, value: &Json) -> bool {
             None => false,
         },
         Rule::Ids => every_string(value, is_action_id),
+        Rule::FolderSorts => is_folder_sorts(value),
         Rule::Count(low, high) => match value.as_f64() {
             Some(n) => n.fract() == 0.0 && n >= *low && n <= *high,
             None => false,
@@ -193,6 +205,27 @@ fn is_action_id(s: &str) -> bool {
 // A remembered pane is somewhere the restore can list: an absolute path, or a URI naming its root.
 fn is_a_place(s: &str) -> bool {
     s.starts_with('/') || s.contains("://")
+}
+
+// The per-folder sort map: each key a place, each value a sort order in sort's own shape.
+// The count is not checked here: normalized truncates a longer map to the most recent entries,
+// so a hand-edited file heals rather than costing the whole key its default.
+fn is_folder_sorts(value: &Json) -> bool {
+    match value.as_object() {
+        Some(pairs) => pairs.iter().all(|(path, order)| is_a_place(path) && is_sort_order(order)),
+        None => false,
+    }
+}
+
+fn is_sort_order(value: &Json) -> bool {
+    match value.as_object() {
+        Some(pairs) => {
+            pairs.len() == 2
+                && pairs.iter().any(|(k, v)| k == "key" && v.as_str().is_some_and(|s| SORT_KEYS.contains(&s)))
+                && pairs.iter().any(|(k, v)| k == "reverse" && v.as_bool().is_some())
+        }
+        None => false,
+    }
 }
 
 // One elided line for an error sentence, never the whole pretty document. Counted in characters,

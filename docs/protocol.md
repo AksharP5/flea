@@ -64,6 +64,12 @@ directories first, without kind groups. Unlike an explicit `sort`, a `list` may
 omit `by`. An invalid ordering key refuses the new listing and keeps the previous
 directory and rows.
 
+Optional `hiddenLast`, `false` unless `true`: with it on, every dotfile follows
+every visible entry for each of the four keys in both directions, and
+`foldersFirst` still orders each block, so visible folders come first, then
+visible files, then hidden folders, then hidden files. Off keeps today's order,
+where a leading dot sorts first. Absent is off, so an older client keeps it.
+
 `hidden` of `false`, or a missing `hidden`, drops every name starting with `.` before
 it ever reaches the listing: the filter runs inside the scan itself, not as a later
 pass over it, so a hidden directory costs nothing beyond the `readdir` entry it was
@@ -171,7 +177,7 @@ default to `0`.
 
 ### sort
 
-`{"c":"sort","by":"<string>","desc":<bool>,"foldersFirst":<bool>,"groupByKind":<bool>}`
+`{"c":"sort","by":"<string>","desc":<bool>,"foldersFirst":<bool>,"groupByKind":<bool>,"hiddenLast":<bool>}`
 
 Example: `{"c":"sort","by":"size","desc":true}`
 Re-sorts the current listing by `by` and answers a `listed` line. The four orders are:
@@ -191,7 +197,9 @@ With `foldersFirst:false`, the key orders folders and files together. `groupByKi
 defaults to `false`; when true it takes precedence over `foldersFirst` and fixes
 three groups in this order: folders, images (MIME type starts with `image/`), then
 all remaining files. Groups do not reverse with `desc`. Kind grouping uses filename
-MIME lookup, not content probing.
+MIME lookup, not content probing. `hiddenLast` defaults to `false`; when true it
+takes precedence over both and fixes two blocks in this order: visible entries,
+then dotfiles, in both directions. Neither block reverses with `desc`.
 
 Inside each group, or across the whole listing when ungrouped, the key decides and
 the name order breaks ties, so two equal sizes list the same way every run, and

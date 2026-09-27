@@ -20,7 +20,7 @@ pub fn peek_line(path: &str, first: usize, hidden: bool, focus: &str, mime: &Db,
         // empty directory either, and the column drew those two the same way until this line.
         Err(_) => return failed_peek(path, hidden),
     };
-    sort_by_name(&mut listing, false);
+    sort_by_name(&mut listing, false, false);
     let total = listing.len();
     let count = first.min(PEEK_CAP).min(total);
     let start = if focus.is_empty() { 0 } else {

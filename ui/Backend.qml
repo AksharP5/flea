@@ -2,6 +2,7 @@ import Quickshell
 import Quickshell.Io
 import QtQuick
 import "js/Messages.js" as Messages
+import "js/FolderSorts.js" as FolderSorts
 import "js/Swap.js" as Swap
 
 Item {
@@ -89,10 +90,32 @@ Item {
     readonly property string sortPreference: JSON.stringify(ViewState.state.sort || {})
     onSortPreferenceChanged: if (!root.preserveSort || !root.hasListed) root.resetSort()
 
-    function resetSort() {
-        root.sortBy = (ViewState.state.sort || {}).key || "name"
-        if (root.sortBy === "date") root.sortBy = "mtime"
-        root.sortDesc = (ViewState.state.sort || {}).reverse === true
+    function resetSort(path) {
+        // Issue 179: the folder's own sort wins while remembering is on, else the default.
+        // Read once per listing, so browsing a folder never writes; only Sort.resort does.
+        var order = FolderSorts.orderFor(ViewState.state.folderSorts, path,
+                                         ViewState.state.sort, ViewState.state.rememberSort !== false)
+        root.sortBy = order.key === "date" ? "mtime" : order.key
+        root.sortDesc = order.reverse === true
+    }
+
+    // Whether the Sort by flyout offers its forget row for this folder.
+    function folderHasSort(path) {
+        return ViewState.state.rememberSort !== false && FolderSorts.has(ViewState.state.folderSorts, path)
+    }
+
+    // A user sort writes its folder and moves it to the most recent end; past 500 the oldest goes.
+    function rememberFolderSort(path, key, desc) {
+        if (ViewState.state.rememberSort === false || !path)
+            return
+        var keyed = key === "mtime" ? "date" : key
+        ViewState.changeKey("folderSorts", FolderSorts.set(ViewState.state.folderSorts, path, keyed, desc === true))
+    }
+
+    function forgetFolderSort(path) {
+        if (!path)
+            return
+        ViewState.changeKey("folderSorts", FolderSorts.forget(ViewState.state.folderSorts, path))
     }
 
     // What the settle gate asserts: how many thumb requests this process has attempted; see AGENTS.md.
@@ -134,10 +157,11 @@ Item {
     // A fresh scan is always name ascending, so a refresh after a write puts the header's mark back.
     function listRequest(path, first, hidden) {
         root.listRequests += 1
-        if (!root.preserveSort || !root.hasListed) root.resetSort()
+        if (!root.preserveSort || !root.hasListed) root.resetSort(path)
         root.hasListed = true
         return { c: "list", path: path, first: first, hidden: hidden, by: root.sortBy, desc: root.sortDesc,
-                 foldersFirst: ViewState.state.foldersFirst !== false, groupByKind: ViewState.state.groupByKind === true }
+                 foldersFirst: ViewState.state.foldersFirst !== false, groupByKind: ViewState.state.groupByKind === true,
+                 hiddenLast: ViewState.state.hiddenLast === true }
     }
     function list(path, first, hidden) { root.send(root.listRequest(path, first, hidden)) }
 
@@ -155,7 +179,8 @@ Item {
     function sort(by, desc) {
         root.send({ c: "sort", by: by, desc: desc,
                     foldersFirst: ViewState.state.foldersFirst !== false,
-                    groupByKind: ViewState.state.groupByKind === true })
+                    groupByKind: ViewState.state.groupByKind === true,
+                    hiddenLast: ViewState.state.hiddenLast === true })
     }
 
     // The walk replaces the current listing with its matches, each named relative to path; see docs/protocol.md "search".

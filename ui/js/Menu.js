@@ -180,7 +180,7 @@ function availableEntry(e, p, kind) {
         if (e.action === "dropbox") { e.mark = "dropbox"; delete e.glyph }
         if (e.disabled && p.dropboxRefreshing !== true) e.errored = true
     }
-    if (e.action === "sort") e.submenu = sortEntries()
+    if (e.action === "sort") e.submenu = sortEntries(p.hasFolderSort === true)
     // Present only while a check has found a newer build, whose version rides the hint slot beside the status square.
     if (e.action === "updateFlea") {
         if (!p.updateVersion) return false
@@ -237,10 +237,13 @@ function permissionsEntry(mode, count) {
 // backend really produces; a fourth key would earn a refusal instead of a listing.
 var SORT_LABELS = { name: "Name", size: "Size", mtime: "Modified", kind: "Kind" }
 
-function sortEntries() {
+function sortEntries(hasOwn) {
     var out = []
     for (var i = 0; i < Sort.ORDERS.length; i++)
         out.push({ id: Sort.ORDERS[i], label: SORT_LABELS[Sort.ORDERS[i]] })
+    // Issue 179: the forget row after a separator, present only where the folder has its own sort.
+    // The id is the spelling ui/js/Sort.js's forget branch reads, so the two must agree.
+    if (hasOwn === true) { out.push({ separator: true }); out.push({ id: "__default__", label: "Use the default sort" }) }
     return out
 }
 

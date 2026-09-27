@@ -123,6 +123,8 @@ Item {
     // The row list this menu currently offers; a test reads this back through shell.qml's IPC.
     property var entries: []
     property bool canTrash: true
+    // Issue 179: the background menu's Sort by flyout offers its forget row only for this folder.
+    property bool hasFolderSort: false
 
     // The construction lives in ui/js/Menu.js now, so the rows are unit-testable without a window:
     // listingEntries(p) builds the listing's rows from the pane's state and headerEntries() the column titles' own on a right click (ui/Header.qml); this file only routes between them.
@@ -164,7 +166,7 @@ Item {
             hiddenActions: ViewState.menuHidden,
             // ExtThumbs: the class row's presence and label read these, never "this drive".
             storageClass: root.storageClass, thumbPreview: ViewState.preview,
-            updateVersion: UpdateCheck.menuVersion
+            updateVersion: UpdateCheck.menuVersion, hasFolderSort: root.hasFolderSort
         })
     }
 

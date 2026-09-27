@@ -34,7 +34,7 @@ pub fn write_prewarm(path: &str, first: usize, dest: &Path) -> Result<(), FleaEr
 fn write_to_tmp(path: &str, first: usize, dest: &Path, tmp: &Path) -> Result<(), FleaError> {
     // Prewarm never asks for dotfiles: it mirrors list's own default, see docs/protocol.md.
     let (mut listing, read_ms) = scan(path, false)?;
-    let sort_ms = sort_by_name(&mut listing, false);
+    let sort_ms = sort_by_name(&mut listing, false, false);
 
     // corner: unlink our own leftover then create exclusively, see AGENTS.md.
     let _ = fs::remove_file(tmp);

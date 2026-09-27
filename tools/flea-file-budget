@@ -41,7 +41,8 @@ src/tui/actions.rs 1021
 src/tui/input.rs 449
 src/tui/model.rs 1247
 src/tui/render.rs 889
-src/uistate.rs 442
+src/uischema.rs 403
+src/uistate.rs 475
 src/uistore.rs 483
 src/vulkan.rs 620
 tests/js/focus.js 406
@@ -49,7 +50,7 @@ tests/js/mounts.js 383
 tests/js/network.js 306
 tests/js/ops.js 390
 tests/js/status.js 354
-ui/Backend.qml 400
+ui/Backend.qml 425
 ui/ChromeBar.qml 468
 ui/ContextMenu.qml 578
 ui/ConvertDialog.qml 440

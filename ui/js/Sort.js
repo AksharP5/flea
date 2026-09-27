@@ -32,8 +32,17 @@ function reverseOrder(by, desc) {
     return { key: by, desc: !desc }
 }
 
-// ui/Header.qml's click. Only ORDERS may leave this file.
+// ui/Header.qml's click. Only ORDERS may leave this file, except the flyout's own forget row,
+// which names no order and returns its folder to the default instead of re-sorting it.
 function column(pane, key) {
+    // The flyout's last row, issue 179: forget the folder and list it again on the default.
+    // A browse, which lists without sorting, never reaches here and writes nothing.
+    if (key === "__default__") {
+        if (pane.backend && pane.backend.forgetFolderSort)
+            pane.backend.forgetFolderSort(pane.path)
+        pane.openWithoutHistory(pane.path)
+        return
+    }
     // Unsupported columns remain labels rather than sending a sort the backend must refuse.
     var order = columnOrder(ORDERS, pane.backend.sortBy, pane.backend.sortDesc, key)
     if (order)
@@ -66,6 +75,10 @@ function resort(pane, key, desc) {
     }
     pane.backend.sortBy = key
     pane.backend.sortDesc = desc
+    // Issue 179: the folder remembers the sort its operator chose, once per user sort and never
+    // per browse. A backend without the writer, every stub in tests/js, simply sorts.
+    if (pane.backend && pane.backend.rememberFolderSort)
+        pane.backend.rememberFolderSort(pane.path, key, desc)
     // A reorder moves every row, so the caches keyed by a row index are as stale as a new listing's,
     // and a selection of row indices would silently come to name different files.
     pane.thumbState = Thumbs.empty()

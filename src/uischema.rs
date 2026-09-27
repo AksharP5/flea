@@ -8,10 +8,13 @@ pub const DEFAULTS: &str = r#"{
   "columns": ["name", "size", "date"],
   "addressBar": "breadcrumb",
   "sort": { "key": "name", "reverse": false },
+  "rememberSort": true,
+  "folderSorts": {},
   "dual": { "paths": [], "focus": 0 },
   "foldersFirst": true,
   "groupByKind": false,
   "hidden": false,
+  "hiddenLast": false,
   "wrapAtEnds": false,
   "keyHints": false,
   "startIn": "home",
@@ -70,6 +73,8 @@ pub enum Rule {
     TextSize,
     // Any whole number, so a newer Flea's higher stamp survives this one's write; no patch may set it.
     Version,
+    // A folder path to its own sort order, at most MAX_FOLDER_SORTS entries; see folderSorts above.
+    FolderSorts,
     Group(&'static [(&'static str, Rule)]),
 }
 
@@ -79,6 +84,11 @@ pub const STATE_VERSION: &str = "stateVersion";
 pub const COLUMN_KEYS: &[&str] = &["name", "mode", "size", "date", "kind"];
 
 pub const SORT: &[(&str, Rule)] = &[("key", Rule::Word(&["name", "size", "date", "kind"])), ("reverse", Rule::Bool)];
+
+// A folder's own sort, stored the way sort stores the default: the key the header marks and
+// whether it runs reversed. The map holds the 500 most recent folders, oldest first.
+pub const SORT_KEYS: [&str; 4] = ["name", "size", "date", "kind"];
+pub const MAX_FOLDER_SORTS: usize = 500;
 
 pub const DUAL: &[(&str, Rule)] = &[("paths", Rule::Pair), ("focus", Rule::Count(0.0, 1.0))];
 
@@ -139,10 +149,13 @@ pub const SCHEMA: &[(&str, Rule)] = &[
     ("columns", Rule::Columns),
     ("addressBar", Rule::Word(&["path", "breadcrumb"])),
     ("sort", Rule::Group(SORT)),
+    ("rememberSort", Rule::Bool),
+    ("folderSorts", Rule::FolderSorts),
     ("dual", Rule::Group(DUAL)),
     ("foldersFirst", Rule::Bool),
     ("groupByKind", Rule::Bool),
     ("hidden", Rule::Bool),
+    ("hiddenLast", Rule::Bool),
     ("wrapAtEnds", Rule::Bool),
     // The Menus section's "Show keyboard hints" row: every menu's key column and the empty
     // directory's own tip, off until it is switched on.
@@ -220,8 +233,8 @@ mod tests {
         assert_eq!(
             keys,
             [
-                "view", "density", "columns", "addressBar", "sort", "dual", "foldersFirst",
-                "groupByKind", "hidden", "wrapAtEnds", "keyHints", "startIn", "startFolder",
+                "view", "density", "columns", "addressBar", "sort", "rememberSort", "folderSorts",
+                "dual", "foldersFirst", "groupByKind", "hidden", "hiddenLast", "wrapAtEnds", "keyHints", "startIn", "startFolder",
                 "lastPath", "newTab", "trashAutoEmpty", "trashSweptOn", "places", "shelf",
                 "preview", "keys",
                 "display", "menu", "updates", "stateVersion"
@@ -247,6 +260,10 @@ mod tests {
         assert_eq!(cols, ["name", "size", "date"]);
         assert_eq!(d.get("sort").and_then(|s| s.get("key")).and_then(Json::as_str), Some("name"));
         assert_eq!(d.get("sort").and_then(|s| s.get("reverse")).and_then(Json::as_bool), Some(false));
+        // Sorting release: hidden files keep today's order, and each folder remembers its sort.
+        assert_eq!(d.get("hiddenLast").and_then(Json::as_bool), Some(false));
+        assert_eq!(d.get("rememberSort").and_then(Json::as_bool), Some(true));
+        assert_eq!(d.get("folderSorts").and_then(Json::as_object).map(<[(String, Json)]>::len), Some(0));
         assert_eq!(d.get("dual").and_then(|s| s.get("paths")).and_then(Json::as_array).map(<[Json]>::len), Some(0));
         assert_eq!(d.get("dual").and_then(|s| s.get("focus")).and_then(Json::as_f64), Some(0.0));
         // Directive 38 and GM's B1 ruling: the shelf ships off, and its switch is what installs the plugin.
@@ -299,10 +316,52 @@ mod tests {
         );
     }
 
+    // Per-folder sorts: each key a place, each value a sort order in sort's own shape, and
+    // past the cap the oldest entries go rather than the write failing.
+    #[test]
+    fn folder_sorts_hold_places_to_orders_and_heal_past_the_cap() {
+        let current = crate::uistate::from_file("{}");
+        let takes = |patch: &str| crate::uistate::patched(&current, &jsondoc::parse(patch).expect("patch parses"));
+        for good in [r#"{"folderSorts":{}}"#,
+                     r#"{"folderSorts":{"/home/gm/Work":{"key":"size","reverse":true}}}"#,
+                     r#"{"folderSorts":{"smb://nas/isos":{"key":"date","reverse":false}}}"#,
+                     r#"{"rememberSort":false}"#, r#"{"hiddenLast":true}"#] {
+            assert!(takes(good).is_ok(), "{} is a value its key takes", good);
+        }
+        for (bad, named) in [(r#"{"folderSorts":[]}"#, "folderSorts"),
+                             (r#"{"folderSorts":{"Work":{"key":"size","reverse":true}}}"#, "folderSorts"),
+                             (r#"{"folderSorts":{"/a":{"key":"mode","reverse":false}}}"#, "folderSorts"),
+                             (r#"{"folderSorts":{"/a":{"key":"size"}}}"#, "folderSorts"),
+                             (r#"{"folderSorts":{"/a":{"key":"size","reverse":1}}}"#, "folderSorts"),
+                             (r#"{"folderSorts":{"/a":{"key":"size","reverse":false,"by":"x"}}}"#, "folderSorts"),
+                             (r#"{"hiddenLast":"yes"}"#, "hiddenLast"),
+                             (r#"{"rememberSort":1}"#, "rememberSort")] {
+            let message = takes(bad).expect_err("the patch must be refused");
+            assert!(message.contains(named), "{} should name {}, got {}", bad, named, message);
+        }
+        // A file carrying a bad map costs that key its default and nothing else.
+        let read = crate::uistate::from_file(r#"{"folderSorts":{"Work":{"key":"size","reverse":true}},"hiddenLast":true}"#);
+        assert_eq!(read.get("folderSorts").and_then(Json::as_object).map(<[(String, Json)]>::len), Some(0));
+        assert_eq!(read.get("hiddenLast").and_then(Json::as_bool), Some(true));
+        // Past the cap the oldest entries go and the newest stay.
+        let mut big = String::from(r#"{"folderSorts":{"#);
+        for i in 0..MAX_FOLDER_SORTS + 2 {
+            if i > 0 {
+                big.push(',');
+            }
+            big.push_str(&format!(r#""/d{:03}":{{"key":"size","reverse":false}}"#, i));
+        }
+        big.push_str("}}");
+        let kept = takes(&big).expect("a long map still patches");
+        let map = kept.get("folderSorts").and_then(Json::as_object).expect("folderSorts");
+        assert_eq!(map.len(), MAX_FOLDER_SORTS);
+        assert!(map.iter().all(|(k, _)| k != "/d000" && k != "/d001"), "the two oldest go");
+        assert!(map.iter().any(|(k, _)| k == "/d501"), "the newest stays");
+    }
+
     // The rules nothing else reached: an exact stop, a non-empty path, and the four shipped presets.
     #[test]
-    fn the_stop_the_preset_and_the_favourites_rules_each_bite_at_their_own_edge() {
-        let current = crate::uistate::from_file("{}");
+    fn the_stop_the_preset_and_the_favourites_rules_each_bite_at_their_own_edge() {        let current = crate::uistate::from_file("{}");
         let takes = |patch: &str| crate::uistate::patched(&current, &jsondoc::parse(patch).expect("patch parses"));
         for good in [r#"{"display":{"textSize":{"mode":"system"}}}"#, r#"{"display":{"textSize":{"mode":9}}}"#,
                      r#"{"keys":"default"}"#, r#"{"keys":"vim"}"#,

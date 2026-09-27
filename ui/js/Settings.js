@@ -326,6 +326,12 @@ function viewRows(state) {
         { kind: "check", id: "foldersFirst", label: "Folders first", glyph: "folders-first", on: data.foldersFirst !== false },
         { kind: "check", id: "groupByKind", label: "Group by kind", caption: "folders, photos, files", glyph: "grid", on: data.groupByKind === true },
         { kind: "check", id: "hidden", label: "Show hidden files", glyph: "eye", on: data.hidden === true },
+        // Issue 70: a dependent greys in place at the same column while hidden files are off, with no hint.
+        { kind: "check", id: "hiddenLast", label: "Hidden files last", glyph: "eye-off",
+          on: data.hiddenLast === true, available: data.hidden === true },
+        // Issue 179: the group's last row; off, every folder takes the default sort and nothing is written.
+        { kind: "check", id: "rememberSort", label: "Remember each folder's sort", glyph: "sort",
+          on: data.rememberSort !== false },
         { kind: "group", label: "Cursor" },
         { kind: "check", id: "wrapAtEnds", label: "Wrap at list ends", caption: "arrow-up at the top", glyph: "arrow-up", on: data.wrapAtEnds === true },
         { kind: "group", label: "Opening" },

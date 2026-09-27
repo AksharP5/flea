@@ -204,7 +204,7 @@ FocusScope {
             ViewState.changeKey("view", root.viewMode)
     }
     readonly property string listingPreferences: JSON.stringify([ViewState.state.hidden, ViewState.state.sort,
-        ViewState.state.foldersFirst, ViewState.state.groupByKind])
+        ViewState.state.foldersFirst, ViewState.state.groupByKind, ViewState.state.hiddenLast, ViewState.state.rememberSort])
     property string appliedListingPreferences: ""
     onListingPreferencesChanged: {
         // A hidden dual pane retains its session sort when the single pane changes the saved default.
@@ -308,7 +308,7 @@ FocusScope {
         if (!root.listInFlight) {
             var applied = root.appliedListingPreferences ? JSON.parse(root.appliedListingPreferences) : []
             // Search exit can enter here before the preferences timer consumes a deferred Settings change.
-            if (JSON.stringify(applied[1]) !== JSON.stringify(ViewState.state.sort)) root.backend.resetSort()
+            if (JSON.stringify(applied[1]) !== JSON.stringify(ViewState.state.sort)) root.backend.resetSort(newPath)
             if (!options || options.keepHidden !== true) root.showHidden = ViewState.state.hidden === true
         }
         Nav.openWithoutHistory(root, newPath, options)
@@ -658,6 +658,8 @@ FocusScope {
         canTrash: Mounts.trashable(root.path)
         // ExtThumbs: the class the background menu's thumbnail row is present for, "" locally.
         storageClass: root.storageClass
+        // Issue 179: the Sort by flyout offers its forget row only where this folder has its own sort.
+        hasFolderSort: root.backend ? root.backend.folderHasSort(root.path) : false
         // The Locked tile's folder and mode while one is drawn; ui/ContextMenu.qml routes a
         // background right click to that folder's own menu through them.
         tileTarget: root.lockedTarget
