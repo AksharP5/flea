@@ -115,8 +115,8 @@ QtObject {
                     cancelling: activity.cancelling, ownerPath: owner.path, ownerFocused: owner.paneFocused}
             }), errors: root.bar.errors.length, notice: root.bar.notice,
                 undoAvailable: root.bar.hasUndo,
-                transferCard: {visible: !!card && card.visible, cancelling: !!card && card.cancelling, byteLine: card ? card.byteText : "",
-                    rect: root.fleaWindow.rectOf(card), cancel: root.controlState("Cancel", card ? card.cancelItem : null)}})
+                transferCard: {visible: !!card && card.visible, cancelling: !!card && card.cancelling, byteLine: card ? card.byteText : "", headline: card ? card.headlineText : "", writing: !!card && !!card.shown && card.shown.writing === true,
+                    rect: root.fleaWindow.rectOf(card), cancel: root.controlState("Cancel", card ? card.cancelItem : null), undo: root.controlState("z undoes", root.bar.undoItem)}})
         }
         function statusFooterState(): string {
             // Every zone's x in the strip's own coordinates: the centre pair sits in a Row inside the middle slot, so its own x is relative to that Row and says nothing about zone order.
@@ -130,7 +130,8 @@ QtObject {
                 frame: root.fleaWindow.rectOf(root.bar.stripItem), borderWidth: root.bar.stripItem.border.width,
                 zoneWidth: root.bar.zoneWidth, hintWidth: root.bar.hintWidth,
                 left: textState(root.bar.countsItem), centre: textState(root.bar.primaryItem),
-                secondary: textState(root.bar.secondaryItem), disk: textState(root.bar.diskItem), lane: {x: root.bar.centreItem.mapToItem(root.bar.stripItem, 0, 0).x, width: root.bar.centreItem.width}})
+                secondary: textState(root.bar.secondaryItem), undo: textState(root.bar.undoItem),
+                disk: textState(root.bar.diskItem), lane: {x: root.bar.centreItem.mapToItem(root.bar.stripItem, 0, 0).x, width: root.bar.centreItem.width}})
         }
         function selectionBandState(): string {
             var band = root.pane.selectionBand

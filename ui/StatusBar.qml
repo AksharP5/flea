@@ -54,6 +54,7 @@ Item {
     readonly property var countsItem: counts
     readonly property var primaryItem: primary
     readonly property var secondaryItem: secondary
+    readonly property var undoItem: undoLink
     readonly property var diskItem: disk
     readonly property var centreItem: centre
     readonly property bool transientIsError: root.shown.isError
@@ -79,6 +80,10 @@ Item {
     readonly property string noticeHint: root.stickyHere || root.searching
                                          ? "" : Status.hintOf(root.transient_)
     readonly property bool hasUndo: root.noticeHint === Status.UNDO_HINT
+    // Durability callout 6: "z undoes" takes a click, the same as z, on every line that carries
+    // it. The undo segment draws as its own target while the rest draws as today.
+    readonly property bool undoSplit: root.hasUndo
+    readonly property string keyHintRest: root.undoSplit ? Status.withoutUndoKey(root.keyHint) : root.keyHint
     // Round two, StatusBar rule 4: a refusal is drawn alone. When the strip's error is the pane's own
     // state sentence, the block under it is already saying so and the key is not information.
     readonly property string keyHint: root.transientIsError
@@ -86,17 +91,15 @@ Item {
            root.noticeHint.length > 0 ? Status.hintKey(root.noticeHint) : ""]
             .filter(function (s) { return s.length > 0 }).join(" · ")
         : root.noticeHint.length > 0 ? Status.hintKey(root.noticeHint) : ""
-    readonly property string secondaryText: [root.keyHint,
-        root.transientIsError && root.stickyHere ? root.sticky : "",
-        root.activities.slice(1).map(function (entry) { return entry.text }).join(" · "),
-        root.stickyHere && !root.transientIsError && root.searching ? root.searchLine : "",
-        root.transientIsError ? "" : root.retryLine]
-        .filter(function (s) { return s.length > 0 }).map(function (s) { return " · " + s }).join("")
+    readonly property string secondaryText: Status.secondaryText(root.keyHint, root.transientIsError,
+        root.stickyHere, root.sticky, root.activities, root.searching, root.searchLine, root.retryLine)
+    readonly property string restText: Status.secondaryText(root.keyHintRest, root.transientIsError,
+        root.stickyHere, root.sticky, root.activities, root.searching, root.searchLine, root.retryLine)
     // Three zones that never trade places: the board fixes the outer two at a third of the strip
     // each, so the centre stays put however long the count or the disk line gets.
     readonly property real zoneSpan: Math.max(0, root.width - 2 * Theme.spacing.rowPaddingX)
     readonly property real zoneWidth: Math.round(root.zoneSpan / 3)
-    readonly property real hintWidth: hintMetrics.width
+    readonly property real hintWidth: root.undoSplit ? hintRestMetrics.width : hintMetrics.width
     signal transferCancelRequested(int id)
     implicitHeight: Theme.chromeHeight + detailView.height
 
@@ -174,9 +177,15 @@ Item {
         root.transferCancelRequested(root.transfer.id)
     }
 
+    // The click is the key: the strip's own pane undoes, the way Focus.js's undo case does.
+    function clickUndo() {
+        if (root.pane) Ops.undo(root.pane)
+    }
+
     function escapePressed() {
         if (root.transientIsError) { root.dismiss(); return true }
-        if (root.transfer.running) { root.cancelTransfer(); return true }
+        // A final flush cannot be cancelled: every file is already complete.
+        if (root.transfer.running && root.transfer.writing !== true) { root.cancelTransfer(); return true }
         return false
     }
 
@@ -315,19 +324,52 @@ Item {
             id: primary
             text: root.centreText()
             color: root.centreColor()
-            width: Math.min(implicitWidth, Math.max(0, centre.room - secondary.width - centre.busyRoom))
+            width: Math.min(implicitWidth, Math.max(0, centre.room - secondary.width - undoDot.width - undoLink.width - centre.busyRoom))
             font.family: Theme.font.family
             font.pixelSize: Theme.font.caption
             elide: Text.ElideMiddle
             textFormat: Text.PlainText
         }
 
+        // The undo target: muted at rest like the hint it was, foreground under the pointer while
+        // its middot stays muted.
+        Text {
+            id: undoDot
+            visible: root.undoSplit
+            width: visible ? implicitWidth : 0
+            text: " · "
+            color: Theme.color.muted
+            font.family: Theme.font.family
+            font.pixelSize: Theme.font.caption
+            textFormat: Text.PlainText
+        }
+
+        Text {
+            id: undoLink
+            visible: root.undoSplit
+            width: visible ? implicitWidth : 0
+            text: "z undoes"
+            color: undoHover.hovered ? Theme.color.foreground : Theme.color.muted
+            font.family: Theme.font.family
+            font.pixelSize: Theme.font.caption
+            textFormat: Text.PlainText
+            Accessible.role: Accessible.Link
+            Accessible.name: "z undoes"
+            Accessible.onPressAction: root.clickUndo()
+            HoverHandler { id: undoHover; cursorShape: Qt.PointingHandCursor }
+            TapHandler {
+                acceptedButtons: Qt.LeftButton
+                gesturePolicy: TapHandler.ReleaseWithinBounds
+                onTapped: root.clickUndo()
+            }
+        }
+
         Text {
             id: secondary
-            text: root.secondaryText
+            text: root.restText
             color: Theme.color.muted
-            width: Math.min(implicitWidth, Math.max(0, centre.room - Math.min(primary.implicitWidth,
-                Math.max(0, centre.room - hintMetrics.width))))
+            width: Math.min(implicitWidth, Math.max(0, centre.room - undoDot.width - undoLink.width - Math.min(primary.implicitWidth,
+                Math.max(0, centre.room - root.hintWidth))))
             font.family: Theme.font.family
             font.pixelSize: Theme.font.caption
             elide: Text.ElideRight
@@ -340,6 +382,13 @@ Item {
         font: secondary.font
         text: root.keyHint.length ? " · " + root.keyHint
             + (root.secondaryText !== " · " + root.keyHint ? " · …" : "") : ""
+    }
+
+    TextMetrics {
+        id: hintRestMetrics
+        font: secondary.font
+        text: root.keyHintRest.length ? " · " + root.keyHintRest
+            + (root.restText !== " · " + root.keyHintRest ? " · …" : "") : ""
     }
 
     Rectangle {

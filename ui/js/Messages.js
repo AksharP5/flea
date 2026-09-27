@@ -28,7 +28,8 @@ function route(root, message) {
     } else if (message.t === "extractstarted") {
         root.transferStarted(message.id, 1, false, true)
     } else if (message.t === "transferprogress") {
-        root.transferProgress(message.id, message.index, message.name, message.bytes, message.total, message.scanned || 0)
+        root.transferProgress(message.id, message.index, message.name, message.bytes, message.total, message.scanned || 0,
+                              message.phase || "", message.drive || "")
     } else if (message.t === "transferitem") {
         // err rides only on a failure, so an ok item has no field to read here.
         root.transferItem(message.id, message.index, message.name, message.ok, message.err || "")

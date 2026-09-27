@@ -103,9 +103,40 @@ fn a_failed_fsync_fails_the_copy_like_any_other_write_error() {
 
 #[test]
 fn the_writing_line_carries_the_phase_the_protocol_documents() {
-    let line = writing_line(12);
+    let line = writing_line(12, "128GB");
     assert!(line.contains(r#""t":"transferprogress""#));
     assert!(line.contains(r#""phase":"writing""#), "the final phase rides a progress line: {}", line);
+}
+
+#[test]
+fn the_writing_line_names_the_drive_it_is_flushing() {
+    let line = writing_line(12, "128GB");
+    assert!(line.contains(r#""drive":"128GB""#), "the card names the drive: {}", line);
+    let quoted = writing_line(12, "128\"GB");
+    assert!(quoted.contains(r#""drive":"128\"GB""#), "the drive is JSON-escaped: {}", quoted);
+}
+
+#[test]
+fn finish_names_the_destination_it_flushes() {
+    use std::sync::mpsc::channel;
+    test_reset();
+    let d = TestDir::new("durable-finish-drive");
+    let out = d.dir("out");
+    test_mark_durable(&out);
+    let ctx = Ctx::begin(&out);
+    assert!(ctx.durable);
+    let (tx, rx) = channel();
+    finish(7, &tx, &ctx, &out);
+    let mut drive = None;
+    for msg in rx.try_iter() {
+        if let crate::backend::opsreq::OpMsg::Meta { line } = msg {
+            if line.contains(r#""phase":"writing""#) {
+                drive = Some(line);
+            }
+        }
+    }
+    let line = drive.expect("the final phase emits one writing line");
+    assert!(line.contains(r#""drive":"out""#), "the drive is the destination's own name: {}", line);
 }
 
 #[test]

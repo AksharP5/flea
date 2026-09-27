@@ -234,13 +234,19 @@ Item {
         }
 
         // Sample input: {"t":"transferprogress","id":12,"index":0,"name":"a.txt","bytes":40000000,"total":120000000,"scanned":8400000000}
-        function onTransferProgress(id, index, name, bytes, total, scanned) {
+        // Sample input: {"t":"transferprogress","id":12,"index":0,"name":"","bytes":0,"total":0,"scanned":0,"phase":"writing","drive":"128GB"}
+        function onTransferProgress(id, index, name, bytes, total, scanned, phase, drive) {
             if (id !== pane.transfer.id) {
                 return
             }
             // Reassigned rather than mutated in place: an in-place write re-evaluates no binding,
             // so the card would never see a sample. The bytes and the total ride along with it.
-            pane.transfer = Transfer.sampled(pane.transfer, index, name, bytes, total, scanned)
+            // The writing phase names the drive instead of a file: every file is already complete,
+            // so the card holds its counted bytes; see docs/protocol.md "transferprogress".
+            if (phase === "writing")
+                pane.transfer = Transfer.markWriting(pane.transfer, drive)
+            else
+                pane.transfer = Transfer.sampled(pane.transfer, index, name, bytes, total, scanned)
             pane.sticky(Ops.progressLine(pane.transfer))
         }
 

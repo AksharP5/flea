@@ -2030,6 +2030,18 @@ Durable copies record two ceilings, each re-derived with `wc -l` on the integrat
 `src/backend/opsreq.rs` 402 for carrying the batch's durability context and its verdict on the
 done line; the policy itself is all `src/backend/durable.rs`.
 
+Durability's UI half records one ceiling, re-derived with `wc -l` at the commit that recorded it.
+`ui/StatusBar.qml` 397 to 446 for the clickable "z undoes" (the undo segment beside the rest the
+secondary already drew, its hover lift, the click that reaches the strip's own pane through the
+same `Ops.undo` the z key takes, and the `hintRestMetrics` that keeps the reservation exact) and
+for the final-flush Esc guard. The card's own flush state lives in `ui/js/Transfer.js` 94 to 121
+and `ui/TransferCard.qml` 271 to 276, both inside their budgets; `ui/js/Ops.js` keeps its recorded
+367 by extending two object literals in place, `ui/PaneWire.qml` stays inside its recorded 485 at
+453, `ui/Backend.qml` at 400 is exactly at the hard cap, and `ui/Ipc.qml` goes from its recorded 792
+to 793 for the undo target's own `textState` in the footer JSON (the controller's hover-lift read),
+beside the transfer-card headline, writing flag and undo control state that one extended line
+already carries.
+
 0.3.6's folder jump records three ceilings, each re-derived with `wc -l` at the commit that recorded
 it. `ui/ChromeBar.qml` 421 to 438 for the jump's request signal and alias, the strip's rise over the
 listing while the dropdown shows, the field's `Keys.forwardTo` and the `PathJump` it owns with its decline back to the typed path; the dropdown,

@@ -107,4 +107,38 @@ function run(check) {
     check("a copy's headline is unchanged", Transfer.head(oneFile), "Copying 1 of 1")
     check("a four-figure transfer groups its headline",
           Transfer.head({ moving: false, n: 1204, index: 203 }), "Copying 204 of 1,204")
+
+    // Durability: the final flush. Sample progress line:
+    // {"t":"transferprogress","id":12,"index":0,"name":"","bytes":0,"total":0,"scanned":0,"phase":"writing","drive":"128GB"}
+    var copying = { id: 12, n: 5, moving: false, index: 4, name: "clip-05.mp4", done: 4,
+                    bytes: 1300000000, total: 1300000000, moved: 2100000000, scanned: 3400000000,
+                    running: true }
+    var flushed = Transfer.markWriting(Transfer.itemDone(copying, 4, "clip-05.mp4"), "128GB")
+    check("the final flush headlines the drive instead of a count",
+          Transfer.head(flushed), "Writing to 128GB")
+    check("with no drive named it says the drive rather than nothing",
+          Transfer.head(Transfer.markWriting(Transfer.itemDone(copying, 4, "clip-05.mp4"), "")),
+          "Writing to the drive")
+    check("the flush carries no file line",
+          Transfer.fileLine(flushed), "")
+    check("the byte line counts the confirmed bytes and waits for the drive",
+          drawn(Transfer.byteParts(flushed, megabyte)),
+          "3.4 GB| copied · waiting for the drive")
+    check("and a move says moved",
+          drawn(Transfer.byteParts(Transfer.markWriting(
+              Transfer.itemDone(Object.assign({}, copying, { moving: true }), 4, "clip-05.mp4"), "128GB"), megabyte)),
+          "3.4 GB| moved · waiting for the drive")
+    check("the bar is full and flat",
+          Transfer.fraction(flushed), 1)
+    check("the card stays up through the flush",
+          flushed.running, true)
+    check("Cancel is dimmed there because every file is already complete",
+          Transfer.cancelEnabled(flushed), false)
+    check("while a running copy still offers it",
+          Transfer.cancelEnabled(copying), true)
+    check("and an idle transfer has nothing to cancel",
+          Transfer.cancelEnabled({ running: false }), false)
+    check("the flush keeps the counted bytes and spends the sample",
+          flushed.moved + "|" + flushed.bytes + "|" + flushed.total + "|" + flushed.name,
+          "3400000000|0|0|")
 }

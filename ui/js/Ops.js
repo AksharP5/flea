@@ -16,7 +16,7 @@ function emptyClipboard() {
 // done, bytes and total are the card's bar, the items finished and the one in flight; moved is ui/js/Transfer.js's own sum of the finished ones, which the wire never carries.
 function emptyTransfer() {
     return { id: 0, moving: false, n: 0, index: 0, name: "", running: false,
-             done: 0, bytes: 0, total: 0, moved: 0 }
+             done: 0, bytes: 0, total: 0, moved: 0, writing: false, drive: "" }
 }
 
 // Any counted noun, so callers with their own word never hand-build the plural.
@@ -59,7 +59,7 @@ function doneOf(verb, done, total) {
 // extract is the one verb not derived from moving: an extract drives this same card and its Cancel.
 function started(id, moving, n, extract) {
     return { id: id, moving: moving, n: n, index: 0, name: "", running: true, extract: extract === true,
-             done: 0, bytes: 0, total: 0, moved: 0 }
+             done: 0, bytes: 0, total: 0, moved: 0, writing: false, drive: "" }
 }
 
 // The count comes from the card's headline so both surfaces name the same progress sample.

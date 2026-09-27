@@ -1,5 +1,6 @@
 .import "../../ui/js/Status.js" as Status
 .import "../../ui/js/Trash.js" as Trash
+.import "../../ui/js/Ops.js" as Ops
 
 // The status slot's precedence, which shipped with no suite of any kind. Operations.html states the
 // order as an unacknowledged error, then activity, and draws a failed copy holding the slot while a
@@ -251,4 +252,42 @@ function run(check) {
     activities = Status.activityChanged(activities, right, "", { id: 0, running: false })
     check("completed activities release their owner references", activities.length, 0)
     check("an idle cancel is harmless", Status.cancelActivity(activities).length, 0)
+
+    // Durability callout 6: "z undoes" takes a click, the same as z, on every line that carries it.
+    check("the undo segment lifts out of a plain hint", Status.withoutUndoKey("z undoes"), "")
+    check("and out of an error hint beside esc",
+          Status.withoutUndoKey("esc dismisses · z undoes"), "esc dismisses")
+    check("while a hint with no undo stays whole", Status.withoutUndoKey("esc dismisses"), "esc dismisses")
+    check("and an empty hint stays empty", Status.withoutUndoKey(""), "")
+    check("the secondary draws the hint the way it always did",
+          Status.secondaryText("z undoes", false, false, "", [], false, "", ""), " · z undoes")
+    check("the rest without it draws the same line minus the segment",
+          Status.secondaryText("", false, false, "", [], false, "", ""), "")
+    check("an error keeps esc beside the undo it carries",
+          Status.secondaryText("esc dismisses · z undoes", true, false, "", [], false, "", ""),
+          " · esc dismisses · z undoes")
+    check("a live activity still stands over an error in the secondary",
+          Status.secondaryText("esc dismisses", true, true, "Converting 1 of 3", [], false, "", ""),
+          " · esc dismisses · Converting 1 of 3")
+    check("a search still reports beside a live activity",
+          Status.secondaryText("", false, true, "", [], true, "3 found", ""), " · 3 found")
+    check("and a retry line still reports",
+          Status.secondaryText("", false, false, "", [], false, "", "c.txt selected for retry"),
+          " · c.txt selected for retry")
+
+    // The click is the key: both reach the backend through Ops.undo on the strip's own pane.
+    var undone = []
+    Ops.undo({ backend: { undo: function () { undone.push("undo") } } })
+    check("a click on z undoes sends the backend's undo", undone.join(","), "undo")
+    check("the z key routes through Ops.undo",
+          sourceText("../../ui/js/Focus.js").indexOf('case "undo": Ops.undo(root);') >= 0, true)
+    check("a click on z undoes routes through the same Ops.undo",
+          sourceText("../../ui/StatusBar.qml").indexOf("Ops.undo(root.pane)") >= 0, true)
+}
+
+function sourceText(url) {
+    var request = new XMLHttpRequest()
+    request.open("GET", Qt.resolvedUrl(url), false)
+    request.send()
+    return String(request.responseText || "")
 }

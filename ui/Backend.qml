@@ -30,7 +30,7 @@ Item {
     signal searched(int total, int scanned, real ms, bool cancelled)
     // Copy/move support undo; extract uses the same activity card without an undo journal.
     signal transferStarted(int id, int n, bool moving, bool extract)
-    signal transferProgress(int id, int index, string name, real bytes, real total, real scanned)
+    signal transferProgress(int id, int index, string name, real bytes, real total, real scanned, string phase, string drive)
     signal transferItem(int id, int index, string name, bool ok, string err)
     signal transferDone(int id, int ok, int failed, int skipped, bool cancelled, var retryPaths)
     // The names a transfer would land on, asked first; ui/CollideHost.qml holds the transfer until it lands.
@@ -322,6 +322,7 @@ Item {
     // Sample input: {"t":"transferstarted","id":12,"n":2,"moving":true}
     // Sample input: {"t":"transferstarted","id":12,"n":1,"moving":false,"extract":true}
     // Sample input: {"t":"transferprogress","id":12,"index":0,"name":"a.txt","bytes":40000000,"total":120000000,"scanned":8400000000}
+    // Sample input: {"t":"transferprogress","id":12,"index":0,"name":"","bytes":0,"total":0,"scanned":0,"phase":"writing","drive":"128GB"}
     // Sample input: {"t":"transferitem","id":12,"index":1,"name":"photos","ok":false,"err":"permission denied"}
     // Sample input: {"t":"transferdone","id":12,"ok":1,"failed":1,"skipped":0,"cancelled":false}
     // Sample input: {"t":"collisions","id":7,"total":1,"names":[{"n":"screenshot.png","d":false,"i":"image-x-generic"}]}

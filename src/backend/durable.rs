@@ -149,9 +149,14 @@ pub fn fsync_dir(path: &Path) -> std::io::Result<()> {
     std::fs::File::open(path)?.sync_all()
 }
 
-// Sample output: {"t":"transferprogress","id":1,"index":0,"name":"","bytes":0,"total":0,"scanned":0,"phase":"writing"}
-pub fn writing_line(id: usize) -> String {
-    format!(r#"{{"t":"transferprogress","id":{},"index":0,"name":"","bytes":0,"total":0,"scanned":0,"phase":"writing"}}"#, id)
+// Sample input: /run/media/gm/128GB answers "128GB".
+pub fn drive_name(dest: &Path) -> String {
+    dest.file_name().map(|n| n.to_string_lossy().into_owned()).filter(|n| !n.is_empty()).unwrap_or_else(|| dest.to_string_lossy().into_owned())
+}
+
+// Sample output: {"t":"transferprogress","id":1,"index":0,"name":"","bytes":0,"total":0,"scanned":0,"phase":"writing","drive":"128GB"}
+pub fn writing_line(id: usize, drive: &str) -> String {
+    format!(r#"{{"t":"transferprogress","id":{},"index":0,"name":"","bytes":0,"total":0,"scanned":0,"phase":"writing","drive":"{}"}}"#, id, crate::json::escape(drive))
 }
 
 pub struct Finish {
@@ -161,11 +166,11 @@ pub struct Finish {
 
 // After the last file: one writing line, then every touched directory. Cancel is not
 // honoured here because every file is already complete.
-pub fn finish(id: usize, tx: &std::sync::mpsc::Sender<crate::backend::opsreq::OpMsg>, ctx: &Ctx) -> Finish {
+pub fn finish(id: usize, tx: &std::sync::mpsc::Sender<crate::backend::opsreq::OpMsg>, ctx: &Ctx, dest: &Path) -> Finish {
     if !ctx.durable {
         return Finish { ok: false, note: String::new() };
     }
-    let _ = tx.send(crate::backend::opsreq::OpMsg::Meta { line: writing_line(id) });
+    let _ = tx.send(crate::backend::opsreq::OpMsg::Meta { line: writing_line(id, &drive_name(dest)) });
     if ctx.file_failed {
         return Finish { ok: false, note: String::new() };
     }

@@ -13,6 +13,7 @@ Item {
     property var owner: null
     readonly property var cancelItem: cancelButton
     readonly property alias byteText: byteLine.text
+    readonly property alias headlineText: headline.text
     signal cancelRequested(int id)
 
     // Everything drawn comes off this sample rather than straight off the wire, because thirty
@@ -82,8 +83,10 @@ Item {
         root.rateSamples = next.slice(keep)
     }
 
+    // Dimmed while the drive is being flushed: every file is already complete, so there
+    // is nothing left to stop.
     function cancel() {
-        if (!root.transfer.running || root.cancelling) return
+        if (!Transfer.cancelEnabled(root.transfer) || root.cancelling) return
         root.cancelRequested(root.transfer.id)
     }
 
@@ -143,6 +146,7 @@ Item {
 
         Text {
             width: parent.width
+            visible: text.length > 0
             text: Transfer.fileLine(root.shown)
             color: Theme.color.muted
             font.family: Theme.font.family
@@ -211,7 +215,8 @@ Item {
             Rectangle {
                 id: cancelButton
                 visible: !root.cancelling
-                enabled: visible
+                enabled: visible && Transfer.cancelEnabled(root.shown)
+                opacity: Transfer.cancelEnabled(root.shown) ? 1 : 0.55
                 Accessible.role: Accessible.Button
                 Accessible.name: "Cancel transfer"
                 Accessible.onPressAction: root.cancel()

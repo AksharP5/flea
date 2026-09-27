@@ -1121,9 +1121,11 @@ On a durable target (usb, phone, network, or vfat/exfat/ntfs) those bytes are re
 the drive confirms them, so the rate is the drive's real rate.
 
 **The final phase rides one more of these lines.** After the last file, the transfer emits
-`{"t":"transferprogress","id":<uint>,"index":0,"name":"","bytes":0,"total":0,"scanned":0,"phase":"writing"}`
+`{"t":"transferprogress","id":<uint>,"index":0,"name":"","bytes":0,"total":0,"scanned":0,"phase":"writing","drive":"<string>"}`
 while it fsyncs every directory it created or wrote into. Cancel is not honoured there because
-every file is already complete. Older clients ignore the field they never asked for.
+every file is already complete. `drive` is the destination's own name, so the card's headline
+names where the flush is going without guessing from timing. Older clients ignore the fields
+they never asked for.
 
 **An extract's one progress line is not a transfer's.** It carries the archive's own file name as
 `name` with `bytes` and `total` both 0: the unpacking tool streams no per-item bytes, so any figure for

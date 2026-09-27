@@ -76,6 +76,32 @@ function hintKey(hint) {
     return hint.replace(" \u00b7 ", "")
 }
 
+// Sample input: "esc dismisses · z undoes". The undo segment lifted out of a hint, so the strip
+// can draw it as its own click target; the middot between them stays muted.
+function withoutUndoKey(keyHint) {
+    var undo = hintKey(UNDO_HINT)
+    if (keyHint === undo) {
+        return ""
+    }
+    var tail = " \u00b7 " + undo
+    if (keyHint.length > tail.length && keyHint.lastIndexOf(tail) === keyHint.length - tail.length) {
+        return keyHint.substring(0, keyHint.length - tail.length)
+    }
+    return keyHint
+}
+
+// Sample input: keyHint "z undoes" with nothing else standing. The secondary lane as one string,
+// so ui/StatusBar.qml draws the rest beside the undo target from this same join.
+function secondaryText(keyHint, transientIsError, stickyHere, sticky, activities, searching, searchLine, retryLine) {
+    var extra = activities.slice(1).map(function (entry) { return entry.text }).join(" · ")
+    return [keyHint,
+        transientIsError && stickyHere ? sticky : "",
+        extra,
+        stickyHere && !transientIsError && searching ? searchLine : "",
+        transientIsError ? "" : retryLine]
+        .filter(function (s) { return s.length > 0 }).map(function (s) { return " · " + s }).join("")
+}
+
 // Sample input: { transient: "Copy failed", transientIsError: true, searching: true, searchLine: "3 found in 1.6 s", stickyHere: true, sticky: "Copying 2 of 5" }
 function errorHere(slot) {
     return slot.transient.length > 0 && slot.transientIsError
