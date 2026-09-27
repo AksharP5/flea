@@ -2042,6 +2042,10 @@ to 793 for the undo target's own `textState` in the footer JSON (the controller'
 beside the transfer-card headline, writing flag and undo control state that one extended line
 already carries.
 
+Integrated on the 0.3.6 branch after #194, the hidden-rail eject takes `ui/WindowBody.qml` from 497 to 507, re-derived
+with `wc -l` on the integrated branch.
+
+
 0.3.6's folder jump records three ceilings, each re-derived with `wc -l` at the commit that recorded
 it. `ui/ChromeBar.qml` 421 to 438 for the jump's request signal and alias, the strip's rise over the
 listing while the dropdown shows, the field's `Keys.forwardTo` and the `PathJump` it owns with its decline back to the typed path; the dropdown,
