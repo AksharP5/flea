@@ -1,4 +1,5 @@
 .import "../../ui/js/Focus.js" as Focus
+.import "../../ui/js/Eject.js" as Eject
 .import "../../ui/js/Keymap.js" as Keymap
 .import "filterfixture.js" as Fixture
 
@@ -294,6 +295,37 @@ function run(check) {
     check("ctrl e in a listing on the internal disk says so, even with the rail cursor on the stick",
           outside.sidebar.released.length + "|" + outside.said,
           "0|This is not inside a removable volume.")
+
+    // Ctrl+E with the rail hidden: the Loader unloads the Sidebar, so root.sidebar is null and
+    // there are no entries to resolve against. The key hands to the pane's transient one-shot
+    // flow instead of throwing on the missing rail.
+    var hidden = listPane(true)
+    hidden.path = "/run/media/user/128GB/photos"
+    hidden.sidebar = null
+    hidden.hiddenAsked = []
+    hidden.ejectHidden = function () { hidden.hiddenAsked.push(hidden.path) }
+    var hiddenThrew = ""
+    try { Focus.act("eject", hidden) } catch (e) { hiddenThrew = String(e) }
+    check("ctrl e with the rail hidden takes the hidden-rail release instead of throwing",
+          hiddenThrew + "|" + hidden.hiddenAsked.join(","), "|/run/media/user/128GB/photos")
+
+    // The transient host's completion runs the same release with device-only entries: network
+    // shares and phones carry no path and favourites offer no release, so only a volume resolves.
+    var adapter = { entries: [stick], deviceEntries: [stick], networkEntries: [],
+                    released: [],
+                    releaseChosen: function (action, key) { this.released.push(action + ":" + key) } }
+    var hiddenInside = listPane(true)
+    hiddenInside.path = "/run/media/user/128GB/photos"
+    Eject.release(hiddenInside, adapter, false)
+    check("the hidden-rail completion ejects the holding volume through releaseChosen",
+          adapter.released.join(",") + "|" + hiddenInside.said, "eject:/dev/sda1|")
+    var hiddenOutside = listPane(true)
+    hiddenOutside.path = "/home/user/Documents"
+    var noRail = { entries: [], deviceEntries: [], networkEntries: [],
+                   releaseChosen: function (action, key) {} }
+    Eject.release(hiddenOutside, noRail, false)
+    check("the hidden-rail completion outside any volume says so instead of releasing",
+          hiddenOutside.said, "This is not inside a removable volume.")
 
     // The listing's m goes through the pane, which says whether a delegate was under the cursor; an
     // empty directory and a filter that hides every row both get the sentence rather than silence.

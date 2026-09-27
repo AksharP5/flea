@@ -2073,7 +2073,15 @@ menu bindings, the locked dispatch and the m key's locked arm. The rows themselv
 `ui/js/LockedMenu.js`, 43 lines inside both budgets, rather than into `ui/js/Menu.js`, which stands
 at 292 with 8 lines under the hard cap; `ui/js/Nav.js` takes `lockedTarget` and stays at 248,
 inside the soft budget. `tests/js/nav.js` holds its new locked cases at 299, one line under the hard
-cap and not over it. Each count re-derived with `wc -l` at the commit that recorded it.
+ cap and not over it. Each count re-derived with `wc -l` at the commit that recorded it.
+
+Eject with a hidden rail raises three recorded ceilings rather than keeping a poller alive.
+`ui/Pane.qml` goes from its recorded 673 to 676 for the `ejectHidden` route into the rail,
+`ui/WindowBody.qml` from its recorded 487 to 497 for the mid-dialog rail-hide guards on the
+network save and the share-browser mount, and `tests/js/focus.js` from its recorded 374 to 403
+for the hidden-rail release, completion and not-inside cases. `ui/PaneRail.qml` holds the
+transient one-shot host at 152, inside the soft budget, and `ui/js/Eject.js` stays at 153,
+inside its own. Each count re-derived with `wc -l` at the commit that recorded it.
 
 Trashflake takes `src/backend/trashdelete.rs` from its recorded 895 to 901 for `remove_tree`'s
 arrival gate, which checks child counts through `matches()` because a same-tick arrival keeps a
@@ -5014,7 +5022,11 @@ conventions are refused on purpose and should not be reopened: Enter opens and d
 table), and `Cmd+D` is not duplicate because `Ctrl+D` already pages with `Ctrl+U` as its pair.
 `Ctrl+E` goes through `ui/js/Eject.js` `release`: the rail's cursor row when the rail has focus,
 otherwise `Mounts.holding`, the mounted removable volume whose path holds the listing, and the
-verdict is `Mounts.railMenu`'s either way. `XF86Eject` and the transport keys are not bound here
+verdict is `Mounts.railMenu`'s either way. A hidden rail unloads the Sidebar with the poll the
+verdict reads, so the key spins `ui/PaneRail.qml`'s transient `DeviceMounts` for one one-shot
+listing instead: same component, same verdict, same `RailMenu.release` and `devices.eject` path
+with the same messages, unloaded when the verdict lands and costing nothing while idle.
+`XF86Eject` and the transport keys are not bound here
 and cannot be: `media.lua` binds them through `o.bind`, which is a consuming `hl.bind`, so a
 client never receives them; the play key runs `omarchy-shell media playPause` against the MPRIS
 player the shell tracks, and Flea's Quick Look (`ui/PreviewMedia.qml`, a plain QtMultimedia

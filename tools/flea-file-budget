@@ -33,7 +33,7 @@ src/tui/render.rs 835
 src/uistate.rs 442
 src/uistore.rs 483
 src/vulkan.rs 620
-tests/js/focus.js 374
+tests/js/focus.js 403
 tests/js/mounts.js 383
 tests/js/ops.js 384
 ui/Backend.qml 435
@@ -44,7 +44,7 @@ ui/Ipc.qml 796
 ui/NetworkDialog.qml 449
 ui/NetworkMounts.qml 674
 ui/OpenWithDialog.qml 588
-ui/Pane.qml 687
+ui/Pane.qml 690
 ui/PaneMenuActions.qml 404
 ui/PaneWire.qml 485
 ui/PermissionsDialog.qml 426

@@ -83,7 +83,8 @@ Loader {
             return
         }
         if (message.op === "delete") {
-            root.pane.sidebar.refreshTrash()
+            // The rail is hidden, so its TrashMonitor is unloaded with it: nothing to refresh.
+            if (root.pane.sidebar) root.pane.sidebar.refreshTrash()
             root.sweepFinished()
         }
     }
@@ -140,7 +141,7 @@ Loader {
         function onFocusRailRequested() { root.pane.focusView = Focus.RAIL }
         function onActionRequested(action) { root.pane.act(action) }
         function onStatusReported(message, error) { root.pane.message(message, error) }
-        function onOperationResult(headline, detail, error) { root.pane.operationResult(headline, detail, error); root.pane.sidebar.refreshTrash() }
+        function onOperationResult(headline, detail, error) { root.pane.operationResult(headline, detail, error); if (root.pane.sidebar) root.pane.sidebar.refreshTrash() }
         function onContextRequested(x, y, selection) { root.menuAt(root.item.mapToItem(null, x, y), selection) }
     }
     Connections {

@@ -385,6 +385,11 @@ Rectangle {
                 return
             }
             networkDialog.owner = networkDialog.origin.sidebar
+            // The rail was hidden mid-dialog, unloading the Sidebar that would save the place.
+            if (!networkDialog.owner) {
+                networkDialog.item.mountFinished(requestId, uri, false, "The sidebar was hidden before the place could be saved.")
+                return
+            }
             networkDialog.owner.saveNetwork(requestId, uri, label, password, networkDialog.origin)
         }
         function onCancelRequested(requestId) { if (networkDialog.owner) networkDialog.owner.cancelNetwork(requestId) }
@@ -430,6 +435,11 @@ Rectangle {
         function onClosed() { view.currentPane.forceActiveFocus() }
         function onActivated(uri, label) {
             view.focusPane(shareBrowser.owner === primaryPane ? 0 : 1)
+            // The rail was hidden with the browser still open, unloading the Sidebar that mounts.
+            if (!shareBrowser.owner.sidebar) {
+                shareBrowser.owner.message("Show the sidebar to open a network share.", false)
+                return
+            }
             shareBrowser.owner.sidebar.mountShare(uri, label, shareBrowser.owner)
         }
     }

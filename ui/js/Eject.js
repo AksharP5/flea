@@ -129,9 +129,17 @@ function sentence(v, label, others) {
 // Finder's Cmd+E with Cmd read as Ctrl: from the rail it releases the cursor row, from a listing the
 // removable volume the directory is inside, so the key can never release a volume the operator is
 // not looking at. The verdict is Mounts.railMenu's either way, off the lsblk poll, and the release
-// goes through the same releaseChosen a chosen menu row takes, carrying the row's key.
-function release(root, sidebar, fromRail) {
-    var entry = fromRail ? sidebar.entries[sidebar.cursorIndex] : Mounts.holding(sidebar.entries, root.path)
+// goes through the same releaseChosen a chosen menu row takes, carrying the row's key. A hidden rail
+// unloads the Sidebar with its poll, verdict state and releaseChosen, so there is nothing to read
+// and nothing to release through: the pane spins a transient DeviceMounts for one one-shot listing
+// (ui/PaneRail.qml), which completes through this same function with its own entries and
+// releaseChosen. A null rail therefore never answers from silence; it hands the key to that flow.
+function release(root, rail, fromRail) {
+    if (!rail) {
+        root.ejectHidden()
+        return
+    }
+    var entry = fromRail ? rail.entries[rail.cursorIndex] : Mounts.holding(rail.entries, root.path)
     if (!entry) {
         root.message("This is not inside a removable volume.", false)
         return
@@ -141,5 +149,5 @@ function release(root, sidebar, fromRail) {
         root.message(entry.label + " has nothing to eject or unmount.", false)
         return
     }
-    sidebar.releaseChosen(rows[0].action, Mounts.railKey(entry))
+    rail.releaseChosen(rows[0].action, Mounts.railKey(entry))
 }

@@ -84,6 +84,9 @@ FocusScope {
     // Directive 77: a withdrawn rail is still a place Tab can go, because arriving there reveals it.
     readonly property bool railAvailable: root.sidebar !== null || railHost.overlay
     function toggleRail() { ViewState.toggleRail() }
+    // Ctrl+E with the rail hidden: the Sidebar is unloaded, so the key cannot read entries or
+    // release through it; PaneRail spins a transient DeviceMounts for one listing instead.
+    function ejectHidden() { railHost.ejectHidden() }
     property bool paneFocused: true
     property bool listOnly: false
     signal focusRequested()
