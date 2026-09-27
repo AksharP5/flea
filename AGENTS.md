@@ -2007,6 +2007,11 @@ at 292 with 8 lines under the hard cap; `ui/js/Nav.js` takes `lockedTarget` and 
 inside the soft budget. `tests/js/nav.js` holds its new locked cases at 299, one line under the hard
 cap and not over it. Each count re-derived with `wc -l` at the commit that recorded it.
 
+Trashflake takes `src/backend/trashdelete.rs` from its recorded 895 to 901 for `remove_tree`'s
+arrival gate, which checks child counts through `matches()` because a same-tick arrival keeps a
+directory's size and mtime, plus the thread-local walk counter that proves one delete runs exactly
+one `matches()` walk. Count re-derived with `wc -l`.
+
 `src/backend/ops.rs` split to `src/backend/renamecompat.rs` at 455: composing PR 35's safe rclone
 rename into the release tree put the rename exception over the 400-line hard cap, so the exception
 and its tests moved to the module that already owned classifying which rename failures need it.

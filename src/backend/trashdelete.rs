@@ -21,6 +21,14 @@ const O_DIRECTORY: i32 = 0o200000;
 const O_DIRECTORY: i32 = 0o40000;
 const RENAME_NOREPLACE: u32 = 1;
 static NEXT: AtomicUsize = AtomicUsize::new(1);
+#[cfg(test)]
+thread_local! {
+    static MATCH_WALKS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+#[cfg(test)]
+fn match_walks() -> usize {
+    MATCH_WALKS.with(|walks| walks.get())
+}
 extern "C" {
     fn renameat2(
         oldfd: i32,
@@ -158,6 +166,8 @@ fn parent_at(base: &File, root: &OsStr, relative: &Path) -> Result<(File, OsStri
     Ok((directory, relative.file_name().ok_or("Missing Trash review name.")?.to_os_string()))
 }
 fn matches(tree: &Records, base: &File, root: &OsStr, cancel: &Cancellation) -> Result<bool, String> {
+    #[cfg(test)]
+    MATCH_WALKS.with(|walks| walks.set(walks.get() + 1));
     let mut offset = tree.start();
     while let Some(bytes) = tree.next(&mut offset)? {
         cancel.check()?;
@@ -254,9 +264,10 @@ fn snapshot_tree(path: &Path, payload: &Identity, manifest: &mut Manifest, scrat
         }
         Ok((tree, bytes))
 }
-fn remove_tree(tree: &Records, quarantine: &File, payload: &Identity) -> Result<(), String> {
-    if identity(&fd_path(quarantine, OsStr::new("payload")))? != *payload {
-        return Err("Trash item changed after it was claimed; remaining data was preserved.".into());
+fn remove_tree(tree: &Records, quarantine: &File, refused: &str) -> Result<(), String> {
+    // matches() counts children: identity alone is blind to a same-tick arrival that keeps size and mtime.
+    if !matches(tree, quarantine, OsStr::new("payload"), &Cancellation::default())? {
+        return Err(refused.into());
     }
     let mut offset = tree.end();
     while let Some(bytes) = tree.previous(&mut offset)? {
@@ -419,11 +430,8 @@ impl Reviewed {
     fn delete_with(&self, recovery_root: &Path, before_claim: impl FnOnce(), before_remove: impl FnOnce(&Path)) -> Result<(), String> {
         let tree = self.tree.as_ref().ok_or("Trash contents have not been reviewed.")?;
         self.with_claimed("Deletion", recovery_root, None, before_claim, |quarantine| {
-            if !matches(tree, quarantine, OsStr::new("payload"), &Cancellation::default())? {
-                return Err("Trash contents changed; no deletion attempted.".into());
-            }
             before_remove(&fd_path(quarantine, OsStr::new("payload")));
-            remove_tree(tree, quarantine, &self.payload)
+            remove_tree(tree, quarantine, "Trash contents changed; no deletion attempted.")
         })
     }
     pub fn restore(&self, original: &Path, recovery_root: &Path) -> Result<(), String> {
@@ -587,11 +595,7 @@ impl PathReview {
             if journal.remove_empty(&quarantine_path, &quarantine, &parent).is_ok() { journal.complete()?; }
             return Err(format!("Could not claim item for deletion: {}", error));
         }
-        let removal = match matches(&self.tree, &quarantine, OsStr::new("payload"), &Cancellation::default()) {
-            Ok(true) => remove_tree(&self.tree, &quarantine, &self.payload),
-            Ok(false) => Err("Item changed after confirmation; no deletion attempted.".into()),
-            Err(error) => Err(error),
-        };
+        let removal = remove_tree(&self.tree, &quarantine, "Item changed after confirmation; no deletion attempted.");
         if let Err(error) = removal {
             if rename(&quarantine, OsStr::new("payload"), &parent, name).is_err() {
                 return Err(format!("Deletion failed: {}. Recover preserved items from {}.", error, recovery.display()));
@@ -811,9 +815,11 @@ mod tests {
         let mut reviewed = Reviewed::inspect(path.clone(), &format!("l{}:{}", meta.dev(), meta.ino())).unwrap();
         reviewed.snapshot(&mut Manifest::new(d.path()).unwrap(), d.path(), &Cancellation::default()).unwrap();
         guard(&d, &path);
+        let walks = match_walks();
         let result = reviewed.delete_with(d.path(), || {}, |claimed| {
             std::fs::write(claimed.join("new-arrival"), "keep").unwrap();
         });
+        assert_eq!(match_walks() - walks, 1, "one delete runs exactly one matches() walk");
         assert!(result.is_err());
         assert_eq!(std::fs::read_to_string(path.join("new-arrival")).unwrap(), "keep");
         assert_eq!(std::fs::read_to_string(path.join("child")).unwrap(), "reviewed");

@@ -25,7 +25,7 @@ src/backend/run.rs 428
 src/backend/thumbs.rs 441
 src/backend/thumbworker.rs 953
 src/backend/trashbrowse.rs 698
-src/backend/trashdelete.rs 895
+src/backend/trashdelete.rs 901
 src/tui/actions.rs 1021
 src/tui/input.rs 449
 src/tui/model.rs 1197
