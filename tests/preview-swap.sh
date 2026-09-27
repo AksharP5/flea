@@ -44,7 +44,9 @@ ln -s /usr/share/omarchy/shell/Commons "$swap_work/config/Commons" || exit 1
 ln -s /usr/share/omarchy/shell/Ui "$swap_work/config/Ui" || exit 1
 
 run_surface() {
-    local surface="$1" direct="${2:-0}" out="$swap_work/frames-$surface" log="$swap_root/$surface.log" status
+    # One local per line: bash expands every word of a local before assigning any, so out would read an unset surface.
+    local surface="$1" direct="${2:-0}" status
+    local out="$swap_work/frames-$surface" log="$swap_root/$surface.log"
     [ "$direct" == 1 ] && out="$swap_work/frames-$surface-direct" && log="$swap_root/$surface-direct.log"
     mkdir -p "$out" || exit 1
     # Software rendering with a 16 ms update interval samples about one frame per vsync.
