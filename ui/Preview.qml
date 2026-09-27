@@ -182,14 +182,13 @@ Item {
         root.revealStrip()
     }
 
-    // One row, only while a JPEG is the thing open: Qt fits its decode before it turns, so the
-    // pane needs the EXIF orientation before PreviewImage decodes. Any other path needs no read.
+    // One row, only while a JPEG is the thing open: Qt fits its decode before it turns, so a turned photo
+    // re-fits when its EXIF orientation lands; the decode never waits for it. Any other path needs no read.
     function askImage() {
         root.imageRow = -1
         root.imageTurn = 1
         if (root.isImage && root.pane && /\.(jpe?g|jfif)$/i.test(root.path)) {
             root.imageRow = root.pane.cursorIndex
-            root.imageTurn = 0
             root.pane.backend.askMeta(root.imageRow, false, false, false)
         }
     }
@@ -219,8 +218,10 @@ Item {
                 root.mediaRate = sampleRate
         }
         function onMetaResult(message) {
-            if (root.isImage && root.imageTurn === 0 && message.row === root.imageRow)
+            if (root.isImage && root.imageRow >= 0 && message.row === root.imageRow) {
                 root.imageTurn = message.orient || 1
+                root.imageRow = -1
+            }
         }
     }
 
@@ -230,7 +231,7 @@ Item {
         function onRowsChanged() {
             if (root.active && root.isArchive && root.archiveMeta === null) root.askArchive()
             if (root.active && root.isMedia && root.mediaRate === 0) root.askMedia()
-            if (root.active && root.isImage && root.imageTurn === 0) root.askImage()
+            if (root.active && root.isImage && root.imageRow >= 0) root.askImage()
         }
     }
 

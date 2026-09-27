@@ -10,16 +10,20 @@ Item {
     id: root
 
     property string path: ""
-    // The EXIF orientation Preview.qml read from the backend, 0 while a JPEG's is still being read; 5 to 8 swap the
-    // sides, and Qt fits its decode before it turns, so the decode waits for it rather than decoding twice.
-    property int turn: 0
+    // The EXIF orientation from the backend's meta answer, 1 until it lands; 5 to 8 swap the sides, because Qt fits its
+    // decode before it turns. The decode never waits for it: an upright photo is done, a turned one re-fits on the answer.
+    property int turn: 1
+    // True once this path has drawn, so a re-fit keeps its picture and its "image" status while the new decode runs.
+    property bool drawn: false
+    onPathChanged: root.drawn = false
+    readonly property bool showing: picture.status === Image.Ready || (root.drawn && picture.status === Image.Loading)
 
     // The same name the media and PDF panes give their unreadable state, so Preview.qml tests one property.
     readonly property bool failed: picture.status === Image.Error
     // Every state is terminal: a decode ends Ready or Error, and a vanished file ends Error too.
     readonly property string status: {
         if (root.failed) return "This image could not be read."
-        return picture.status === Image.Ready ? "image" : "loading"
+        return root.showing ? "image" : "loading"
     }
     readonly property string name: root.path.substring(root.path.lastIndexOf("/") + 1)
 
@@ -40,9 +44,11 @@ Item {
         y: root.vector ? 0 : Math.round((root.height - height) / 2)
         width: root.vector ? root.width : implicitWidth * fit
         height: root.vector ? root.height : implicitHeight * fit
-        visible: picture.status === Image.Ready
+        visible: root.showing
         // Format.fileUri, not a concatenation: a # or a ? in the name would truncate a hand-built URI.
-        source: root.path.length > 0 && root.turn > 0 ? Format.fileUri(root.path) : ""
+        source: root.path.length > 0 ? Format.fileUri(root.path) : ""
+        retainWhileLoading: true
+        onStatusChanged: if (picture.status === Image.Ready) root.drawn = true
         fillMode: root.vector ? Image.PreserveAspectFit : Image.Stretch
         // A phone keeps a portrait photo's turn in EXIF, and Qt leaves it unapplied unless asked.
         autoTransform: true
