@@ -167,6 +167,49 @@ fn a_stale_file_is_refused_and_kept_as_a_claim() {
     assert!(!dest.exists() && claimed_path(&dest).exists(), "a refused file is kept as a claim for the sweeper");
 }
 
+// Runs adopt_in on a thread so a wait that never ends fails the test instead of hanging it.
+fn adopt_within(dest: PathBuf, runtime: PathBuf, deadline: SystemTime, bound: Duration) -> Option<bool> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    let start_ms = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64;
+    std::thread::spawn(move || {
+        let _ = tx.send(adopt_in(SHARE, false, &dest, deadline, start_ms, Some(&runtime)).is_some());
+    });
+    rx.recv_timeout(bound).ok()
+}
+
+#[test]
+fn a_fresh_launch_whose_child_never_publishes_stops_at_the_deadline() {
+    let (_dir, runtime) = runtime_fixture("gvfs-loop-deadline");
+    let answer = adopt_within(runtime.join("gvfs-never.list"), runtime, short_deadline(), Duration::from_secs(3));
+    assert_eq!(answer, Some(false), "inside the grace window only the loop's deadline can end the wait");
+}
+
+#[test]
+fn a_claim_landing_mid_wait_ends_the_wait() {
+    let (_dir, runtime) = runtime_fixture("gvfs-loop-claim");
+    let dest = runtime.join("gvfs-1.list");
+    let claimer = std::thread::spawn({
+        let claimed = claimed_path(&dest);
+        move || {
+            std::thread::sleep(Duration::from_millis(100));
+            std::fs::write(claimed, TWO_ROWS).unwrap();
+        }
+    });
+    let answer = adopt_within(dest, runtime, live_deadline(), Duration::from_secs(3));
+    let _ = claimer.join();
+    assert_eq!(answer, Some(false), "another reader's claim ends the wait long before the 15 s deadline");
+}
+
+#[test]
+fn a_file_published_after_launch_but_older_than_stale_secs_is_refused() {
+    let (_dir, runtime) = runtime_fixture("gvfs-aged");
+    let dest = write_prefetch(&runtime, "gvfs-1.list", TWO_ROWS);
+    let aged = format!("{} seconds ago", STALE_SECS + 10);
+    assert!(std::process::Command::new("touch").arg("-d").arg(&aged).arg(&dest).status().unwrap().success());
+    let start_ms = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64 - (STALE_SECS + 50) * 1000;
+    assert!(adopt_in(SHARE, false, &dest, live_deadline(), start_ms, Some(&runtime)).is_none(), "newer than the launch but aged past STALE_SECS");
+}
+
 #[test]
 fn a_missing_file_past_the_deadline_answers_at_once() {
     let (_dir, runtime) = runtime_fixture("gvfs-missing");
@@ -194,7 +237,7 @@ fn a_world_readable_runtime_dir_is_refused() {
     std::fs::set_permissions(&runtime, std::fs::Permissions::from_mode(0o755)).unwrap();
     let dest = write_prefetch(&runtime, "gvfs-1.list", TWO_ROWS);
     assert!(adopt_in(SHARE, false, &dest, live_deadline(), 0, Some(&runtime)).is_none());
-    assert!(!dest.exists() && claimed_path(&dest).exists(), "a refused file is claimed, never adopted");
+    assert!(dest.exists() && !claimed_path(&dest).exists(), "a dir that is not ours is refused before any rename");
 }
 
 #[test]
@@ -215,6 +258,7 @@ fn a_file_outside_the_runtime_dir_is_not_this_launch() {
     let dest = elsewhere.join("gvfs-1.list");
     std::fs::write(&dest, TWO_ROWS).unwrap();
     assert!(adopt_in(SHARE, false, &dest, live_deadline(), 0, Some(&runtime)).is_none());
+    assert!(dest.exists() && !claimed_path(&dest).exists(), "a file that is not this launch's is left exactly where it is");
 }
 
 #[test]

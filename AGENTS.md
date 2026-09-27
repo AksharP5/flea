@@ -176,7 +176,8 @@ and mtime in one pass, where the FUSE path would block in getdents64 and then pa
 trip per row. That per-row metadata lives in `Listing.meta_cache` for the listing's life
 rather than for one request, and every re-list rebuilds it, which every Flea write triggers;
 a remote change raises no inotify on either route, so the watched re-read never fires for
-one. `stat_range()` answers those rows from the cache with no stat at all, and past
+one. `stat_range()` answers those rows from the cache with no lstat, a symlink row paying the one
+follow-stat `meta_one` pays so a linked folder draws as one, and past
 `SLOW_PASS_MS` (10 ms) the remainder of a window goes across 8 threads: a stat on FUSE, a
 network share or a cold vfat stick is a round trip of a millisecond or more against
 microseconds local, so kernel cifs/nfs/sshfs mounts that serve concurrently gain threads
@@ -2501,6 +2502,9 @@ Fix2-gvfsparse records one ceiling, re-derived with `wc -l`: `src/backend/gvfsli
 chunk-stamping reader, and the three tests that pin them. `src/backend/meta.rs` falls 388 to
 385 inside the soft budget for the one-line `SLOW_PASS_MS` comment; `src/gvfsprefetch.rs` keeps
 288 lines with the `raw_output` call shortened in place.
+
+Advloop round 2 on the gvfs listing moves `src/backend/gvfslist.rs` 434 to 435, re-derived with
+`wc -l`, for the assertion that pins the cached mtime of a gio symlink row.
 
 Fix2-photosmove moves two recorded ceilings, each re-derived with `wc -l`:
 `src/backend/copyfile.rs` 404 to 428 for the EXDEV confirm before the remove (`move_cross_device`

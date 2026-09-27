@@ -12,7 +12,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 pub const PREFETCH_ENV: &str = "FLEA_GVFS_PREFETCH";
 pub const PATH_ENV: &str = "FLEA_GVFS_PATH";
 pub const START_ENV: &str = "FLEA_GVFS_START";
-// A file with mtime older than the launch is a previous launch's leftover.
+// A published file older than this is refused, even one written after the launch.
 const STALE_SECS: u64 = 10;
 // Leftovers stop being adoptable long before this reaps them.
 const SWEEP_SECS: u64 = 60;
@@ -228,6 +228,7 @@ pub(crate) fn adopt_matching(path: &str, hidden: bool, prefetch: &Prefetch) -> O
     if CONSUMED.swap(true, Ordering::SeqCst) {
         return None;
     }
+    // corner: a listing still streaming 15 s after launch is re-listed by the scan; 10k NAS rows take about 1.1 s.
     let deadline = UNIX_EPOCH + Duration::from_millis(prefetch.start_ms) + gvfslist::GIO_TIMEOUT;
     adopt_in(path, hidden, &prefetch.dest, deadline, prefetch.start_ms, runtime_dir().as_deref())
 }
@@ -242,6 +243,11 @@ pub(crate) fn adopt_in(
     runtime: Option<&Path>,
 ) -> Option<(Listing, f64)> {
     let t = Instant::now();
+    // Only a file in our own runtime dir is this launch's; anything else is left exactly where it is.
+    let dir = dest.parent()?;
+    if Some(dir) != runtime || check_dir(dir).is_err() {
+        return None;
+    }
     let launch = UNIX_EPOCH + Duration::from_millis(start_ms);
     let claimed = claimed_path(dest);
     // A claimed sibling means another backend already took this launch's file.
@@ -271,7 +277,7 @@ pub(crate) fn adopt_in(
     if std::fs::rename(dest, &claimed).is_err() {
         return None;
     }
-    let bytes = read_prefetch(&claimed, start_ms, runtime)?;
+    let bytes = read_prefetch(&claimed, start_ms)?;
     // A failure marker ends the wait immediately; the scan takes today's gio path.
     if bytes == FAIL_MARKER {
         return None;
@@ -280,14 +286,8 @@ pub(crate) fn adopt_in(
     Some((gvfslist::build_listing(&text, hidden, path).ok()?, t.elapsed().as_secs_f64() * 1000.0))
 }
 
-// The checks a reader applies before trusting a file it did not write itself.
-fn read_prefetch(dest: &Path, start_ms: u64, runtime: Option<&Path>) -> Option<Vec<u8>> {
-    // The file must live in our own runtime dir, or it is not this launch's.
-    let dir = dest.parent()?;
-    if Some(dir) != runtime {
-        return None;
-    }
-    check_dir(dir).ok()?;
+// The checks a reader applies before trusting a file it did not write itself; adopt_in has checked its dir.
+fn read_prefetch(dest: &Path, start_ms: u64) -> Option<Vec<u8>> {
     let meta = std::fs::symlink_metadata(dest).ok()?;
     // A planted symlink is refused rather than followed; the open below repeats the refusal.
     if meta.file_type().is_symlink() || !meta.is_file() {

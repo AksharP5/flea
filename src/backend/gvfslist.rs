@@ -6,7 +6,7 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-// Sample input: gio list -u -a standard::type,standard::size,time::modified,standard::symlink-target,unix::mode --nofollow-symlinks <path>
+// Sample input: gio list -u -a standard::type,standard::size,time::modified,standard::symlink-target,unix::mode --nofollow-symlinks -h <path>
 const GIO_ATTRS: &str = "standard::type,standard::size,time::modified,standard::symlink-target,unix::mode";
 // A 10k NAS folder answers in about 1.1 s; 15 s of no output bounds a hung daemon, never a large listing.
 pub const GIO_TIMEOUT: Duration = Duration::from_secs(15);
@@ -175,7 +175,7 @@ fn list_via_gio_at(path: &str, hidden: bool, gio: &str, timeout: Duration, t: In
 }
 
 // The child half the prefetch subcommand shares: the same argv, the same idle deadline, raw bytes out.
-// Sample input: path "/run/user/1000/gvfs/smb-share:server=x,share=y/dir", hidden false.
+// Sample input: path "/run/user/1000/gvfs/smb-share:server=x,share=y/dir".
 pub(crate) fn raw_output(path: &str, gio: &str, timeout: Duration) -> Result<Vec<u8>, String> {
     // -h rides on every call so gio's own hidden rule never forks the rows; parse_line's dot filter stays the only hidden rule.
     let mut argv = vec!["list".to_string(), "-u".to_string(), "-a".to_string(), GIO_ATTRS.to_string(), "--nofollow-symlinks".to_string(), "-h".to_string()];
@@ -423,6 +423,7 @@ mod tests {
         assert!(!metas[0].target_is_dir, "a real directory carries d itself, not the symlink flag");
         assert!(metas[1].target_is_dir, "a cached symlink to a folder must draw the folder icon");
         assert!(!metas[2].target_is_dir, "a broken cached link resolves to nothing");
+        assert_eq!(metas[1].mtime, 100, "the gio mtime, never the local link's own, so the cache branch answered");
     }
 
     #[test]

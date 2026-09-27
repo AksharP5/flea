@@ -64,7 +64,7 @@ fn stat_range_with(
     (out, t.elapsed().as_secs_f64() * 1000.0)
 }
 
-// A prefetched gio row answers without a stat; anything else runs the injected stat function.
+// A prefetched gio row answers from its cache, a symlink paying one follow-stat; anything else runs the injected stat.
 fn cached_or(base: &Path, l: &Listing, i: usize, stat: &(impl Fn(&Path, &str) -> Meta + Sync)) -> Meta {
     if let Some(c) = l.meta_cache.get(l.name(i)) {
         // corner: a cached symlink pays meta_one's one follow-stat so a linked folder draws as one.
