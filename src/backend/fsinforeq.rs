@@ -3,7 +3,7 @@ use super::events::Event;
 use super::extclass::{classify_entry, fstype_is_network, gvfs_class, gvfs_root};
 use super::fsinfo::Info;
 use super::mountinfo::mount_entry_in;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{mpsc::Sender, Arc};
 use std::time::{Duration, Instant};
@@ -28,10 +28,10 @@ pub struct FsInfo {
     reader: Reader,
     // Figures per folder, because an sftp host or a phone's storages answer differently below one mount root.
     known: HashMap<PathBuf, Option<Info>>,
-    // One statfs per mount root at a time, so fast navigation never piles round trips on the daemon.
-    inflight: HashMap<PathBuf, Instant>,
-    // The newest folder asked for while its mount's statfs was busy, read when that one lands.
-    next: HashMap<PathBuf, PathBuf>,
+    // One statfs per mount root at a time, with its start and folder, so fast navigation never piles round trips on the daemon.
+    inflight: HashMap<PathBuf, (Instant, PathBuf)>,
+    // Mount roots asked for again while their statfs was busy; the folder on screen is read when it lands.
+    waiting: HashSet<PathBuf>,
 }
 
 impl FsInfo {
@@ -40,7 +40,7 @@ impl FsInfo {
     }
 
     pub fn with_reader(events: Sender<Event>, reader: Reader) -> Self {
-        FsInfo { events, reader, known: HashMap::new(), inflight: HashMap::new(), next: HashMap::new() }
+        FsInfo { events, reader, known: HashMap::new(), inflight: HashMap::new(), waiting: HashSet::new() }
     }
 
     // Before the scan, so a share's statfs runs beside its gio listing; a kernel mount waits for fsinfo, keeping local lists free of a mountinfo read.
@@ -74,28 +74,29 @@ impl FsInfo {
     }
 
     fn refresh(&mut self, root: PathBuf, dir: PathBuf) {
-        if self.inflight.get(&root).is_some_and(|started| started.elapsed() < FSINFO_DEADLINE) {
-            self.next.insert(root, dir);
+        if self.inflight.get(&root).is_some_and(|(started, _)| started.elapsed() < FSINFO_DEADLINE) {
+            self.waiting.insert(root);
             return;
         }
-        let (events, reader, key) = (self.events.clone(), Arc::clone(&self.reader), root.clone());
+        let (events, reader, key, asked) = (self.events.clone(), Arc::clone(&self.reader), root.clone(), dir.clone());
         let worker = std::thread::Builder::new().name("flea-fsinfo".into()).spawn(move || {
             let info = reader(dir.clone());
             let _ = events.send(Event::FsInfo(Done { root: key, dir, info }));
         });
         // corner: a spawn that fails records nothing, so the next ask tries again and answers unknown meanwhile.
         if worker.is_ok() {
-            self.inflight.insert(root, Instant::now());
+            self.inflight.insert(root, (Instant::now(), asked));
         }
     }
 
     // The figures to print, only for the folder on screen and only when they moved since its last answer.
     pub fn finish(&mut self, done: Done, base: &Path) -> Option<Option<Info>> {
-        self.inflight.remove(&done.root);
-        if let Some(dir) = self.next.remove(&done.root) {
-            if dir != done.dir {
-                self.refresh(done.root.clone(), dir);
-            }
+        // A hung statfs landing late never clears the newer one that replaced it.
+        if self.inflight.get(&done.root).is_some_and(|(_, dir)| *dir == done.dir) {
+            self.inflight.remove(&done.root);
+        }
+        if self.waiting.remove(&done.root) && base != done.dir && base.starts_with(&done.root) {
+            self.refresh(done.root.clone(), base.to_path_buf());
         }
         let moved = self.known.get(&done.dir) != Some(&done.info);
         if self.known.len() >= KNOWN_MAX && !self.known.contains_key(&done.dir) {
@@ -171,7 +172,7 @@ mod tests {
     }
 
     #[test]
-    fn one_statfs_per_share_at_a_time_and_the_newest_folder_goes_next() {
+    fn one_statfs_per_share_at_a_time_and_the_folder_on_screen_goes_next() {
         let (mut fs, rx, calls) = counted(200, 7);
         fs.list_arrived(&share_dir("a"));
         fs.list_arrived(&share_dir("b"));
@@ -180,7 +181,7 @@ mod tests {
         assert_eq!(calls.load(Ordering::SeqCst), 1, "three folders of one share ran {} statfs calls at once", calls.load(Ordering::SeqCst));
         assert!(fs.finish(done, &share_dir("c")).is_none(), "a's figures never print over c");
         let second = next_done(&rx);
-        assert_eq!(second.dir, share_dir("c"), "the skipped middle folder is never read, the newest is");
+        assert_eq!(second.dir, share_dir("c"), "the skipped middle folder is never read, the one on screen is");
         assert_eq!(fs.finish(second, &share_dir("c")).flatten().map(|i| i.free), Some(7));
         assert_eq!(calls.load(Ordering::SeqCst), 2);
     }
@@ -228,6 +229,34 @@ mod tests {
     }
 
     #[test]
+    fn a_failed_list_during_a_busy_statfs_still_reads_the_folder_on_screen() {
+        let (mut fs, rx, _) = counted(200, 7);
+        let photos = share_dir("photos");
+        fs.list_arrived(&share_dir("w"));
+        fs.list_arrived(&photos);
+        fs.list_arrived(&share_dir("gone"));
+        assert!(fs.finish(next_done(&rx), &photos).is_none(), "w's figures never print over photos");
+        let second = next_done(&rx);
+        assert_eq!(second.dir, photos, "the folder on screen is read, not the failed list's folder");
+    }
+
+    #[test]
+    fn a_folder_left_behind_a_hung_statfs_is_never_read() {
+        let (mut fs, rx, calls) = counted(0, 7);
+        let root = PathBuf::from(SHARE);
+        fs.inflight.insert(root.clone(), (Instant::now(), share_dir("a")));
+        fs.list_arrived(&share_dir("b"));
+        fs.inflight.insert(root.clone(), (Instant::now().checked_sub(FSINFO_DEADLINE + Duration::from_secs(1)).unwrap(), share_dir("a")));
+        fs.list_arrived(&share_dir("c"));
+        let done = next_done(&rx);
+        assert_eq!(done.dir, share_dir("c"));
+        let _ = fs.finish(done, &share_dir("c"));
+        let _ = fs.finish(Done { root: root.clone(), dir: share_dir("a"), info: figures(7) }, &share_dir("c"));
+        std::thread::sleep(Duration::from_millis(100));
+        assert_eq!(calls.load(Ordering::SeqCst), 1, "b, left behind the hung statfs, was read anyway");
+    }
+
+    #[test]
     fn a_phone_storage_is_read_where_it_is_listed_not_at_the_device() {
         let (mut fs, rx, asked) = recording();
         let storage = PathBuf::from("/run/user/1000/gvfs/mtp:host=Phone/Internal shared storage/DCIM");
@@ -240,7 +269,7 @@ mod tests {
     #[test]
     fn a_hung_statfs_past_the_deadline_lets_the_next_ask_try_again() {
         let (mut fs, _rx, calls) = counted(0, 7);
-        fs.inflight.insert(PathBuf::from(SHARE), Instant::now().checked_sub(FSINFO_DEADLINE + Duration::from_secs(1)).unwrap());
+        fs.inflight.insert(PathBuf::from(SHARE), (Instant::now().checked_sub(FSINFO_DEADLINE + Duration::from_secs(1)).unwrap(), share_dir("hung")));
         fs.list_arrived(&share_dir("a"));
         std::thread::sleep(Duration::from_millis(100));
         assert_eq!(calls.load(Ordering::SeqCst), 1, "a presumed hung statfs does not hold the share's figures forever");
