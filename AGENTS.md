@@ -2727,6 +2727,8 @@ the start and the stamp at 32 lines, `ui/Row.qml` hands them down at 412 of its 
 421, `ui/ViewState.qml` owns the midnight timer at 393 under the hard cap, and
 `ui/js/Settings.js` takes the View row at 427, exactly its recorded ceiling.
 
+On the 0.3.7 branch, today dates join the clipboard marks in `ui/Row.qml`, which goes from 453 to 456, re-derived with `wc -l` on the integrated branch.
+
 ## The key table is generated
 
 `keys.toml` at the repository root is the single source of truth for every binding.
