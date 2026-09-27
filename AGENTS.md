@@ -2077,6 +2077,15 @@ both budgets, rather than into `ui/js/Menu.js`, which takes the inventory line a
 stands at 297 with 3 lines under the hard cap; `ui/js/Settings.js` takes the three checks, the
 hint and the renamed cell at 419 of its recorded 427.
 
+Fixext moves three recorded ceilings, each re-derived with `wc -l`: `ui/Pane.qml` 702
+to 714 for the storageKnown gate, the ExtThumbs refresh and the preview change hook;
+`ui/PreviewColumn.qml` 495 to 499 for the manualHold terms on text, PDF and the original
+fallback plus the truncate flag; `ui/Preview.qml` 456 to 457 for the Quick Look truncate
+flag. Inside their budgets: `ui/js/ExtThumbs.js` at 91, `ui/PreviewLines.qml` at 99,
+`ui/PreviewText.qml` at 83, `ui/SelectionPreview.qml` at 251, `ui/ColumnsArea.qml` at 326,
+`ui/js/Nav.js` at 251, `ui/PaneWire.qml` at 479 of its recorded 485, `ui/js/Settings.js`
+at 420 of its recorded 427.
+
 The Locked tile's own menu raises two recorded ceilings rather than splitting a third file.
 `ui/ContextMenu.qml` goes from its recorded 534 to 566 for the tile entrance (`tileTarget` and
 `tileMode`, `openLocked`, the `openBackground` route, the `buildEntries` arm and the

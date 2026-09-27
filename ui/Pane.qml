@@ -230,6 +230,8 @@ FocusScope {
     Connections {
         target: ViewState
         function onStateChanged() { preferences.restart() }
+        // A class switched on in Settings decodes again the same way the menu row does.
+        function onPreviewChanged() { root.refreshExtThumbs() }
     }
 
 
@@ -245,7 +247,9 @@ FocusScope {
     property real fsFree: 0
     // ExtThumbs: src/backend/extclass.rs's own word for the directory being shown, network,
     // phone, usb or "", carried beside the fsinfo line once per directory change, never per row.
+    // storageKnown is false until that line lands, so the first settle never spends unknown as local.
     property string storageClass: ""
+    property bool storageKnown: false
 
     function goBack() { if (trashHost.opened) trashHost.close(); else Nav.back(root) }
     function goForward() { if (!trashHost.opened) Nav.forward(root) }
@@ -543,12 +547,20 @@ FocusScope {
     }
     function togglePreviewColumn() { ViewState.changeLeaf("preview", { column: !ViewState.previewColumn }) }
     // ExtThumbs: the background menu's class row writes the class setting, never "this drive".
+    // A class switched on decodes again: its cache-only misses leave and the viewport re-asks.
     function toggleExtThumbs() {
         var key = ExtThumbs.keyForClass(root.storageClass)
         if (key === "") return
         var on = !ExtThumbs.classOn(root.storageClass, ViewState.preview)
         ViewState.changeSetting("preview." + key, on)
+        root.refreshExtThumbs()
         root.message(ExtThumbs.statusLine(root.storageClass, on), false)
+    }
+    function refreshExtThumbs() {
+        root.thumbState = ExtThumbs.forgetMisses(root.thumbState)
+        if (root.listArea) root.listArea.restartSettle()
+        // The preview follows rather than loads, so a class just switched off holds instead of decoding.
+        if (root.viewMode === "columns" && columnsLoader.item) columnsLoader.item.askMeta()
     }
     function chooseView(mode) { ViewState.changeKey("view", mode) }
     function focusPreviewColumn() {

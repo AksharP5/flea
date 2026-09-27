@@ -247,7 +247,7 @@ GridView {
     }
 
     function requestThumbs() {
-        if (!root.visible || root.pane.listInFlight)
+        if (!root.visible || root.pane.listInFlight || !root.pane.storageKnown)
             return
         var range = root.visibleRange()
         var span = Filter.span(root.pane.shown, range.first, range.last)

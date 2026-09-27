@@ -208,8 +208,9 @@ ListView {
     function restartSettle() { settle.restart() }
 
     // Only the visible rows, only once each, and only after the list has stopped moving.
+    // Unknown storage holds until fsinfo names it, so the first screen never decodes as local.
     function requestThumbs() {
-        if (!root.visible || root.pane.listInFlight)
+        if (!root.visible || root.pane.listInFlight || !root.pane.storageKnown)
             return
         var view = root.visibleRange()
         // A filtered viewport covers a set and not a run, so the run it spans is what the planner

@@ -21,6 +21,8 @@ Item {
     property bool manualHold: false
     // ExtThumbs: how much of a text file the frame may read; 256 KiB on network and phone storage.
     property int textLimit: 1048576
+    // True where the board truncates instead of refusing: an over-limit remote file shows its first bytes.
+    property bool truncateText: false
     // True once no thumbnail is coming: the backend answered with none, or never offered one at all.
     property bool noThumbComing: false
     // A move cleared the row and its settle is running, so the column is loading, not showing a file with no preview.
@@ -217,10 +219,11 @@ Item {
                 anchors.fill: parent
                 anchors.margins: Theme.spacing.hairline
                 visible: root.previewState === Facts.TEXT || root.previewState === Facts.CODE
-                active: root.visible && (root.rowState === Facts.TEXT || root.rowState === Facts.CODE)
+                active: root.visible && !root.manualHold && (root.rowState === Facts.TEXT || root.rowState === Facts.CODE)
                 path: root.path
                 size: root.row ? root.row.s : 0
                 maxBytes: root.textLimit
+                truncate: root.truncateText
                 numbered: root.previewState === Facts.CODE
             }
             // The PDF's own page, which is the frame's whole content for that state. QtPdf is
@@ -240,7 +243,7 @@ Item {
                     id: pdfLoader
                     width: pdfFlick.contentWidth
                     height: pdfFlick.contentHeight
-                    active: root.visible && root.rowState === Facts.PDF
+                    active: root.visible && !root.manualHold && root.rowState === Facts.PDF
                     source: "PreviewPdf.qml"
                     onLoaded: { item.path = Qt.binding(function () { return root.path }); item.viewport = pdfFlick; item.active = true }
                 }
@@ -422,7 +425,7 @@ Item {
     // Whether a player object exists at all, for the teardown check; playing false alone would mask one that survived.
     function playerLoaded() { return playerLoader.item !== null }
     // What the text, archive and failure surfaces actually draw, for ui/Ipc.qml: the lines, the member names, the sentence.
-    function textLines() { return lines.tooLarge ? "too large" : lines.lines.join("|") }
+    function textLines() { return (lines.tooLarge && !root.truncateText) ? "too large" : lines.lines.join("|") }
     function archiveNames() { return root.meta && root.meta.names ? root.meta.names.map(function (e) { return e.n }).join("|") : "" }
     function failureText() { return root.failure }
 
@@ -456,11 +459,12 @@ Item {
     }
 
     // The cache file while there is one, then the image itself once the backend says none is coming.
+    // A held frame never decodes the original: its cache entry still shows, nothing else does.
     function frameSource() {
         if (!root.visible) return ""
         if (root.thumb.length > 0)
             return Format.fileUri(root.thumb)
-        if (root.noThumbComing && root.previewState === Facts.IMAGE && root.path.length > 0)
+        if (!root.manualHold && root.noThumbComing && root.previewState === Facts.IMAGE && root.path.length > 0)
             return Format.fileUri(root.path)
         return ""
     }
@@ -479,7 +483,7 @@ Item {
         if (root.wantsThumb && root.noThumbComing && root.picturesFromThumb && !root.thumbDrawn) {
             return "no preview could be made"
         }
-        if ((root.previewState === Facts.TEXT || root.previewState === Facts.CODE) && lines.tooLarge) {
+        if ((root.previewState === Facts.TEXT || root.previewState === Facts.CODE) && lines.tooLarge && !root.truncateText) {
             return "too large to preview"
         }
         return ""

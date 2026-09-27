@@ -382,7 +382,11 @@ Item {
         function onFsInfo(fs, free, path, storageClass) {
             var ours = path.length === 0 || path === pane.path
             pane.fsName = ours ? fs : ""; pane.fsFree = ours ? free : 0
-            if (ours) pane.storageClass = storageClass || ""
+            if (ours) {
+                pane.storageClass = storageClass || ""
+                pane.storageKnown = true
+                if (pane.listArea) pane.listArea.restartSettle()
+            }
         }
 
         // The answer to Ops.clip's askPaths; nothing reaches the clipboard until this lands.

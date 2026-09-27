@@ -84,8 +84,8 @@ function openWithoutHistory(pane, newPath, options) {
     // the directory being left; ui/Pane.qml dropPath reads it and only while this listing is out.
     pane.listingPath = newPath
     // The class below is the directory being left until fsinfo answers for this one, and a
-    // settle firing in between would spend it; unknown reads as local, which is today's path.
-    pane.storageClass = ""
+    // settle firing in between would spend it; a re-read of the same path keeps its class.
+    if (newPath !== pane.path) { pane.storageClass = ""; pane.storageKnown = false }
     var ask = options || {}
     // A settled listing stays drawn until the new rows land, see AGENTS.md "The listing swap".
     if (!pane.swap.hold(ask))

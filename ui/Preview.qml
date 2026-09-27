@@ -303,6 +303,7 @@ Item {
                 size: root.size
                 // ExtThumbs: Quick Look reads at most the first 256 KiB on network and phone storage.
                 maxBytes: ExtThumbs.textLimit(root.pane ? root.pane.storageClass : "")
+                truncate: root.pane ? (root.pane.storageClass === "network" || root.pane.storageClass === "phone") : false
             }
 
             Loader {

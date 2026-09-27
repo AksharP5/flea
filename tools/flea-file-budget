@@ -45,13 +45,13 @@ ui/Ipc.qml 796
 ui/NetworkDialog.qml 449
 ui/NetworkMounts.qml 727
 ui/OpenWithDialog.qml 588
-ui/Pane.qml 705
+ui/Pane.qml 717
 ui/PaneMenuActions.qml 404
 ui/PaneWire.qml 485
 ui/PermissionsDialog.qml 426
 ui/PickerWindow.qml 676
-ui/PreviewColumn.qml 495
-ui/Preview.qml 456
+ui/PreviewColumn.qml 499
+ui/Preview.qml 457
 ui/Row.qml 421
 ui/SettingsPanel.qml 542
 ui/SettingsRow.qml 410

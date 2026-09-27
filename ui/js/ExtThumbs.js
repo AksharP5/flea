@@ -58,11 +58,25 @@ function label(storageClass, on) {
 }
 
 // The status bar's own verdict for the toggle, in the board's words.
-// Sample input: ("network", true) answers "Network thumbnails are on."
+// Sample input: ("network", true) answers "Network thumbnails are on".
 function statusLine(storageClass, on) {
     var noun = storageClass === "usb" ? "USB"
         : storageClass.charAt(0).toUpperCase() + storageClass.slice(1)
-    return noun + " thumbnails are " + (on ? "on." : "off.")
+    return noun + " thumbnails are " + (on ? "on" : "off")
+}
+
+// A class switched on decodes again: its cache-only misses were final answers,
+// so they leave the map and the settle re-asks the viewport. Sample input:
+// {file: {3: "", 4: "/c/x.png"}, order: [3, 4]} forgets 3 and keeps 4.
+function forgetMisses(state) {
+    var kept = []
+    for (var i = 0; i < state.order.length; i++) {
+        var at = state.order[i]
+        if (state.file[at] === "") delete state.file[at]
+        else kept.push(at)
+    }
+    state.order = kept
+    return { file: state.file, order: state.order }
 }
 
 // FileView reads the whole file, so a row over the gate is refused, not truncated, the

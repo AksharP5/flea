@@ -48,7 +48,12 @@ function run(check) {
     check("a file row never offers it", Menu.listingEntries(menuState({ hasRow: true, storageClass: "network", hiddenActions: [] }))
           .filter(function (r) { return r.action === "extThumbs" }).length, 0)
     check("the toggle says what it did", [ExtThumbs.statusLine("network", true), ExtThumbs.statusLine("usb", false), ExtThumbs.statusLine("phone", true)].join("|"),
-          "Network thumbnails are on.|USB thumbnails are off.|Phone thumbnails are on.")
+          "Network thumbnails are on|USB thumbnails are off|Phone thumbnails are on")
+    check("a cache-only miss leaves and a hit stays", (function () {
+        var st = { file: { 3: "", 4: "/c/x.png" }, order: [3, 4] }
+        ExtThumbs.forgetMisses(st)
+        return st.order.join(",") + "|" + (st.file[3] === undefined) + "|" + st.file[4]
+    })(), "4|true|/c/x.png")
     check("text on network and phone reads at most 256 KiB", [ExtThumbs.textLimit("network"), ExtThumbs.textLimit("phone")].join("|"), "262144|262144")
     check("local and USB keep the megabyte", [ExtThumbs.textLimit(""), ExtThumbs.textLimit("usb")].join("|"), "1048576|1048576")
 
@@ -60,8 +65,10 @@ function run(check) {
         return {}
     }
     check("the third cell reads Everything", find(preview, "preview.thumbnails").labels.join("|"), "Off|Images|Everything")
-    check("the three checks sit directly under Thumbnails",
-          preview.map(function (r) { return r.id || "" }).join("|").indexOf("preview.thumbnails|preview.thumbNetwork|preview.thumbPhone|preview.thumbUsb") >= 0, true)
+    check("Thumbnail size sits under Thumbnails and the three checks under it",
+          preview.map(function (r) { return r.id || "" }).join("|").indexOf("preview.thumbnails|preview.thumbSize|preview.thumbNetwork|preview.thumbPhone|preview.thumbUsb") >= 0, true)
+    check("the three class checks draw no glyph", [find(preview, "preview.thumbNetwork").glyph,
+          find(preview, "preview.thumbPhone").glyph, find(preview, "preview.thumbUsb").glyph].join("|"), "||")
     check("network and phone ship off, USB on",
           [find(preview, "preview.thumbNetwork").on, find(preview, "preview.thumbPhone").on, find(preview, "preview.thumbUsb").on].join("|"),
           "false|false|true")

@@ -360,18 +360,19 @@ function previewRows(state) {
         { kind: "group", label: "Thumbnails" },
         choice("preview.thumbnails", "Thumbnails", "image", ["off", "images", "media"],
                ["Off", "Images", "Everything"], data.thumbnails || "media"),
+        size,
         // ExtThumbs: one switch per storage class, at the same column and never indented.
         // They grey with the segment at 0.55 and keep their values, the way a disabled
         // chrome control keeps its state; grid zoom below never greys with them.
-        { kind: "check", id: "preview.thumbNetwork", label: "On network shares", glyph: "network",
+        // No glyph: the board leaves their 19 px slot empty.
+        { kind: "check", id: "preview.thumbNetwork", label: "On network shares",
           on: data.thumbNetwork === true, available: data.thumbnails !== "off" },
-        { kind: "check", id: "preview.thumbPhone", label: "On phones", glyph: "smartphone",
+        { kind: "check", id: "preview.thumbPhone", label: "On phones",
           on: data.thumbPhone === true, available: data.thumbnails !== "off" },
-        { kind: "check", id: "preview.thumbUsb", label: "On USB drives", glyph: "drive",
+        { kind: "check", id: "preview.thumbUsb", label: "On USB drives",
           on: data.thumbUsb !== false, available: data.thumbnails !== "off" },
         { kind: "hint", label: "Off still shows thumbnails that were already made.",
           available: data.thumbnails !== "off" },
-        size,
         // Rule 7: GridArea gates ctrl-scroll on ViewState.ctrlZoom alone and sizes the tiles from it with thumbnails off, so it is grid zoom, it is named that, and it never greys with them.
         { kind: "check", id: "preview.ctrlZoom", label: "Zoom the grid with ctrl and scroll", glyph: "move-horizontal", on: data.ctrlZoom !== false }
     ]

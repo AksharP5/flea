@@ -1,6 +1,7 @@
 import QtQuick
 import qs.Commons
 import "." as Flea
+import "js/ExtThumbs.js" as ExtThumbs
 import "js/Focus.js" as Focus
 import "js/Nav.js" as Nav
 import "js/Tap.js" as Tap
@@ -86,13 +87,23 @@ Item {
     }
 
     // A folder whose rows are already here lands at once; any other change of what the third column shows is held.
+    // A hold is taken only when a load will follow: a peek for a folder, or a file's settle in
+    // automatic mode on a held-off class; a manual load, a hidden preview column or a held frame
+    // lands at once, or the cap would never arm and the frozen picture would block the pointer.
     function moveThird() {
         if (root.cursorIsDir === root.shownIsDir && root.childPath === root.shownChildPath
                 && (root.cursorRow !== null) === root.shownHasRow)
             return
         var idle = !thirdSwap.capturing && !thirdSwap.holding
-        var nothingShown = !ViewState.previewColumn && !root.cursorIsDir && !root.shownIsDir
-        if (idle && (nothingShown || (root.cursorIsDir && root.answered(root.childPath)))) {
+        var held = !root.pane.storageKnown || ExtThumbs.manualHold(root.pane.storageClass, ViewState.preview)
+        var fileLoad = !root.cursorIsDir && ViewState.previewColumn && ViewState.previewAutomatic && !held
+        var folderLoad = root.cursorIsDir && !root.answered(root.childPath)
+        if (!fileLoad && !folderLoad) {
+            root.showCursorRow()
+            if (!root.cursorIsDir) preview.followSelection()
+            return
+        }
+        if (idle && root.cursorIsDir && root.answered(root.childPath)) {
             root.showCursorRow()
             return
         }
@@ -208,9 +219,9 @@ Item {
         target: root.pane
         function onCursorIndexChanged() { root.followCursor() }
         // A meta asked before the new listing landed is answered with silence, because the row index
-        // is outside the listing the backend still holds. The rows arriving is what re-asks it, and
-        // only when nothing has answered yet, so the column cannot sit on Loading and a landing that
-        // already has its facts does not ask a second time and race its own reply.
+        // is outside the listing the backend still holds. The rows arriving re-asks through
+        // followCursor, and preview.followSelection keeps a held or loaded identity rather than
+        // clearing it, so a landing that already has its facts does not race its own reply.
         function onRowsChanged() { root.followCursor() }
     }
     Component.onCompleted: { root.showCursorRow(); root.refreshNeighbours() }

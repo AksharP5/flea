@@ -80,7 +80,7 @@ Item {
     // The viewport's rows and no more, rule 1: the same plan the list and the grid run, over this column's own scroll position.
     function requestThumbs() {
         // visible is effective visibility, so the column kept alive under another view plans nothing against the shared state.
-        if (root.pane === null || !root.visible || root.pane.total === 0 || root.pane.listInFlight)
+        if (root.pane === null || !root.visible || root.pane.total === 0 || root.pane.listInFlight || !root.pane.storageKnown)
             return
         var range = root.visibleRange()
         var span = Filter.span(root.pane.shown, range.first, range.last)

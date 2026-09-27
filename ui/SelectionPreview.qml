@@ -50,13 +50,17 @@ Flea.PreviewColumn {
 
     readonly property bool canRead: root.visible && root.pane !== null && !root.pane.listInFlight
     overlayOpen: root.pane && root.pane.preview ? root.pane.preview.active : false
-    thumb: root.pane && root.loadedIndex >= 0 ? Thumbs.fileFor(root.pane.thumbState, root.loadedIndex) : ""
+    thumb: root.pane ? (root.manualHold ? Thumbs.fileFor(root.pane.thumbState, root.pane.cursorIndex)
+        : (root.loadedIndex >= 0 ? Thumbs.fileFor(root.pane.thumbState, root.loadedIndex) : "")) : ""
     noThumbComing: root.row !== null && (root.row.t !== true || !root.pane
         || Thumbs.refused(root.pane.thumbState, root.loadedIndex))
     loadingHeldOff: root.swap !== null && root.swap.fellBack
 
     // What the swap waits for: the cursor row's preview whole, or nothing more coming for it.
+    // A held frame is whole from the listing alone, cached thumbnail or not.
     readonly property bool ready: {
+        if (root.manualHold)
+            return !root.pending
         if (root.pane === null || root.row === null)
             return !root.pending
         if (root.loadedIndex !== root.pane.cursorIndex)
@@ -68,6 +72,7 @@ Flea.PreviewColumn {
 
     // ExtThumbs: how much of a text file this frame may read; the column passes it on.
     textLimit: ExtThumbs.textLimit(root.pane ? root.pane.storageClass : "")
+    truncateText: root.pane ? (root.pane.storageClass === "network" || root.pane.storageClass === "phone") : false
 
     function identity(row) {
         return row ? JSON.stringify([row.n, row.s, row.m, row.p, row.i]) : ""
@@ -126,7 +131,7 @@ Flea.PreviewColumn {
     function followSelection() {
         if (!root.canRead) return
         var candidate = root.pane.rowFor(root.pane.cursorIndex)
-        var hold = ExtThumbs.manualHold(root.pane.storageClass, ViewState.preview)
+        var hold = !root.pane.storageKnown || ExtThumbs.manualHold(root.pane.storageClass, ViewState.preview)
         if (root.loadedDirectory === root.pane.path && root.loadedIndex === root.pane.cursorIndex
                 && root.loadedIdentity === root.identity(candidate) && root.manualHold === hold) return
         // An off class holds the frame on the listing's own facts until Ctrl+Space loads it; nothing loads, so no swap.
@@ -135,15 +140,20 @@ Flea.PreviewColumn {
     }
 
     // The held frame: the row, its path and its facts from the listing alone, no meta and no
-    // thumbnail ask. Space still opens Quick Look, which loads on request.
+    // thumbnail ask. The loaded identity is recorded so rows replies do not clear and re-hold.
+    // Space still opens Quick Look, which loads on request.
     function holdSelection(candidate) {
         if (!candidate || candidate.d) return
         root.manualHold = true
+        root.loadedIndex = root.pane.cursorIndex
+        root.loadedDirectory = root.pane.path
+        root.loadedIdentity = root.identity(candidate)
         root.row = Object.assign({}, candidate)
         root.path = root.pane.join(root.pane.path, candidate.n)
         root.kindName = root.pane.kindNames[candidate.k] || ""
         root.selectionCount = root.pane.selectionCount()
         root.selectedRows = root.pane.selectedIndices().map(function (index) { return root.pane.rowFor(index) }).filter(function (row) { return row !== null })
+        if (root.swap) root.swap.start(false)
     }
 
     // Ctrl+Space calls this directly; automatic selection reaches it only after selection settles.
@@ -185,7 +195,13 @@ Flea.PreviewColumn {
     Timer {
         id: settle
         interval: root.pane ? root.pane.settleMs : 120
-        onTriggered: if (ViewState.previewAutomatic) root.loadSelection()
+        // The automatic settle holds an off class; Ctrl+Space's direct loadSelection stays full.
+        // Unknown is held too, so the first settle never spends the class fsinfo has not named yet.
+        onTriggered: if (ViewState.previewAutomatic) {
+            var hold = root.pane ? (!root.pane.storageKnown || ExtThumbs.manualHold(root.pane.storageClass, ViewState.preview)) : false
+            if (hold) root.followSelection()
+            else root.loadSelection()
+        }
     }
     onCanReadChanged: {
         // A listing going out leaves the preview to Nav.forget's reset, which clears it when held rows go.
@@ -205,6 +221,9 @@ Flea.PreviewColumn {
         target: root.pane
         // With a swap, ui/ColumnsArea.qml calls followSelection after it has put the hold in place.
         function onCursorIndexChanged() { if (!root.swap) root.followSelection() }
+        // The class lands with fsinfo, after the rows; a settle fired in between spent local.
+        function onStorageClassChanged() { root.followSelection() }
+        function onStorageKnownChanged() { root.followSelection() }
         function onRowsChanged() {
             if (root.loadedIndex >= 0 && root.loadedIdentity !== root.identity(root.pane.rowFor(root.loadedIndex)))
                 root.replace()
