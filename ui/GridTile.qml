@@ -1,6 +1,7 @@
 import QtQuick
 import qs.Commons
 import "." as Flea
+import "js/Density.js" as Density
 import "js/Drag.js" as DragOps
 import "js/Format.js" as Format
 import "js/Icons.js" as Icons
@@ -69,7 +70,7 @@ Item {
         id: markSlot
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.top: parent.top
-        anchors.topMargin: Theme.spacing.rowPaddingX
+        anchors.topMargin: Density.gridPadY(Theme.spacing.rowPaddingX, ViewState.density)
         width: ViewState.thumbnailPixels
         height: ViewState.thumbnailPixels
         opacity: root.clipCut ? Theme.disabledOpacity : 1
@@ -93,8 +94,8 @@ Item {
         Flea.Glyph {
             anchors.fill: parent
             visible: !root.thumbDrawn
-            // The tile is the mark's own slot: without its own ceiling Glyph caps a 46 px tile at the 19 px row mark.
-            maxSize: ViewState.thumbnailPixels
+            // A folder mark never grows past 128, centred in the larger slots, so only thumbnails grow.
+            maxSize: Density.glyphCap(ViewState.thumbnailPixels)
             name: root.row ? Icons.glyphForRow(root.row.i, root.row.p) : "file"
             // ThemeRoles.dc.html gives accent the selection fill and edge and foreground the label
             // and the mark inside it, so the border carries the emphasis and the ink stays readable.
@@ -105,7 +106,7 @@ Item {
     HoverHandler { id: hover }
 
     // corner: a filename is arbitrary text, so PlainText, the same rule every name on this surface follows.
-    // The caption wraps two lines; the last line elides in the middle, so the extension stays visible.
+    // The name draws at bodySmall; the line box stays the caption's, so the board tiles hold.
     Text {
         id: nameLabel
         visible: !root.renaming
@@ -121,7 +122,7 @@ Item {
         text: root.row ? root.row.n : ""
         color: Theme.color.foreground
         font.family: Theme.font.family
-        font.pixelSize: Theme.font.caption
+        font.pixelSize: Theme.font.bodySmall
         textFormat: Text.PlainText
         wrapMode: Text.Wrap
         maximumLineCount: root.dropTarget ? 1 : 2

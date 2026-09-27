@@ -18,6 +18,7 @@ import "focus.js" as FocusSuite
 import "focus-forward.js" as FocusForwardSuite
 import "focus-grid.js" as FocusGridSuite
 import "gridgeometry.js" as GridGeometrySuite
+import "density.js" as DensitySuite
 import "focus-lines.js" as FocusLinesSuite
 import "focus-wrap.js" as FocusWrapSuite
 import "format.js" as FormatSuite
@@ -104,7 +105,7 @@ Item {
             ["errors", ErrorsSuite], ["facts", FactsSuite], ["filter", FilterSuite], ["filter-cursor", FilterCursorSuite],
             ["focus", FocusSuite], ["focus-grid", FocusGridSuite], ["focus-forward", FocusForwardSuite],
             ["foldersorts", FolderSortsSuite],
-            ["gridgeometry", GridGeometrySuite],
+            ["gridgeometry", GridGeometrySuite], ["density", DensitySuite],
             ["focus-lines", FocusLinesSuite], ["focus-wrap", FocusWrapSuite],
             ["format", FormatSuite], ["icons", IconsSuite],
             ["jump", JumpSuite], ["jump-heldout", JumpHeldoutSuite], ["keymap", KeymapSuite], ["localsend", LocalSendSuite], ["match", MatchSuite], ["menu", MenuSuite],

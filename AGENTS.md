@@ -2729,6 +2729,8 @@ the start and the stamp at 32 lines, `ui/Row.qml` hands them down at 412 of its 
 
 On the 0.3.7 branch, today dates join the clipboard marks in `ui/Row.qml`, which goes from 453 to 456, re-derived with `wc -l` on the integrated branch.
 
+Density040 and GridStops move one recorded ceiling, re-derived with `wc -l`: `ui/js/Settings.js` 427 to 428 for the Tight density row with its hint and the Huge and Largest thumbnail stops. The maths went to the new `ui/js/Density.js`, 46 lines inside both budgets, rather than into `Theme.qml`, which stands at 400 at the hard cap; `ui/js/GridGeometry.js` takes the cell height at 22, `ui/GridTile.qml` at 203, `ui/GridArea.qml` at 277, `ui/ViewState.qml` at 395 and `src/uischema.rs` at 408, all inside their budgets.
+
 ## The key table is generated
 
 `keys.toml` at the repository root is the single source of truth for every binding.

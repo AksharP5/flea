@@ -122,7 +122,7 @@ pub const PREVIEW: &[(&str, Rule)] = &[
     ("column", Rule::Bool),
     ("loadOn", Rule::Word(&["automatic", "manual"])),
     ("thumbnails", Rule::Word(&["off", "images", "media"])),
-    ("thumbSize", Rule::Word(&["small", "medium", "large", "xlarge"])),
+    ("thumbSize", Rule::Word(&["small", "medium", "large", "xlarge", "huge", "largest"])),
     // ExtThumbs: one switch per storage class beside the segment they depend on.
     ("thumbNetwork", Rule::Bool),
     ("thumbPhone", Rule::Bool),
@@ -146,7 +146,7 @@ pub const UPDATES: &[(&str, Rule)] = &[("autoCheck", Rule::Bool)];
 
 pub const SCHEMA: &[(&str, Rule)] = &[
     ("view", Rule::Word(&["list", "columns", "grid", "dual"])),
-    ("density", Rule::Word(&["compact", "normal", "comfortable"])),
+    ("density", Rule::Word(&["tight", "compact", "normal", "comfortable"])),
     ("columns", Rule::Columns),
     ("addressBar", Rule::Word(&["path", "breadcrumb"])),
     ("sort", Rule::Group(SORT)),

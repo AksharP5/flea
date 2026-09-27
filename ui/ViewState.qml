@@ -3,6 +3,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import qs.Commons
+import "js/Density.js" as Density
 import "js/Keymap.js" as Keymap
 import "js/RecentDates.js" as RecentDates
 import "js/Settings.js" as Settings
@@ -159,7 +160,8 @@ QtObject {
     readonly property bool previewAutomatic: root.preview.loadOn !== "manual"
     readonly property string thumbnailMode: root.preview.thumbnails || "media"
     readonly property string thumbnailSize: root.preview.thumbSize || "medium"
-    readonly property int thumbnailPixels: ({ small: 48, medium: 64, large: 96, xlarge: 128 })[root.thumbnailSize] || 64
+    // Huge 192 and Largest 256 decode nothing new: the shared cache already holds 256.
+    readonly property int thumbnailPixels: Density.thumbPixelsFor(root.thumbnailSize)
     readonly property bool ctrlZoom: root.preview.ctrlZoom !== false
     readonly property string density: root.state.density || "compact"
     readonly property string addressBar: root.state.addressBar || "breadcrumb"

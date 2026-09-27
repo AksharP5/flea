@@ -314,8 +314,9 @@ function viewRows(state) {
         { kind: "group", label: "View" },
         choice("view", "Last-used view", undefined, ["list", "columns", "grid", "dual"],
                ["List", "Columns", "Grid", "Dual pane"], data.view || "list"),
-        choice("density", "Row density", "list", ["compact", "normal", "comfortable"],
-               ["Compact", "Normal", "Comfortable"], data.density || "compact"),
+        choice("density", "Row density", "list", ["tight", "compact", "normal", "comfortable"],
+               ["Tight", "Compact", "Normal", "Comfortable"], data.density || "compact"),
+        { kind: "hint", label: "Compact stays the default." },
         { kind: "action", id: "columns", label: "Columns", glyph: "columns",
           value: columns.map(function (key) { return key.charAt(0).toUpperCase() + key.slice(1) }).join(", ") },
         choice("addressBar", "Address bar", undefined, ["path", "breadcrumb"],
@@ -356,8 +357,8 @@ function previewRows(state) {
     // Rule 7: with the column off, SelectionPreview.canRead is false and both load paths return, so Load is the one real dependent here and it greys rather than lying.
     load.available = data.column !== false
     // One value per row, rule 4: the board drops the figure outright, because "64 px  Medium" is one fact twice.
-    var size = choice("preview.thumbSize", "Thumbnail size", "maximize", ["small", "medium", "large", "xlarge"],
-                      ["Small", "Medium", "Large", "Extra large"], data.thumbSize || "medium")
+    var size = choice("preview.thumbSize", "Thumbnail size", "maximize", ["small", "medium", "large", "xlarge", "huge", "largest"],
+                      ["Small", "Medium", "Large", "Extra large", "Huge", "Largest"], data.thumbSize || "medium")
     return [
         { kind: "group", label: "Preview column" },
         // Preview board rule 4: the heading names the group, so the row under it names the switch.

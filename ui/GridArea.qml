@@ -1,6 +1,7 @@
 import QtQuick
 import "." as Flea
 import "js/ClipMarks.js" as ClipMarks
+import "js/Density.js" as Density
 import "js/DirSizes.js" as DirSizes
 import "js/ExtThumbs.js" as ExtThumbs
 import "js/Filter.js" as Filter
@@ -28,7 +29,7 @@ GridView {
         var steps = root.zoomTravel > 0 ? Math.floor(root.zoomTravel) : Math.ceil(root.zoomTravel)
         if (steps !== 0) {
             root.zoomTravel -= steps
-            var sizes = ["small", "medium", "large", "xlarge"]
+            var sizes = ["small", "medium", "large", "xlarge", "huge", "largest"]
             var next = Math.max(0, Math.min(sizes.length - 1, sizes.indexOf(ViewState.thumbnailSize) + steps))
             ViewState.changeSetting("preview.thumbSize", sizes[next])
         }
@@ -44,10 +45,10 @@ GridView {
     readonly property int columns: GridGeometry.columnsFor(root.width, Theme.grid.minCellWidth,
         ViewState.thumbnailPixels, Theme.spacing.rowPaddingX, Theme.spacing.gap, Theme.spacing.rowPaddingX)
     readonly property int tileRows: Math.max(1, Math.ceil(root.pane.shownTotal / root.columns))
-    // Mark, one gap, two caption lines, and the padding above and below.
-    readonly property int cellHeightPx: ViewState.thumbnailPixels + Theme.spacing.gap
-                                        + Math.ceil(Theme.grid.captionHeight)
-                                        + 2 * Theme.spacing.rowPaddingX
+    // Mark, one gap, two caption lines, and the density's pad above and below.
+    readonly property int cellHeightPx: GridGeometry.cellHeightFor(ViewState.thumbnailPixels, Theme.spacing.gap,
+                                        Math.ceil(Theme.grid.captionHeight),
+                                        Density.gridPadY(Theme.spacing.rowPaddingX, ViewState.density))
                                         + renameExtraHeight
     readonly property real renameExtraHeight: {
         if (!root.pane || root.pane.renamingIndex < 0) return 0

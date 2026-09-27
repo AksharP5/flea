@@ -14,3 +14,9 @@ function columnsFor(width, minCellWidth, tilePixels, rowPaddingX, gap, lane) {
 function cellWidthFor(width, columns, gap, lane) {
     return Math.max(1, Math.floor((width - gap - (Number(lane) || 0)) / Math.max(1, columns)))
 }
+
+// A cell is its slot plus the name gap plus two caption lines plus the pad above and below.
+// Sample input: cellHeightFor(128, 9, 33, 14) is 198, the board tile.
+function cellHeightFor(thumbPixels, gap, captionHeight, padY) {
+    return Math.max(1, thumbPixels + gap + captionHeight + 2 * padY)
+}

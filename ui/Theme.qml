@@ -6,6 +6,7 @@ import QtQuick
 import qs.Commons
 import "js/Columns.js" as Columns
 import "js/Contrast.js" as Contrast
+import "js/Density.js" as Density
 import "js/Palette.js" as Palette
 import "js/TextSize.js" as TextSize
 
@@ -66,7 +67,8 @@ Singleton {
         readonly property int caption: root.overridden ? TextSize.caption(root.baseSize) : Style.font.caption
     }
 
-    readonly property real densityRatio: ViewState.density === "compact" ? 0.5 : ViewState.density === "comfortable" ? 1.5 : 1
+    // Tight drops the padding through Density040, Compact stays the default.
+    readonly property real densityRatio: Density.ratioFor(ViewState.density)
 
     readonly property QtObject spacing: QtObject {
         readonly property int hairline: Style.spacing.hairline
@@ -106,7 +108,7 @@ Singleton {
 
     // Row height follows the font so it scales with omarchy display text size.
     readonly property int rowHeight: Math.round(font.bodySmall * lineBoxRatio) + 2 * spacing.rowPaddingY
-    readonly property int fileRowHeight: Math.round(font.bodySmall * lineBoxRatio) + 2 * Math.round(spacing.rowPaddingY * densityRatio)
+    readonly property int fileRowHeight: Density.rowHeight(Math.round(font.bodySmall * lineBoxRatio), spacing.rowPaddingY, ViewState.density)
     // The icon slot is the row's text line box, so an icon can never change the row height.
     readonly property int iconSize: root.rowHeight - 2 * root.spacing.rowPaddingY
     // A mark is sized from the type scale, never from its slot: 19, the canvas's own M.mark, is the row and menu one.
