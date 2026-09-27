@@ -46,7 +46,7 @@ pub fn pick(reply: &str) -> i32 {
         return 2;
     }
     let Some(ui) = paths::ui_dir() else {
-        eprintln!("flea: the shell config is missing, set FLEA_UI or install /usr/share/flea/ui");
+        eprintln!("{}", paths::missing_ui_message());
         return 2;
     };
     let mut cmd = qs_command(ui.join(paths::PICKER_ENTRY));

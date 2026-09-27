@@ -352,7 +352,7 @@ fn main() {
             exit(gui::exec_qs(&ui, open_path.as_deref(), select_path.as_deref()))
         }
         None => {
-            eprintln!("flea: the shell config is missing, set FLEA_UI or install /usr/share/flea/ui");
+            eprintln!("{}", paths::missing_ui_message());
             exit(2);
         }
     }

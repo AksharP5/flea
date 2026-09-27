@@ -15,6 +15,12 @@ pub const ENTRY: &str = "boot/shell.qml";
 // The chooser's own entry, beside it; see AGENTS.md "The first window".
 pub const PICKER_ENTRY: &str = "boot/picker.qml";
 
+// Issue 216: a package that ships /usr/share/flea/ui without ui/boot left this reading as if the
+// directory were missing, so the message names the file Flea looked for.
+pub fn missing_ui_message() -> String {
+    format!("flea: the shell config is missing: /usr/share/flea/ui/{} was not found; set FLEA_UI or reinstall flea", ENTRY)
+}
+
 // The UI ships as data, so it is found the same way FLEA_BIN finds the binary.
 pub fn ui_dir() -> Option<PathBuf> {
     if let Some(p) = env_ui_dir() {
@@ -72,6 +78,14 @@ fn hex_digit(b: u8) -> Option<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_missing_ui_message_names_the_entry_file_it_looked_for() {
+        assert_eq!(
+            missing_ui_message(),
+            "flea: the shell config is missing: /usr/share/flea/ui/boot/shell.qml was not found; set FLEA_UI or reinstall flea"
+        );
+    }
 
     // Both cases sit in one test because FLEA_UI is process wide and cargo runs tests in threads.
     #[test]
