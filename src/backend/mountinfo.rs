@@ -8,13 +8,14 @@ pub(crate) fn mount_type_in(path: &Path, body: &str) -> Option<String> {
     mount_entry_in(path, body).map(|entry| entry.fstype)
 }
 
-// The mount that owns a path: its filesystem type and its device numbers.
+// The mount that owns a path: its mount point, its filesystem type and its device numbers.
 pub(crate) struct MountEntry {
+    pub mount: PathBuf,
     pub fstype: String,
     pub majmin: String,
 }
 
-// Sample: the line above answers fstype "fuse.rclone" and majmin "0:9".
+// Sample: the line above answers mount "/home/pi/My Drive", fstype "fuse.rclone" and majmin "0:9".
 pub(crate) fn mount_entry_in(path: &Path, body: &str) -> Option<MountEntry> {
     let mut best: Option<(usize, MountEntry)> = None;
     for (mount, fstype, majmin) in body.lines().filter_map(parse_line) {
@@ -23,7 +24,7 @@ pub(crate) fn mount_entry_in(path: &Path, body: &str) -> Option<MountEntry> {
         }
         let depth = mount.components().count();
         if best.as_ref().map(|(old, _)| depth >= *old).unwrap_or(true) {
-            best = Some((depth, MountEntry { fstype, majmin }));
+            best = Some((depth, MountEntry { mount, fstype, majmin }));
         }
     }
     best.map(|(_, entry)| entry)

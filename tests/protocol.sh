@@ -97,6 +97,13 @@ check "listpaths reports no sort pass" "0.000" "$(echo "$out" | head -1 | grep -
 out=$(printf '{"c":"listpaths","paths":["etc/hostname","/",""],"first":10}\n{"c":"quit"}\n' | $BIN --backend)
 check "listpaths refuses a path that is not absolute" "0" "$(echo "$out" | head -1 | grep -oE '"n":[0-9]+' | cut -d: -f2)"
 
+# A local fsinfo answers figures and class in one line; only a slow mount sends a second.
+# Sample output: {"t":"fsinfo","fs":"btrfs","free":442000000000,"path":"/x","class":""}
+out=$(printf '{"c":"list","path":"%s","first":0}\n{"c":"fsinfo"}\n{"c":"quit"}\n' "$D" | $BIN --backend)
+check "a local fsinfo answers exactly one line" "1" "$(echo "$out" | grep -c '"t":"fsinfo"')"
+check "and that line names the directory's own filesystem, not unknown" "1" "$(echo "$out" | grep '"t":"fsinfo"' | grep -vc '"fs":""')"
+check "for the directory just listed" "1" "$(echo "$out" | grep -c "\"t\":\"fsinfo\",\"fs\":\"[^\"]*\",\"free\":[0-9]*,\"path\":\"$D\"")"
+
 # Task 11: rows carries a per-response Kind dictionary, read against the box's real freedesktop tables, see docs/protocol.md "rows".
 kind_out=$(printf '{"c":"list","path":"%s","first":10}\n{"c":"quit"}\n' "$D" | $BIN --backend)
 kind_row=$(echo "$kind_out" | sed -n 2p)

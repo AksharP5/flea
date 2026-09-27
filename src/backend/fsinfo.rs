@@ -59,6 +59,7 @@ extern "C" {
     fn statfs(path: *const c_char, buf: *mut StatFs) -> i32;
 }
 
+#[derive(Clone, PartialEq)]
 pub struct Info {
     pub name: String,
     // Bytes available to an unprivileged process, which is f_bavail and never f_bfree.

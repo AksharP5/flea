@@ -471,6 +471,15 @@ beside this line and never per row: network is cifs, smb2, nfs, sshfs, rclone, 9
 ceph and any gvfs FUSE share, phone is gvfs mtp, gphoto2 and afc, and usb is a block
 device whose sysfs path runs through USB or whose removable flag is 1. An unreadable
 path answers an empty `fs` with a free of 0 rather than a wrong number.
+On a slow mount, a gvfs share or a kernel network filesystem, the statfs behind the
+figures is a network round trip, so it runs on a worker thread, one per mount at a time: a
+share starts it when the `list` arrives, beside the listing, and a kernel mount when `fsinfo`
+does. `fsinfo` answers at once with the class and the mount's last known figures, or unknown
+figures (`"fs":""`, `"free":0`) on a first visit. When the worker returns, a second `fsinfo`
+line for the same `path` carries the fresh figures, sent only when they differ from what the
+mount last answered and only while the listed directory is still on that mount. A client must
+accept that line at any time: it updates the figures in place and changes nothing else.
+Local and USB directories answer figures and class in the one line, exactly as before.
 
 ### dirsize
 

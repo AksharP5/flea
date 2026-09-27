@@ -1,6 +1,7 @@
 // The directory's own class for the thumbnail gate: network, phone, usb or local ("").
 // Computed once per directory change beside the fsinfo line, never per row.
-use std::path::Path;
+use super::mountinfo::MountEntry;
+use std::path::{Path, PathBuf};
 
 // statfs magics that name a network filesystem even when the mount table spells it "fuse".
 const NETWORK_MAGICS: [i64; 5] = [0x6969, 0xFF534D42, 0xFE534D42, 0x01021997, 0x00C36400];
@@ -34,6 +35,21 @@ pub fn gvfs_class(path: &Path) -> Option<&'static str> {
     } else {
         Some("network")
     }
+}
+
+// Sample input: "/run/user/1000/gvfs/smb-share:server=n,share=x/dir" answers "/run/user/1000/gvfs/smb-share:server=n,share=x".
+pub fn gvfs_root(path: &Path) -> Option<PathBuf> {
+    gvfs_class(path)?;
+    let mut root = PathBuf::new();
+    let mut after_gvfs = false;
+    for part in path.components() {
+        root.push(part);
+        if after_gvfs {
+            return Some(root);
+        }
+        after_gvfs = part.as_os_str() == "gvfs";
+    }
+    None
 }
 
 // Sample sysfs target: "../../devices/pci0000:00/0000:00:14.0/usb2/2-1/host0/block/sdb/sdb1" trues.
@@ -87,9 +103,13 @@ pub fn classify(path: &Path) -> &'static str {
         return class;
     }
     let body = std::fs::read_to_string("/proc/self/mountinfo").unwrap_or_default();
-    let entry = super::mountinfo::mount_entry_in(path, &body);
-    let usb = usb_for(entry.as_ref().map(|e| e.majmin.as_str()));
-    classify_parts(path, entry.as_ref().map(|e| e.fstype.as_str()), super::fsinfo::magic_of(path), usb)
+    classify_entry(path, super::mountinfo::mount_entry_in(path, &body).as_ref())
+}
+
+// The class from a mount entry the caller already read, so fsinfo pays one mountinfo read.
+pub fn classify_entry(path: &Path, entry: Option<&MountEntry>) -> &'static str {
+    let usb = usb_for(entry.map(|e| e.majmin.as_str()));
+    classify_parts(path, entry.map(|e| e.fstype.as_str()), super::fsinfo::magic_of(path), usb)
 }
 
 // A mount that names no block device answers false without touching sysfs.
@@ -163,6 +183,15 @@ mod tests {
         assert_eq!(classify_parts(Path::new("/media/stick"), Some("vfat"), Some(0x4D44), true), "usb");
         assert_eq!(classify_parts(Path::new("/home/gm"), Some("ext4"), Some(0xEF53), false), "");
         assert_eq!(classify_parts(Path::new("/home/gm"), None, None, false), "");
+    }
+
+    #[test]
+    fn a_gvfs_root_is_the_share_directory_whatever_the_depth() {
+        let share = Path::new("/run/user/1000/gvfs/smb-share:server=nas,share=media");
+        assert_eq!(gvfs_root(&share.join("photos/2026")).as_deref(), Some(share));
+        assert_eq!(gvfs_root(share).as_deref(), Some(share), "the share itself is its own root");
+        assert_eq!(gvfs_root(Path::new("/run/user/1000/gvfs")), None, "the gvfs mount alone names no share");
+        assert_eq!(gvfs_root(Path::new("/home/gm/gvfs/x")), None, "a local folder named gvfs is not a share");
     }
 
     #[test]

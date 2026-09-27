@@ -15,6 +15,8 @@ pub enum Event {
     Request(String),
     Thumb(Done),
     DirSize(crate::backend::dirsizeworker::Done),
+    // A slow mount's figures, decided off the loop so no statfs ever blocks a window behind it.
+    FsInfo(crate::backend::fsinforeq::Done),
     // A write operation's own thread reports here, so the loop stays the only writer of stdout.
     Op(OpMsg),
     // The watch descriptor that saw it, so a burst belonging to the directory the client has already

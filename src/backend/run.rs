@@ -8,8 +8,9 @@ use crate::backend::opsreq::OpMsg;
 use crate::backend::dirsizereq::{queue_dirsizes, seed_answered, start_next, report_done as report_dirsize};
 use crate::backend::dirsize::DirSize;
 use crate::backend::events::{spawn_forwarder, spawn_op_forwarder, spawn_reader, Event};
-use crate::backend::fsinfo::{fsinfo_line, read as read_fsinfo};
+use crate::backend::fsinfo::fsinfo_line;
 use crate::backend::fsinfo::dev_of;
+use crate::backend::fsinforeq::FsInfo;
 use crate::backend::listpaths;
 use crate::backend::proto::{error_line, error_line_with_mode, listed_line, listed_line_anchor, parse_request, paths_line, thumbed_line, Request};
 use crate::backend::rows::rows_line;
@@ -70,6 +71,7 @@ pub fn run() -> i32 {
     spawn_forwarder(done, tx.clone());
     spawn_op_forwarder(op_rx, tx.clone());
     spawn_reader(tx.clone(), Arc::clone(&ops.live));
+    let mut fsinfo = FsInfo::new(tx.clone());
     // Armed before the first request, so no listing is ever answered with nothing watching it.
     let mut watch = Watch::start(tx);
     loop {
@@ -93,12 +95,18 @@ pub fn run() -> i32 {
         };
         match event {
             Event::Request(line) => {
-                if handle_line(&line, &mut out, &mut st, &tb, &pool, &cache, &mut ops, &mut watch) == Control::Quit {
+                if handle_line(&line, &mut out, &mut st, &tb, &pool, &cache, &mut ops, &mut watch, &mut fsinfo) == Control::Quit {
                     break;
                 }
             }
             Event::Thumb(d) => report_done(&mut out, &mut st, d),
             Event::DirSize(d) => report_dirsize(&mut out, &mut st, d),
+            // A slow mount's figures, printed only for the directory on screen now.
+            Event::FsInfo(d) => {
+                if let Some(info) = fsinfo.finish(d, &st.base) {
+                    say(&mut out, &fsinfo_line(&info, &st.base.to_string_lossy(), crate::backend::fsinforeq::slow_class(&st.base)));
+                }
+            }
             // The one line no client asked for, and only ever for the directory being listed now.
             Event::Changed(wd) => {
                 if watch.is_current(wd) {
@@ -135,6 +143,7 @@ fn handle_line(
     cache: &Cache,
     ops: &mut Ops,
     watch: &mut Watch,
+    fsinfo: &mut FsInfo,
 ) -> Control {
     // Rows read from a numbering this listing has already replaced name other files, so they are refused.
     if let Some(refused) = super::rowguard::refusal(line, st.generation) {
@@ -161,6 +170,8 @@ fn handle_line(
         }
         Request::List { path, first, hidden } => {
             end_walks(out, st, pool);
+            // Before the scan, so a slow statfs runs beside the gio listing instead of behind it.
+            fsinfo.list_arrived(Path::new(&path));
             // Before the scan, because a change readdir raced is missing from the rows this answers with.
             watch.begin(Path::new(&path));
             match scan(&path, hidden) {
@@ -327,8 +338,11 @@ fn handle_line(
             line.insert_str(line.len() - 1, &format!(r#", "id":{},"providers":{}"#, id, super::providers::facts()));
             say(out, &line);
         }
-        // The class rides beside the figures, computed once per directory change and never per row.
-        Request::FsInfo => say(out, &fsinfo_line(&read_fsinfo(&st.base), &st.base.to_string_lossy(), super::extclass::classify(&st.base))),
+        // The class rides beside the figures once per directory change; a slow mount's fresh figures follow as a second line.
+        Request::FsInfo => {
+            let (info, class) = fsinfo.answer(&st.base);
+            say(out, &fsinfo_line(&info, &st.base.to_string_lossy(), class));
+        }
         // One row, only when a client asked: the same no-sweep rule thumb and dirsize already follow.
         Request::Meta { row, text, media, archive, token } => {
             if row < st.listing.len() {
