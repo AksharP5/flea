@@ -88,16 +88,8 @@ pub fn classify(path: &Path) -> &'static str {
     }
     let body = std::fs::read_to_string("/proc/self/mountinfo").unwrap_or_default();
     let entry = super::mountinfo::mount_entry_in(path, &body);
-    if entry.as_ref().is_some_and(|e| fstype_is_network(&e.fstype)) {
-        return "network";
-    }
-    if super::fsinfo::magic_of(path).is_some_and(magic_is_network) {
-        return "network";
-    }
-    if usb_for(entry.as_ref().map(|e| e.majmin.as_str())) {
-        return "usb";
-    }
-    ""
+    let usb = usb_for(entry.as_ref().map(|e| e.majmin.as_str()));
+    classify_parts(path, entry.as_ref().map(|e| e.fstype.as_str()), super::fsinfo::magic_of(path), usb)
 }
 
 // A mount that names no block device answers false without touching sysfs.

@@ -217,6 +217,7 @@ impl Writer {
     }
 }
 
+#[cfg(test)]
 fn encode(meta: &std::fs::Metadata, rel: &[u8]) -> Vec<u8> {
     let mut out = Vec::with_capacity(HEADER + rel.len());
     encode_into(&mut out, meta, rel);
