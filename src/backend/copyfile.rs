@@ -375,7 +375,11 @@ pub fn move_any(src: &Path, dst: &Path, p: &mut Progress) -> Result<(), FleaErro
 // The copy's folders are confirmed before the source goes, or a crash before the caller's flush loses the file.
 pub(crate) fn move_cross_device(src: &Path, dst: &Path, p: &mut Progress) -> Result<(), FleaError> {
     copy_any(src, dst, p)?;
-    confirm_dest(p, dst)?;
+    // An unconfirmed copy is journaled like a partial one, so undo can take it back while the source stays whole.
+    if let Err(e) = confirm_dest(p, dst) {
+        p.partial = Some(dst.to_path_buf());
+        return Err(e);
+    }
     remove_any(src)?;
     if let Some(parent) = src.parent() {
         touch(p, parent);

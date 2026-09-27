@@ -41,7 +41,7 @@ impl FsInfo {
     // Before the scan, so a share's statfs runs beside its gio listing; a kernel mount waits for fsinfo, keeping local lists free of a mountinfo read.
     pub fn list_arrived(&mut self, path: &Path) {
         if let Some(root) = gvfs_root(path) {
-            self.refresh(root, path);
+            self.refresh(root);
         }
     }
 
@@ -54,27 +54,28 @@ impl FsInfo {
     // The test seam: body is one /proc/self/mountinfo read, ignored for a gvfs path.
     fn answer_in(&mut self, path: &Path, body: &str) -> (Option<Info>, &'static str) {
         if let Some(root) = gvfs_root(path) {
-            return self.slow_answer(root, path, slow_class(path));
+            return self.slow_answer(root, slow_class(path));
         }
         match mount_entry_in(path, body) {
-            Some(entry) if fstype_is_network(&entry.fstype) => self.slow_answer(entry.mount, path, "network"),
+            Some(entry) if fstype_is_network(&entry.fstype) => self.slow_answer(entry.mount, "network"),
             entry => ((self.reader)(path.to_path_buf()), classify_entry(path, entry.as_ref())),
         }
     }
 
-    fn slow_answer(&mut self, root: PathBuf, path: &Path, class: &'static str) -> (Option<Info>, &'static str) {
+    fn slow_answer(&mut self, root: PathBuf, class: &'static str) -> (Option<Info>, &'static str) {
         let figures = self.known.get(&root).cloned().flatten();
-        self.refresh(root, path);
+        self.refresh(root);
         (figures, class)
     }
 
-    fn refresh(&mut self, root: PathBuf, path: &Path) {
+    // The statfs reads the mount root, which answers for every folder in it and cannot vanish the way a mistyped folder can.
+    fn refresh(&mut self, root: PathBuf) {
         if self.inflight.get(&root).is_some_and(|started| started.elapsed() < FSINFO_DEADLINE) {
             return;
         }
-        let (events, reader, dir, key) = (self.events.clone(), Arc::clone(&self.reader), path.to_path_buf(), root.clone());
+        let (events, reader, key) = (self.events.clone(), Arc::clone(&self.reader), root.clone());
         let worker = std::thread::Builder::new().name("flea-fsinfo".into()).spawn(move || {
-            let info = reader(dir);
+            let info = reader(key.clone());
             let _ = events.send(Event::FsInfo(Done { root: key, info }));
         });
         // corner: a spawn that fails records nothing, so the next ask tries again and answers unknown meanwhile.
@@ -184,6 +185,21 @@ mod tests {
         assert!(fs.finish(done, Path::new("/home/gm")).is_none(), "a left share's figures name the wrong place");
         let (info, _) = fs.answer_in(&share_dir("back"), "");
         assert_eq!(info.map(|i| i.free), Some(7), "but coming back answers them at once");
+    }
+
+    #[test]
+    fn a_list_of_a_missing_folder_never_blanks_the_share() {
+        let (events, rx) = std::sync::mpsc::channel();
+        let asked = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let seen = Arc::clone(&asked);
+        let reader: Reader = Arc::new(move |path: PathBuf| {
+            seen.lock().unwrap().push(path);
+            figures(7)
+        });
+        let mut fs = FsInfo::with_reader(events, reader);
+        fs.list_arrived(&share_dir("gone"));
+        let _ = next_done(&rx);
+        assert_eq!(*asked.lock().unwrap(), vec![PathBuf::from(SHARE)], "the statfs reads the share root, not the folder the list named");
     }
 
     #[test]

@@ -2506,6 +2506,9 @@ chunk-stamping reader, and the three tests that pin them. `src/backend/meta.rs` 
 Advloop round 2 on the gvfs listing moves `src/backend/gvfslist.rs` 434 to 435, re-derived with
 `wc -l`, for the assertion that pins the cached mtime of a gio symlink row.
 
+Advloop round 3 moves `src/backend/copyfile.rs` 428 to 432 and `src/backend/copyfile_tests.rs` 411 to
+412, re-derived with `wc -l`, for the unconfirmed EXDEV copy handed to the caller as a partial.
+
 Fix2-photosmove moves two recorded ceilings, each re-derived with `wc -l`:
 `src/backend/copyfile.rs` 404 to 428 for the EXDEV confirm before the remove (`move_cross_device`
 with its `confirm_dest`, which flushes the touched folders or the parent when no context is set

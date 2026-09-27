@@ -167,21 +167,23 @@ fn a_stale_file_is_refused_and_kept_as_a_claim() {
     assert!(!dest.exists() && claimed_path(&dest).exists(), "a refused file is kept as a claim for the sweeper");
 }
 
-// Runs adopt_in on a thread so a wait that never ends fails the test instead of hanging it.
-fn adopt_within(dest: PathBuf, runtime: PathBuf, deadline: SystemTime, bound: Duration) -> Option<bool> {
+// Runs adopt_in on a thread so a wait that never ends fails the test instead of hanging it; answers the result and how long it took.
+fn adopt_within(dest: PathBuf, runtime: PathBuf, deadline: SystemTime, bound: Duration) -> (Option<bool>, Duration) {
     let (tx, rx) = std::sync::mpsc::channel();
     let start_ms = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64;
+    let t = Instant::now();
     std::thread::spawn(move || {
         let _ = tx.send(adopt_in(SHARE, false, &dest, deadline, start_ms, Some(&runtime)).is_some());
     });
-    rx.recv_timeout(bound).ok()
+    (rx.recv_timeout(bound).ok(), t.elapsed())
 }
 
 #[test]
 fn a_fresh_launch_whose_child_never_publishes_stops_at_the_deadline() {
     let (_dir, runtime) = runtime_fixture("gvfs-loop-deadline");
-    let answer = adopt_within(runtime.join("gvfs-never.list"), runtime, short_deadline(), Duration::from_secs(3));
+    let (answer, took) = adopt_within(runtime.join("gvfs-never.list"), runtime, short_deadline(), Duration::from_secs(3));
     assert_eq!(answer, Some(false), "inside the grace window only the loop's deadline can end the wait");
+    assert!(took >= Duration::from_millis(250), "an answer after {:?} came from an early return, not the 300 ms deadline", took);
 }
 
 #[test]
@@ -195,9 +197,10 @@ fn a_claim_landing_mid_wait_ends_the_wait() {
             std::fs::write(claimed, TWO_ROWS).unwrap();
         }
     });
-    let answer = adopt_within(dest, runtime, live_deadline(), Duration::from_secs(3));
+    let (answer, took) = adopt_within(dest, runtime, live_deadline(), Duration::from_secs(3));
     let _ = claimer.join();
     assert_eq!(answer, Some(false), "another reader's claim ends the wait long before the 15 s deadline");
+    assert!(took >= Duration::from_millis(80), "an answer after {:?} came before the claim landed at 100 ms", took);
 }
 
 #[test]

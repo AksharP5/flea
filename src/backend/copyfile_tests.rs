@@ -317,6 +317,7 @@ fn a_cross_device_move_confirms_the_destination_before_removing_the_source() {
     assert_eq!(error.msg, crate::backend::durable::DIR_UNCONFIRMED);
     assert!(src.exists(), "the source stays when the destination folders did not confirm");
     assert!(dst.exists(), "the landed copy stays beside it");
+    assert_eq!(p.partial.as_deref(), Some(dst.as_path()), "the unconfirmed copy is handed to the caller to journal");
     crate::backend::durable::test_reset();
 }
 
