@@ -2,6 +2,17 @@
 use std::path::{Component, Path};
 use std::collections::HashMap;
 
+// Prefetched per-row metadata a gio listing carries, so the window and the size/date
+// orders read it instead of statting; keyed by name for the life of that listing.
+#[derive(Clone, Debug, Default)]
+pub struct CachedMeta {
+    pub size: u64,
+    pub mtime: i64,
+    pub mode: u32,
+    pub target: String,
+    pub dev: u64,
+}
+
 // Enough that a normal directory never reallocates its way up from nothing.
 const NAME_RESERVE_BYTES: usize = 1 << 20;
 const SPAN_RESERVE: usize = 4096;
@@ -18,6 +29,9 @@ pub struct Span {
 pub struct Listing {
     pub names: String,
     pub spans: Vec<Span>,
+    // Empty for every readdir listing; filled only by the gvfs gio path, so local
+    // rows pay no map at all and a sorted listing keeps its cache by name.
+    pub meta_cache: HashMap<String, CachedMeta>,
 }
 
 impl Listing {
@@ -26,7 +40,7 @@ impl Listing {
         names.reserve(NAME_RESERVE_BYTES);
         let mut spans = Vec::new();
         spans.reserve(SPAN_RESERVE);
-        Listing { names, spans }
+        Listing { names, spans, meta_cache: HashMap::new() }
     }
 
     // corner: u32 offsets cap the arena at 4 GiB of names, see AGENTS.md.

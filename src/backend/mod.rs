@@ -20,6 +20,7 @@ pub mod dirsizereq;
 pub mod listpaths;
 pub mod events;
 pub mod scan;
+pub mod gvfslist;
 pub mod fuzzy;
 // The path bar's folder jump; see docs/protocol.md "jump".
 pub mod jump;
