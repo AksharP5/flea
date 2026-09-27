@@ -1,31 +1,41 @@
 import QtQuick
 import qs.Commons
+import "js/Buttons.js" as Buttons
 
-// Dialog actions share a hairline frame; each surface supplies its specified fill.
+// Variant A (Buttons040, GM 2026-09-24): the one control every dialog, card and
+// picker button draws. One height, one pad, one label size; the primary is fixed
+// per dialog by the caller and focus is a ring outside the unchanged frame.
 Item {
     id: root
 
     property string label: ""
     property bool primary: false
-    property color fillColor: "transparent"
+    // A destructive action rests as the error label in a muted frame, never primary.
+    property bool destructive: false
     property real horizontalPadding: Theme.spacing.gap
-    property real verticalPadding: Theme.spacing.gap / 2
-    // An action this dialog cannot take right now. ui/PickerChrome.qml's Framed is the in-tree model:
-    // the ink says so and the press does nothing, rather than a live control that answers nothing.
+    // An action this dialog cannot take right now. The ink says so and the press
+    // does nothing, rather than a live control that answers nothing.
     property bool available: true
+    // The keyboard's own signal. Callers whose focus sits on a wrapper pass it down.
+    property bool focused: root.activeFocus
+    // True where the form owns the Tab order and the button only reports through tabbed.
+    property bool tabHandle: false
 
     signal activated()
+    // The form owns the order; a button only reports that Tab happened inside it.
+    signal tabbed(var from, bool back)
 
     // The canvas draws a secondary button as a hairline rule carrying live text, so only the frame
     // takes muted, the role ThemeRoles.html gives borders and inactive controls; the label is alive.
-    readonly property bool leading: root.primary && root.available
-    readonly property color frame: root.leading ? Theme.color.accentFrame : Theme.color.muted
-    readonly property color ink: root.available ? Theme.color.foreground : Theme.color.muted
+    readonly property color frame: root.primary && root.available ? Theme.color.accentFrame : Theme.color.muted
+    readonly property color ink: !root.available ? Theme.color.muted
+        : root.destructive ? Theme.color.error : Theme.color.foreground
     // The frame and this wash say which action is being asked for; an accent label said it by going darker, HANDOFF rule 18.
-    readonly property color wash: root.leading ? Qt.alpha(Theme.color.accent, Theme.washActive) : root.fillColor
+    readonly property color wash: root.primary && root.available ? Qt.alpha(Theme.color.accent, Buttons.WASH_PRESS) : "transparent"
 
-    implicitWidth: Math.max(Theme.hitMin, text.implicitWidth + 2 * horizontalPadding + 2 * Theme.spacing.hairline)
-    implicitHeight: Math.max(Theme.hitMin, text.implicitHeight + 2 * verticalPadding + 2 * Theme.spacing.hairline)
+    implicitWidth: Math.max(Theme.hitMin, text.implicitWidth + 2 * root.horizontalPadding + 2 * Theme.spacing.hairline)
+    implicitHeight: Theme.rowHeight - Theme.spacing.rowPaddingY
+    opacity: root.available ? 1 : Buttons.DISABLED_OPACITY
     scale: tap.pressed && root.available && !Theme.reducedMotion ? 0.96 : 1
 
     Accessible.role: Accessible.Button
@@ -44,17 +54,53 @@ Item {
         border.color: root.frame
     }
 
+    // Hover and press lay the control's own ink over the wash a primary carries.
+    Rectangle {
+        anchors.fill: parent
+        color: tap.pressed && root.available ? Qt.alpha(root.ink, Buttons.WASH_PRESS)
+            : hover.hovered && root.available ? Qt.alpha(root.ink, Buttons.WASH_HOVER) : "transparent"
+    }
+
     Text {
         id: text
         anchors.centerIn: parent
         text: root.label
         color: root.ink
         font.family: Theme.font.family
-        font.pixelSize: Theme.font.body
+        font.pixelSize: Buttons.LABEL_SIZE
         textFormat: Text.PlainText
     }
 
-    HoverHandler { cursorShape: root.available ? Qt.PointingHandCursor : Qt.ArrowCursor }
+    // Focus never moves the frame: the ring says where the keyboard is.
+    Rectangle {
+        anchors.fill: parent
+        anchors.margins: -Buttons.RING
+        color: "transparent"
+        border.width: Buttons.RING
+        border.color: Theme.color.foreground
+        visible: root.focused && root.available
+    }
+
+    HoverHandler {
+        id: hover
+        cursorShape: root.available ? Qt.PointingHandCursor : Qt.ArrowCursor
+    }
+
+    // A focused button answers Enter exactly as a press does. Dialogs that forward
+    // keys to their own map guard the second arrival (busy, opened), so it lands once.
+    // A key this button does not take stays unaccepted, so it reaches the dialog's
+    // own map exactly as it did before this control answered any key.
+    Keys.onReturnPressed: function(event) { if (root.available) root.activated(); else event.accepted = false }
+    Keys.onEnterPressed: function(event) { if (root.available) root.activated(); else event.accepted = false }
+    Keys.onSpacePressed: function(event) { if (root.available) root.activated(); else event.accepted = false }
+    Keys.onTabPressed: function(event) {
+        if (root.tabHandle) root.tabbed(root, (event.modifiers & Qt.ShiftModifier) !== 0)
+        event.accepted = false
+    }
+    Keys.onBacktabPressed: function(event) {
+        if (root.tabHandle) root.tabbed(root, true)
+        event.accepted = false
+    }
 
     TapHandler {
         id: tap

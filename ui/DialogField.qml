@@ -1,6 +1,7 @@
 import QtQuick
 import qs.Commons
 import "." as Flea
+import "js/Buttons.js" as Buttons
 
 // One labelled field, as the canvas's Network board draws it: a small uppercase label above a
 // bordered box that takes the accent while it has the caret.
@@ -51,7 +52,17 @@ Item {
         height: Theme.rowHeight - Theme.spacing.rowPaddingY
         color: Theme.color.background
         border.width: Theme.spacing.hairline
-        border.color: field.activeFocus ? Theme.color.accent : Theme.color.muted
+        // Focus is a ring outside the unchanged frame, never an accent frame.
+        border.color: Theme.color.muted
+
+        Rectangle {
+            anchors.fill: parent
+            anchors.margins: -Buttons.RING
+            color: "transparent"
+            border.width: Buttons.RING
+            border.color: Theme.color.foreground
+            visible: field.activeFocus
+        }
 
         TextInput {
             id: field

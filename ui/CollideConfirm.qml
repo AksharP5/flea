@@ -135,10 +135,10 @@ FocusScope {
                     id: buttons
                     anchors.right: parent.right
                     spacing: Theme.spacing.gap
-                    Flea.DialogButton { id: cancelButton; label: Collide.LABELS.cancel; primary: root.focusName === "cancel"; onActivated: root.press("cancel") }
-                    Flea.DialogButton { id: skipButton; label: Collide.LABELS.skip; primary: root.focusName === "skip"; onActivated: root.press("skip") }
-                    Flea.DialogButton { id: keepButton; label: Collide.LABELS.keep; primary: root.focusName === "keep"; onActivated: root.press("keep") }
-                    Flea.DialogButton { id: replaceButton; label: Collide.LABELS.replace; primary: root.focusName === "replace"; onActivated: root.press("replace") }
+                    Flea.DialogButton { id: cancelButton; label: Collide.LABELS.cancel; focused: root.focusName === "cancel"; onActivated: root.press("cancel") }
+                    Flea.DialogButton { id: skipButton; label: Collide.LABELS.skip; focused: root.focusName === "skip"; onActivated: root.press("skip") }
+                    Flea.DialogButton { id: keepButton; label: Collide.LABELS.keep; primary: true; focused: root.focusName === "keep"; onActivated: root.press("keep") }
+                    Flea.DialogButton { id: replaceButton; label: Collide.LABELS.replace; destructive: true; focused: root.focusName === "replace"; onActivated: root.press("replace") }
                 }
             }
         }

@@ -1,6 +1,7 @@
 import QtQuick
 import qs.Commons
 import "." as Flea
+import "js/Buttons.js" as Buttons
 import "js/Format.js" as Format
 
 // Menu-only actions share the existing card, field and button language.
@@ -204,8 +205,16 @@ FocusScope {
                     width: parent.width
                     height: Theme.rowHeight
                     color: Theme.color.background
-                    border.color: field.activeFocus ? Theme.color.accent : Theme.color.muted
+                    border.color: Theme.color.muted
                     border.width: Theme.spacing.hairline
+                    Rectangle {
+                        anchors.fill: parent
+                        anchors.margins: -Buttons.RING
+                        color: "transparent"
+                        border.width: Buttons.RING
+                        border.color: Theme.color.foreground
+                        visible: field.activeFocus
+                    }
                     TextInput {
                         id: field
                         anchors.fill: parent
@@ -263,7 +272,7 @@ FocusScope {
                         Keys.onBacktabPressed: root.stepFocus(true)
                         Keys.onReturnPressed: root.close()
                         Keys.onSpacePressed: root.close()
-                        Flea.DialogButton { id: closeButton; label: root.action === "properties" ? "Close" : "Cancel"; primary: parent.activeFocus; available: parent.activeFocusOnTab; onActivated: root.close() }
+                        Flea.DialogButton { id: closeButton; label: root.action === "properties" ? "Close" : "Cancel"; focused: parent.activeFocus; available: parent.activeFocusOnTab; onActivated: root.close() }
                     }
                     FocusScope {
                         id: submitFocus
@@ -275,7 +284,7 @@ FocusScope {
                         Keys.onBacktabPressed: root.stepFocus(true)
                         Keys.onReturnPressed: root.submit()
                         Keys.onSpacePressed: root.submit()
-                        Flea.DialogButton { id: submitButton; label: root.action === "newFile" ? "Create" : root.action === "moveTo" ? "Move" : "Copy"; primary: parent.activeFocus; available: root.canSubmit; onActivated: root.submit() }
+                        Flea.DialogButton { id: submitButton; label: root.action === "newFile" ? "Create" : root.action === "moveTo" ? "Move" : "Copy"; primary: true; focused: parent.activeFocus; available: root.canSubmit; onActivated: root.submit() }
                     }
                 }
             }

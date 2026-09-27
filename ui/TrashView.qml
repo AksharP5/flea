@@ -316,15 +316,22 @@ FocusScope {
                     id: backButton
                     width: Theme.hitMin; height: parent.height; maxSize: Theme.chromeMarkSize
                     name: "arrow-left"; color: Theme.color.foreground
+                    scale: backTap.pressed && !Theme.reducedMotion ? 0.96 : 1
                     Accessible.role: Accessible.Button
                     Accessible.name: "Back"
                     Accessible.onPressAction: root.close()
-                    TapHandler { onTapped: root.close() }
+                    Behavior on scale {
+                        enabled: !Theme.reducedMotion
+                        NumberAnimation { duration: 150; easing.type: Easing.OutQuad }
+                    }
+                    TapHandler { id: backTap; onTapped: root.close() }
                 }
                 Flea.Glyph {
                     id: upButton
                     width: Theme.hitMin; height: parent.height; maxSize: Theme.chromeMarkSize
                     name: "arrow-up"; color: Theme.color.muted
+                    // Dead by design: a history has no parent, so it dims like any disabled control.
+                    opacity: Theme.disabledOpacity
                     Accessible.role: Accessible.Button
                     Accessible.name: "Up unavailable in Trash"
                     Accessible.ignored: false

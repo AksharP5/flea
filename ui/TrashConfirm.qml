@@ -108,25 +108,19 @@ FocusScope {
                     width: Math.min(parent.width, cancelButton.implicitWidth + dangerButton.implicitWidth + spacing)
                     anchors.right: parent.right
                     spacing: Theme.spacing.gap
-                    Flea.DialogButton { id: cancelButton; label: "Cancel"; primary: !root.destructiveFocus; onActivated: root.cancel() }
-                    Item {
+                    Flea.DialogButton {
+                        id: cancelButton
+                        label: "Cancel"
+                        primary: true
+                        focused: !root.destructiveFocus
+                        onActivated: root.cancel()
+                    }
+                    Flea.DialogButton {
                         id: dangerButton
-                        implicitWidth: dangerText.implicitWidth + 2 * Theme.spacing.gap
-                        height: Math.max(Theme.hitMin, dangerText.implicitHeight + Theme.spacing.gap)
-                        Rectangle { anchors.fill: parent; color: "transparent"; border.width: Theme.spacing.hairline; border.color: root.destructiveFocus ? Theme.color.error : Theme.color.muted }
-                        Text {
-                            id: dangerText
-                            anchors.centerIn: parent
-                            text: root.snapshot.all ? "Empty Trash" : "Delete"
-                            textFormat: Text.PlainText
-                            color: Theme.color.error
-                            font { family: Theme.font.family; pixelSize: Theme.font.body }
-                        }
-                        Accessible.role: Accessible.Button
-                        Accessible.name: dangerText.text
-                        Accessible.onPressAction: { root.destructiveFocus = true; root.activate() }
-                        // The grab Cancel's DialogButton takes: exclusive on press, so no handler under the card shares the tap.
-                        TapHandler { gesturePolicy: TapHandler.ReleaseWithinBounds; onTapped: { root.destructiveFocus = true; root.activate() } }
+                        label: root.snapshot.all ? "Empty Trash" : "Delete"
+                        destructive: true
+                        focused: root.destructiveFocus
+                        onActivated: { root.destructiveFocus = true; root.activate() }
                     }
                 }
             }

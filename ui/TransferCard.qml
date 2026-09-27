@@ -208,55 +208,18 @@ Item {
 
         Item {
             width: parent.width
-            height: cancelButton.height
+            height: cancelButton.implicitHeight
 
-            // The frame and paddings of ui/DialogButton.qml, which cannot carry the artifact's own
-            // x mark; a dingbat is not a mark in this language, so the mark is drawn as a glyph.
-            Rectangle {
+            // Variant A: the card's Cancel is the one control every dialog draws,
+            // a foreground label in a muted frame and never a muted x mark.
+            Flea.DialogButton {
                 id: cancelButton
-                visible: !root.cancelling
-                enabled: visible && Transfer.cancelEnabled(root.shown)
-                opacity: Transfer.cancelEnabled(root.shown) ? 1 : 0.55
-                Accessible.role: Accessible.Button
-                Accessible.name: "Cancel transfer"
-                Accessible.onPressAction: root.cancel()
                 anchors.right: parent.right
-                width: 2 * Theme.spacing.gap + mark.width + Theme.spacing.gap + label.implicitWidth
-                height: label.implicitHeight + Theme.spacing.gap + 2 * Theme.spacing.hairline
-                color: "transparent"
-                border.width: Theme.spacing.hairline
-                border.color: Theme.color.muted
-
-                Flea.Glyph {
-                    id: mark
-                    anchors.left: parent.left
-                    anchors.leftMargin: Theme.spacing.gap
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: Theme.font.caption
-                    height: Theme.font.caption
-                    name: "x"
-                    color: Theme.color.muted
-                }
-
-                Text {
-                    id: label
-                    anchors.left: mark.right
-                    anchors.leftMargin: Theme.spacing.gap
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: "Cancel"
-                    color: Theme.color.muted
-                    font.family: Theme.font.family
-                    font.pixelSize: Theme.font.body
-                    textFormat: Text.PlainText
-                }
-
-                HoverHandler { cursorShape: Qt.PointingHandCursor }
-
-                TapHandler {
-                    acceptedButtons: Qt.LeftButton
-                    gesturePolicy: TapHandler.ReleaseWithinBounds
-                    onTapped: root.cancel()
-                }
+                visible: !root.cancelling
+                label: "Cancel"
+                available: Transfer.cancelEnabled(root.shown)
+                enabled: visible && Transfer.cancelEnabled(root.shown)
+                onActivated: root.cancel()
             }
 
             // The cancel is in and the item in flight is being finished rather than torn in half,

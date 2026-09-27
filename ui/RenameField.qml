@@ -1,5 +1,6 @@
 import QtQuick
 import qs.Commons
+import "js/Buttons.js" as Buttons
 
 // The row becoming its own editor, per the States artboard: an accent frame around the name, the
 // extension muted inside that frame, enter commits and escape abandons.
@@ -93,7 +94,15 @@ Item {
         height: root.fieldHeight
         color: Theme.color.background
         border.width: Theme.spacing.hairline
-        border.color: root.errorText.length > 0 ? Theme.color.error : Theme.color.accent
+        border.color: root.errorText.length > 0 ? Theme.color.error : Theme.color.muted
+        Rectangle {
+            anchors.fill: parent
+            anchors.margins: -Buttons.RING
+            color: "transparent"
+            border.width: Buttons.RING
+            border.color: Theme.color.foreground
+            visible: field.activeFocus && root.errorText.length === 0
+        }
     }
 
     TextInput {

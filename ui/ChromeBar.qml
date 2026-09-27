@@ -1,6 +1,7 @@
 import QtQuick
 import qs.Commons
 import "." as Flea
+import "js/Buttons.js" as Buttons
 import "js/Crumbs.js" as Crumbs
 import "js/PathBar.js" as PathBar
 
@@ -303,7 +304,7 @@ Item {
 
         }
 
-        // The rename editor's own frame, at chrome scale: the accent says which strip has the
+        // The rename editor's own frame, at chrome scale: the ring says which strip has the
         // keyboard, and the fill covers the two Texts underneath rather than relying on their visible.
         Rectangle {
             visible: root.editing
@@ -313,7 +314,16 @@ Item {
             color: Theme.color.background
             radius: Style.cornerRadius
             border.width: Theme.spacing.hairline
-            border.color: Theme.color.accent
+            border.color: Theme.color.muted
+            Rectangle {
+                anchors.fill: parent
+                anchors.margins: -Buttons.RING
+                color: "transparent"
+                border.width: Buttons.RING
+                border.color: Theme.color.foreground
+                radius: Style.cornerRadius
+                visible: field.activeFocus
+            }
         }
 
         // corner: a typed path is arbitrary text, so it is drawn at the same size the path it

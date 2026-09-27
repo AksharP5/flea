@@ -1,6 +1,7 @@
 import QtQuick
 import qs.Commons
 import "." as Flea
+import "js/Buttons.js" as Buttons
 import "js/Permissions.js" as Permissions
 
 // One item, one mode; the backend owns its reviewed descriptor for this dialog's lifetime.
@@ -275,7 +276,15 @@ FocusScope {
                         width: body.width - root.labelWidth - parent.spacing
                         height: parent.height
                         color: Theme.color.background
-                        border.color: octal.activeFocus ? Theme.color.accent : Theme.color.muted
+                        border.color: Theme.color.muted
+                        Rectangle {
+                            anchors.fill: parent
+                            anchors.margins: -Buttons.RING
+                            color: "transparent"
+                            border.width: Buttons.RING
+                            border.color: Theme.color.foreground
+                            visible: octal.activeFocus
+                        }
                         TextInput {
                             id: octal
                             anchors.fill: parent
@@ -393,9 +402,7 @@ FocusScope {
                         Flea.DialogButton {
                             id: cancelButton
                             label: "Cancel"
-                            primary: parent.activeFocus
-                            horizontalPadding: Theme.spacing.rowPaddingX
-                            verticalPadding: 6 * Theme.font.bodySmall / 13
+                            focused: parent.activeFocus
                             available: !root.applying
                             onActivated: root.close()
                         }
@@ -412,9 +419,8 @@ FocusScope {
                         Flea.DialogButton {
                             id: applyButton
                             label: "Apply"
-                            primary: parent.activeFocus
-                            horizontalPadding: Theme.spacing.rowPaddingX
-                            verticalPadding: 6 * Theme.font.bodySmall / 13
+                            primary: true
+                            focused: parent.activeFocus
                             available: root.editable && root.modeValue >= 0
                             onActivated: root.apply()
                         }

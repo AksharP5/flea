@@ -1,6 +1,7 @@
 import QtQuick
 import "archive.js" as ArchiveSuite
 import "background.js" as BackgroundSuite
+import "buttons.js" as ButtonsSuite
 import "collide.js" as CollideSuite
 import "clipmarks.js" as ClipMarksSuite
 import "columns.js" as ColumnsSuite
@@ -99,7 +100,7 @@ Item {
         }
 
         var suites = [
-            ["archive", ArchiveSuite], ["background", BackgroundSuite], ["collide", CollideSuite], ["clipmarks", ClipMarksSuite], ["columns", ColumnsSuite], ["contrast", ContrastSuite],
+            ["archive", ArchiveSuite], ["background", BackgroundSuite], ["buttons", ButtonsSuite], ["collide", CollideSuite], ["clipmarks", ClipMarksSuite], ["columns", ColumnsSuite], ["contrast", ContrastSuite],
             ["dirsizes", DirSizesSuite], ["drag", DragSuite], ["dst", DstSuite],
             ["edmonton", DstSuite],
             ["errors", ErrorsSuite], ["facts", FactsSuite], ["filter", FilterSuite], ["filter-cursor", FilterCursorSuite],

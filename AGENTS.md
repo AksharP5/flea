@@ -2731,6 +2731,16 @@ On the 0.3.7 branch, today dates join the clipboard marks in `ui/Row.qml`, which
 
 Density040 and GridStops move one recorded ceiling, re-derived with `wc -l`: `ui/js/Settings.js` 427 to 428 for the Tight density row with its hint and the Huge and Largest thumbnail stops. The maths went to the new `ui/js/Density.js`, 46 lines inside both budgets, rather than into `Theme.qml`, which stands at 400 at the hard cap; `ui/js/GridGeometry.js` takes the cell height at 22, `ui/GridTile.qml` at 203, `ui/GridArea.qml` at 277, `ui/ViewState.qml` at 395 and `src/uischema.rs` at 408, all inside their budgets.
 
+Buttons040 variant A moves four recorded ceilings, each re-derived with `wc -l` at the commit that
+recorded it. `ui/OpenWithDialog.qml` 588 to 592 for the fixed Open primary, the search field's focus
+ring and the rule-14 checkbox. `ui/PermissionsDialog.qml` 426 to 432 for the fixed Apply primary and
+the octal field's ring. `ui/TrashView.qml` 467 to 474 for the dead Up at 0.55 and the Back press.
+`ui/ChromeBar.qml` 438 to 448 for the path field's ring. The control itself went to the reworked
+`ui/DialogButton.qml` at 111 lines, its decisions to the new `ui/js/Buttons.js` at 45 lines and its
+suite to `tests/js/buttons.js` at 41 lines, each inside both budgets, rather than into any dialog;
+`ui/TransferCard.qml` falls to 239 and `ui/PickerSave.qml` to 177 as their hand-built buttons
+leave, and `ui/MenuActionDialog.qml` stands at 307, over the soft budget and under the hard cap.
+
 ## The key table is generated
 
 `keys.toml` at the repository root is the single source of truth for every binding.

@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import "." as Flea
+import "js/Buttons.js" as Buttons
 import "js/Format.js" as Format
 import "js/Picker.js" as Picker
 
@@ -47,10 +48,16 @@ Item {
                     implicitHeight: Math.max(Theme.hitMin, field.implicitHeight + 2 * Theme.spacing.rowPaddingY)
                     color: Theme.color.background
                     border.width: Theme.spacing.hairline
-                    // Muted at rest, accent on focus: what DialogField, MenuActionDialog, OpenWithDialog
-                    // and PermissionsDialog all draw. This was the last control in the product still
-                    // framed in the divider's own ink.
-                    border.color: field.activeFocus ? Theme.color.accent : Theme.color.muted
+                    // Focus is a ring outside the unchanged frame, never an accent frame.
+                    border.color: Theme.color.muted
+                    Rectangle {
+                        anchors.fill: parent
+                        anchors.margins: -Buttons.RING
+                        color: "transparent"
+                        border.width: Buttons.RING
+                        border.color: Theme.color.foreground
+                        visible: field.activeFocus
+                    }
                     TextInput {
                         id: field
                         anchors.fill: parent
@@ -129,8 +136,25 @@ Item {
                 anchors.right: parent.right
                 visible: root.picker.saveCollision
                 spacing: Theme.spacing.gap
-                ReviewButton { id: cancelButton; label: "Cancel"; onPressed: root.picker.cancel() }
-                ReviewButton { id: useButton; label: "Use this location"; danger: true; onPressed: root.picker.accept(true) }
+                Flea.DialogButton {
+                    id: cancelButton
+                    label: "Cancel"
+                    activeFocusOnTab: true
+                    enabled: !root.picker.submitting
+                    tabHandle: true
+                    onTabbed: function(from, back) { root.picker.stepFocus(from, back) }
+                    onActivated: root.picker.cancel()
+                }
+                Flea.DialogButton {
+                    id: useButton
+                    label: "Use this location"
+                    destructive: true
+                    activeFocusOnTab: true
+                    enabled: !root.picker.submitting
+                    tabHandle: true
+                    onTabbed: function(from, back) { root.picker.stepFocus(from, back) }
+                    onActivated: root.picker.accept(true)
+                }
             }
             Text {
                 width: parent.width
@@ -141,50 +165,6 @@ Item {
                 color: Theme.color.foreground
                 font { family: Theme.font.family; pixelSize: Theme.font.caption }
             }
-        }
-    }
-    component ReviewButton: FocusScope {
-        id: control
-        required property string label
-        property bool danger: false
-        signal pressed()
-        width: Math.max(Theme.hitMin, caption.implicitWidth + 2 * Theme.spacing.gap)
-        height: Math.max(Theme.hitMin, caption.implicitHeight + Theme.spacing.gap)
-        activeFocusOnTab: true
-        enabled: !root.picker.submitting
-        Accessible.role: Accessible.Button
-        Accessible.name: label
-        Accessible.onPressAction: if (enabled) pressed()
-        Keys.onReturnPressed: control.pressed()
-        Keys.onEnterPressed: control.pressed()
-        Keys.onSpacePressed: control.pressed()
-        Keys.onTabPressed: function(event) { root.picker.stepFocus(control, (event.modifiers & Qt.ShiftModifier) !== 0) }
-        Keys.onBacktabPressed: root.picker.stepFocus(control, true)
-        // GM's 2026-09-11 ruling, the same one ui/PickerChrome.qml's controls carry: the frame is the
-        // control's own role and never the divider's ink, and the wash inside it is the state.
-        readonly property color ink: control.danger ? Theme.color.error : Theme.color.foreground
-        readonly property color frame: control.danger ? Theme.color.error : Theme.color.muted
-        readonly property real wash: (control.activeFocus || collisionPress.pressed) ? Theme.washActive
-            : collisionHover.hovered ? Theme.washHover : 0
-
-        Rectangle {
-            anchors.fill: parent
-            color: Qt.alpha(control.ink, control.wash)
-            border.width: Theme.spacing.hairline
-            border.color: control.frame
-        }
-        Text {
-            id: caption
-            anchors.centerIn: parent
-            text: control.label
-            textFormat: Text.PlainText
-            color: control.ink
-            font { family: Theme.font.family; pixelSize: Theme.font.caption }
-        }
-        HoverHandler { id: collisionHover; cursorShape: Qt.PointingHandCursor }
-        TapHandler {
-            id: collisionPress
-            onTapped: { control.forceActiveFocus(Qt.MouseFocusReason); control.pressed() }
         }
     }
     function focusCancel() { cancelButton.forceActiveFocus(Qt.TabFocusReason) }

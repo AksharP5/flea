@@ -1,6 +1,7 @@
 import QtQuick
 import qs.Commons
 import "." as Flea
+import "js/Buttons.js" as Buttons
 import "js/OpenWith.js" as OpenWith
 
 // OpenWith.html rule 4: the Convert popup family, and the one place a default handler is written.
@@ -239,7 +240,17 @@ Item {
                     height: Theme.rowHeight - Theme.spacing.rowPaddingY
                     color: Theme.color.background
                     border.width: Theme.spacing.hairline
-                    border.color: field.activeFocus ? Theme.color.accent : Theme.color.muted
+                    // Focus is a ring outside the unchanged frame, never an accent frame.
+                    border.color: Theme.color.muted
+
+                    Rectangle {
+                        anchors.fill: parent
+                        anchors.margins: -Buttons.RING
+                        color: "transparent"
+                        border.width: Buttons.RING
+                        border.color: Theme.color.foreground
+                        visible: field.activeFocus
+                    }
 
                     Flea.Glyph {
                         id: lens
@@ -436,19 +447,13 @@ Item {
                     anchors.left: parent.left
                     anchors.leftMargin: Theme.spacing.rowPaddingX
                     anchors.verticalCenter: parent.verticalCenter
-                    width: Math.round(14 * Theme.font.bodySmall / 13)
-                    height: width
-                    color: "transparent"
-                    border.width: Theme.spacing.hairline * 2
-                    border.color: root.always || root.focusPart === 2 ? Theme.color.accent : Theme.color.muted
+                    width: ruleBox.implicitWidth
+                    height: ruleBox.implicitHeight
 
-                    Flea.Glyph {
-                        anchors.centerIn: parent
-                        width: parent.width / 2
-                        height: width
-                        visible: root.always
-                        name: "check"
-                        color: Theme.color.accent
+                    Flea.CheckBox {
+                        id: ruleBox
+                        value: root.always ? "on" : "off"
+                        focused: root.focusPart === 2
                     }
                 }
 
@@ -517,7 +522,7 @@ Item {
                     Flea.DialogButton {
                         id: cancelButton
                         label: "Cancel"
-                        primary: root.focusPart === 3
+                        focused: root.focusPart === 3
                         available: true
                         activeFocusOnTab: true
                         Keys.forwardTo: [keys]
@@ -527,11 +532,10 @@ Item {
                     Flea.DialogButton {
                         id: openButton
                         label: root.committing ? "Opening..." : "Open"
-                        primary: root.canSubmit
-                        fillColor: root.canSubmit ? "transparent" : Theme.color.background
+                        primary: true
+                        focused: root.focusPart === 4
                         available: root.canSubmit
                         activeFocusOnTab: true
-                        opacity: available ? 1 : 0.55
                         Keys.forwardTo: [keys]
                         onActivated: root.commit()
                     }
