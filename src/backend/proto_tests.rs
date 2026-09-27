@@ -160,7 +160,17 @@ fn an_anchored_listed_line_answers_the_anchor_and_a_bare_one_is_unchanged() {
 #[test]
 fn a_thumb_request_carries_its_rows_in_order() {
     match parse_request(r#"{"c":"thumb","rows":[2,17,140]}"#) {
-        Request::Thumb { rows } => assert_eq!(rows, vec![2, 17, 140]),
+        Request::Thumb { rows, cache_only } => {
+            assert_eq!(rows, vec![2, 17, 140]);
+            assert!(!cache_only, "absent is today's full path");
+        }
+        _ => panic!("expected Thumb"),
+    }
+    match parse_request(r#"{"c":"thumb","rows":[2],"cacheOnly":true}"#) {
+        Request::Thumb { rows, cache_only } => {
+            assert_eq!(rows, vec![2]);
+            assert!(cache_only, "an off class names it");
+        }
         _ => panic!("expected Thumb"),
     }
     match parse_request(r#"{"c":"thumbcancel","rows":[17,140]}"#) {
@@ -198,7 +208,7 @@ fn a_thumb_request_with_no_usable_rows_is_still_a_thumb_request() {
         }
     }
     match parse_request(r#"{"c":"thumb","rows":[1.5,"x",99999999999999999999]}"#) {
-        Request::Thumb { rows } => assert!(rows.is_empty()),
+        Request::Thumb { rows, .. } => assert!(rows.is_empty()),
         _ => panic!("expected Thumb"),
     }
 }

@@ -352,9 +352,10 @@ Item {
         }
 
         // The backend statfs's its own base, which only moves when a listing succeeds, and Nav.js moves pane.path before one does: a failed hop's figures are of the directory we never left, while a failed refresh's are still of what is on screen.
-        function onFsInfo(fs, free, path) {
+        function onFsInfo(fs, free, path, storageClass) {
             var ours = path.length === 0 || path === pane.path
             pane.fsName = ours ? fs : ""; pane.fsFree = ours ? free : 0
+            if (ours) pane.storageClass = storageClass || ""
         }
 
         // The answer to Ops.clip's askPaths; nothing reaches the clipboard until this lands.

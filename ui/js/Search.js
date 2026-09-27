@@ -73,6 +73,8 @@ function run(root) {
     root.listingState = "loading"
     root.clearSelection()
     root.backend.search(scope, root.searchQuery, root.showHidden)
+    // The walk's scope is a directory too, so its class rides the same line a list's does.
+    root.backend.askFsInfo()
 }
 
 // Esc stops a running walk and leaves the results up; a second Esc is what returns to the listing.

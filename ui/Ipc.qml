@@ -626,6 +626,9 @@ QtObject {
         // The preview column's own table and state, so a test asserts the canvas's rows without OCR.
         function previewFacts(): string { return root.columns ? root.columns.factsLine() : "" }
         function previewColumnState(): string { return root.columns ? root.columns.previewStateName() : "" }
+        // ExtThumbs: the directory class beside the fsinfo line, and whether the column holds manual.
+        function storageClass(): string { return root.pane.storageClass }
+        function columnManualHold(): bool { var c = root.pane.previewColumnItem; return c ? c.manualHold === true : false }
         // The preview column's transport, so a test can prove it plays rather than eyeball a glyph.
         function columnMediaPlaying(): bool { return root.columns ? root.columns.mediaPlaying() : false }
         function columnMediaPosition(): int { return root.columns ? root.columns.mediaPosition() : -1 }

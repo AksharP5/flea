@@ -64,7 +64,8 @@ function run(check) {
             clearSelection: function () {},
             open: function (path) { this.opened += 1 },
             openWithoutHistory: function (path) { this.relisted = path },
-            backend: { search: function (path, query, hidden) { sent.push(path + "?" + query) } }
+            backend: { search: function (path, query, hidden) { sent.push(path + "?" + query) },
+                       askFsInfo: function () { sent.push("fsinfo") } }
         }
     }
     function press(code, text) { return { key: code, text: text, modifiers: Qt.NoModifier } }
@@ -76,7 +77,7 @@ function run(check) {
     check("a key that means nothing on the line is still consumed by it",
           Search.typeKey(press(Qt.Key_Left, ""), line) + "|" + line.searchQuery, "true|scr")
     Search.typeKey(press(Qt.Key_Return, ""), line)
-    check("enter commits the walk", line.searchMode + "|" + line.sent.join(","), "results|/d?scr")
+    check("enter commits the walk", line.searchMode + "|" + line.sent.join(","), "results|/d?scr,fsinfo")
     var abandoned = typing("scr")
     Search.typeKey(press(Qt.Key_Escape, ""), abandoned)
     check("escape abandons the line without re-listing, since no walk ran",
@@ -86,7 +87,7 @@ function run(check) {
     underHome.path = "/home/u/Downloads"
     Search.typeKey(press(Qt.Key_Return, ""), underHome)
     check("the walk is sent the home scope, and the pane takes it as its listing base",
-          underHome.sent.join(",") + "|" + underHome.path, "/home/u?scr|/home/u")
+          underHome.sent.join(",") + "|" + underHome.path, "/home/u?scr,fsinfo|/home/u")
     check("where the search was started from is remembered", underHome.searchFrom, "/home/u/Downloads")
     Search.close(underHome)
     check("leaving the results returns there, and never as a history entry",
@@ -124,7 +125,7 @@ function run(check) {
     Search.typeKey(press(Qt.Key_Tab, "\t"), here)
     Search.typeKey(press(Qt.Key_Return, ""), here)
     check("and the walk goes there instead of to home",
-          here.sent.join(",") + "|" + here.path, "/home/u/Downloads?scr|/home/u/Downloads")
+          here.sent.join(",") + "|" + here.path, "/home/u/Downloads?scr,fsinfo|/home/u/Downloads")
 
     var blank = typing("")
     Search.typeKey(press(Qt.Key_Return, ""), blank)

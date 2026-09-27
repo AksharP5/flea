@@ -3,6 +3,7 @@ import qs.Commons
 import "." as Flea
 import "js/Facts.js" as Facts
 import "js/Kinds.js" as Kinds
+import "js/ExtThumbs.js" as ExtThumbs
 import "js/Motion.js" as Motion
 import "js/PreviewSwap.js" as PreviewSwap
 
@@ -322,6 +323,8 @@ Item {
                 active: root.kind === "text"
                 path: root.path
                 size: root.size
+                // ExtThumbs: Quick Look reads at most the first 256 KiB on network and phone storage.
+                maxBytes: ExtThumbs.textLimit(root.pane ? root.pane.storageClass : "")
             }
 
             Loader {

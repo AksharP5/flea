@@ -1,6 +1,7 @@
 import QtQuick
 import "." as Flea
 import "js/DirSizes.js" as DirSizes
+import "js/ExtThumbs.js" as ExtThumbs
 import "js/Filter.js" as Filter
 import "js/Tap.js" as Tap
 import "js/Thumbs.js" as Thumbs
@@ -217,7 +218,8 @@ ListView {
         var work = Filter.cut(Thumbs.plan(root.pane.thumbState, root.pane.rows, root.pane.held, span.first, span.last, ViewState.thumbnailMode), root.pane.shown, root.pane.thumbState)
         work.drop = work.drop.filter(function (index) { return index !== root.pane.previewIndex })
         root.pane.backend.thumbcancel(work.drop)
-        root.pane.backend.thumb(work.ask)
+        // An off class still asks; the backend answers from the cache alone, see ui/js/ExtThumbs.js.
+        root.pane.backend.thumb(work.ask, ExtThumbs.cacheOnly(root.pane.storageClass, ViewState.preview))
         // The short first settle latches to the fling debounce only once a request has actually gone out.
         if (work.ask.length > 0)
             settle.interval = root.pane.settleMs

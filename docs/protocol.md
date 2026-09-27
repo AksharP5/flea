@@ -335,6 +335,16 @@ Asks for a thumbnail for those row indices of the current listing, and answers o
 backend never walks a directory looking for work: a row that no client named is never
 looked at, at any priority.
 
+An off storage class still asks, and the backend answers from the cache alone. A client
+on a network, phone or USB directory whose switch is off sends
+`{"c":"thumb","rows":[<uint>,...>],"cacheOnly":true}`, and a genuine cache miss then
+answers an empty `file` at once rather than queueing a decode: one stat of the source
+per visible row and no read, so a NAS folder costs a metadata round trip instead of
+about 48 MB. A row already in the shared cache answers with that entry's path, whether
+or not the source can still be opened, and thumbnails another application already made
+still show. Absent `cacheOnly` is today's full path, so a local folder and an older
+client are unchanged.
+
 Each index is clamped to the listing: a row past the end is skipped in silence, because
 there is no row to answer for. A missing or malformed `rows` is an empty array and the
 request does nothing. Indices may repeat and need not be sorted; the newest request for a
@@ -389,6 +399,21 @@ so a client that cancels must stop waiting for it. No response line.
 A cancelled row can be asked for again straight away, in either form of the request: cancelling
 forgets the row as well as its job, so a later `thumb` for it queues fresh work rather than
 being deduplicated against the job that was just dropped.
+
+### fsinfo
+
+`{"c":"fsinfo"}`
+
+Answers one `fsinfo` line for the directory the current listing came from:
+`{"t":"fsinfo","fs":"<string>","free":<uint>,"path":"<string>","class":"<string>"}`.
+`fs` is the filesystem's own name and `free` its bytes available to an unprivileged
+process; `path` is the directory they are of, so a client that has since moved can
+tell they describe somewhere else. `class` is that directory's storage class,
+`network`, `phone`, `usb` or `""` for local, computed once per directory change
+beside this line and never per row: network is cifs, smb2, nfs, sshfs, rclone, 9p,
+ceph and any gvfs FUSE share, phone is gvfs mtp, gphoto2 and afc, and usb is a block
+device whose sysfs path runs through USB or whose removable flag is 1. An unreadable
+path answers an empty `fs` with a free of 0 rather than a wrong number.
 
 ### dirsize
 
@@ -1288,7 +1313,7 @@ file.
 
 ## Undocumented requests
 
-`peek`, `paths`, `archive`, `convert`, `formats` and `fsinfo` are on the wire and are not documented
+`peek`, `paths`, `archive`, `convert` and `formats` are on the wire and are not documented
 here yet. `tools/flea-acceptance` derives its checklist from this file, so each one is a gap in that
 battery until its section is written.
 

@@ -33,12 +33,13 @@ pub const DEFAULTS: &str = r#"{
   "preview": {
     "column": true, "loadOn": "automatic",
     "thumbnails": "media", "thumbSize": "medium",
+    "thumbNetwork": false, "thumbPhone": false, "thumbUsb": true,
     "ctrlZoom": true
   },
   "keys": "default",
   "display": { "textSize": { "mode": "system" }, "hyprlandIcons": false },
   "menu": { "hidden": ["delete", "openTerminal", "placeMenu", "runScript",
-            "moveto", "copyto", "properties", "permissions", "copypath"] },
+            "moveto", "copyto", "properties", "permissions", "copypath", "extThumbs"] },
   "updates": { "autoCheck": true },
   "stateVersion": 1
 }"#;
@@ -111,6 +112,10 @@ pub const PREVIEW: &[(&str, Rule)] = &[
     ("loadOn", Rule::Word(&["automatic", "manual"])),
     ("thumbnails", Rule::Word(&["off", "images", "media"])),
     ("thumbSize", Rule::Word(&["small", "medium", "large", "xlarge"])),
+    // ExtThumbs: one switch per storage class beside the segment they depend on.
+    ("thumbNetwork", Rule::Bool),
+    ("thumbPhone", Rule::Bool),
+    ("thumbUsb", Rule::Bool),
     ("ctrlZoom", Rule::Bool),
 ];
 
@@ -262,6 +267,10 @@ mod tests {
         assert_eq!(d.get("preview").and_then(|p| p.get("loadOn")).and_then(Json::as_str), Some("automatic"));
         assert_eq!(d.get("preview").and_then(|p| p.get("thumbnails")).and_then(Json::as_str), Some("media"));
         assert_eq!(d.get("preview").and_then(|p| p.get("thumbSize")).and_then(Json::as_str), Some("medium"));
+        // ExtThumbs, GM's ruling of 2026-09-23: network shares and phones are off, USB drives are on.
+        assert_eq!(d.get("preview").and_then(|p| p.get("thumbNetwork")).and_then(Json::as_bool), Some(false));
+        assert_eq!(d.get("preview").and_then(|p| p.get("thumbPhone")).and_then(Json::as_bool), Some(false));
+        assert_eq!(d.get("preview").and_then(|p| p.get("thumbUsb")).and_then(Json::as_bool), Some(true));
         assert_eq!(d.get("display").and_then(|p| p.get("textSize")).and_then(|t| t.get("mode")).and_then(Json::as_str), Some("system"));
         let display: Vec<&str> = d.get("display").and_then(Json::as_object).expect("display").iter().map(|(k, _)| k.as_str()).collect();
         assert_eq!(display, ["textSize", "hyprlandIcons"], "the compositor owns opacity, icons and shadows");
@@ -286,7 +295,7 @@ mod tests {
             hidden,
             // Directive 38: every feature this release adds ships with its own id hidden, so a fresh
             // ui.json behaves as 0.2.1 did. placeMenu is the Places rows' own menu.
-            ["delete", "openTerminal", "placeMenu", "runScript", "moveto", "copyto", "properties", "permissions", "copypath"]
+            ["delete", "openTerminal", "placeMenu", "runScript", "moveto", "copyto", "properties", "permissions", "copypath", "extThumbs"]
         );
     }
 

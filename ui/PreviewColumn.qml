@@ -17,6 +17,10 @@ Item {
     property var meta: null
     property string kindName: ""
     property string thumb: ""
+    // ExtThumbs: a class that is off holds the frame on its facts until Ctrl+Space loads it.
+    property bool manualHold: false
+    // ExtThumbs: how much of a text file the frame may read; 256 KiB on network and phone storage.
+    property int textLimit: 1048576
     // True once no thumbnail is coming: the backend answered with none, or never offered one at all.
     property bool noThumbComing: false
     // A move cleared the row and its settle is running, so the column is loading, not showing a file with no preview.
@@ -57,8 +61,9 @@ Item {
         ? Facts.state(root.row, 1, false, "", root.kindName) : ""
 
     // Loading and Error are states the column reaches on its own: loading while the facts are still
-    // in flight, and error when the thing it was going to draw could not be read at all.
-    readonly property bool busy: root.pending || (root.row !== null && root.row.d !== true && root.meta === null)
+    // in flight, and error when the thing it was going to draw could not be read at all. A held
+    // frame is neither: its facts are the listing's own and there is nothing in flight.
+    readonly property bool busy: root.pending || (root.row !== null && root.row.d !== true && root.meta === null && !root.manualHold)
     readonly property string failure: lines.readFailed || root.pdfFailed
         ? "This file could not be read."
         : (root.meta && root.meta.archiveFailed ? "This archive could not be read." : "")
@@ -215,6 +220,7 @@ Item {
                 active: root.visible && (root.rowState === Facts.TEXT || root.rowState === Facts.CODE)
                 path: root.path
                 size: root.row ? root.row.s : 0
+                maxBytes: root.textLimit
                 numbered: root.previewState === Facts.CODE
             }
             // The PDF's own page, which is the frame's whole content for that state. QtPdf is
@@ -462,6 +468,9 @@ Item {
     // Why the frame is showing a mark instead of the thing it meant to draw. Empty for every state
     // whose mark is simply what it draws, so the line only ever appears when something went wrong.
     function frameNote() {
+        if (root.manualHold) {
+            return "Ctrl+Space loads it"
+        }
         if (root.wantsThumb && root.thumb.length > 0 && !root.thumbDrawn) {
             return "thumbnail unavailable"
         }

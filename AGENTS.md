@@ -2042,6 +2042,17 @@ delete confirm and status line now shares, `ui/TrashView.qml` from 466 to 467 fo
 that reaches them, `src/tui/render.rs` from 822 to 835 for the singular TUI confirm and its test,
 and `src/tui/model.rs` from 1196 to 1197 for the noun on its Deleted line.
 
+ExtThumbs moves seven recorded ceilings, each re-derived with `wc -l`: `src/backend/run.rs` 428
+to 429 for the fsinfo class beside the figures and the thumb flag; `ui/Pane.qml` 673 to 687 for
+the storage class, its menu binding and the class toggle; `ui/ContextMenu.qml` 566 to 570 for the
+class property and the two fields the row reads; `ui/PreviewColumn.qml` 480 to 489 for the manual
+hold, its note and the text cap; `ui/Preview.qml` 417 to 420 for the Quick Look text cap;
+`ui/js/Focus.js` 334 to 336 for the class row's dispatch; `ui/Ipc.qml` 791 to 794 for the class
+and hold readers. The row's own decisions went to the new `ui/js/ExtThumbs.js`, 69 lines inside
+both budgets, rather than into `ui/js/Menu.js`, which takes the inventory line and one call and
+stands at 297 with 3 lines under the hard cap; `ui/js/Settings.js` takes the three checks, the
+hint and the renamed cell at 419 of its recorded 427.
+
 The Locked tile's own menu raises two recorded ceilings rather than splitting a third file.
 `ui/ContextMenu.qml` goes from its recorded 534 to 566 for the tile entrance (`tileTarget` and
 `tileMode`, `openLocked`, the `openBackground` route, the `buildEntries` arm and the

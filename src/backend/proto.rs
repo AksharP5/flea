@@ -14,7 +14,9 @@ pub enum Request {
     Search { path: String, query: String, hidden: bool },
     // Unlike thumbcancel there is no rows form: one walk runs at a time, so a cancel can only mean that one.
     SearchCancel,
-    Thumb { rows: Vec<usize> },
+    // cacheOnly answers from the shared cache alone and never starts a decoder, for a
+    // storage class whose switch is off; absent is today's full path, see docs/protocol.md "thumb".
+    Thumb { rows: Vec<usize>, cache_only: bool },
     ThumbCancel { rows: Vec<usize> },
     DirSize { rows: Vec<usize> },
     // Unlike thumbcancel, there is no rows form: it always cancels everything in flight, see docs/protocol.md "dirsizecancel".
@@ -97,7 +99,8 @@ pub fn parse_request(line: &str) -> Request {
             hidden: field_bool(line, "hidden"),
         },
         Some("searchcancel") => Request::SearchCancel,
-        Some("thumb") => Request::Thumb { rows: field_usize_array(line, "rows") },
+        Some("thumb") => Request::Thumb { rows: field_usize_array(line, "rows"),
+            cache_only: field_bool(line, "cacheOnly") },
         Some("thumbcancel") => Request::ThumbCancel { rows: field_usize_array(line, "rows") },
         Some("dirsize") => Request::DirSize { rows: field_usize_array(line, "rows") },
         Some("dirsizecancel") => Request::DirSizeCancel,

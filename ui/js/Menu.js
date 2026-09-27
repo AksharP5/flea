@@ -1,6 +1,7 @@
 .pragma library
 
 .import "Archive.js" as Archive
+.import "ExtThumbs.js" as ExtThumbs
 .import "Sort.js" as Sort
 
 // Submenus carry an entry array, including an empty array while a provider is unavailable.
@@ -66,6 +67,7 @@ var INVENTORY = [
     ["removeFavourite", "Remove from Favorites", "minus", "P", "inspect"],
     ["sort", "Sort by", "sort", "B", "view"],
     ["toggleHidden", "Show hidden files", "eye", "FB", "view"],
+    ["extThumbs", "Show thumbnails", "image", "B", "view"],
     ["settings", "Settings", "sliders", "B", "settings"],
     ["updateFlea", "Update Flea", "download", "B", "settings"],
     ["restoreAll", "Restore all", "undo", "T", "restore"],
@@ -176,6 +178,9 @@ function availableEntry(e, p, kind) {
         e.label = hidden.label
         e.glyph = hidden.glyph
     }
+    // The class switch ships hidden; switched on, it is present only on network,
+    // phone or USB storage and reads Show while that class is off, Hide while on.
+    if (e.action === "extThumbs") return ExtThumbs.entry(e, p)
     if (e.action === "restoreAll" || e.action === "emptyTrash") e.disabled = !(p.trashTotal > 0) || p.busy === true
     if (["trash", "deletePermanently", "emptyTrash"].indexOf(e.action) >= 0) e.danger = true
     return true

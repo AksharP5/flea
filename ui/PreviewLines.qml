@@ -16,7 +16,7 @@ Item {
 
     // The same gate ui/PreviewText.qml uses: FileView reads the whole file, so a row over it is
     // refused rather than truncated.
-    readonly property int maxBytes: 1048576
+    property int maxBytes: 1048576
     readonly property bool tooLarge: root.size > root.maxBytes
     // More than a small frame can show is wasted work, so only this many are ever built into rows.
     readonly property int maxLines: 14

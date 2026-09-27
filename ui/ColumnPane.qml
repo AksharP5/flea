@@ -2,6 +2,7 @@ import QtQuick
 import qs.Commons
 import "." as Flea
 import "js/Filter.js" as Filter
+import "js/ExtThumbs.js" as ExtThumbs
 import "js/Tap.js" as Tap
 import "js/Thumbs.js" as Thumbs
 import "js/DirSizes.js" as DirSizes
@@ -88,7 +89,7 @@ Item {
         // Only the loaded preview owns an off-viewport request; manual cursor movement asks nothing extra.
         work.drop = work.drop.filter(function (index) { return index !== root.pane.previewIndex })
         root.pane.backend.thumbcancel(work.drop)
-        root.pane.backend.thumb(work.ask)
+        root.pane.backend.thumb(work.ask, ExtThumbs.cacheOnly(root.pane.storageClass, ViewState.preview))
         if (work.ask.length > 0) settle.interval = root.pane.settleMs
         root.thumbsApplied(work)
     }

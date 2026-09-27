@@ -104,6 +104,8 @@ function act(action, root, menuId, paths) {
     case "focusPreview": root.focusPreviewColumn(); return
     case "windowNew": root.newWindow(); return
     case "toggleHidden": root.toggleHidden(); return
+    // ExtThumbs: the background menu's class row and any future chord land here.
+    case "extThumbs": root.toggleExtThumbs(); return
     case "sidebar": root.toggleRail(); return
     // Popups handle Escape first; the focused listing then unwinds filter, search, status and marks.
     case "escape":

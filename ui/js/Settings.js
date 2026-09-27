@@ -36,7 +36,7 @@ var MENU_GROUPS = [
     { id: "openInspect", label: "Open and inspect",
       ids: ["openwith", "openTerminal", "moveto", "copyto", "properties", "permissions", "copypath"] },
     { id: "extras", label: "Extras", features: ["placeMenu"],  // features gate a surface, not a row
-      ids: ["shelf", "compress", "extract", "convert", "taildrop", "localsend", "dropbox", "sharelink", "runScript", "placeMenu", "updateFlea"] }
+      ids: ["shelf", "compress", "extract", "convert", "taildrop", "localsend", "dropbox", "sharelink", "runScript", "placeMenu", "updateFlea", "extThumbs"] }
 ]
 
 // Open and Show hidden files draw the lock mark instead of a box, and the board says why: a menu that cannot open the row under the cursor is not a menu, and the hidden toggle is the one background row with no keyboard-independent alternative.
@@ -49,7 +49,7 @@ var LABELS = {
     compress: "Compress", extract: "Extract", localsend: "Send with LocalSend",
     convert: "Convert", taildrop: "Send with Taildrop", dropbox: "Move to Dropbox",
     sharelink: "Copy Share Link", open: "Open", toggleHidden: "Show hidden files", shelf: "Enable shelf", placeMenu: "Places row menu", runScript: "Run script",
-    updateFlea: "Update Flea"
+    updateFlea: "Update Flea", extThumbs: "Show thumbnails"
 }
 
 // The four values of the Keys row, in SettingsKeys.html's own chooser order. The first is what a missing or unrecognised stored name resolves to, which that board says is Default.
@@ -63,7 +63,7 @@ var GLYPHS = {
     delete: "trash", openwith: "app-window", moveto: "folder-plus", copyto: "copy", properties: "info",
     extract: "archive-out",
     convert: "sliders", sharelink: "network", open: "folder-open", toggleHidden: "eye", placeMenu: "folder-open", runScript: "terminal",
-    updateFlea: "download"
+    updateFlea: "download", extThumbs: "image"
 }
 
 // Taildrop, LocalSend and Dropbox are brand reproductions rather than cut glyphs, so they name a component the way a menu entry does; ui/SettingsRow.qml draws them exactly as ui/MenuRow.qml does.
@@ -359,7 +359,18 @@ function previewRows(state) {
         { kind: "hint", label: data.loadOn === "manual" ? "Ctrl+Space loads the current selection." : "Automatic follows the cursor." },
         { kind: "group", label: "Thumbnails" },
         choice("preview.thumbnails", "Thumbnails", "image", ["off", "images", "media"],
-               ["Off", "Images", "Images and video"], data.thumbnails || "media"),
+               ["Off", "Images", "Everything"], data.thumbnails || "media"),
+        // ExtThumbs: one switch per storage class, at the same column and never indented.
+        // They grey with the segment at 0.55 and keep their values, the way a disabled
+        // chrome control keeps its state; grid zoom below never greys with them.
+        { kind: "check", id: "preview.thumbNetwork", label: "On network shares", glyph: "network",
+          on: data.thumbNetwork === true, available: data.thumbnails !== "off" },
+        { kind: "check", id: "preview.thumbPhone", label: "On phones", glyph: "smartphone",
+          on: data.thumbPhone === true, available: data.thumbnails !== "off" },
+        { kind: "check", id: "preview.thumbUsb", label: "On USB drives", glyph: "drive",
+          on: data.thumbUsb !== false, available: data.thumbnails !== "off" },
+        { kind: "hint", label: "Off still shows thumbnails that were already made.",
+          available: data.thumbnails !== "off" },
         size,
         // Rule 7: GridArea gates ctrl-scroll on ViewState.ctrlZoom alone and sizes the tiles from it with thumbnails off, so it is grid zoom, it is named that, and it never greys with them.
         { kind: "check", id: "preview.ctrlZoom", label: "Zoom the grid with ctrl and scroll", glyph: "move-horizontal", on: data.ctrlZoom !== false }

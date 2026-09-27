@@ -38,7 +38,8 @@ function runInventory(check) {
     for (var g = 0; g < Settings.MENU_GROUPS.length; g++)
         switched = switched.concat(Settings.MENU_GROUPS[g].ids)
     // The background menu's rows count too where a switch governs them, as Update Flea's does once an update is known.
-    var background = Menu.listingEntries({ hasRow: false, showHidden: false, hiddenActions: [], updateVersion: "0.3.4" })
+    // storageClass "usb" builds the ExtThumbs row the way a removable drive does, so its switch is covered too.
+    var background = Menu.listingEntries({ hasRow: false, showHidden: false, hiddenActions: [], updateVersion: "0.3.4", storageClass: "usb", thumbPreview: {} })
     for (var b = 0; b < background.length; b++) {
         if (switched.indexOf(background[b].id) >= 0) {
             built[background[b].id] = background[b].label
@@ -58,7 +59,9 @@ function runInventory(check) {
               return !Settings.label(id) || Settings.GLYPHS[id] === undefined
           }).join(","), "")
     check("and each switch carries that row's own wording, so the two cannot drift",
-          rowSwitches.filter(function (id) { return id !== "shelf" && Settings.label(id) !== built[id] }).join(",")
+          // extThumbs names its class and state in the menu ("Hide USB thumbnails") while the
+          // switch keeps the board's one name ("Show thumbnails"), the shelf's own exemption.
+          rowSwitches.filter(function (id) { return id !== "shelf" && id !== "extThumbs" && Settings.label(id) !== built[id] }).join(",")
           + "|" + Settings.label("shelf") + "|" + built["shelf"], "|Enable shelf|Add to shelf")
     // A switch wears the mark of the row it governs, which is the only way a reader can pair the two.
     check("and each row wears the mark the menu draws for that action",
@@ -117,7 +120,7 @@ function runMaster(check) {
     check("every heading reports the group it governs, and a group of one row has no master at all",
           groups.map(function (row) { return row.label + "|" + (row.master ? row.value + "|" + row.state : "no master") }).join(", "),
           "Basic file actions|6 of 6|all, Destructive|no master, Open and inspect|3 of 7|some, "
-          + "Extras|11 of 11|all, Shortcuts|no master, Always shown|no master")
+          + "Extras|12 of 12|all, Shortcuts|no master, Always shown|no master")
     var inspect = groups[2]
     check("a heading with a master is a focus stop and one without is not",
           Settings.focusable(inspect) + "|" + Settings.focusable(groups[1]), "true|false")

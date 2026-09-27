@@ -11,7 +11,7 @@ Item {
     property int size: 0
 
     // FileView reads the whole file into memory, so this is the largest read a preview will start.
-    readonly property int maxBytes: 1048576
+    property int maxBytes: 1048576
     readonly property bool tooLarge: root.size > root.maxBytes
     property bool readFailed: false
 

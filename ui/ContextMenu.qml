@@ -50,6 +50,8 @@ Item {
     // False on a listing's empty space, where Menus.html's background column is what opens instead.
     // openBackground() is its only writer and openAt() puts it back, because one instance serves both.
     property bool hasRow: true
+    // ExtThumbs: src/backend/extclass.rs's word for the directory this opening answers for.
+    property string storageClass: ""
     // The Locked tile's folder while one is drawn, "" while none is; bound by ui/Pane.qml. A right
     // click landing on the tile reaches openBackground through the views, which routes it to the
     // locked folder's own menu rather than the parent's background one.
@@ -157,6 +159,8 @@ Item {
             scripts: Flea.Scripts.entries, localSendInstalled: root.localSend.installed, localSendPeers: root.localSend.peers, localSendChecking: view.localSendChecking,
             // The Menus settings section's stored set; ui/js/Menu.js applyHidden is what reads it.
             hiddenActions: ViewState.menuHidden,
+            // ExtThumbs: the class row's presence and label read these, never "this drive".
+            storageClass: root.storageClass, thumbPreview: ViewState.preview,
             updateVersion: UpdateCheck.menuVersion
         })
     }

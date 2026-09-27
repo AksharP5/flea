@@ -96,14 +96,16 @@ pub fn name_for(f_type: i64) -> String {
     format!("0x{:x}", f_type)
 }
 
-// Sample output: {"t":"fsinfo","fs":"btrfs","free":442000000000,"path":"/home/gm"}
+// Sample output: {"t":"fsinfo","fs":"btrfs","free":442000000000,"path":"/home/gm","class":""}
 // path is the directory these figures are of. The base only moves when a listing succeeds, so a
 // client whose displayed path has already moved can tell that they describe somewhere else.
-pub fn fsinfo_line(info: &Option<Info>, path: &str) -> String {
+// class is src/backend/extclass.rs's own word for that directory, network, phone, usb or "",
+// computed once per directory change beside this line and never per row.
+pub fn fsinfo_line(info: &Option<Info>, path: &str, class: &str) -> String {
     match info {
-        Some(i) => format!(r#"{{"t":"fsinfo","fs":"{}","free":{},"path":"{}"}}"#, escape(&i.name), i.free, escape(path)),
+        Some(i) => format!(r#"{{"t":"fsinfo","fs":"{}","free":{},"path":"{}","class":"{}"}}"#, escape(&i.name), i.free, escape(path), escape(class)),
         // An unreadable path answers an empty name, so the client draws nothing rather than a wrong number.
-        None => format!(r#"{{"t":"fsinfo","fs":"","free":0,"path":"{}"}}"#, escape(path)),
+        None => format!(r#"{{"t":"fsinfo","fs":"","free":0,"path":"{}","class":"{}"}}"#, escape(path), escape(class)),
     }
 }
 
@@ -140,20 +142,28 @@ mod tests {
     fn a_path_that_does_not_exist_is_none_rather_than_a_wrong_number() {
         let d = TestDir::new("fsinfomissing");
         assert!(read(&d.join("never-existed")).is_none());
-        assert_eq!(fsinfo_line(&None, "/gone"), r#"{"t":"fsinfo","fs":"","free":0,"path":"/gone"}"#);
+        assert_eq!(fsinfo_line(&None, "/gone", ""), r#"{"t":"fsinfo","fs":"","free":0,"path":"/gone","class":""}"#);
     }
 
     #[test]
     fn the_line_carries_the_name_the_free_bytes_and_the_directory_they_are_of() {
-        let line = fsinfo_line(&Some(Info { name: "btrfs".to_string(), free: 442_000_000_000 }), "/home/gm");
-        assert_eq!(line, r#"{"t":"fsinfo","fs":"btrfs","free":442000000000,"path":"/home/gm"}"#);
+        let line = fsinfo_line(&Some(Info { name: "btrfs".to_string(), free: 442_000_000_000 }), "/home/gm", "");
+        assert_eq!(line, r#"{"t":"fsinfo","fs":"btrfs","free":442000000000,"path":"/home/gm","class":""}"#);
+    }
+
+    #[test]
+    fn the_line_names_the_directory_class_beside_its_figures() {
+        let line = fsinfo_line(&Some(Info { name: "cifs".to_string(), free: 7 }), "/media/nas", "network");
+        assert_eq!(line, r#"{"t":"fsinfo","fs":"cifs","free":7,"path":"/media/nas","class":"network"}"#);
+        let line = fsinfo_line(&None, "/gone", "usb");
+        assert_eq!(line, r#"{"t":"fsinfo","fs":"","free":0,"path":"/gone","class":"usb"}"#);
     }
 
     // The base is a real path, so a quote or a backslash in it has to leave as JSON and not as a
     // second key: every other line in this protocol escapes its own strings for the same reason.
     #[test]
     fn a_path_with_a_quote_in_it_leaves_as_one_escaped_string() {
-        let line = fsinfo_line(&None, "/tmp/a\"b");
-        assert_eq!(line, r#"{"t":"fsinfo","fs":"","free":0,"path":"/tmp/a\"b"}"#);
+        let line = fsinfo_line(&None, "/tmp/a\"b", "");
+        assert_eq!(line, r#"{"t":"fsinfo","fs":"","free":0,"path":"/tmp/a\"b","class":""}"#);
     }
 }

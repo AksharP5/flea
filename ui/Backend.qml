@@ -52,7 +52,7 @@ Item {
     signal metaResult(var message)
     property int metaToken: 0
     signal meta(int row, int w, int h, int orient, real durationMs, int sampleRate, int entries, real unpacked, bool archiveFailed, var names, real lines, bool partial, bool linesFailed, string target, bool targetDir, string owner)
-    signal fsInfo(string fs, real free, string path)
+    signal fsInfo(string fs, real free, string path, string storageClass)
     // The one line no request asked for: the directory the current listing came from changed under
     // it. path is that directory, so a pane that has since moved can ignore it; see docs/protocol.md.
     signal changed(string path)
@@ -261,12 +261,12 @@ Item {
                     requestId: requestId || 0, check: check === true })
     }
 
-    function thumb(rows) {
+    function thumb(rows, cacheOnly) {
         if (rows.length === 0) {
             return
         }
         root.thumbRequests += 1
-        root.send({ c: "thumb", rows: rows })
+        root.send({ c: "thumb", rows: rows, cacheOnly: cacheOnly === true })
     }
 
     // An empty rows cancels EVERYTHING queued, so an empty list is never sent; see docs/protocol.md.

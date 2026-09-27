@@ -2,6 +2,7 @@ import QtQuick
 import "." as Flea
 import "js/Facts.js" as Facts
 import "js/Thumbs.js" as Thumbs
+import "js/ExtThumbs.js" as ExtThumbs
 import "js/Keymap.js" as Keymap
 import "js/PreviewKeys.js" as PreviewKeys
 import "js/PreviewSwap.js" as PreviewSwap
@@ -65,6 +66,9 @@ Flea.PreviewColumn {
             pdfFailed: root.pdfFailed, linesLoading: root.linesItem.loading, meta: root.meta !== null })
     }
 
+    // ExtThumbs: how much of a text file this frame may read; the column passes it on.
+    textLimit: ExtThumbs.textLimit(root.pane ? root.pane.storageClass : "")
+
     function identity(row) {
         return row ? JSON.stringify([row.n, row.s, row.m, row.p, row.i]) : ""
     }
@@ -107,6 +111,7 @@ Flea.PreviewColumn {
     function clearShown() {
         root.pending = false
         root.pendingToken = 0
+        root.manualHold = false
         root.loadedIndex = -1
         root.loadedDirectory = ""
         root.loadedIdentity = ""
@@ -121,9 +126,24 @@ Flea.PreviewColumn {
     function followSelection() {
         if (!root.canRead) return
         var candidate = root.pane.rowFor(root.pane.cursorIndex)
+        var hold = ExtThumbs.manualHold(root.pane.storageClass, ViewState.preview)
         if (root.loadedDirectory === root.pane.path && root.loadedIndex === root.pane.cursorIndex
-                && root.loadedIdentity === root.identity(candidate)) return
+                && root.loadedIdentity === root.identity(candidate) && root.manualHold === hold) return
+        // An off class holds the frame on the listing's own facts until Ctrl+Space loads it; nothing loads, so no swap.
+        if (hold) { root.clear(); root.holdSelection(candidate); return }
         root.replace()
+    }
+
+    // The held frame: the row, its path and its facts from the listing alone, no meta and no
+    // thumbnail ask. Space still opens Quick Look, which loads on request.
+    function holdSelection(candidate) {
+        if (!candidate || candidate.d) return
+        root.manualHold = true
+        root.row = Object.assign({}, candidate)
+        root.path = root.pane.join(root.pane.path, candidate.n)
+        root.kindName = root.pane.kindNames[candidate.k] || ""
+        root.selectionCount = root.pane.selectionCount()
+        root.selectedRows = root.pane.selectedIndices().map(function (index) { return root.pane.rowFor(index) }).filter(function (row) { return row !== null })
     }
 
     // Ctrl+Space calls this directly; automatic selection reaches it only after selection settles.
@@ -178,6 +198,8 @@ Flea.PreviewColumn {
             if (ViewState.previewAutomatic) root.followSelection()
             else settle.stop()
         }
+        // A class switch moves the frame between held and loaded without a cursor move.
+        function onStateChanged() { root.followSelection() }
     }
     Connections {
         target: root.pane

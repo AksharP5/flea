@@ -3,6 +3,7 @@ import Quickshell
 import "." as Flea
 import "js/DirSizes.js" as DirSizes
 import "js/Dropbox.js" as Dropbox
+import "js/ExtThumbs.js" as ExtThumbs
 import "js/Filter.js" as Filter
 import "js/Format.js" as Format
 import "js/Focus.js" as Focus
@@ -227,6 +228,9 @@ FocusScope {
     // The filesystem line the status bar draws, refreshed once per directory rather than per row.
     property string fsName: ""
     property real fsFree: 0
+    // ExtThumbs: src/backend/extclass.rs's own word for the directory being shown, network,
+    // phone, usb or "", carried beside the fsinfo line once per directory change, never per row.
+    property string storageClass: ""
 
     function goBack() { if (trashHost.opened) trashHost.close(); else Nav.back(root) }
     function goForward() { if (!trashHost.opened) Nav.forward(root) }
@@ -523,6 +527,14 @@ FocusScope {
         if (root.viewMode === "columns" && columnsLoader.item) columnsLoader.item.loadSelection()
     }
     function togglePreviewColumn() { ViewState.changeLeaf("preview", { column: !ViewState.previewColumn }) }
+    // ExtThumbs: the background menu's class row writes the class setting, never "this drive".
+    function toggleExtThumbs() {
+        var key = ExtThumbs.keyForClass(root.storageClass)
+        if (key === "") return
+        var on = !ExtThumbs.classOn(root.storageClass, ViewState.preview)
+        ViewState.changeSetting("preview." + key, on)
+        root.message(ExtThumbs.statusLine(root.storageClass, on), false)
+    }
     function chooseView(mode) { ViewState.changeKey("view", mode) }
     function focusPreviewColumn() {
         if (!ViewState.previewColumn || root.dualMode) return
@@ -610,6 +622,8 @@ FocusScope {
             && Dropbox.contains(root.dropboxService.dropboxPath, root.join(root.path, root.cursorRow.n))
         // Issue 133: no GVFS mount, share or phone, has a trash of its own, so the row is not offered there.
         canTrash: Mounts.trashable(root.path)
+        // ExtThumbs: the class the background menu's thumbnail row is present for, "" locally.
+        storageClass: root.storageClass
         // The Locked tile's folder and mode while one is drawn; ui/ContextMenu.qml routes a
         // background right click to that folder's own menu through them.
         tileTarget: root.lockedTarget
