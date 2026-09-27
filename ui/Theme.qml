@@ -76,6 +76,8 @@ Singleton {
     }
 
     // One glyph's advance in a monospace face is every glyph's advance, so this sizes every fixed column.
+    // Names.js reads it too, so a middle-elided name budgets characters off the same advance the columns do.
+    readonly property real glyphAdvance: glyphMetrics.advanceWidth
     TextMetrics {
         id: glyphMetrics
         font.family: Style.font.family

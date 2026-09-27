@@ -1,5 +1,6 @@
 import QtQuick
 import "." as Flea
+import "js/ClipMarks.js" as ClipMarks
 import "js/DirSizes.js" as DirSizes
 import "js/ExtThumbs.js" as ExtThumbs
 import "js/Filter.js" as Filter
@@ -68,6 +69,9 @@ ListView {
         hovered: hover.hovered
         thumb: root.thumbFor(listingIndex)
         selected: root.pane.isSelected(listingIndex)
+        // The clipboard's mark for this row, one lookup each, and only for rows a
+        // delegate is holding: the model is a count, so nothing off screen checks.
+        clipMark: ClipMarks.markForRow(root.pane, cell.row ? cell.row.n : "", root.pane.clipboard)
         kindNames: root.pane.kindNames
         dirSize: root.dirSizeFor(listingIndex)
         // A filter paints its run the same way a search does; filtering below is what keeps the

@@ -2,6 +2,7 @@ import QtQuick
 import "archive.js" as ArchiveSuite
 import "background.js" as BackgroundSuite
 import "collide.js" as CollideSuite
+import "clipmarks.js" as ClipMarksSuite
 import "columns.js" as ColumnsSuite
 import "contrast.js" as ContrastSuite
 import "crumbs.js" as CrumbsSuite
@@ -31,6 +32,7 @@ import "menu.js" as MenuSuite
 import "openwith.js" as OpenWithSuite
 import "devices.js" as DevicesSuite
 import "mounts.js" as MountsSuite
+import "names.js" as NamesSuite
 import "nav.js" as NavSuite
 import "network.js" as NetworkSuite
 import "ops.js" as OpsSuite
@@ -95,7 +97,7 @@ Item {
         }
 
         var suites = [
-            ["archive", ArchiveSuite], ["background", BackgroundSuite], ["collide", CollideSuite], ["columns", ColumnsSuite], ["contrast", ContrastSuite],
+            ["archive", ArchiveSuite], ["background", BackgroundSuite], ["collide", CollideSuite], ["clipmarks", ClipMarksSuite], ["columns", ColumnsSuite], ["contrast", ContrastSuite],
             ["dirsizes", DirSizesSuite], ["drag", DragSuite], ["dst", DstSuite],
             ["edmonton", DstSuite],
             ["errors", ErrorsSuite], ["facts", FactsSuite], ["filter", FilterSuite], ["filter-cursor", FilterCursorSuite],
@@ -105,7 +107,7 @@ Item {
             ["focus-lines", FocusLinesSuite], ["focus-wrap", FocusWrapSuite],
             ["format", FormatSuite], ["icons", IconsSuite],
             ["jump", JumpSuite], ["jump-heldout", JumpHeldoutSuite], ["keymap", KeymapSuite], ["localsend", LocalSendSuite], ["match", MatchSuite], ["menu", MenuSuite],
-            ["marks", MarksSuite], ["mounts", MountsSuite], ["nav", NavSuite], ["crumbs", CrumbsSuite], ["devices", DevicesSuite], ["network", NetworkSuite],
+            ["marks", MarksSuite],             ["mounts", MountsSuite], ["names", NamesSuite], ["nav", NavSuite], ["crumbs", CrumbsSuite], ["devices", DevicesSuite], ["network", NetworkSuite],
             ["openwith", OpenWithSuite], ["ops", OpsSuite], ["opstrash", OpsTrashSuite],
             ["palette", PaletteSuite], ["pathbar", PathBarSuite], ["places", PlacesSuite], ["placemenu", PlaceMenuSuite], ["rail", RailSuite], ["scripts", ScriptsSuite],
             ["phones", PhonesSuite],

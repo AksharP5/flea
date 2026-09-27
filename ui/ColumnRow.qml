@@ -4,6 +4,7 @@ import "." as Flea
 import "js/Drag.js" as DragOps
 import "js/Icons.js" as Icons
 import "js/Format.js" as Format
+import "js/Names.js" as Names
 
 // One row of a Miller column: a mark, a name, and the chevron a chosen directory carries. Simpler
 // than a list row on purpose, because a column has no size, date, mode or kind to draw.
@@ -33,6 +34,16 @@ Item {
     property bool hovered: false
     property bool dropTarget: false
     property bool dropCopying: false
+    // The clipboard's mark for this row, "" when it holds none; the area derives it per
+    // visible row through ui/js/ClipMarks.js, so an empty clipboard costs nothing.
+    property string clipMark: ""
+    // A cut row dims to the ClipMarks board's own opacity, content only.
+    readonly property bool clipCut: root.clipMark === "scissors"
+    // The mark's own size: 12 px in the muted role, 9 px after the name, per the board.
+    readonly property int clipPx: 12
+    // Characters of name slot at the shared monospace advance; the width is anchor-set,
+    // so the budget never feeds back into it, with ElideMiddle as the backstop.
+    readonly property int nameBudget: Theme.glyphAdvance > 0 && nameText.width > 0 ? Math.floor(nameText.width / Theme.glyphAdvance) : -1
 
     // Truthiness, like the two readers below: ui/ColumnPane.qml hands this rows[index] raw, so a
     // listing that shrank leaves a surviving delegate holding undefined, which is not null.
@@ -77,6 +88,7 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         width: Theme.iconSize
         height: Theme.iconSize
+        opacity: root.clipCut ? Theme.disabledOpacity : 1
 
         // Sized on purpose, the same decode arm as ui/Row.qml: the cache PNG is capped at the icon's own size.
         Image {
@@ -101,18 +113,41 @@ Item {
     }
 
     // corner: a filename is arbitrary text, so PlainText, the same rule every name on this surface follows.
+    // Long names elide in the middle, so the extension stays visible, per Names040.
     Text {
+        id: nameText
         anchors.left: markSlot.right
         anchors.leftMargin: Theme.spacing.gap
         anchors.right: sizeCell.left
-        anchors.rightMargin: root.showSize ? Theme.spacing.gap : 0
+        anchors.rightMargin: (root.showSize ? Theme.spacing.gap : 0) + (root.clipMark.length > 0 ? Theme.spacing.gap + root.clipPx : 0)
         anchors.verticalCenter: parent.verticalCenter
-        text: root.row ? root.row.n : ""
+        opacity: root.clipCut ? Theme.disabledOpacity : 1
+        text: root.row && root.nameBudget >= 0 ? Names.middleElide(root.row.n, root.nameBudget) : (root.row ? root.row.n : "")
         color: root.ink
         font.family: Theme.font.family
         font.pixelSize: Theme.font.body
         textFormat: Text.PlainText
-        elide: Text.ElideRight
+        elide: Text.ElideMiddle
+    }
+
+    // Built only on a clipboard row: the Glyph costs a Shape per instance, so anything else
+    // would put one on every row. The x tracks the rendered text end, capped at the slot,
+    // and the reservation above holds the gap plus the mark clear of the size cell.
+    Loader {
+        id: clipLoader
+        active: root.clipMark.length > 0
+        width: root.clipPx
+        height: root.clipPx
+        x: nameText.x + Math.min(nameText.implicitWidth, nameText.width) + Theme.spacing.gap
+        anchors.verticalCenter: parent.verticalCenter
+        // The board's own nudge: the mark sits one pixel above the text centre line.
+        anchors.verticalCenterOffset: -1
+        sourceComponent: Flea.Glyph {
+            width: root.clipPx
+            height: root.clipPx
+            name: root.clipMark
+            color: Theme.color.muted
+        }
     }
 
     // Only the active column carries a number: a peeked row is never stat'd and dirsize resolves
@@ -123,6 +158,7 @@ Item {
         anchors.rightMargin: root.showSize ? Theme.spacing.gap : 0
         anchors.verticalCenter: parent.verticalCenter
         visible: root.showSize && !root.dropTarget
+        opacity: root.clipCut ? Theme.disabledOpacity : 1
         width: visible ? Theme.column.size : 0
         text: root.showSize && root.row ? root.sizeText() : ""
         color: root.ink

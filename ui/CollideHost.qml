@@ -1,6 +1,6 @@
 import QtQuick
+import "js/ClipMarks.js" as ClipMarks
 import "js/Collide.js" as Collide
-import "js/Ops.js" as Ops
 
 // A pane's question before a transfer lands on names that exist: the transfer waits here, so Cancel sends nothing.
 Loader {
@@ -49,8 +49,7 @@ Loader {
         var request = root.pending
         if (request && choice !== "cancel") {
             root.pane.backend.send(Collide.transfer(request, choice, root.askId))
-            if (root.spendsCut)
-                root.pane.clipboard = Ops.emptyClipboard()
+            root.pane.clipboard = ClipMarks.spent(root.pane.clipboard, root.spendsCut)
         }
         root.pending = null
     }

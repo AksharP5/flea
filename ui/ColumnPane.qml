@@ -1,6 +1,7 @@
 import QtQuick
 import qs.Commons
 import "." as Flea
+import "js/ClipMarks.js" as ClipMarks
 import "js/Filter.js" as Filter
 import "js/ExtThumbs.js" as ExtThumbs
 import "js/Tap.js" as Tap
@@ -203,6 +204,9 @@ Item {
             showSize: root.pane !== null
             dirSize: root.pane !== null ? DirSizes.sizeFor(root.pane.dirSizeState, listingIndex) : null
             cursor: root.selectedIndex >= 0 && listingIndex === root.selectedIndex
+            // The clipboard's mark, one lookup each, and only on the pane's own column:
+            // a peek's rows belong to another directory whose base this column does not hold.
+            clipMark: root.pane !== null ? ClipMarks.markForRow(root.pane, cell.row ? cell.row.n : "", root.pane.clipboard) : ""
             // The list and the grid both mark a selection member apart from the cursor; so does this.
             selected: root.pane !== null && root.pane.isSelected(listingIndex)
             dropTarget: dragSession.dropIndex >= 0 && listingIndex === dragSession.dropIndex

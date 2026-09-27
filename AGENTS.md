@@ -2708,6 +2708,16 @@ their re-derived `wc -l`: `src/backend/run.rs` 470 to 444, `src/backend/proto.rs
 modules, the rail-entry UI module and its suite leave no record behind, and neither do the
 two walk wire requests.
 
+ClipMarks and Names040 move one recorded ceiling, each count re-derived with `wc -l`.
+`ui/Row.qml` 421 to 453 for the clipboard mark (the `clipMark` property, the `clipLoader`
+built only on a clipboard row, the name-slot reservation and the cut-dim opacities) and the
+middle-elision budget (`nameBudget` off the shared advance, `elidedName` for unmarked names).
+The decisions went to the new `ui/js/ClipMarks.js` (42 lines) and `ui/js/Names.js` (40 lines),
+each inside both budgets, rather than into `ui/js/Ops.js`, which keeps its recorded 367 with
+no room to grow; `ui/js/Collide.js` and `ui/js/Focus.js` are untouched because the paste that
+spends a cut already cleared the clipboard through `CollideHost.decide`. `ui/GridTile.qml`
+stands at 202, `ui/ColumnRow.qml` at 214 and `ui/Theme.qml` at 398, all inside their budgets.
+
 ## The key table is generated
 
 `keys.toml` at the repository root is the single source of truth for every binding.

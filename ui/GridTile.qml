@@ -18,6 +18,13 @@ Item {
     property string thumb: ""
     property bool renaming: false
     property var renamePane: null
+    // The clipboard's mark for this tile, "" when it holds none; the grid area derives
+    // it per visible tile through ui/js/ClipMarks.js, so an empty clipboard costs nothing.
+    property string clipMark: ""
+    // A cut tile dims to the ClipMarks board's own opacity, content only.
+    readonly property bool clipCut: root.clipMark === "scissors"
+    // The mark's own size: 12 px in the muted role, 9 px after the name, per the board.
+    readonly property int clipPx: 12
     readonly property string editorText: editor.current
     readonly property Item editorField: editor
     readonly property real renameExtraHeight: root.renaming ? Math.max(0, editor.implicitHeight - Theme.grid.captionHeight - Theme.spacing.rowPaddingX) : 0
@@ -65,6 +72,7 @@ Item {
         anchors.topMargin: Theme.spacing.rowPaddingX
         width: ViewState.thumbnailPixels
         height: ViewState.thumbnailPixels
+        opacity: root.clipCut ? Theme.disabledOpacity : 1
 
         // A thumbnail is a decoded image and stays one; the glyph beside it is a native mark, and
         // exactly one is visible, chosen the same way ui/Row.qml chooses.
@@ -97,9 +105,11 @@ Item {
     HoverHandler { id: hover }
 
     // corner: a filename is arbitrary text, so PlainText, the same rule every name on this surface follows.
+    // The caption wraps two lines; the last line elides in the middle, so the extension stays visible.
     Text {
         id: nameLabel
         visible: !root.renaming
+        opacity: root.clipCut ? Theme.disabledOpacity : 1
         anchors.top: markSlot.bottom
         anchors.topMargin: Theme.spacing.gap
         anchors.left: parent.left
@@ -117,7 +127,26 @@ Item {
         maximumLineCount: root.dropTarget ? 1 : 2
         lineHeightMode: Text.FixedHeight
         lineHeight: Theme.grid.captionLineHeight
-        elide: Text.ElideRight
+        elide: Text.ElideMiddle
+    }
+
+    // Built only on a clipboard tile: the Glyph costs a Shape per instance, so anything else
+    // would put one on every tile. Centred text has no stable text end, so the x tracks the
+    // widest line's end, capped at the caption's own; single-line names land exactly.
+    Loader {
+        id: clipLoader
+        active: root.clipMark.length > 0 && !root.renaming
+        width: root.clipPx
+        height: root.clipPx
+        x: Math.min(nameLabel.x + (nameLabel.width + Math.min(nameLabel.contentWidth, nameLabel.width)) / 2 + Theme.spacing.gap,
+                    nameLabel.x + nameLabel.width - root.clipPx)
+        y: nameLabel.y + nameLabel.height - (Theme.grid.captionLineHeight + root.clipPx) / 2 - 1
+        sourceComponent: Flea.Glyph {
+            width: root.clipPx
+            height: root.clipPx
+            name: root.clipMark
+            color: Theme.color.muted
+        }
     }
 
     Flea.RenameField {

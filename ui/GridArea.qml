@@ -1,5 +1,6 @@
 import QtQuick
 import "." as Flea
+import "js/ClipMarks.js" as ClipMarks
 import "js/DirSizes.js" as DirSizes
 import "js/ExtThumbs.js" as ExtThumbs
 import "js/Filter.js" as Filter
@@ -115,6 +116,9 @@ GridView {
         thumb: Thumbs.allowed(row, ViewState.thumbnailMode) ? Thumbs.fileFor(root.pane.thumbState, listingIndex) : ""
         renaming: listingIndex >= 0 && listingIndex === root.pane.renamingIndex
         renamePane: root.pane
+        // The clipboard's mark for this tile, one lookup each, and only for tiles a
+        // delegate is holding: the model is a count, so nothing off screen checks.
+        clipMark: ClipMarks.markForRow(root.pane, cell.row ? cell.row.n : "", root.pane.clipboard)
         onRenameCommitted: function(newName) { root.pane.commitRename(newName) }
         onRenameAbandoned: root.pane.renamingIndex = -1
 

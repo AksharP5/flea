@@ -4,6 +4,7 @@ import "js/Drag.js" as DragOps
 import "js/Format.js" as Format
 import "js/Icons.js" as Icons
 import "js/Match.js" as Match
+import "js/Names.js" as Names
 import "." as Flea
 
 Item {
@@ -18,6 +19,13 @@ Item {
     property bool hovered: false
     property string thumb: ""
     property bool selected: false
+    // The clipboard's mark for this row, "" when it holds none; List.qml derives it per
+    // visible row through ui/js/ClipMarks.js, so an empty clipboard costs nothing.
+    property string clipMark: ""
+    // A cut row dims to the ClipMarks board's own opacity, content only, never the state fills.
+    readonly property bool clipCut: root.clipMark === "scissors"
+    // The mark's own size: 12 px in the muted role, 9 px after the name, per the board.
+    readonly property int clipPx: 12
     // The per-response dictionary row.k indexes into; List.qml hands down the same array every row of one response shares.
     property var kindNames: []
     // The row is its own rename editor while this is true, per the States artboard.
@@ -50,6 +58,11 @@ Item {
     readonly property string decoratedName: root.displayName + root.linkMark
     readonly property string locationText: root.searching ? Match.location(root.row.n) : ""
     readonly property var nameRun: Match.run(root.displayName, root.searchQuery)
+    // Characters of name slot at the shared monospace advance; the width is anchor-set, so the
+    // budget never feeds back into it. Unmarked names pre-truncate through ui/js/Names.js with
+    // ElideMiddle as the backstop; marked runs keep full text, so their indices still land.
+    readonly property int nameBudget: Theme.glyphAdvance > 0 && name.width > 0 ? Math.floor(name.width / Theme.glyphAdvance) : -1
+    readonly property string elidedName: root.nameRun.start < 0 && root.nameBudget >= 0 ? Names.middleElide(root.decoratedName, root.nameBudget) : root.decoratedName
     // A long name would otherwise hide the location entirely, and the location is what tells two matches apart.
     readonly property real nameShare: 0.66
     // What the name and location share: the row less its padding, the mark, their own gap, and the size column while it is drawn.
@@ -113,6 +126,7 @@ Item {
     Image {
         id: thumbImage
         visible: root.thumbDrawn
+        opacity: root.clipCut ? Theme.disabledOpacity : 1
         anchors.left: parent.left
         anchors.leftMargin: Theme.spacing.rowPaddingX + root.leadingSlot
         anchors.verticalCenter: parent.verticalCenter
@@ -130,6 +144,7 @@ Item {
     Glyph {
         id: icon
         visible: !root.thumbDrawn
+        opacity: root.clipCut ? Theme.disabledOpacity : 1
         anchors.left: parent.left
         anchors.leftMargin: Theme.spacing.rowPaddingX + root.leadingSlot
         anchors.verticalCenter: parent.verticalCenter
@@ -184,22 +199,45 @@ Item {
     MatchText {
         id: name
         visible: !root.searching && !root.renaming
+        opacity: root.clipCut ? Theme.disabledOpacity : 1
         anchors.left: icon.right
         anchors.leftMargin: Theme.spacing.gap
         anchors.right: mode.left
-        anchors.rightMargin: root.modeShown ? Theme.spacing.gap : 0
+        anchors.rightMargin: (root.modeShown ? Theme.spacing.gap : 0) + (root.clipMark.length > 0 ? Theme.spacing.gap + root.clipPx : 0)
         anchors.verticalCenter: parent.verticalCenter
-        text: root.decoratedName
+        text: root.elidedName
         matchStart: root.nameRun.start
         matchLength: root.nameRun.length
         color: root.nameColor()
         accent: Theme.color.accent
+        elideMiddle: true
+    }
+
+    // Built only on a clipboard row: the Glyph costs a Shape per instance, so anything else
+    // would put one on every row. The x tracks the rendered text end, capped at the slot,
+    // and the reservation above holds the gap plus the mark clear of the mode cell.
+    Loader {
+        id: clipLoader
+        active: root.clipMark.length > 0 && !root.renaming
+        width: root.clipPx
+        height: root.clipPx
+        x: name.x + Math.min(name.implicitWidth, name.width) + Theme.spacing.gap
+        anchors.verticalCenter: parent.verticalCenter
+        // The board's own nudge: the mark sits one pixel above the text centre line.
+        anchors.verticalCenterOffset: -1
+        sourceComponent: Glyph {
+            width: root.clipPx
+            height: root.clipPx
+            name: root.clipMark
+            color: Theme.color.muted
+        }
     }
 
     // The search column set: the name shrinks to its content so the location beside it has room.
     // Both are built only while searching, over the same span the two drew in side by side.
     Loader {
         active: root.searching
+        opacity: root.clipCut ? Theme.disabledOpacity : 1
         anchors.left: icon.right
         anchors.leftMargin: Theme.spacing.gap
         anchors.right: size.left
@@ -217,6 +255,8 @@ Item {
                 matchLength: root.nameRun.length
                 color: root.nameColor()
                 accent: Theme.color.accent
+                // A search base name keeps its extension the same way a list name does.
+                elideMiddle: true
             }
 
             Text {
@@ -239,6 +279,7 @@ Item {
     // same four objects the inline Texts did, with the same anchors and bindings.
     RowMode {
         id: mode
+        opacity: root.clipCut ? Theme.disabledOpacity : 1
         anchors.right: size.left
         anchors.rightMargin: root.sizeShown && !root.dualMode ? Theme.spacing.gap : 0
         anchors.verticalCenter: parent.verticalCenter
@@ -252,6 +293,7 @@ Item {
 
     RowSize {
         id: size
+        opacity: root.clipCut ? Theme.disabledOpacity : 1
         anchors.right: modified.left
         anchors.rightMargin: root.dateShown && !root.dualMode ? Theme.spacing.gap : 0
         anchors.verticalCenter: parent.verticalCenter
@@ -266,6 +308,7 @@ Item {
 
     RowDate {
         id: modified
+        opacity: root.clipCut ? Theme.disabledOpacity : 1
         anchors.right: kind.left
         anchors.rightMargin: root.kindShown ? Theme.spacing.gap : 0
         anchors.verticalCenter: parent.verticalCenter
@@ -279,6 +322,7 @@ Item {
 
     RowKind {
         id: kind
+        opacity: root.clipCut ? Theme.disabledOpacity : 1
         anchors.right: parent.right
         anchors.rightMargin: Theme.spacing.rowPaddingX
         anchors.verticalCenter: parent.verticalCenter
