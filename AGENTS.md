@@ -2344,6 +2344,9 @@ and the fallback's `heldOff`. `ui/Ipc.qml` 791 to 792 for the `previewSwapState`
 `ui/PreviewSwap.qml` (238), `ui/js/PreviewSwap.js` (72) and `tests/js/previewswap.js` (70) sit inside
 their budgets and carry no ceiling.
 
+Quick Look's photo no longer waits for its EXIF turn: `ui/Preview.qml` 452 to 453 for clearing
+`imageRow` once the answer lands, the flag that re-asks a meta a listing change swallowed.
+
 ## The key table is generated
 
 `keys.toml` at the repository root is the single source of truth for every binding.
