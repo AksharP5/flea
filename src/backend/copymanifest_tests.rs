@@ -158,7 +158,7 @@ fn a_tree_copy_records_each_file_once_and_each_directory_once() {
     let flag = AtomicBool::new(false);
     let mut sink = |_: u64, _: u64| {};
     let writer = Writer::create(&dst).expect("anonymous manifest");
-    let mut p = Progress { cancel: &flag, on_bytes: &mut sink, tree: None, partial: None, manifest: Some(writer) };
+    let mut p = Progress { cancel: &flag, on_bytes: &mut sink, tree: None, partial: None, manifest: Some(writer), durability: None };
     copy_any(&src, &dst, &mut p).expect("copy");
     let writer = p.manifest.take().expect("the writer back");
     let handle = writer.finish().expect("no I/O").expect("records went");
