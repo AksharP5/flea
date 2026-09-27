@@ -136,6 +136,15 @@ function run(check) {
     var locked = LockedMenu.lockedEntries({ lockedMode: 0o040000, hiddenActions: [] })
     check("the Locked tile offers only rows that act without listing the folder",
           actions(locked), "openTerminal,permissions,copypath")
+    // One check per locked row: each offered action is the dispatch ui/Pane.qml performLocked
+    // switches on, so a row renamed on either side strands the other. The signal carry itself
+    // (ContextMenu.lockedChosen) is QML-only and is covered by the controller's live check.
+    check("its Open in Terminal row carries the terminal dispatch",
+          entry(locked, "openTerminal").action, "openTerminal")
+    check("its Permissions row carries the permissions dispatch",
+          entry(locked, "permissions").action, "permissions")
+    check("its Copy path row carries the copy dispatch",
+          entry(locked, "copypath").action, "copypath")
     check("and no row that would create in, paste into or sort the parent",
           ["newFolder", "newFile", "paste", "selectAll", "sort", "toggleHidden", "settings"].every(function (a) {
               return entry(locked, a).action === undefined

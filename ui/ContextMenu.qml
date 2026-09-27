@@ -75,6 +75,9 @@ Item {
     property string railKey: ""
     readonly property bool forRail: root.railEntries.length > 0
     signal railChosen(string action, string key)
+    // The Locked tile's folder with the row chosen on it, read before close() the way railKey
+    // is: close() clears lockedPath, so Pane.qml cannot read it after the menu is gone.
+    signal lockedChosen(string action, string path)
 
     // ui/Header.qml's own entrance, the third face of this one instance: openForHeader() flips the
     // entries to ui/js/Menu.js headerEntries (the column toggles and the hidden toggle, built from
@@ -301,12 +304,17 @@ Item {
     // The menu closes before the action runs, so it never hangs over the listing that action opened.
     function choose(action) {
         if (!root.validateChoice(action, "")) return
-        // Both read before close(), which is what clears them.
+        // Both read before close(), which is what clears the rail rows and the locked path.
         var key = root.railKey
         var rail = root.forRail
+        var locked = root.lockedPath
         root.close()
         if (rail) {
             root.railChosen(action, key)
+            return
+        }
+        if (locked.length > 0) {
+            root.lockedChosen(action, locked)
             return
         }
         root.chosen(action)

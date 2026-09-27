@@ -151,7 +151,10 @@ function run(check) {
 
     // Finder's Cmd+E on the rail's own cursor row. The release goes through the same releaseChosen a
     // chosen menu row takes, carrying the row's key and not its index.
-    var stick = { label: "128GB", group: "device", kind: "volume", device: "/dev/sda1", path: "/run/media/user/128GB", mounted: true, removable: true }
+    // RailAdditions rule 1's switch builds this row, so it carries the board's own menu
+    // (Open, Unmount, Eject) rather than the single Eject 0.2.1 drew: without volumeMenu the
+    // release below cannot tell rows[0] from the release.
+    var stick = { label: "128GB", group: "device", kind: "volume", device: "/dev/sda1", path: "/run/media/user/128GB", mounted: true, removable: true, volumeMenu: true }
     var ejecting = ejectPane("/home/user", [home, stick], 1)
     RailKeys.act("eject", ejecting, ejecting.sidebar)
     check("ctrl e in the rail ejects the cursor row by its key",
@@ -160,4 +163,16 @@ function run(check) {
     RailKeys.act("eject", favouriteRail, favouriteRail.sidebar)
     check("ctrl e on a favourite says why, and releases nothing",
           favouriteRail.sidebar.released.length + "|" + favouriteRail.said, "0|Home has nothing to eject or unmount.")
+    // The release is picked by name, never by position: a share offers only Unmount, and a
+    // phone leads with Open beside its Unmount the way a volume does, so rows[0] would open both.
+    var share = { label: "isos", group: "network", kind: "share", uri: "smb://example.com/isos/", path: "", mounted: true }
+    var onShare = ejectPane("/home/user", [home, share], 1)
+    RailKeys.act("eject", onShare, onShare.sidebar)
+    check("ctrl e on a share unmounts it rather than opening it",
+          onShare.sidebar.released.join(","), "unmount:smb://example.com/isos/")
+    var phone = { label: "Pixel", group: "device", kind: "phone", uri: "mtp://Google_Pixel_7_1A2B/", path: "", mounted: true }
+    var onPhone = ejectPane("/home/user", [home, phone], 1)
+    RailKeys.act("eject", onPhone, onPhone.sidebar)
+    check("ctrl e on a phone unmounts it rather than opening it",
+          onPhone.sidebar.released.join(","), "unmountPhone:mtp://Google_Pixel_7_1A2B/")
 }

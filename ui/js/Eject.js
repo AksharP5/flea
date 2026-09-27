@@ -152,6 +152,23 @@ function releaseAction(entry) {
     return entry.group === "device" ? "eject" : "unmount"
 }
 
+// The release is picked by name, never by position. With showUnmounted on (the default
+// since 0.3.3) a volume row offers Open, Unmount, Eject, so rows[0] is the open and taking it
+// opens the stick instead of ejecting it; a phone row leads with Open the same way. Eject where
+// one is offered, otherwise the row's own unmount, "" when the rows hold no release at all.
+function releaseFromRows(rows) {
+    var list = rows || []
+    for (var i = 0; i < list.length; i++) {
+        if (list[i].action === "eject")
+            return "eject"
+    }
+    for (var j = 0; j < list.length; j++) {
+        if (list[j].action === "unmount" || list[j].action === "unmountVolume" || list[j].action === "unmountPhone")
+            return list[j].action
+    }
+    return ""
+}
+
 // Finder's Cmd+E with Cmd read as Ctrl: from the rail it releases the cursor row, from a listing the
 // removable volume the directory is inside, so the key can never release a volume the operator is
 // not looking at. The verdict is Mounts.railMenu's either way, off the lsblk poll, and the release
@@ -171,9 +188,10 @@ function release(root, rail, fromRail) {
         return
     }
     var rows = Mounts.railMenu(entry)
-    if (rows.length === 0) {
+    var pick = releaseFromRows(rows)
+    if (pick === "") {
         root.message(entry.label + " has nothing to eject or unmount.", false)
         return
     }
-    rail.releaseChosen(rows[0].action, Mounts.railKey(entry))
+    rail.releaseChosen(pick, Mounts.railKey(entry))
 }

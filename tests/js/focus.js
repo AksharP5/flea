@@ -286,7 +286,10 @@ function run(check) {
     // Finder's Cmd+E in a listing: the removable volume the listing is inside, whose verdict is
     // Mounts.railMenu's, released through the same releaseChosen a chosen menu row takes. The rail's
     // own half of the key is ui/js/RailKeys.js's, and tests/js/railkeys.js drives it.
-    var stick = { label: "128GB", group: "device", kind: "volume", device: "/dev/sda1", path: "/run/media/user/128GB", mounted: true, removable: true }
+    // RailAdditions rule 1's switch builds this row, so it carries the board's own menu
+    // (Open, Unmount, Eject) rather than the single Eject 0.2.1 drew: without volumeMenu the
+    // release below cannot tell rows[0] from the release.
+    var stick = { label: "128GB", group: "device", kind: "volume", device: "/dev/sda1", path: "/run/media/user/128GB", mounted: true, removable: true, volumeMenu: true }
     var inside = ejectPane("list", "/run/media/user/128GB/photos", [home, stick], 0)
     Focus.act("eject", inside)
     check("ctrl e in a listing inside the volume ejects that volume, whatever the rail cursor is on",

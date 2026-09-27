@@ -2408,6 +2408,14 @@ their budgets and carry no ceiling.
 Quick Look's photo no longer waits for its EXIF turn: `ui/Preview.qml` 452 to 453 for clearing
 `imageRow` once the answer lands, the flag that re-asks a meta a listing change swallowed.
 
+The menu unit moves three recorded ceilings, each re-derived with `wc -l`. `ui/ContextMenu.qml`
+570 to 578 for the locked carry (`lockedChosen`, read before `close()` the way `railKey` is) and
+`ui/Pane.qml` 702 to 705 for its `onLockedChosen` dispatch, which replaces the post-close
+`menu.forLocked` read that always answered false. `tests/js/focus.js` 404 to 407 for the
+`volumeMenu: true` stick fixture and `ui/js/Eject.js` stands at 171, inside the soft budget, for
+`releaseFromRows`, which picks the eject or unmount row by name instead of taking rows[0].
+`tests/ui.sh` `case_eject` seeds `showUnmounted` on now, with `menu_seek Eject` and a Mount tail.
+
 ## The key table is generated
 
 `keys.toml` at the repository root is the single source of truth for every binding.

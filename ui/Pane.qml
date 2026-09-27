@@ -644,9 +644,12 @@ FocusScope {
         tileTarget: root.lockedTarget
         tileMode: root.lockedMode
         onChosen: function (action) {
-            if (menu.forLocked) { root.performLocked(menu.lockedPath, action); return }
             menuActions.activate(action, menu.hasRow && !menu.forHeader)
         }
+        // The Locked tile's folder arrives with the row: close() cleared the menu's own copy
+        // before this runs, so reading menu.lockedPath here would always see "" and every row
+        // would fall into the background dispatch above.
+        onLockedChosen: function (action, path) { root.performLocked(path, action) }
     }
 
     Flea.PaneMenuActions {

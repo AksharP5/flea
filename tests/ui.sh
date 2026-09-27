@@ -7612,8 +7612,9 @@ EOS
     local fixture_home="$fixture_root/eject-home"
     fixture_home_make "$fixture_home"
     local real_home="$HOME" saved_path="$PATH" real_state="${XDG_STATE_HOME-}"
-    # Show unmounted drives ships on from 0.3.3 and puts Open and Unmount above Eject, so this seeds it off.
-    seed_ui_state "$fixture_root/eject-state" '{"places":{"showUnmounted":false}}'
+    # Show unmounted drives ships on from 0.3.3, so this seeds it on: a mounted volume
+    # then offers Open, Unmount, Eject, and the case proves Ctrl+E and the menu both release it.
+    seed_ui_state "$fixture_root/eject-state" '{"places":{"showUnmounted":true}}'
     export PATH="$dir/bin:$PATH"
     export HOME="$fixture_home"
     launch "$dir"
@@ -7650,13 +7651,17 @@ EOS
         "$(ipc contextMenuVisible)" "$(ipc contextMenuEntries)" "$(ipc contextMenuGlyphs)"
     shot eject-menu
     [[ "$(ipc contextMenuVisible)" == "true" ]] || fail "eject: right click opened no menu on the volume"
-    [[ "$(ipc contextMenuEntries)" == "Eject" ]] \
-        || fail "eject: the volume's menu is $(ipc contextMenuEntries), not one Eject row"
-    [[ "$(ipc contextMenuGlyphs)" == "eject" ]] \
-        || fail "eject: the Eject row draws $(ipc contextMenuGlyphs), not the eject mark"
+    [[ "$(ipc contextMenuEntries)" == "Open|Unmount|Eject" ]] \
+        || fail "eject: the volume's menu is $(ipc contextMenuEntries), not Open|Unmount|Eject"
+    [[ "$(ipc contextMenuGlyphs)" == "folder|eject|eject" ]] \
+        || fail "eject: the volume's menu draws $(ipc contextMenuGlyphs), not folder|eject|eject"
     if grep -q '^mount -e' "$gio_log"; then
         fail "eject: opening the menu already ejected: $(cat "$gio_log")"
     fi
+
+    # Eject is the third row, not the first: choosing rows[0] would open the stick, which is
+    # the defect ui/js/Eject.js releaseFromRows exists for. Seek it by label, not by count.
+    menu_seek Eject
 
     # The negative control, and the whole point of the case: gio exits 0 and the volume is still
     # mounted, so the sentence must refuse. A verdict read off the exit code would say safe here.
@@ -7683,15 +7688,22 @@ EOS
     : > "$dir/really"
     click_rail_row "$volume_row" right
     settle
+    menu_seek Eject
     key -k Return >/dev/null
     wait_message "Ejected FLEASTICK, it is safe to unplug."
     printf 'EJECT really entries=%q\n' "$(ipc deviceEntries)"
     shot eject-safe
 
-    # An unmounted volume has nothing to release, so its menu is gone with its mount.
+    # An unmounted volume with the switch on offers the mount its own activation does, so its
+    # menu is a Mount row rather than no menu at all; choosing nothing leaves gio untouched.
     click_rail_row "$volume_row" right
     settle
-    [[ "$(ipc contextMenuVisible)" == "false" ]] || fail "eject: an unmounted volume was still offered a menu"
+    [[ "$(ipc contextMenuVisible)" == "true" ]] \
+        || fail "eject: an unmounted volume with unmounted drives shown was offered no menu"
+    [[ "$(ipc contextMenuEntries)" == "Mount" ]] \
+        || fail "eject: the unmounted volume's menu is $(ipc contextMenuEntries), not one Mount row"
+    key -k Escape >/dev/null
+    settle
 
     # gio's own -f is offered nowhere, and the eject never went through --device, which glib
     # dispatches before it ever reads --eject: see ui/DeviceMounts.qml "eject".
