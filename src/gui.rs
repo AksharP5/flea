@@ -14,11 +14,22 @@ pub fn exec_qs(ui: &Path, start: Option<&str>, select: Option<&str>) -> i32 {
     if let Some(list) = &list {
         prefetch::warm(list);
     }
+    // A gvfs share lists for a second over the network; start gio while the window builds.
+    let gvfs: Option<(PathBuf, u64)> = start.and_then(crate::gvfsprefetch::prepare);
+    if let (Some(path), Some((dest, _))) = (start, &gvfs) {
+        crate::gvfsprefetch::spawn(path, dest);
+    }
     let mut cmd = qs_command(ui.join(paths::ENTRY));
     if let Some(list) = &list {
         cmd.env(prefetch::LIST_ENV, list);
         // exec keeps this pid, so it is the shell's own.
         cmd.env(prefetch::SHELL_ENV, std::process::id().to_string());
+    }
+    if let Some((dest, start_ms)) = &gvfs {
+        cmd.env(crate::gvfsprefetch::PREFETCH_ENV, dest);
+        // The backend Process inherits this, so the first scan of this path can adopt the file.
+        cmd.env(crate::gvfsprefetch::PATH_ENV, start.unwrap_or_default());
+        cmd.env(crate::gvfsprefetch::START_ENV, start_ms.to_string());
     }
     if let Some(path) = start {
         cmd.env("FLEA_PATH", path);
@@ -62,6 +73,10 @@ fn qs_command(target: PathBuf) -> Command {
     // Only the main window records a prefetch list; a chooser started from a Flea terminal must not overwrite it.
     cmd.env_remove(prefetch::LIST_ENV);
     cmd.env_remove(prefetch::SHELL_ENV);
+    // The gvfs head start belongs to the window that was opened on its path, never to a chooser.
+    cmd.env_remove(crate::gvfsprefetch::PREFETCH_ENV);
+    cmd.env_remove(crate::gvfsprefetch::PATH_ENV);
+    cmd.env_remove(crate::gvfsprefetch::START_ENV);
     skip_gtk_platform_theme(&mut cmd);
     // An explicit choice is the operator's, the same rule FLEA_UI and QSG_RHI_BACKEND follow here.
     // map_or, not is_none_or: that method landed in 1.82 and Cargo.toml declares a 1.77 floor.

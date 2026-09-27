@@ -7,11 +7,24 @@ use std::time::Instant;
 // Phase 1 never stats: d_type is free, see AGENTS.md "Two-phase listing".
 // hidden:false is the shell's own dotfile convention, matched here rather than left to the client.
 pub fn scan(path: &str, hidden: bool) -> Result<(Listing, f64), FleaError> {
+    scan_with(path, hidden, crate::gvfsprefetch::env_prefetch(), &super::gvfslist::gio_bin())
+}
+
+// Split so a test can name the prefetch and the gio binary without touching this process's environment.
+pub fn scan_with(
+    path: &str,
+    hidden: bool,
+    prefetch: Option<crate::gvfsprefetch::Prefetch>,
+    gio: &str,
+) -> Result<(Listing, f64), FleaError> {
     // One prefix check: local and USB paths take exactly today's code past it.
     if super::gvfslist::is_gvfs(std::path::Path::new(path)) {
-        let gio = super::gvfslist::gio_bin();
+        // The launcher's head start on this exact path; anything else lists as before.
+        if let Some(found) = prefetch.as_ref().and_then(|p| crate::gvfsprefetch::adopt_matching(path, hidden, p)) {
+            return Ok(found);
+        }
         // Any gio failure falls back to readdir unchanged and says nothing to the user.
-        if let Ok(found) = super::gvfslist::list_via_gio(path, hidden, &gio, super::gvfslist::GIO_TIMEOUT) {
+        if let Ok(found) = super::gvfslist::list_via_gio(path, hidden, gio, super::gvfslist::GIO_TIMEOUT) {
             return Ok(found);
         }
     }

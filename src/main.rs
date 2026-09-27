@@ -20,6 +20,7 @@ mod uischema;
 mod uimigrate;
 mod uistate;
 mod favourites;
+mod gvfsprefetch;
 mod captures;
 mod shelf;
 mod shelfcli;
@@ -38,7 +39,7 @@ mod vulkan;
 
 use crate::backend::proto::error_line;
 use std::io::IsTerminal;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::exit;
 
 // --default owns both per-user steps, because a user updating from 0.1.3 has no picker routing yet.
@@ -180,6 +181,14 @@ fn main() {
     }
     if args.get(1).map(String::as_str) == Some("--prefetch") {
         usage("--prefetch takes the list path");
+    }
+
+    // flea --gvfs-prefetch <path> <dest>: the launcher's head start on a gvfs listing, see src/gvfsprefetch.rs.
+    if args.len() == 4 && args[1] == "--gvfs-prefetch" {
+        exit(gvfsprefetch::run(&args[2], Path::new(&args[3]), &crate::backend::gvfslist::gio_bin()));
+    }
+    if args.get(1).map(String::as_str) == Some("--gvfs-prefetch") {
+        usage("--gvfs-prefetch takes a path and a destination");
     }
 
     // flea --prewarm <path> <count> <dest>

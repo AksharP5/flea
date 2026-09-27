@@ -157,6 +157,14 @@ pub fn list_via_gio(path: &str, hidden: bool, gio: &str, timeout: Duration) -> R
 }
 
 fn list_via_gio_at(path: &str, hidden: bool, gio: &str, timeout: Duration, t: Instant) -> Result<(Listing, f64), String> {
+    let bytes = raw_output(path, hidden, gio, timeout)?;
+    let text = String::from_utf8(bytes).map_err(|_| "gio output is not UTF-8".to_string())?;
+    Ok((build_listing(&text, hidden, path)?, t.elapsed().as_secs_f64() * 1000.0))
+}
+
+// The child half the prefetch subcommand shares: the same argv, the same deadline, raw bytes out.
+// Sample input: path "/run/user/1000/gvfs/smb-share:server=x,share=y/dir", hidden false.
+pub(crate) fn raw_output(path: &str, hidden: bool, gio: &str, timeout: Duration) -> Result<Vec<u8>, String> {
     let mut argv = vec!["list".to_string(), "-u".to_string(), "-a".to_string(), GIO_ATTRS.to_string(), "--nofollow-symlinks".to_string()];
     if hidden {
         argv.push("-h".to_string());
@@ -195,8 +203,12 @@ fn list_via_gio_at(path: &str, hidden: bool, gio: &str, timeout: Duration, t: In
     if !status.success() {
         return Err(format!("gio list exited {}", status));
     }
-    let bytes = reader.join().map_err(|_| "gio reader failed".to_string())?;
-    let text = String::from_utf8(bytes).map_err(|_| "gio output is not UTF-8".to_string())?;
+    reader.join().map_err(|_| "gio reader failed".to_string())
+}
+
+// The parse half the prefetch adoption shares: gio's text in, the listing with its cache out.
+// Sample input: "smb://h/share/a.txt\t3\t(regular)\ttime::modified=100\n"
+pub(crate) fn build_listing(text: &str, hidden: bool, path: &str) -> Result<Listing, String> {
     let base_dev: u64 = std::fs::metadata(path).map(|m| m.dev()).unwrap_or(0);
     let mut l = Listing::new();
     for line in text.lines() {
@@ -214,7 +226,7 @@ fn list_via_gio_at(path: &str, hidden: bool, gio: &str, timeout: Duration, t: In
             }
         }
     }
-    Ok((l, t.elapsed().as_secs_f64() * 1000.0))
+    Ok(l)
 }
 
 #[cfg(test)]
