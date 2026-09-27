@@ -69,9 +69,11 @@ FocusScope {
     // "" off, "results" once a DCIM walk was asked for; ui/js/Photos.js owns every transition,
     // the way ui/js/Search.js owns the search walk's. The roll draws as a grid either way.
     property string photosMode: ""
-    // Where the roll was opened from, and the view it is handed back on leaving.
+    // Where the roll was opened from, the view it is handed back on leaving, and the device
+    // label the path bar draws as "<device>/Photos" while the roll stands.
     property string photosFrom: ""
     property string photosView: ""
+    property string photosDevice: ""
     property bool photosRunning: false
     property int photosScanned: 0
     property bool listInFlight: false
@@ -208,9 +210,10 @@ FocusScope {
     }
     // Only the list view draws a filter, so leaving it takes the filter with it.
     // The roll's grid is the session's and never a saved view, so it persists nothing.
+    // A view chosen during the roll updates the saved view, so leaving keeps the choice.
     onViewModeChanged: {
         Filter.close(root)
-        if (root.photosMode.length > 0) return
+        if (root.photosMode.length > 0) { root.photosView = root.viewMode; return }
         if (root.preferencesReady && !root.listOnly && (!root.dualMode || root.viewMode !== "list") && ViewState.state.view !== root.viewMode)
             ViewState.changeKey("view", root.viewMode)
     }
@@ -458,7 +461,8 @@ FocusScope {
         anchors { left: railHost.right; right: parent.right; top: parent.top }
         height: root.dualMode && !trashHost.opened ? Theme.chromeHeight : 0
         visible: height > 0
-        path: root.path
+        path: root.photosMode.length > 0 && root.photosDevice.length > 0
+            ? root.photosDevice + "/Photos" : root.path
         home: root.home
         focused: root.paneFocused
         inputLive: !(root.preview && root.preview.active)

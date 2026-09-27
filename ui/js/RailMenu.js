@@ -41,7 +41,7 @@ function editPlace(sidebar, share) {
         return
     sidebar.editingPlace = Mounts.normalize(entry.uri)
     sidebar.editingRequest = ""
-    sidebar.networkRetryRequested(entry.uri, entry.label, "", "Edit this address, then connect and save.", false, sidebar.navigationPane)
+    sidebar.editRequested(entry.uri, entry.label, "", "Edit this address, then connect and save.", false, sidebar.navigationPane)
 }
 
 // Each attempt this dialog makes, so a mount that was already in flight when the rail armed cannot

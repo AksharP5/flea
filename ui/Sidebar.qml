@@ -85,6 +85,8 @@ Item {
 
     signal opened(string path)
     signal addRequested()
+    // The rail's Edit row asks the window to open the dialog over the saved place.
+    signal editRequested(string uri, string label, string password, string reason, bool failedConnect, var origin)
     signal message(string text, bool isError)
     signal forgetMessage(string text)
 
@@ -126,13 +128,18 @@ Item {
     }
 
     // The host keeps its own copy of this text: it outlives this rail, so a rail unload
-    // mid-mount leaves the mount's labels and dedup exactly where they were.
+    // mid-mount leaves the mount's labels and dedup exactly where they were. Pushed only
+    // after the FileView loaded, so a reveal never blanks the host with an unread "".
     function pushBookmarks() {
+        if (!root.bookmarksReady) return
         var service = root.navigationPane ? root.navigationPane.ensureNetworkService() : root.service
         if (service) service.bookmarksText = bookmarksFile.text()
     }
 
-    Component.onCompleted: root.pushBookmarks()
+    // The window-long poll runs while a rail is loaded: arrival polls once, departure hands
+    // the timer back to a flight, if any, and the last listing stands while it is off.
+    Component.onCompleted: { var s = root.navigationPane ? root.navigationPane.ensureNetworkService() : null; if (s) s.railArrived() }
+    Component.onDestruction: { if (root.service) root.service.railLeft() }
 
     // The context menu's gate for the two Dropbox rows, so the pane never reaches into the rail.
     readonly property bool dropboxReady: root.service !== null && root.service.dropboxReady
@@ -178,20 +185,8 @@ Item {
         bookmarksFile.waitForJob()
     }
 
-    function saveNetwork(requestId, uri, label, password, origin) {
-        RailMenu.placeSubmitted(root, requestId)
-        root.service.saveLocation(uri, label, password, requestId, origin)
-    }
-    function cancelNetwork(requestId) { root.service.cancelLocation(requestId) }
-
     function networkResult() {
         return root.service !== null ? root.service.result : ""
-    }
-
-    // ui/ShareBrowser.qml's own Enter action used to call this; ui/WindowBody.qml routes that
-    // overlay through the window-long host now, so this stays only for callers holding the rail.
-    function mountShare(uri, label, origin) {
-        root.service.openChildShare(uri, label, origin === undefined ? root.navigationPane : origin)
     }
 
     // The eject mark's one click: Eject for a drive, Unmount for a share. The release

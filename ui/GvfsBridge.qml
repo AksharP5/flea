@@ -47,9 +47,16 @@ Item {
 
     function cancel() {
         root.pendingMode = ""
-        if (checkProcess.running) checkProcess.running = false
+        if (checkProcess.running) { root._ensureTimedOut = true; checkProcess.running = false }
         root.stopWaiting()
         root.run(GvfsBridge.cancel(root.flow))
+    }
+
+    // A dialog cancel ends only its own flight's waiter; another flight's wait stands.
+    function cancelFor(origin) {
+        var waiter = root.flow.waiter
+        if (waiter && origin !== null && waiter.origin !== origin) return
+        root.cancel()
     }
 
     function run(actions) {

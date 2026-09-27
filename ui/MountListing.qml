@@ -24,6 +24,11 @@ Item {
     // The rail's NETWORK gate: true once the first listing answered, timed out or not, without replacing anything.
     property bool answered: false
 
+    // The window-long host sets this: the 5 s poll runs only while a rail is loaded or an
+    // open or wait is in flight, so a hidden rail costs no gio and no mountinfo read. The
+    // last listing stands while it is off, the way 0.3.5 ran none.
+    property bool active: true
+
     // Raised once "text" holds the new listing, so a handler that rebuilds reads it and not the last.
     signal listed()
 
@@ -40,13 +45,14 @@ Item {
 
     Timer {
         interval: root.pollMs
-        running: true
+        running: root.active
         repeat: true
         triggeredOnStart: true
         onTriggered: root.poll()
     }
 
     function poll() {
+        if (!root.active) return
         if (listProcess.running) {
             root._pollAgain = true
             return

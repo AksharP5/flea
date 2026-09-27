@@ -10,12 +10,11 @@
 //
 // The start is detached: closing the rail or the chooser never takes gvfsd-fuse down with it,
 // so no exit status ever reaches the board and the folder poll's own deadline is the failure
-// signal. The check stays a helper process rather than a backend peek, measured headless on
-// 2026-09-27: peek answers in 0.07 ms against 0.39 ms for test, but a peek runs on the
-// backend's single loop with no way to bound it, while a wedged FUSE path hangs a helper the
-// deadline kills and nothing else. A served path is classified by the kernel too, so a file
-// under a live bridge is ready without any start (I-3) and a directory costs the one check it
-// always did.
+// signal. The check stays a helper process rather than a backend peek, an order of magnitude
+// slower per check in one headless sample (sub-millisecond both) but bounded: a wedged FUSE
+// path hangs a helper the deadline kills and nothing else. A served path is classified by
+// the kernel too, so a file under a live bridge is ready without any start (I-3) and a
+// directory costs the one check it always did.
 
 // The Starting line stands until the service's own 250 ms timer fires, so a bridge that is
 // already coming up never flashes it.

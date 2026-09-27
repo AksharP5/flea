@@ -47,10 +47,32 @@ function scopeRoot(path, home, here) {
 }
 
 // Enter commits: the walk starts and the keyboard goes back to the results, so j/k move again.
+// A roll owning the rows ends first on its own turn, so the backend never holds two walks
+// and a stale searched line cannot finish the walk that just started.
 function run(root) {
-    if (root.searchQuery.length === 0) {
+    if ((root.searchQuery || "").length === 0) {
         close(root)
         return
+    }
+    if ((root.photosMode || "").length > 0 && root.photosRunning) {
+        if (root.backend) root.backend.photoscancel()
+        root.photosMode = ""
+        root.photosRunning = false
+        root.photosScanned = 0
+        root.photosFrom = ""
+        root.photosView = ""
+        if (root.photosDevice !== undefined) root.photosDevice = ""
+        var self = root
+        Qt.callLater(function () { run(self) })
+        return
+    }
+    if ((root.photosMode || "").length > 0) {
+        root.photosMode = ""
+        root.photosRunning = false
+        root.photosScanned = 0
+        root.photosFrom = ""
+        root.photosView = ""
+        if (root.photosDevice !== undefined) root.photosDevice = ""
     }
     var scope = scopeRoot(root.path, root.home, root.searchHere)
     // The scope becomes the pane's path because it is the listing's base: every result name is
@@ -75,6 +97,35 @@ function run(root) {
     root.backend.search(scope, root.searchQuery, root.showHidden)
     // The walk's scope is a directory too, so its class rides the same line a list's does.
     root.backend.askFsInfo()
+}
+
+// One shared "leave the walk" step for the search and the photo roll: a navigation drops
+// whichever walk owns the rows without re-listing, so the listing that follows lands on
+// clean state. Returns true when it dropped anything. Sample input: a pane with either
+// mode set answers true and both modes read "" after.
+function leaveWalk(root) {
+    var dropped = false
+    if ((root.searchMode || "").length > 0) {
+        if (root.searchRunning && root.backend) root.backend.searchcancel()
+        root.searchMode = OFF
+        root.searchQuery = ""
+        root.searchRunning = false
+        root.searchCancelled = false
+        root.searchScanned = 0
+        root.searchFrom = ""
+        dropped = true
+    }
+    if ((root.photosMode || "").length > 0) {
+        if (root.photosRunning && root.backend) root.backend.photoscancel()
+        root.photosMode = ""
+        root.photosRunning = false
+        root.photosScanned = 0
+        root.photosFrom = ""
+        root.photosView = ""
+        if (root.photosDevice !== undefined) root.photosDevice = ""
+        dropped = true
+    }
+    return dropped
 }
 
 // Esc stops a running walk and leaves the results up; a second Esc is what returns to the listing.

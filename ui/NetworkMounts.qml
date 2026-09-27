@@ -27,7 +27,7 @@ Item {
     // naming a file is never listed as a folder.
     signal openFileRequested(string path, var origin)
     // The rail's Photos row: the resolved FUSE folder's DCIM, walked newest first into the grid.
-    signal photosOpened(string path, var origin)
+    signal photosOpened(string path, var origin, string deviceLabel)
     signal message(string text, bool isError)
     // The bridge wait's own sticky line, cleared with "" when the folder lands or fails.
     signal sticky(string text, var origin)
@@ -81,15 +81,17 @@ Item {
     // Issue 194's repair: gio info answered with a folder that is not the requested share.
     // Its own path is peeked first, then the FUSE root it names, all through backend.peek,
     // so no new poll is added and a second open waits on the same single-flight guard.
-    // The first peek waits on the bridge first (I-2): with the bridge down the FUSE root peek
-    // is empty, so peeking before the bridge is up answers "no browsable folder" without ever
-    // starting it. _repairWaiting covers that bridge leg, _repairActive the peek legs after it.
+    // Only a root that peeks empty or unreadable starts the bridge for the gvfs root, then
+    // peeks once under the same deadline; the #194 folder itself does not exist, so waiting
+    // on it first costs 15 s before failing. _repairWaiting covers that bridge leg,
+    // _repairActive the peek legs, _repairBridged the one bridge start a repair may spend.
     property bool _repairWaiting: false
     property string _repairUri: ""
     property string _repairPath: ""
     property string _repairRoot: ""
     property bool _repairFailed: false
     property bool _repairActive: false
+    property bool _repairBridged: false
 
     onBookmarksTextChanged: root.rebuild()
 
@@ -211,9 +213,16 @@ Item {
     }
 
     // The five second "gio mount -li" poll is ui/MountListing.qml's: this Service reads its listing and asks for a re-read through pollMounts() below.
+    // How many rails are loaded now; an open or a bridge wait also holds the poll, so a
+    // hidden rail costs no gio while a mount in flight still refreshes behind it.
+    property int _rails: 0
+    function railArrived() { root._rails++; root.pollMounts() }
+    function railLeft() { root._rails = Math.max(0, root._rails - 1) }
     MountListing {
         id: listing
         environment: root.gioEnvironment
+        active: root._rails > 0 || mountProcess.running || authProcess.running || infoProcess.running
+            || listSharesProcess.running || root._repairActive || root._repairWaiting || bridge.flow.waiter !== null
         // Cloud rows ride the same five second rhythm: the mount table is a file read, so
         // nothing new runs. The reload blocks for the same reason ui/Sidebar.qml's own
         // reloadBookmarks does: a rebuild must read the write it caused.
@@ -245,9 +254,10 @@ Item {
         onReady: function (path, origin, isDir) {
             if (root._repairWaiting) {
                 root._repairWaiting = false
+                root.sticky("", origin)
                 root._repairActive = true
                 mountTimeout.restart()
-                root.backend.peek(root._repairPath, 1, false)
+                root.backend.peek(root._repairRoot, 512, false)
                 return
             }
             root.sticky("", origin)
@@ -258,7 +268,7 @@ Item {
             }
             if (root._photosPending) {
                 root._photosPending = false
-                root.photosOpened(Photos.dcimPath(path), origin)
+                root.photosOpened(Photos.dcimPath(path), origin, root._pendingLabel)
                 return
             }
             root.opened(path, origin)
@@ -267,6 +277,7 @@ Item {
         onFailed: function (text, origin) {
             if (root._repairWaiting) {
                 root._repairWaiting = false
+                root.sticky("", origin)
                 root.repairFailed()
                 return
             }
@@ -280,6 +291,7 @@ Item {
         onNotice: function (text, origin) {
             if (root._repairWaiting) {
                 root._repairWaiting = false
+                root.sticky("", origin)
                 root.repairFailed()
                 return
             }
@@ -384,25 +396,27 @@ Item {
     // The rail's Photos row under a phone or camera: the same mount-and-resolve chain a
     // phone rides, ending in a DCIM walk instead of a folder open. Phones never carry a
     // credential, so the password legs below are unreachable from here, but every refusal
-    // still clears the flag on its way out.
+    // still clears the flag on its way out. The intent rides the flight's own request and is
+    // stored only after the single-flight guard accepts, so a refused second open never
+    // clears the first one's.
     function openPhotos(uri, mounted, label, origin) {
-        root._photosPending = true
-        root.openShare(uri, mounted, label, false, { origin: origin === undefined ? root.origin : origin })
+        root.openShare(uri, mounted, label, false, { origin: origin === undefined ? root.origin : origin, photos: true })
     }
 
     function openShare(uri, alreadyMounted, label, authenticated, request) {
         request = request || ({})
         // An open is single flight over four children, the bridge wait and the repair peek,
         // the share listing included, so a new one must not start over the running leg and hand
-        // that leg's deadline to itself; see "listShares".
+        // that leg's deadline to itself; see "listShares". A refusal names the moment and
+        // touches no flight state, so the Photos intent it never carried stays where it was.
         if (mountProcess.running || authProcess.running || infoProcess.running || listSharesProcess.running || root._repairActive || root._repairWaiting) {
             // A guard that returns in silence names nothing at all, and a leg can hold it 15 s.
             var reason = "Another network location is still opening; give it a moment."
-            root._photosPending = false
             if (request.id) root.completed(request.id, Mounts.normalize(uri), false, reason)
             else root.message(reason, false)
             return
         }
+        root._photosPending = request.photos === true
         if (root.result === "failed") root.message("", false)
         // One canonical spelling from here: tests/network-open-share.sh pins the info leg to it.
         root._pendingUri = Mounts.normalize(uri)
@@ -475,6 +489,7 @@ Item {
         var refused = root._repairFailed
         root._repairActive = false
         root._repairWaiting = false
+        root._repairBridged = false
         root._repairRoot = ""
         root._repairPath = ""
         if (refused) root.failMount("Connect failed: network location was refused", root.passwordFor(uri))
@@ -484,7 +499,9 @@ Item {
     // Issue 194's repair, answered through backend.peek: gio's own folder first, then every
     // entry of the FUSE root it names, matched by ui/js/Protocols.js smbResolve. A real
     // directory always opens; several users prefer the desktop login and otherwise name
-    // themselves; anything else is the mount failing with the reason gio gave.
+    // themselves; anything else is the mount failing with the reason gio gave. Only a root
+    // that peeks empty or unreadable starts the bridge for the gvfs root, then peeks that
+    // root once under the same deadline.
     function repairPeeked(path, rows, readFailed) {
         if (!root._repairActive) return
         if (path === root._repairPath) {
@@ -492,6 +509,7 @@ Item {
                 var openPath = root._repairPath
                 mountTimeout.stop()
                 root._repairActive = false
+                root._repairBridged = false
                 root._repairPath = ""
                 root.result = "mounted"
                 root.finishRequest(true, "")
@@ -510,12 +528,22 @@ Item {
             return
         }
         if (root._repairRoot.length === 0 || path !== root._repairRoot) return
+        // The bridge down reads as an empty root, so only then does the repair spend its one
+        // bridge start; a root that answered with entries but no match fails without one.
+        if ((readFailed || rows.length === 0) && !root._repairBridged && root.backend) {
+            root._repairBridged = true
+            root._repairWaiting = true
+            mountTimeout.restart()
+            bridge.ensure(root._repairRoot, root._pendingLabel, root._pendingOrigin)
+            return
+        }
         mountTimeout.stop()
         var candidates = []
         for (var i = 0; i < rows.length; i++) candidates.push(root._repairRoot + "/" + rows[i].n)
         var login = Quickshell.env("USER") || Quickshell.env("LOGNAME") || ""
         var picked = Protocols.smbResolve(root._repairUri, candidates, login)
         root._repairActive = false
+        root._repairBridged = false
         root._repairRoot = ""
         root._repairPath = ""
         if (picked.path.length > 0) {
@@ -544,14 +572,17 @@ Item {
 
     function cancelLocation(requestId) {
         if (!requestId || requestId !== root._requestId) return
+        var origin = root._pendingOrigin
         root._requestId = ""
         root._requestPassword = ""
         root._pendingPassword = ""
         root._authAwaitingStart = false
         root._repairActive = false
         root._repairWaiting = false
-        bridge.cancel()
-        root.sticky("", root._pendingOrigin)
+        root._repairBridged = false
+        // Only this flight's own bridge waiter ends; another flight's wait is never cancelled.
+        bridge.cancelFor(origin)
+        root.sticky("", origin)
         mountTimeout.stop()
         if (mountProcess.running) { root._mountTimedOut = true; mountProcess.running = false }
         if (infoProcess.running) { root._infoTimedOut = true; infoProcess.running = false }
@@ -607,6 +638,8 @@ Item {
                 listSharesProcess.running = false
             } else if (root._repairActive) {
                 root._repairActive = false
+                root._repairWaiting = false
+                root._repairBridged = false
                 root._repairRoot = ""
                 root._repairPath = ""
             } else {
@@ -691,17 +724,18 @@ Item {
             if (exitCode === 0 && path.length > 0 && root.backend && Protocols.schemeOf(root._pendingUri) === "smb"
                     && !Protocols.smbFuseMatches(root._pendingUri, path)) {
                 // Issue 194: gio answered with a folder that is not this share (a user its line
-                // drops above all). Whether it exists is the backend's own answer to say: a real
-                // directory still opens, a missing one is repaired out of the FUSE root it names.
-                // The peek waits on the bridge first: with the bridge down that peek is empty and
-                // the repair ends as "no browsable folder" without ever starting the bridge.
+                // drops above all). Whether it exists is the backend's own answer to say: the
+                // folder peeks first, then the FUSE root, and only an empty or unreadable root
+                // starts the bridge for the gvfs root under the same deadline.
                 root._repairUri = root._pendingUri
                 root._repairPath = path
                 root._repairFailed = failed
                 root._repairRoot = ""
-                root._repairWaiting = true
-                root._repairActive = false
-                bridge.ensure(path, root._pendingLabel, root._pendingOrigin)
+                root._repairWaiting = false
+                root._repairBridged = false
+                root._repairActive = true
+                mountTimeout.restart()
+                root.backend.peek(path, 1, false)
                 return
             }
             if (exitCode === 0 && path.length > 0) {

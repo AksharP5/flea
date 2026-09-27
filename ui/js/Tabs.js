@@ -2,6 +2,7 @@
 
 .import "Filter.js" as Filter
 .import "Format.js" as Format
+.import "Search.js" as Search
 .import "Sort.js" as Sort
 .import "Startup.js" as Startup
 
@@ -12,9 +13,12 @@ var MAX = 9
 
 // Where a tab snapshotted now should reopen: a search sets pane.path to the scope it walks, so the
 // directory the user was in is searchFrom, and every caller reads this BEFORE dropOverlay clears it.
+// A photo roll sets pane.path to DCIM, so the directory it was opened from is photosFrom.
 function restingPath(pane) {
-    if (pane.searchMode === "results" && pane.searchFrom.length > 0)
+    if (pane.searchMode === "results" && (pane.searchFrom || "").length > 0)
         return pane.searchFrom
+    if (pane.photosMode === "results" && (pane.photosFrom || "").length > 0)
+        return pane.photosFrom
     return pane.path
 }
 
@@ -96,18 +100,10 @@ function currentIndex(pane) {
 }
 
 // Issue 93, nixfred: says whether it dropped a walk's results, which are not the directory's rows.
+// One shared step for the search and the photo roll; see ui/js/Search.js leaveWalk.
 function dropOverlay(pane) {
-    var dropped = pane.searchMode === "results"
-    if (pane.searchMode.length > 0) {
-        if (pane.searchRunning)
-            pane.backend.searchcancel()
-        pane.searchMode = ""
-        pane.searchQuery = ""
-        pane.searchRunning = false
-        pane.searchCancelled = false
-        pane.searchFrom = ""
-        pane.searchScanned = 0
-    }
+    var dropped = pane.searchMode === "results" || pane.photosMode === "results"
+    Search.leaveWalk(pane)
     Filter.close(pane)
     return dropped
 }

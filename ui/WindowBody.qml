@@ -118,7 +118,11 @@ Rectangle {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: parent.top
-        path: view.currentPane.trash.opened ? "Trash" : view.currentPane.path
+        // The roll draws the board's "<device>/Photos" while it stands, not the FUSE DCIM
+        // path the walk runs on; that path is a display path only, navigation still uses it.
+        path: view.currentPane.trash.opened ? "Trash"
+            : view.currentPane.photosMode.length > 0 && view.currentPane.photosDevice.length > 0
+            ? view.currentPane.photosDevice + "/Photos" : view.currentPane.path
         home: view.currentPane.home
         canGoBack: view.currentPane.canGoBack
         canGoUp: view.currentPane.canGoUp
@@ -230,6 +234,7 @@ Rectangle {
                 anchors.fill: parent
                 backend: otherBackend
                 sharedSidebar: primaryPane.sidebar
+                networkService: view.networkService
                 sharedNetworkService: primaryPane.networkService
                 dualMode: true
                 listOnly: true
@@ -281,7 +286,9 @@ Rectangle {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
-        path: view.currentPane.trash.opened ? "Trash" : view.currentPane.path
+        path: view.currentPane.trash.opened ? "Trash"
+            : view.currentPane.photosMode.length > 0 && view.currentPane.photosDevice.length > 0
+            ? view.currentPane.photosDevice + "/Photos" : view.currentPane.path
         total: view.currentPane.trash.opened ? view.currentPane.trash.total : view.currentPane.total
         listingState: view.currentPane.listingState
         pane: view.currentPane.trash.opened ? null : view.currentPane
@@ -413,29 +420,43 @@ Rectangle {
             var sidebar = networkDialog.origin ? networkDialog.origin.sidebar : null
             if (sidebar) RailMenu.placeSubmitted(sidebar, requestId)
             networkDialog.owner = view.ensureNetworkService()
-            networkDialog.owner.saveLocation(requestId, uri, label, password, networkDialog.origin)
+            networkDialog.owner.saveLocation(uri, label, password, requestId, networkDialog.origin)
         }
-        function onCancelRequested(requestId) { if (networkDialog.owner) networkDialog.owner.cancelNetwork(requestId) }
+        function onCancelRequested(requestId) { if (networkDialog.owner) networkDialog.owner.cancelLocation(requestId) }
     }
 
     // The dialog's answer lands here rather than on the rail, so it lands whether the rail is
-    // shown or has been unloaded mid-mount.
+    // shown or has been unloaded mid-mount. Every host answer routes once by origin here;
+    // ui/PaneRail.qml carries no duplicate handling, so a dual-view open cannot fire twice.
     Connections {
         target: view.networkService
-        function onNetworkCompleted(requestId, uri, success, reason) {
+        function onCompleted(requestId, uri, success, reason) {
             var sidebar = view.currentPane.sidebar
             if (sidebar && view.networkService) RailMenu.placeSaved(sidebar, view.networkService, requestId, uri, success)
             if (networkDialog.item) networkDialog.item.mountFinished(requestId, uri, success, reason)
         }
         function onSharesListed(baseUri, baseLabel, names, origin) { if (origin) shareBrowser.open(baseUri, baseLabel, names, origin) }
-        function onNetworkRetryRequested(uri, label, password, reason, failedConnect, origin) {
+        function onRetryRequested(uri, label, password, reason, failedConnect, origin) {
             networkDialog.openLocation(uri, label, password, reason, failedConnect, origin)
         }
+        function onOpened(path, origin) { if (origin) RailKeys.openFrom(origin, path, origin.sidebar) }
+        function onOpenFileRequested(path, origin) { if (origin) origin.openFile(path) }
+        function onPhotosOpened(path, origin, deviceLabel) { if (origin) RailKeys.openPhotosFrom(origin, path, origin.sidebar, deviceLabel) }
+        function onMessage(text, isError) {
+            var pane = view.currentPane
+            if (pane.sidebar) RailKeys.messaged(pane.sidebar, isError)
+            pane.message(text, isError)
+        }
+        function onSticky(text, origin) { (origin || view.currentPane).sticky(text) }
+        function onRenamed() { if (view.currentPane.sidebar) view.currentPane.sidebar.reloadBookmarks() }
     }
 
     Connections {
         target: view.currentPane.sidebar
         function onAddRequested() { networkDialog.open() }
+        function onEditRequested(uri, label, password, reason, failedConnect, origin) {
+            networkDialog.openLocation(uri, label, password, reason, failedConnect, origin)
+        }
     }
 
     // A bare Network entry's own shares, same listArea placement as EmptyState above.

@@ -23,14 +23,14 @@ function openFrom(pane, path, sidebar) {
 
 // A Sidebar photos open: the pane that asked walks the device's DCIM, newest first in
 // the grid the board draws. Guarded like a navigation: no row acts while a listing is out.
-function openPhotosFrom(pane, dcim, sidebar) {
+function openPhotosFrom(pane, dcim, sidebar, deviceLabel) {
     if (!pane) { if (sidebar) sidebar.focusOnOpen = false; return }
     if (pane.listInFlight) {
         pane.message("A directory is already loading.", false)
         if (sidebar) sidebar.focusOnOpen = false
         return
     }
-    Photos.run(pane, dcim)
+    Photos.run(pane, dcim, deviceLabel)
     if (sidebar) landed(pane, sidebar)
 }
 

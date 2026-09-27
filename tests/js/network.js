@@ -207,7 +207,7 @@ function run(check) {
         var sidebar = { placesEntries: [favourite, { kind: "trash" }], networkEntries: [mounted, saved],
                         deviceEntries: [volume], editingPlace: "", navigationPane: "pane",
                         startRename: function () {},
-                        networkRetryRequested: function (u, label, password, reason, failed, origin) {
+                        editRequested: function (u, label, password, reason, failed, origin) {
                             asked.push("open " + u + " as " + label + " over " + origin + ": " + reason)
                         } }
         var mounts = { unmount: function () {}, forget: function () {},
@@ -231,7 +231,7 @@ function run(check) {
     // still open, and the attempt that finally mounts is the one that rewrites the line.
     var armed = { placesEntries: [favourite, { kind: "trash" }], networkEntries: [mounted, saved],
                   deviceEntries: [volume], editingPlace: "", navigationPane: "pane",
-                  startRename: function () {}, networkRetryRequested: function () {} }
+                  startRename: function () {}, editRequested: function () {} }
     var wrote = []
     var writer = { unmount: function () {}, forget: function () {},
                    replacePlace: function (was) { wrote.push(was) } }

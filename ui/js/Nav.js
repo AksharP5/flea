@@ -4,6 +4,7 @@
 .import "Filter.js" as Filter
 .import "Kinds.js" as Kinds
 .import "Thumbs.js" as Thumbs
+.import "Search.js" as Search
 
 // Where the pane has been and how it gets back, taking ui/Pane.qml's root the way Search.js and
 // Ops.js do: the pane holds the state, this holds what the state does.
@@ -70,11 +71,14 @@ function mouseBack(pane) {
 }
 
 // Every listing the pane asks for; of options, ui/Pane.qml reads keepHidden and ui/js/Swap.js begin() the rest.
+// A walk owns the rows until this lands, so leaving it is the shared step with the tabs:
+// tab switches, Back, Up, rail clicks and jumps all funnel through here.
 function openWithoutHistory(pane, newPath, options) {
     if (pane.listInFlight) {
         pane.message("A directory is already loading.", false)
         return
     }
+    Search.leaveWalk(pane)
     pane.listInFlight = true
     pane.listedSeen = false
     // The path is not written here. A refused listing never answers a listed line, so leaving the

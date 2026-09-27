@@ -41,6 +41,9 @@ function run(check) {
     var one = Photos.withPhotoRows([phone("mtp://x/")])
     check("a phone gains exactly one row under it", one.length, 2)
     check("the row sits directly under the device", one[0].kind + "|" + one[1].kind, "phone|photos")
+    var off = { path: "", label: "iPhone", group: "device", kind: "phone", uri: "mtp://x/",
+                size: null, mounted: false, glyph: "smartphone" }
+    check("an unmounted phone gains no row", Photos.withPhotoRows([off]).length, 1)
     var two = Photos.withPhotoRows([phone("mtp://a/"), volume(), phone("mtp://b/")])
     check("each phone gains its own row and nothing else moves",
           two.map(function (e) { return e.kind }).join(","), "phone,photos,volume,phone,photos")
@@ -116,4 +119,21 @@ function run(check) {
     sidebar.focusOnOpen = true
     RailKeys.openPhotosFrom(free, "/dcim/DCIM", sidebar)
     check("an idle pane walks", free.sent[0], "photos /dcim/DCIM")
+
+    // The fix round: the roll shares the walk lifecycle with the search.
+    var busy2 = idle()
+    busy2.searchMode = "results"
+    busy2.searchRunning = false
+    busy2.searchFrom = "/home"
+    busy2.searchQuery = "q"
+    busy2.storageClass = "usb"
+    busy2.storageKnown = true
+    Photos.run(busy2, "/dcim/DCIM", "iPhone")
+    check("a roll clears the search it replaces", busy2.searchMode + "|" + busy2.searchRunning, "|false")
+    check("and re-reads the class for the new scope", busy2.storageClass + "|" + busy2.storageKnown, "|false")
+    check("and keeps the device for the path bar", busy2.photosDevice, "iPhone")
+    busy2.viewMode = "columns"
+    Photos.close(busy2)
+    check("a view chosen in the roll survives its exit", busy2.viewMode, "columns")
+    check("leaving the roll clears the device too", busy2.photosDevice, "")
 }

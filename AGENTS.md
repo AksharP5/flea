@@ -2077,8 +2077,8 @@ both budgets, rather than into `ui/js/Menu.js`, which takes the inventory line a
 stands at 297 with 3 lines under the hard cap; `ui/js/Settings.js` takes the three checks, the
 hint and the renamed cell at 419 of its recorded 427.
 
-Fixext moves three recorded ceilings, each re-derived with `wc -l`: `ui/Pane.qml` 702
-to 714 for the storageKnown gate, the ExtThumbs refresh and the preview change hook;
+Fixext moves three recorded ceilings, each re-derived with `wc -l`: `ui/Pane.qml` 705
+to 717 for the storageKnown gate, the ExtThumbs refresh and the preview change hook;
 `ui/PreviewColumn.qml` 495 to 499 for the manualHold terms on text, PDF and the original
 fallback plus the truncate flag; `ui/Preview.qml` 456 to 457 for the Quick Look truncate
 flag. Inside their budgets: `ui/js/ExtThumbs.js` at 91, `ui/PreviewLines.qml` at 99,
@@ -2122,9 +2122,9 @@ the commit that recorded it.
 Issue 194 takes `ui/NetworkMounts.qml` from its recorded 560 to 656 for the smb FUSE guard and the repair that peeks gio's folder, then opens the matching entry out of the FUSE root through backend.peek instead of reading a wrong mount as an unreadable directory, and `ui/WindowBody.qml` from its recorded 487 to 497 for routing a typed network address to the rail's own open-a-share path instead of a local listing. The matching lives in `ui/js/Protocols.js`, 202 to 296, and the bar's hand-back in `ui/js/PathBar.js`, 204 to 214, both over the soft budget and under the hard cap. Each count re-derived with `wc -l`.
 
 RailEject and CloudMounts raise five recorded ceilings rather than splitting a sixth file.
-`ui/NetworkMounts.qml` goes from its recorded 674 to 698 for the cloud FileView on
+`ui/NetworkMounts.qml` goes from its recorded 703 to 727 for the cloud FileView on
 `/proc/self/mountinfo`, the FUSE rows it merges after Dropbox, and the cloud activation that
-opens the mountpoint directly; `ui/Sidebar.qml` from its recorded 545 to 561 for `ejectRow`
+opens the mountpoint directly; `ui/Sidebar.qml` from its recorded 553 to 569 for `ejectRow`
 and its two repeater wirings; `ui/js/Ops.js` from its recorded 367 to 371 for the verdict
 note on the done line; `tests/js/ops.js` from its recorded 384 to 390 for that sentence's
 four checks; and `tests/js/status.js` crosses the hard cap at 304 for the secondary-lane
@@ -2134,16 +2134,16 @@ the cloud table to the new `ui/js/Cloud.js`, 67 lines inside both budgets, the h
 each inside its budget. Each count re-derived with `wc -l`.
 
 The GVFS bridge review moves four recorded ceilings, each re-derived with `wc -l`: `ui/NetworkMounts.qml`
-703 to 744 for the repair waiting on the bridge before its first peek, the file-or-folder ready that
+727 to 768 for the repair waiting on the bridge before its first peek, the file-or-folder ready that
 routes a typed file URL to the opener instead of listing it, the repair-wait in the single-flight
 guard and cancel, and the `openFileRequested` signal; `ui/WindowBody.qml` 507 to 535 for the lazy
 window-long network host Loader, the typed address opening through it instead of the rail, the dialog
 mounting and landing through it so a rail unload mid-mount loses no answer, and the share browser
-activating through it; `ui/Pane.qml` 702 to 715 for the injected network service, its first-need
+activating through it; `ui/Pane.qml` 717 to 730 for the injected network service, its first-need
 builder and the dropbox service reading the host rather than the rail; `ui/Ipc.qml` 796 to 801 for the
 result reader preferring the host while the rail is hidden. `ui/GvfsBridge.qml` 122 to 157 for the
 detached start, the whole-ensure deadline with its consume-once flag and the check-file-classify ops,
-`ui/Sidebar.qml` falling 553 to 546 inside its recorded ceiling for the injected service, and
+`ui/Sidebar.qml` falling 569 to 562 inside its recorded ceiling for the injected service, and
 `ui/js/GvfsBridge.js` 177 to 198 inside its 200 soft budget for the timeout, the file-aware checks
 and the classify.
 
@@ -2196,6 +2196,15 @@ walk itself went to the new `src/backend/photos.rs`, 294 lines over the soft bud
 the hard cap, with its wire half in `src/backend/photosreq.rs`, its decisions in `ui/js/Photos.js`
 and its suite in `tests/js/photos.js`, each inside both budgets, rather than into
 `src/backend/search.rs`, which keeps the fuzzy walk it reuses the streaming model of.
+
+Fix2-net moves three recorded ceilings, each re-derived with `wc -l`: `ui/NetworkMounts.qml`
+768 to 802 for the peek-first #194 repair with its one bridge start, the flight-carried Photos
+intent, the rail-count poll gate and the own-waiter cancel; `ui/Pane.qml` 730 to 734 for the
+photos device label and the board's display path; `ui/WindowBody.qml` 535 to 556 for the single
+origin router that replaces the per-rail duplicate handling, the dialog's corrected save and
+cancel names, and the roll's display path on both bars. `ui/Sidebar.qml` falls 562 to 557
+inside its recorded ceiling for the dropped wrappers and the loaded-only bookmark push;
+`ui/PaneRail.qml` falls 174 to 161 inside both budgets for the removed duplicate router.
 
 `ui/PreviewColumn.qml` is at 505: the sharp settle, the mtime-keyed cache identity and the
 three decode counters `tests/sharp-decode.sh` read were reverted under review, and the replacement
