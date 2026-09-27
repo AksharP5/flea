@@ -26,50 +26,82 @@ pub fn thumbnailable(mode: u32) -> bool {
     mode & S_IFMT == S_IFREG || mode & S_IFMT == S_IFLNK
 }
 
+// A stat on FUSE, a network share or a cold vfat stick is a round trip of a millisecond or more; a
+// local stat is microseconds. The first rows tell which, so only a slow filesystem pays for threads.
+const PROBE_ROWS: usize = 4;
+const SLOW_STAT_MS: f64 = 1.0;
+const STAT_THREADS: usize = 8;
+
 // Phase 2 stats only what a window asked for, see AGENTS.md "Two-phase listing".
 pub fn stat_range(base: &Path, l: &Listing, start: usize, count: usize) -> (Vec<Meta>, f64) {
+    stat_range_at(base, l, start, count, SLOW_STAT_MS)
+}
+
+// slow_ms is the per-row cost above which the rest of the range goes to threads; tests pass 0 or infinity.
+fn stat_range_at(base: &Path, l: &Listing, start: usize, count: usize, slow_ms: f64) -> (Vec<Meta>, f64) {
     let t = Instant::now();
     let end = start.saturating_add(count).min(l.len());
     let start = start.min(end);
+    let probe_end = start.saturating_add(PROBE_ROWS).min(end);
     let mut out = Vec::with_capacity(end - start);
-    for i in start..end {
-        // corner: a row that vanished between listing and stat reports zeroes, see AGENTS.md.
-        match base.join(l.name(i)).symlink_metadata() {
-            Ok(m) => {
-                // corner: only a symlink pays a second stat, and only so its icon can be a folder; see AGENTS.md "Icons in the row".
-                let is_link = m.file_type().is_symlink();
-                let target_is_dir = is_link
-                    && base.join(l.name(i)).metadata().map(|t| t.is_dir()).unwrap_or(false);
-                // corner: only a symlink pays the readlink, on the same row that already pays the second stat.
-                let target = if is_link {
-                    std::fs::read_link(base.join(l.name(i)))
-                        .map(|t| t.to_string_lossy().to_string())
-                        .unwrap_or_default()
-                } else {
-                    String::new()
-                };
-                out.push(Meta {
-                    size: m.size(),
-                    mtime: m.mtime(),
-                    mode: m.mode(),
-                    target_is_dir,
-                    target,
-                    dev: m.dev(),
-                })
-            }
-            // mode 0 needs no flag beside it: a real st_mode always carries its file-type bits, so
-            // 0 is outside the domain and is itself the "I could not look" marker for the whole row.
-            Err(_) => out.push(Meta {
-                size: 0,
-                mtime: 0,
-                mode: 0,
-                target_is_dir: false,
-                target: String::new(),
-                dev: 0,
-            }),
+    for i in start..probe_end {
+        out.push(meta_one(base, l.name(i)));
+    }
+    let per_row_ms = t.elapsed().as_secs_f64() * 1000.0 / (probe_end - start).max(1) as f64;
+    if per_row_ms >= slow_ms && end - probe_end > 1 {
+        out.extend(stat_parallel(base, l, probe_end, end));
+    } else {
+        for i in probe_end..end {
+            out.push(meta_one(base, l.name(i)));
         }
     }
     (out, t.elapsed().as_secs_f64() * 1000.0)
+}
+
+// Contiguous chunks, joined in order, so the rows come back exactly as the serial walk returns them.
+fn stat_parallel(base: &Path, l: &Listing, start: usize, end: usize) -> Vec<Meta> {
+    let threads = STAT_THREADS.min(end - start);
+    let chunk = (end - start).div_ceil(threads);
+    std::thread::scope(|s| {
+        let handles: Vec<_> = (0..threads)
+            .map(|k| {
+                let from = (start + k * chunk).min(end);
+                let to = (from + chunk).min(end);
+                (from, to, s.spawn(move || (from..to).map(|i| meta_one(base, l.name(i))).collect::<Vec<Meta>>()))
+            })
+            .collect();
+        let mut out = Vec::with_capacity(end - start);
+        for (from, to, h) in handles {
+            // corner: a thread that panicked still owes its rows, so they report zeroes like a vanished row.
+            out.extend(h.join().unwrap_or_else(|_| (from..to).map(|_| zeroes()).collect()));
+        }
+        out
+    })
+}
+
+fn meta_one(base: &Path, name: &str) -> Meta {
+    // corner: a row that vanished between listing and stat reports zeroes, see AGENTS.md.
+    match base.join(name).symlink_metadata() {
+        Ok(m) => {
+            // corner: only a symlink pays a second stat, and only so its icon can be a folder; see AGENTS.md "Icons in the row".
+            let is_link = m.file_type().is_symlink();
+            let target_is_dir = is_link && base.join(name).metadata().map(|t| t.is_dir()).unwrap_or(false);
+            // corner: only a symlink pays the readlink, on the same row that already pays the second stat.
+            let target = if is_link {
+                std::fs::read_link(base.join(name)).map(|t| t.to_string_lossy().to_string()).unwrap_or_default()
+            } else {
+                String::new()
+            };
+            Meta { size: m.size(), mtime: m.mtime(), mode: m.mode(), target_is_dir, target, dev: m.dev() }
+        }
+        Err(_) => zeroes(),
+    }
+}
+
+// mode 0 needs no flag beside it: a real st_mode always carries its file-type bits, so
+// 0 is outside the domain and is itself the "I could not look" marker for the whole row.
+fn zeroes() -> Meta {
+    Meta { size: 0, mtime: 0, mode: 0, target_is_dir: false, target: String::new(), dev: 0 }
 }
 
 // What a sort by size or date reads for every row: the same lstat stat_range makes, without the
@@ -118,6 +150,24 @@ mod tests {
     use crate::backend::listing::Listing;
     use crate::backend::testdir::TestDir;
     use std::os::unix::fs::symlink;
+
+    #[test]
+    fn the_threaded_stat_returns_the_serial_rows_in_order() {
+        let d = TestDir::new("statparallel");
+        let mut l = Listing::new();
+        for n in 0..57 {
+            let name = format!("f{:02}", n);
+            std::fs::write(d.join(&name), vec![b'x'; n]).expect("fixture");
+            l.push(&name, false);
+        }
+        let (serial, _) = stat_range_at(d.path(), &l, 3, 50, f64::INFINITY);
+        let (threaded, _) = stat_range_at(d.path(), &l, 3, 50, 0.0);
+        assert_eq!(serial.len(), 50);
+        let sizes = |m: &[Meta]| m.iter().map(|x| (x.size, x.mode, x.mtime)).collect::<Vec<_>>();
+        assert_eq!(sizes(&threaded), sizes(&serial));
+        assert_eq!(threaded[0].size, 3, "row 3 first, in listing order");
+        assert_eq!(threaded[49].size, 52);
+    }
 
     fn fixture(tag: &str) -> (TestDir, Listing) {
         let d = TestDir::new(tag);
