@@ -105,7 +105,6 @@ Item {
         // first, so this reload reads the write it caused.
         function onRenamed() { var sidebar = root.pane.sidebar; if (sidebar) sidebar.reloadBookmarks() }
     }
-    }
 
     // Ctrl+E from a listing with the rail hidden. The rail Loader above unloads the Sidebar with
     // its DeviceMounts poll, eject verdict state and releaseChosen, so the key has nothing to read
