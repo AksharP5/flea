@@ -234,67 +234,58 @@ Item {
         }
     }
 
-    Text {
+    // The four metadata cells live in their own files, one Text each, so every 0.3.7
+    // row feature builds on them; each root is the Text itself, so this builds the
+    // same four objects the inline Texts did, with the same anchors and bindings.
+    RowMode {
         id: mode
         anchors.right: size.left
         anchors.rightMargin: root.sizeShown && !root.dualMode ? Theme.spacing.gap : 0
         anchors.verticalCenter: parent.verticalCenter
-        visible: root.modeShown && !root.dropTarget
-        width: root.modeShown ? Theme.column.mode : 0
-        // A hidden column holds no text, because a laid-out Text costs memory whether or not it is drawn.
-        text: root.modeShown && root.row ? Format.permissions(root.row.p) : ""
-        color: root.cellColor()
-        font.family: Theme.font.family
-        font.pixelSize: Theme.font.caption
-        elide: Text.ElideRight
-        textFormat: Text.PlainText
+        modeShown: root.modeShown
+        sizeShown: root.sizeShown
+        dualMode: root.dualMode
+        dropTarget: root.dropTarget
+        ink: root.cellColor()
+        cellText: root.modeShown && root.row ? Format.permissions(root.row.p) : ""
     }
 
-    Text {
+    RowSize {
         id: size
         anchors.right: modified.left
         anchors.rightMargin: root.dateShown && !root.dualMode ? Theme.spacing.gap : 0
         anchors.verticalCenter: parent.verticalCenter
-        visible: root.sizeShown && !root.dropTarget
-        width: root.sizeShown ? root.sizeWidth : 0
-        text: root.sizeShown && root.row ? root.sizeText() : ""
-        color: root.cellColor()
-        font.family: Theme.font.family
-        font.pixelSize: Theme.font.caption
-        horizontalAlignment: Text.AlignRight
-        elide: Text.ElideRight
-        textFormat: Text.PlainText
+        sizeShown: root.sizeShown
+        dateShown: root.dateShown
+        dualMode: root.dualMode
+        dropTarget: root.dropTarget
+        sizeWidth: root.sizeWidth
+        ink: root.cellColor()
+        cellText: root.sizeShown && root.row ? root.sizeText() : ""
     }
 
-    Text {
+    RowDate {
         id: modified
         anchors.right: kind.left
         anchors.rightMargin: root.kindShown ? Theme.spacing.gap : 0
         anchors.verticalCenter: parent.verticalCenter
-        visible: root.dateShown && !root.dropTarget
-        width: root.dateShown ? root.dateWidth : 0
-        text: root.dateShown ? root.dateText() : ""
-        color: root.cellColor()
-        font.family: Theme.font.family
-        font.pixelSize: Theme.font.caption
-        horizontalAlignment: Text.AlignRight
-        elide: Text.ElideRight
-        textFormat: Text.PlainText
+        dateShown: root.dateShown
+        kindShown: root.kindShown
+        dropTarget: root.dropTarget
+        dateWidth: root.dateWidth
+        ink: root.cellColor()
+        cellText: root.dateShown ? root.dateText() : ""
     }
 
-    Text {
+    RowKind {
         id: kind
         anchors.right: parent.right
         anchors.rightMargin: Theme.spacing.rowPaddingX
         anchors.verticalCenter: parent.verticalCenter
-        visible: root.kindShown && !root.dropTarget
-        width: root.kindShown ? Theme.column.kind : 0
-        text: root.kindShown && root.row ? root.kindText() : ""
-        color: root.cellColor()
-        font.family: Theme.font.family
-        font.pixelSize: Theme.font.caption
-        elide: Text.ElideRight
-        textFormat: Text.PlainText
+        kindShown: root.kindShown
+        dropTarget: root.dropTarget
+        ink: root.cellColor()
+        cellText: root.kindShown && root.row ? root.kindText() : ""
     }
 
     // The board's own words in the columns' place: caption type in the accent, against the row padding.

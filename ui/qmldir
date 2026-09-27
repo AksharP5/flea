@@ -76,6 +76,10 @@ PreviewMedia 1.0 PreviewMedia.qml
 QuickLookSwap 1.0 QuickLookSwap.qml
 PreviewText 1.0 PreviewText.qml
 Row 1.0 Row.qml
+RowDate 1.0 RowDate.qml
+RowKind 1.0 RowKind.qml
+RowMode 1.0 RowMode.qml
+RowSize 1.0 RowSize.qml
 Pane 1.0 Pane.qml
 PickerChrome 1.0 PickerChrome.qml
 PickerHeader 1.0 PickerHeader.qml

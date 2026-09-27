@@ -46,6 +46,7 @@ import "protocols.js" as ProtocolsSuite
 import "railkeys.js" as RailKeysSuite
 import "recent.js" as RecentSuite
 import "renderer.js" as RendererSuite
+import "rowcells.js" as RowCellsSuite
 import "scroll.js" as ScrollSuite
 import "search.js" as SearchSuite
 import "selection.js" as SelectionSuite
@@ -110,7 +111,7 @@ Item {
             ["previewkeys", PreviewKeysSuite], ["previewswap", PreviewSwapSuite],
             ["protocols", ProtocolsSuite], ["railkeys", RailKeysSuite],
             ["recent", RecentSuite],
-            ["renderer", RendererSuite],
+            ["renderer", RendererSuite], ["rowcells", RowCellsSuite],
             ["scroll", ScrollSuite], ["search", SearchSuite],
             ["selection", SelectionSuite], ["settings", SettingsSuite], ["settingsmenus", SettingsMenusSuite], ["settingsshelf", SettingsShelfSuite], ["settingsabout", SettingsAboutSuite],
             ["sort", SortSuite], ["swap", SwapSuite], ["startup", StartupSuite], ["trashdates", TrashDatesSuite], ["permissions", PermissionsSuite], ["status", StatusSuite], ["statusfix", StatusFixSuite], ["taildrop", TaildropSuite], ["textsize", TextSizeSuite],
