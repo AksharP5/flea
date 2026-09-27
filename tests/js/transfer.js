@@ -1,4 +1,5 @@
 .import "../../ui/js/Transfer.js" as Transfer
+.import "../../ui/js/Ops.js" as Ops
 
 // The card's own model: the count, the file line, the bar, and TransferCard.html's byte line under
 // it. ops.js still covers the headline and the fraction; this suite is the line the board added.
@@ -104,6 +105,19 @@ function run(check) {
     check("and the archive's own name is the row under it", Transfer.fileLine(extracting), "slow.zip")
     check("with no byte sample, so it draws no invented byte line", Transfer.byteParts(extracting, 0).length, 0)
     check("and the bar stays at its no-sample state", Transfer.fraction(extracting), 0)
+
+    // GM on 0.3.5: the bar never moved while the line under it counted. One folder is n === 1 with no total of
+    // its own, so the bar must read the sweep's total the line reads. Sample: {"t":"transferprogress","id":3,
+    // "index":0,"name":"Photos","bytes":1200000000,"total":0,"scanned":3400000000}
+    var oneFolder = Transfer.sampled(Ops.started(3, false, 1, false), 0, "Photos", 1200000000, 0, 3400000000)
+    check("one folder's bar follows the bytes against the sweep's total",
+          Math.round(Transfer.fraction(oneFolder) * 1000) / 1000, 0.353)
+    var twoFolders = Object.assign(Transfer.sampled(Ops.started(4, false, 2, false), 1, "Music", 720000000, 0, 3400000000),
+                                   { moved: 2000000000 })
+    check("the second of two folders counts the first one's bytes, not half the bar per folder",
+          Transfer.fraction(twoFolders), 0.8)
+    check("the line under the bar names the same total the bar fills against",
+          drawn(Transfer.byteParts(oneFolder, 0)).indexOf("3.4 GB") >= 0, true)
     check("a copy's headline is unchanged", Transfer.head(oneFile), "Copying 1 of 1")
     check("a four-figure transfer groups its headline",
           Transfer.head({ moving: false, n: 1204, index: 203 }), "Copying 204 of 1,204")

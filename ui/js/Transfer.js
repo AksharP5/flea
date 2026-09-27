@@ -55,9 +55,7 @@ function byteParts(t, rate) {
     if (moved <= 0) {
         return []
     }
-    // t.total is the item in flight's, so it is the transfer's only when the transfer is that one
-    // item. One directory is n === 1 with no total of its own, and the sweep is what answers for it.
-    var total = t.n === 1 && t.total > 0 ? t.total : (t.scanned || 0)
+    var total = transferTotal(t)
     var parts = [figure(Format.size(moved))]
     if (total > 0) {
         parts.push(word(" of "), figure(Format.size(total)))
@@ -111,11 +109,19 @@ function fileLine(t) {
 // The bar is the whole transfer, never the one file: done carries the items already finished and
 // the byte sample only fills in the one in flight. One large file is then its own byte bar, and
 // thirty thousand small ones step it once each instead of restarting it thirty thousand times.
+// t.total is the item in flight's, so it is the transfer's only when the transfer is that one
+// item. One directory is n === 1 with no total of its own, and the sweep is what answers for it.
+function transferTotal(t) {
+    return t.n === 1 && t.total > 0 ? t.total : (t.scanned || 0)
+}
+
+// The bar fills against the same total the line under it names, so the two always agree; with no
+// total yet it counts finished items plus the one in flight's share, as it always did.
 function fraction(t) {
     if (t.n <= 0) {
         return 0
     }
-    var part = t.total > 0 ? t.bytes / t.total : 0
-    var at = (t.done + part) / t.n
+    var total = transferTotal(t)
+    var at = total > 0 ? movedBytes(t) / total : (t.done + (t.total > 0 ? t.bytes / t.total : 0)) / t.n
     return at < 0 ? 0 : (at > 1 ? 1 : at)
 }
