@@ -10,10 +10,13 @@ use std::time::{Duration, Instant};
 
 // A statfs outstanding this long is presumed hung, so the next ask for its mount starts another.
 pub const FSINFO_DEADLINE: Duration = Duration::from_secs(10);
+// corner: past this many folders the remembered figures are dropped whole; the next visit reads them again.
+const KNOWN_MAX: usize = 64;
 
-// Sample input: root "/run/user/1000/gvfs/smb-share:server=n,share=x", info Some(fuse, 7).
+// Sample input: root "/run/user/1000/gvfs/smb-share:server=n,share=x", dir root + "/photos", info Some(fuse, 7).
 pub struct Done {
     pub root: PathBuf,
+    pub dir: PathBuf,
     pub info: Option<Info>,
 }
 
@@ -23,10 +26,12 @@ type Reader = Arc<dyn Fn(PathBuf) -> Option<Info> + Send + Sync>;
 pub struct FsInfo {
     events: Sender<Event>,
     reader: Reader,
-    // The last figures per slow mount root, one entry per mounted share, since a share's statfs answers every folder in it.
+    // Figures per folder, because an sftp host or a phone's storages answer differently below one mount root.
     known: HashMap<PathBuf, Option<Info>>,
-    // The start of each root's outstanding statfs, so a share never runs two at once.
+    // One statfs per mount root at a time, so fast navigation never piles round trips on the daemon.
     inflight: HashMap<PathBuf, Instant>,
+    // The newest folder asked for while its mount's statfs was busy, read when that one lands.
+    next: HashMap<PathBuf, PathBuf>,
 }
 
 impl FsInfo {
@@ -35,13 +40,13 @@ impl FsInfo {
     }
 
     pub fn with_reader(events: Sender<Event>, reader: Reader) -> Self {
-        FsInfo { events, reader, known: HashMap::new(), inflight: HashMap::new() }
+        FsInfo { events, reader, known: HashMap::new(), inflight: HashMap::new(), next: HashMap::new() }
     }
 
     // Before the scan, so a share's statfs runs beside its gio listing; a kernel mount waits for fsinfo, keeping local lists free of a mountinfo read.
     pub fn list_arrived(&mut self, path: &Path) {
         if let Some(root) = gvfs_root(path) {
-            self.refresh(root);
+            self.refresh(root, path.to_path_buf());
         }
     }
 
@@ -54,29 +59,29 @@ impl FsInfo {
     // The test seam: body is one /proc/self/mountinfo read, ignored for a gvfs path.
     fn answer_in(&mut self, path: &Path, body: &str) -> (Option<Info>, &'static str) {
         if let Some(root) = gvfs_root(path) {
-            return self.slow_answer(root, slow_class(path));
+            return self.slow_answer(root, path, slow_class(path));
         }
         match mount_entry_in(path, body) {
-            Some(entry) if fstype_is_network(&entry.fstype) => self.slow_answer(entry.mount, "network"),
+            Some(entry) if fstype_is_network(&entry.fstype) => self.slow_answer(entry.mount, path, "network"),
             entry => ((self.reader)(path.to_path_buf()), classify_entry(path, entry.as_ref())),
         }
     }
 
-    fn slow_answer(&mut self, root: PathBuf, class: &'static str) -> (Option<Info>, &'static str) {
-        let figures = self.known.get(&root).cloned().flatten();
-        self.refresh(root);
+    fn slow_answer(&mut self, root: PathBuf, path: &Path, class: &'static str) -> (Option<Info>, &'static str) {
+        let figures = self.known.get(path).cloned().flatten();
+        self.refresh(root, path.to_path_buf());
         (figures, class)
     }
 
-    // The statfs reads the mount root, which answers for every folder in it and cannot vanish the way a mistyped folder can.
-    fn refresh(&mut self, root: PathBuf) {
+    fn refresh(&mut self, root: PathBuf, dir: PathBuf) {
         if self.inflight.get(&root).is_some_and(|started| started.elapsed() < FSINFO_DEADLINE) {
+            self.next.insert(root, dir);
             return;
         }
         let (events, reader, key) = (self.events.clone(), Arc::clone(&self.reader), root.clone());
         let worker = std::thread::Builder::new().name("flea-fsinfo".into()).spawn(move || {
-            let info = reader(key.clone());
-            let _ = events.send(Event::FsInfo(Done { root: key, info }));
+            let info = reader(dir.clone());
+            let _ = events.send(Event::FsInfo(Done { root: key, dir, info }));
         });
         // corner: a spawn that fails records nothing, so the next ask tries again and answers unknown meanwhile.
         if worker.is_ok() {
@@ -84,12 +89,20 @@ impl FsInfo {
         }
     }
 
-    // The figures to print for base, only when base sits in that mount and they moved since the last answer.
+    // The figures to print, only for the folder on screen and only when they moved since its last answer.
     pub fn finish(&mut self, done: Done, base: &Path) -> Option<Option<Info>> {
         self.inflight.remove(&done.root);
-        let moved = self.known.get(&done.root) != Some(&done.info);
-        self.known.insert(done.root.clone(), done.info.clone());
-        if moved && base.starts_with(&done.root) {
+        if let Some(dir) = self.next.remove(&done.root) {
+            if dir != done.dir {
+                self.refresh(done.root.clone(), dir);
+            }
+        }
+        let moved = self.known.get(&done.dir) != Some(&done.info);
+        if self.known.len() >= KNOWN_MAX && !self.known.contains_key(&done.dir) {
+            self.known.clear();
+        }
+        self.known.insert(done.dir.clone(), done.info.clone());
+        if moved && done.dir == base {
             return Some(done.info);
         }
         None
@@ -149,57 +162,79 @@ mod tests {
         assert_eq!(class, "network");
         assert!(ms < 250.0, "answered in {:.1} ms against a 500 ms statfs, over a 250 ms budget", ms);
         let done = next_done(&rx);
-        assert_eq!(done.root, Path::new(SHARE), "the figures belong to the share, not the folder");
+        assert_eq!((done.root.as_path(), done.dir.as_path()), (Path::new(SHARE), dir.as_path()), "keyed by the share, read at the folder");
         assert_eq!(fs.finish(done, &dir).flatten().map(|i| i.free), Some(7), "the current folder's figures print");
+        let (info, _) = fs.answer(&dir);
+        assert_eq!(info.map(|i| i.free), Some(7), "the folder answers its known figures at once next time");
         let (info, _) = fs.answer(&share_dir("other"));
-        assert_eq!(info.map(|i| i.free), Some(7), "another folder in the share answers the known figures at once");
+        assert!(info.is_none(), "another folder never borrows figures it was not read for");
     }
 
     #[test]
-    fn one_statfs_per_share_at_a_time() {
+    fn one_statfs_per_share_at_a_time_and_the_newest_folder_goes_next() {
         let (mut fs, rx, calls) = counted(200, 7);
         fs.list_arrived(&share_dir("a"));
         fs.list_arrived(&share_dir("b"));
-        let _ = fs.answer(&share_dir("b"));
-        let done = next_done(&rx);
-        assert_eq!(calls.load(Ordering::SeqCst), 1, "two folders of one share ran {} statfs calls", calls.load(Ordering::SeqCst));
-        let _ = fs.finish(done, &share_dir("b"));
         fs.list_arrived(&share_dir("c"));
-        let _ = next_done(&rx);
-        assert_eq!(calls.load(Ordering::SeqCst), 2, "a finished statfs lets the next list refresh the figures");
+        let done = next_done(&rx);
+        assert_eq!(calls.load(Ordering::SeqCst), 1, "three folders of one share ran {} statfs calls at once", calls.load(Ordering::SeqCst));
+        assert!(fs.finish(done, &share_dir("c")).is_none(), "a's figures never print over c");
+        let second = next_done(&rx);
+        assert_eq!(second.dir, share_dir("c"), "the skipped middle folder is never read, the newest is");
+        assert_eq!(fs.finish(second, &share_dir("c")).flatten().map(|i| i.free), Some(7));
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
     }
 
     #[test]
     fn unchanged_figures_print_nothing_and_moved_ones_print() {
         let (mut fs, _rx, _) = counted(0, 7);
         let dir = share_dir("a");
-        assert!(fs.finish(Done { root: PathBuf::from(SHARE), info: figures(7) }, &dir).is_some(), "the first figures print");
-        assert!(fs.finish(Done { root: PathBuf::from(SHARE), info: figures(7) }, &dir).is_none(), "the answer already carried these");
-        assert!(fs.finish(Done { root: PathBuf::from(SHARE), info: figures(5) }, &dir).is_some(), "a copy to the share moved them");
+        let done = |free| Done { root: PathBuf::from(SHARE), dir: share_dir("a"), info: figures(free) };
+        assert!(fs.finish(done(7), &dir).is_some(), "the first figures print");
+        assert!(fs.finish(done(7), &dir).is_none(), "the answer already carried these");
+        assert!(fs.finish(done(5), &dir).is_some(), "a copy to the share moved them");
     }
 
     #[test]
-    fn a_share_the_client_has_left_prints_nothing() {
+    fn a_folder_the_client_has_left_prints_nothing() {
         let (mut fs, _rx, _) = counted(0, 7);
-        let done = Done { root: PathBuf::from(SHARE), info: figures(7) };
-        assert!(fs.finish(done, Path::new("/home/gm")).is_none(), "a left share's figures name the wrong place");
+        let done = Done { root: PathBuf::from(SHARE), dir: share_dir("back"), info: figures(7) };
+        assert!(fs.finish(done, Path::new("/home/gm")).is_none(), "a left folder's figures name the wrong place");
         let (info, _) = fs.answer_in(&share_dir("back"), "");
         assert_eq!(info.map(|i| i.free), Some(7), "but coming back answers them at once");
     }
 
-    #[test]
-    fn a_list_of_a_missing_folder_never_blanks_the_share() {
+    // A fake statfs that records every path it was asked for and fails for one named "gone".
+    fn recording() -> (FsInfo, Receiver<Event>, Arc<std::sync::Mutex<Vec<PathBuf>>>) {
         let (events, rx) = std::sync::mpsc::channel();
         let asked = Arc::new(std::sync::Mutex::new(Vec::new()));
         let seen = Arc::clone(&asked);
         let reader: Reader = Arc::new(move |path: PathBuf| {
-            seen.lock().unwrap().push(path);
-            figures(7)
+            seen.lock().unwrap().push(path.clone());
+            if path.ends_with("gone") { None } else { figures(7) }
         });
-        let mut fs = FsInfo::with_reader(events, reader);
+        (FsInfo::with_reader(events, reader), rx, asked)
+    }
+
+    #[test]
+    fn a_list_of_a_missing_folder_never_blanks_the_folder_on_screen() {
+        let (mut fs, rx, _) = recording();
+        let photos = share_dir("photos");
+        fs.list_arrived(&photos);
+        let _ = fs.finish(next_done(&rx), &photos);
         fs.list_arrived(&share_dir("gone"));
-        let _ = next_done(&rx);
-        assert_eq!(*asked.lock().unwrap(), vec![PathBuf::from(SHARE)], "the statfs reads the share root, not the folder the list named");
+        assert!(fs.finish(next_done(&rx), &photos).is_none(), "a failed statfs of another folder prints nothing for photos");
+        assert_eq!(fs.answer(&photos).0.map(|i| i.free), Some(7), "and photos keeps its figures");
+    }
+
+    #[test]
+    fn a_phone_storage_is_read_where_it_is_listed_not_at_the_device() {
+        let (mut fs, rx, asked) = recording();
+        let storage = PathBuf::from("/run/user/1000/gvfs/mtp:host=Phone/Internal shared storage/DCIM");
+        fs.list_arrived(&storage);
+        let done = next_done(&rx);
+        assert_eq!(done.root, Path::new("/run/user/1000/gvfs/mtp:host=Phone"), "keyed by the device");
+        assert_eq!(*asked.lock().unwrap(), vec![storage], "read at the storage folder, whose figures the device root does not carry");
     }
 
     #[test]
@@ -220,7 +255,8 @@ mod tests {
         let (info, class) = fs.answer_in(Path::new("/media/nas/photos"), cifs);
         assert!(info.is_none() && t.elapsed() < Duration::from_millis(250), "cifs pays its round trip on the worker");
         assert_eq!(class, "network");
-        assert_eq!(next_done(&rx).root, Path::new("/media/nas"), "keyed by the mount point");
+        let done = next_done(&rx);
+        assert_eq!((done.root.as_path(), done.dir.as_path()), (Path::new("/media/nas"), Path::new("/media/nas/photos")), "keyed by the mount point, read at the folder");
     }
 
     #[test]
