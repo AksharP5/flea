@@ -168,6 +168,17 @@ Item {
         root.send({ c: "searchcancel" })
     }
 
+    // The phone's photo roll: an explicit walk of one DCIM folder, newest first, streamed
+    // the way a search is; see docs/protocol.md "photos".
+    function photos(path, hidden) {
+        root.send({ c: "photos", path: path, hidden: hidden })
+    }
+
+    // No rows form: one photos walk runs at a time, so a cancel can only mean that one.
+    function photoscancel() {
+        root.send({ c: "photoscancel" })
+    }
+
     // rows, not paths: a client can only build a path for a row inside the window it holds, and a
     // selection can be wider than that; the backend resolves them at request time, see docs/protocol.md.
     function transfer(op, rows, dest) {

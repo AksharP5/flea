@@ -21,7 +21,7 @@ src/backend/opsdispatch.rs 536
 src/backend/opsreq.rs 402
 src/backend/opsreq/tests.rs 424
 src/backend/proto.rs 466
-src/backend/run.rs 429
+src/backend/run.rs 455
 src/backend/thumbs.rs 441
 src/backend/thumbworker.rs 953
 src/backend/trashbrowse.rs 698
@@ -42,9 +42,9 @@ ui/ContextMenu.qml 570
 ui/ConvertDialog.qml 440
 ui/Ipc.qml 796
 ui/NetworkDialog.qml 449
-ui/NetworkMounts.qml 674
+ui/NetworkMounts.qml 703
 ui/OpenWithDialog.qml 588
-ui/Pane.qml 690
+ui/Pane.qml 702
 ui/PaneMenuActions.qml 404
 ui/PaneWire.qml 485
 ui/PermissionsDialog.qml 426
@@ -54,12 +54,12 @@ ui/Preview.qml 456
 ui/Row.qml 421
 ui/SettingsPanel.qml 542
 ui/SettingsRow.qml 410
-ui/Sidebar.qml 545
+ui/Sidebar.qml 553
 ui/StatusBar.qml 446
 ui/TrashView.qml 467
 ui/WindowBody.qml 507
 ui/js/Filter.js 253
-ui/js/Focus.js 336
+ui/js/Focus.js 339
 ui/js/Keymap.js 313
 ui/js/Ops.js 367
 ui/js/Settings.js 427"

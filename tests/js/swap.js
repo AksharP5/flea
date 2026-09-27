@@ -57,7 +57,7 @@ var FORGOTTEN = "0|0|0|0|false|false|0|0|-1||false|loading||0|1"
 // Keys through Focus.handleKey and Focus.act over a recording backend; rows is what is still drawn, and F2 records as a rename.
 function keyPane(inFlight, rows) {
     var p = {
-        focusView: "list", viewMode: "list", searchMode: "", filterTyping: false, filterQuery: "", shown: null, path: "/home/gm/Work",
+        focusView: "list", viewMode: "list", searchMode: "", photosMode: "", filterTyping: false, filterQuery: "", shown: null, path: "/home/gm/Work",
         listInFlight: inFlight, listingState: inFlight && rows.length === 0 ? "loading" : "ready",
         total: rows.length, held: 0, rows: rows, cursorIndex: 0, selectionVersion: 0, selectionAnchor: 0,
         keySequence: "", keySequenceIdentity: "", inputAt: 0, rowsAt: 0, trashArmedAt: 0, trashedFirst: -1,

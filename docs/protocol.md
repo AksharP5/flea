@@ -324,6 +324,63 @@ and stays windowable. Unlike `thumbcancel` there is
 no `rows` form: one walk runs at a time, so a cancel can only mean that one. A
 `searchcancel` with no walk running does nothing and answers nothing.
 
+### photos
+
+`{"c":"photos","path":"<string>","hidden":<bool>}`
+
+Example: `{"c":"photos","path":"/run/user/1000/gvfs/mtp:host=X/DCIM","hidden":false}`
+
+Walks the whole subtree under `path`, which names one DCIM folder, and streams every photo
+and video under it into a fresh listing that replaces the current one, newest first. The
+filter is the shipped filename MIME table and nothing else: a name whose type starts with
+`image/` or `video/` is kept, and every other name, a directory included, is dropped. `hidden`
+follows `list`'s rule exactly: `false`, or missing, drops dot-prefixed names before they are
+counted or descended.
+
+**A photos result is a listing like any other, and that is what makes it cheap.** Each match
+is pushed as its path relative to `path`, and `path` becomes the listing's base, so
+`window`, `thumb`, `dirsize` and every other per-row facility keep working with no special
+case anywhere. The client splits the last `/` itself to draw the name; the backend never
+sends a second shape.
+
+Matches are appended in discovery order and never re-sorted mid-walk, so a `window` the
+client already holds stays valid as the count grows. The order changes exactly once, at the
+end: `searched` is written after the rows have been ordered newest first by modification
+time, ties by name, so a client re-reads its window when it sees that line and every row
+index it held before then is stale. That is the same rule a `search` follows, for the same
+reason. The walk is answered in three parts:
+
+1. One `listed` with `n` of 0, immediately, because the client's old rows are gone the
+   moment the request is read.
+2. A `searching` line carrying the growing count and the entries scanned so far, at most one
+   every 100 ms while the walk runs.
+3. One terminal `searched` line, written after the ordering.
+
+There is no trailing `listed` or `searching`: `searched` carries the final count itself, so a walk that a
+new listing replaced never announces a total it no longer has.
+
+The walk runs in bounded slices inside the same single-threaded loop everything else uses,
+four directories per slice, so a `photoscancel` or any other request is never queued behind
+a subtree. A symlink reports its own type, so a link to a directory is listed but never
+descended and no loop is possible, and a link to a photo sorts on its own mtime, because
+the walk stats with `symlink_metadata` and never follows. An unreadable directory is
+skipped in silence, the same way `scan` skips an unreadable entry. A `path` that cannot be
+read at all is not an error: the walk finishes at once with `n` and `scanned` both 0.
+
+`list`, `listpaths`, `search` and `sort` all end a running photos walk before they touch the
+listing, and answer their own lines after the walk's terminal `searched`. A `photos` ends a
+running search the same way.
+
+### photoscancel
+
+`{"c":"photoscancel"}`
+
+Stops the running photos walk and answers one `searched` line with `cancelled` true.
+Whatever the walk already found stays in the listing, is ordered newest first the same way
+a walk that ran to the end is, and stays windowable. Unlike `thumbcancel` there is
+no `rows` form: one photos walk runs at a time, so a cancel can only mean that one. A
+`photoscancel` with no walk running does nothing and answers nothing.
+
 ### thumb
 
 `{"c":"thumb","rows":[<uint>,...]}`

@@ -66,6 +66,14 @@ FocusScope {
     property bool filterTyping: false
     property int searchScanned: 0
     property real searchMs: 0
+    // "" off, "results" once a DCIM walk was asked for; ui/js/Photos.js owns every transition,
+    // the way ui/js/Search.js owns the search walk's. The roll draws as a grid either way.
+    property string photosMode: ""
+    // Where the roll was opened from, and the view it is handed back on leaving.
+    property string photosFrom: ""
+    property string photosView: ""
+    property bool photosRunning: false
+    property int photosScanned: 0
     property bool listInFlight: false
     property bool listedSeen: false
     readonly property bool menuVisible: menu.opened
@@ -184,8 +192,10 @@ FocusScope {
         root.preferencesReady = true
     }
     // Only the list view draws a filter, so leaving it takes the filter with it.
+    // The roll's grid is the session's and never a saved view, so it persists nothing.
     onViewModeChanged: {
         Filter.close(root)
+        if (root.photosMode.length > 0) return
         if (root.preferencesReady && !root.listOnly && (!root.dualMode || root.viewMode !== "list") && ViewState.state.view !== root.viewMode)
             ViewState.changeKey("view", root.viewMode)
     }
@@ -208,6 +218,8 @@ FocusScope {
         id: preferences
         interval: 0
         onTriggered: {
+            // The roll holds its grid until it ends; close() hands the saved view back itself.
+            if (root.photosMode.length > 0) return
             var desired = root.listOnly ? "list" : ViewState.view
             if (root.viewMode !== desired) root.viewMode = desired
             if (!root.visible || !root.path || root.listInFlight || root.searchMode.length > 0

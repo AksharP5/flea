@@ -2,7 +2,6 @@ use crate::backend::fsinfo::dev_of;
 use crate::backend::listing::Listing;
 use crate::backend::proto::listed_line;
 use crate::backend::run::{forget_rows, write_window};
-use crate::backend::searchreq::finish_search;
 use crate::backend::state::{State, Tables};
 use crate::backend::thumbs::Pool;
 use std::fs;
@@ -49,8 +48,8 @@ pub fn answer(
     first: usize,
     line: &str,
 ) {
-    // A new listing replaces whatever the walk was filling, so the walk ends before the build starts.
-    finish_search(out, st, true);
+    // A new listing replaces whatever a walk was filling, so the walks end before the build starts.
+    super::run::end_walks(out, st, pool);
     let (mut l, read_ms) = listing_of(paths);
     super::picker::filter_listing(&mut l, &tb.mime, line);
     // base and listing only move together, exactly as a list moves them.

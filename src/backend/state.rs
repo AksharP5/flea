@@ -7,6 +7,7 @@ use crate::backend::listing::Listing;
 use crate::backend::mime::Db;
 use crate::backend::rowguard::FIRST_LISTING;
 use crate::backend::search::Search;
+use crate::backend::photos::Photos;
 use crate::backend::thumbspec::Thumbnailers;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -40,8 +41,12 @@ pub struct State {
     pub dirsize_worker: super::dirsizeworker::Worker,
     // The subtree walk the loop ticks; None means no search is running.
     pub search: Option<Search>,
+    // The DCIM walk the loop ticks; None means no photos walk is running.
+    pub photos: Option<Photos>,
     // When the running walk last announced its count, so SEARCH_REPORT can throttle the stream.
     pub search_reported: Instant,
+    // When the running photos walk last announced its count, so PHOTOS_REPORT can throttle the stream.
+    pub photos_reported: Instant,
     // Which numbering the rows are in; forget_rows moves it, see src/backend/rowguard.rs.
     pub generation: u64,
 }
@@ -61,7 +66,7 @@ impl State {
         State {
             listing: Listing::new(), base: PathBuf::new(), asked: Vec::new(), outstanding: 0,
             dirsizes: HashMap::new(), dirsize_queue: Vec::new(), dirsize_worker,
-            search: None, search_reported: Instant::now(), generation: FIRST_LISTING - 1,
+            search: None, search_reported: Instant::now(), photos: None, photos_reported: Instant::now(), generation: FIRST_LISTING - 1,
         }
     }
 }

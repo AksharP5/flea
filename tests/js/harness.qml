@@ -37,6 +37,7 @@ import "opstrash.js" as OpsTrashSuite
 import "palette.js" as PaletteSuite
 import "pathbar.js" as PathBarSuite
 import "phones.js" as PhonesSuite
+import "photos.js" as PhotosSuite
 import "picker.js" as PickerSuite
 import "previewkeys.js" as PreviewKeysSuite
 import "places.js" as PlacesSuite
@@ -105,6 +106,7 @@ Item {
             ["openwith", OpenWithSuite], ["ops", OpsSuite], ["opstrash", OpsTrashSuite],
             ["palette", PaletteSuite], ["pathbar", PathBarSuite], ["places", PlacesSuite], ["placemenu", PlaceMenuSuite], ["rail", RailSuite], ["scripts", ScriptsSuite],
             ["phones", PhonesSuite],
+            ["photos", PhotosSuite],
             ["picker", PickerSuite],
             ["previewkeys", PreviewKeysSuite], ["previewswap", PreviewSwapSuite],
             ["protocols", ProtocolsSuite], ["railkeys", RailKeysSuite],

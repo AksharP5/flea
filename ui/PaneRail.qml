@@ -74,6 +74,7 @@ Item {
             trashActive: root.pane.railPane.trash.opened
             onOpened: function(path) { RailKeys.openFrom(root.pane.railPane, path, sidebar) }
             onNetworkOpened: function(path, origin) { RailKeys.openFrom(origin, path, sidebar) }
+            onPhotosOpened: function(path, origin) { RailKeys.openPhotosFrom(origin, path, sidebar) }
             onTrashRequested: root.pane.railPane.trash.open()
             onMessage: function(text, isError) { RailKeys.messaged(sidebar, isError); root.pane.message(text, isError) }
             onForgetMessage: function(text) { root.pane.forgetMessage(text) }

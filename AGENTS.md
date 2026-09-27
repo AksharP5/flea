@@ -2142,6 +2142,18 @@ falls 404 to 402, inside its recorded ceiling), `shelf/Model.js` 655 to 669 for 
 `ui/js/Format.js`, and `src/tui/render.rs` 807 to 822 for the TUI's `grouped` beside `bytes`
 with its three vectors. `src/tui/model.rs` holds every call site and stays at its recorded 1196.
 
+PhonePhotos moves five recorded ceilings, each re-derived with `wc -l`: `src/backend/run.rs` 429
+to 455 for the `photos` and `photoscancel` arms, the shared `end_walks` both walks end through,
+and the `tick_walkers` second walker; `ui/NetworkMounts.qml` 674 to 703 for `openPhotos`, the
+`_photosPending` flag with its clearing on every terminal leg, and the bridge's DCIM routing;
+`ui/Pane.qml` 687 to 699 for the six photos-mode properties and the two guards that keep the
+roll's grid a session view; `ui/Sidebar.qml` 545 to 553 for the Photos row splice and its
+`photosOpened` signal; `ui/js/Focus.js` 336 to 339 for the sort quiet and the Esc arm. The
+walk itself went to the new `src/backend/photos.rs`, 294 lines over the soft budget and under
+the hard cap, with its wire half in `src/backend/photosreq.rs`, its decisions in `ui/js/Photos.js`
+and its suite in `tests/js/photos.js`, each inside both budgets, rather than into
+`src/backend/search.rs`, which keeps the fuzzy walk it reuses the streaming model of.
+
 `ui/PreviewColumn.qml` is at 505: the sharp settle, the mtime-keyed cache identity and the
 three decode counters `tests/sharp-decode.sh` read were reverted under review, and the replacement
 sharp test pins the product path from outside the column instead of from inside it. The office

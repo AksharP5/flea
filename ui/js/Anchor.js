@@ -9,6 +9,7 @@
 function busy(pane) {
     return !pane || pane.listInFlight || pane.renamingIndex >= 0 || pane.renamePending
         || pane.menuVisible || pane.menuActions.opened || pane.filterTyping || pane.searchMode.length > 0
+        || pane.photosMode.length > 0
         || pane.selectionCount() > 0 || pane.selectionBand !== null || pane.collide.pending !== null
 }
 

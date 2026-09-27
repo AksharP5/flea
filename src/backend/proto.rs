@@ -14,6 +14,11 @@ pub enum Request {
     Search { path: String, query: String, hidden: bool },
     // Unlike thumbcancel there is no rows form: one walk runs at a time, so a cancel can only mean that one.
     SearchCancel,
+    // The phone's photo roll: an explicit walk of one DCIM folder for photos and videos,
+    // newest first, streamed the way a search is; see docs/protocol.md "photos".
+    Photos { path: String, hidden: bool },
+    // One photos walk runs at a time, so a cancel can only mean that one.
+    PhotosCancel,
     // cacheOnly answers from the shared cache alone and never starts a decoder, for a
     // storage class whose switch is off; absent is today's full path, see docs/protocol.md "thumb".
     Thumb { rows: Vec<usize>, cache_only: bool },
@@ -99,6 +104,11 @@ pub fn parse_request(line: &str) -> Request {
             hidden: field_bool(line, "hidden"),
         },
         Some("searchcancel") => Request::SearchCancel,
+        Some("photos") => Request::Photos {
+            path: field_str(line, "path").unwrap_or_default(),
+            hidden: field_bool(line, "hidden"),
+        },
+        Some("photoscancel") => Request::PhotosCancel,
         Some("thumb") => Request::Thumb { rows: field_usize_array(line, "rows"),
             cache_only: field_bool(line, "cacheOnly") },
         Some("thumbcancel") => Request::ThumbCancel { rows: field_usize_array(line, "rows") },

@@ -5,6 +5,7 @@ import qs.Commons
 import "." as Flea
 import "js/Icons.js" as Icons
 import "js/Mounts.js" as Mounts
+import "js/Photos.js" as Photos
 import "js/Places.js" as Places
 import "js/PlaceMenu.js" as PlaceMenu
 import "js/RailMenu.js" as RailMenu
@@ -54,7 +55,9 @@ Item {
     // The poll rebinds its delegates in place, so a rename left standing would edit a different share.
     onNetworkEntriesChanged: root.cancelRename()
     // Phones ride the DEVICES group behind the block devices: a plugged phone is a device to the person holding it, whatever transport gvfs reaches it over.
-    readonly property var deviceEntries: root.placesState.showDevices === false || !root.railGate.showDevices ? [] : devices.entries.concat(phones.entries)
+    // A phone or camera carries its Photos row directly under it, at the same column and never
+    // indented, only while the device is on the rail; see ui/js/Photos.js.
+    readonly property var deviceEntries: root.placesState.showDevices === false || !root.railGate.showDevices ? [] : devices.entries.concat(Photos.withPhotoRows(phones.entries))
     readonly property var entries: root.placesEntries.concat(root.networkEntries, root.deviceEntries)
 
     // The rail lands in one step by gating the entries themselves, so cursor, IPC and menus match only drawn rows.
@@ -77,6 +80,8 @@ Item {
 
     signal opened(string path)
     signal networkOpened(string path, var origin)
+    // A phone's photo roll: the device's DCIM, walked newest first into the grid.
+    signal photosOpened(string path, var origin)
     signal addRequested()
     signal message(string text, bool isError)
     signal forgetMessage(string text)
@@ -153,6 +158,7 @@ Item {
         // The bridge wait's sticky line reaches the pane that asked, or the navigating one.
         onSticky: function (text, origin) { (origin || root.navigationPane).sticky(text) }
         onSharesListed: function (baseUri, baseLabel, names, origin) { root.sharesListed(baseUri, baseLabel, names, origin) }
+        onPhotosOpened: function (path, origin) { root.photosOpened(path, origin) }
         onRetryRequested: function (uri, label, password, reason, failedConnect, origin) {
             root.networkRetryRequested(uri, label, password, reason, failedConnect, origin)
         }
@@ -252,7 +258,9 @@ Item {
         if (entry.kind === "trash") { root.trashRequested(); return }
         var rest = index - root.placesEntries.length
         if (rest < root.networkEntries.length) mounts.activate(rest)
-        // A phone mounts, resolves and opens the way a share does, and its rows sit after the block devices, so the device Service's own indices are unmoved.
+        // The Photos row walks the device's DCIM through the same mount-and-resolve leg a
+        // phone rides; a phone itself mounts, resolves and opens the way a share does.
+        else if (entry.kind === "photos") mounts.openPhotos(entry.uri, entry.mounted, entry.deviceLabel)
         else if (entry.kind === "phone") mounts.openShare(entry.uri, entry.mounted, entry.label)
         else devices.activate(rest - root.networkEntries.length)
     }

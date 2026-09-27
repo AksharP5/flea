@@ -7,6 +7,7 @@ import "js/Nav.js" as Nav
 import "js/Ops.js" as Ops
 import "js/Status.js" as Status
 import "js/Search.js" as Search
+import "js/Photos.js" as Photos
 import "js/Swap.js" as Swap
 import "js/Thumbs.js" as Thumbs
 import "js/Transfer.js" as Transfer
@@ -119,7 +120,7 @@ Item {
     }
 
     function locateRetry() {
-        if (!root.retryId || root.retryListing || pane.listInFlight || pane.searchRunning) return
+        if (!root.retryId || root.retryListing || pane.listInFlight || pane.searchRunning || pane.photosRunning) return
         if (pane.path !== root.retryFolder) { root.retryId = 0; root.retryPaths = []; return }
         root.retryListing = pane.menuSelectionIdentity
         pane.backend.send({c: "locate", paths: root.retryPaths, transferId: root.retryId})
@@ -138,7 +139,7 @@ Item {
 
     function refreshRename(request, selected) {
         if (pane.path !== request.folder) return
-        if (pane.listInFlight || pane.searchMode.length > 0) { root.stale = true; return }
+        if (pane.listInFlight || pane.searchMode.length > 0 || pane.photosMode.length > 0) { root.stale = true; return }
         root.stale = false
         watchSettle.stop()
         pane.refresh(selected)
@@ -168,6 +169,15 @@ Item {
 
         // Sample input: {"t":"searching","n":812,"scanned":41200,"ms":300.114}
         function onSearching(total, scanned, ms) {
+            if (pane.photosMode === Photos.RESULTS) {
+                pane.total = total
+                pane.photosScanned = scanned
+                pane.listingState = Photos.listingState(pane, total)
+                // Unlike list, a walk rides no first screenful along: the count grows, so the window is asked for as it does.
+                pane.listArea.restartCoalesce()
+                pane.listArea.restartSettle()
+                return
+            }
             if (pane.searchMode !== Search.RESULTS) {
                 return
             }
@@ -182,6 +192,17 @@ Item {
 
         // Sample input: {"t":"searched","n":14673,"scanned":284446,"ms":229.008,"cancelled":false}
         function onSearched(total, scanned, ms, cancelled) {
+            if (pane.photosMode === Photos.RESULTS) {
+                pane.photosRunning = false
+                pane.total = total
+                pane.photosScanned = scanned
+                pane.listingState = Photos.listingState(pane, total)
+                // The rows were ordered newest first immediately before this line, so the window
+                // on screen is in discovery order and every index in it now names another file.
+                Photos.ranked(pane)
+                pane.listArea.restartSettle()
+                return
+            }
             if (pane.searchMode !== Search.RESULTS) {
                 return
             }
@@ -278,7 +299,7 @@ Item {
             root.retryPaths = retryPaths
             root.retryFolder = pane.path
             root.retryListing = ""
-            if (pane.searchMode === Search.RESULTS) {
+            if (pane.searchMode === Search.RESULTS || pane.photosMode === Photos.RESULTS) {
                 root.stale = true
                 root.locateRetry()
             } else pane.refresh("")
@@ -352,7 +373,7 @@ Item {
             pane.sticky("")
             pane.message(ok ? "Converted to " + Ops.leaf(path) + "." : collision ? err : Errors.sentence("convert", err), !ok)
             if (ok) {
-                if (pane.searchMode === Search.RESULTS) root.stale = true
+                if (pane.searchMode === Search.RESULTS || pane.photosMode === Photos.RESULTS) root.stale = true
                 else pane.refresh(path)
             }
         }

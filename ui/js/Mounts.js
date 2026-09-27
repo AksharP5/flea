@@ -219,6 +219,11 @@ function railKey(entry) {
         return String(entry.device || "")
     if (entry.group === "device" && entry.kind === "phone")
         return String(entry.uri || "")
+    // The Photos row under a phone keys apart from its device, so the poll renumbering
+    // one never resolves the other's menu or release; see ui/js/Photos.js. An empty uri
+    // keys nothing, the same rule every other keyless row follows.
+    if (entry.group === "device" && entry.kind === "photos")
+        return String(entry.uri || "").length > 0 ? "photos:" + String(entry.uri) : ""
     if (entry.group === "network" && entry.kind === "share")
         return String(entry.uri || "")
     return ""

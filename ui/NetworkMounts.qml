@@ -3,6 +3,7 @@ import Quickshell
 import Quickshell.Io
 import "js/Errors.js" as Errors
 import "js/Mounts.js" as Mounts
+import "js/Photos.js" as Photos
 import "js/Protocols.js" as Protocols
 import "js/Dropbox.js" as Dropbox
 
@@ -21,6 +22,8 @@ Item {
     property Item _pendingOrigin: null
 
     signal opened(string path, var origin)
+    // The rail's Photos row: the resolved FUSE folder's DCIM, walked newest first into the grid.
+    signal photosOpened(string path, var origin)
     signal message(string text, bool isError)
     // The bridge wait's own sticky line, cleared with "" when the folder lands or fails.
     signal sticky(string text, var origin)
@@ -62,6 +65,10 @@ Item {
     property string _pendingUnmountLabel: ""
     // The entry's own label at activation time, carried through to the sharesListed signal.
     property string _pendingLabel: ""
+    // A Photos open rides the same mount-and-resolve chain below, and the bridge's answer
+    // becomes a DCIM walk instead of a folder open. Cleared on every terminal leg, so a
+    // failed Photos open can never misroute the next share's folder.
+    property bool _photosPending: false
     property string _pendingPassword: ""
     property bool _authAwaitingStart: false
     property bool _authCancelled: false
@@ -217,10 +224,19 @@ Item {
     GvfsBridge {
         id: bridge
         environment: root.gioEnvironment
-        onReady: function (path, origin) { root.sticky("", origin); root.opened(path, origin) }
+        onReady: function (path, origin) {
+            root.sticky("", origin)
+            if (root._photosPending) {
+                root._photosPending = false
+                root.photosOpened(Photos.dcimPath(path), origin)
+                return
+            }
+            root.opened(path, origin)
+        }
         onStarting: function (text, origin) { root.sticky(text, origin) }
         onFailed: function (text, origin) {
             root.result = "failed"
+            root._photosPending = false
             root.sticky("", origin)
             root.message(text, true)
         }
@@ -306,6 +322,15 @@ Item {
         root.openShare(uri, false, label, password.length > 0, { origin: origin })
     }
 
+    // The rail's Photos row under a phone or camera: the same mount-and-resolve chain a
+    // phone rides, ending in a DCIM walk instead of a folder open. Phones never carry a
+    // credential, so the password legs below are unreachable from here, but every refusal
+    // still clears the flag on its way out.
+    function openPhotos(uri, mounted, label, origin) {
+        root._photosPending = true
+        root.openShare(uri, mounted, label, false, { origin: origin })
+    }
+
     function openShare(uri, alreadyMounted, label, authenticated, request) {
         request = request || ({})
         // An open is single flight over four children and the repair peek, the share listing
@@ -314,6 +339,7 @@ Item {
         if (mountProcess.running || authProcess.running || infoProcess.running || listSharesProcess.running || root._repairActive) {
             // A guard that returns in silence names nothing at all, and a leg can hold it 15 s.
             var reason = "Another network location is still opening; give it a moment."
+            root._photosPending = false
             if (request.id) root.completed(request.id, Mounts.normalize(uri), false, reason)
             else root.message(reason, false)
             return
@@ -337,6 +363,7 @@ Item {
                 && (password.length > 0 || Mounts.credentialed(uri)))) {
             if (password.length === 0) {
                 root.result = "missing-credential"
+                root._photosPending = false
                 if (!root.finishRequest(false, "Enter the password to mount this location."))
                     root.retryRequested(uri, root._pendingLabel, "", "Enter the password to mount this location.", false, root._pendingOrigin)
                 return
@@ -369,6 +396,7 @@ Item {
     // reopened dialog has to be populated from it exactly as 0.1.6 populated it.
     function failMount(reason, password, refused, missing) {
         root._pendingPassword = ""
+        root._photosPending = false
         root.result = missing === true ? "missing-credential" : "failed"
         root.message(reason, true)
         var attempted = password || root._requestPassword
@@ -655,6 +683,7 @@ Item {
             }
             root.result = "mounted"
             root.finishRequest(true, "")
+            root._photosPending = false
             root.sharesListed(root._pendingUri, root._pendingLabel, names, root._pendingOrigin)
         }
     }

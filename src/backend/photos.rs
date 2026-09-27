@@ -1,0 +1,294 @@
+// The DCIM walk behind a photos request: every photo and video under one DCIM folder in
+// one grid, newest first, ticked a slice at a time so a cancel is never blocked, the way
+// search is. Rows stream in discovery order and are ordered once at the end, so a window
+// the client already holds stays valid while the count grows, exactly as a search's does.
+use crate::backend::listing::Listing;
+use crate::backend::mime::Db;
+use std::path::PathBuf;
+use std::time::Instant;
+
+// One tick reads this many directories before the loop looks at its channel again, the same "one at a time" idea search uses.
+const DIRS_PER_TICK: usize = 4;
+
+pub struct Photos {
+    root: PathBuf,
+    hidden: bool,
+    // Directories still to read, each a path relative to root; the empty string is root itself.
+    pending: Vec<String>,
+    // One mtime per pushed match, in push order, so the finish is a permutation of the listing's spans.
+    mtimes: Vec<u64>,
+    pub scanned: usize,
+    pub started: Instant,
+}
+
+impl Photos {
+    pub fn new(root: &str, hidden: bool) -> Photos {
+        Photos {
+            root: PathBuf::from(root),
+            hidden,
+            pending: vec![String::new()],
+            mtimes: Vec::new(),
+            scanned: 0,
+            started: Instant::now(),
+        }
+    }
+
+    // Returns true when the walk is finished; the caller then writes the terminal line.
+    pub fn step(&mut self, listing: &mut Listing, mime: &Db) -> bool {
+        for _ in 0..DIRS_PER_TICK {
+            match self.pending.pop() {
+                Some(rel) => self.read_one(&rel, listing, mime),
+                None => return true,
+            }
+        }
+        self.pending.is_empty()
+    }
+
+    fn read_one(&mut self, rel: &str, listing: &mut Listing, mime: &Db) {
+        let dir = if rel.is_empty() { self.root.clone() } else { self.root.join(rel) };
+        // corner: an unreadable directory is skipped in silence, exactly as scan.rs's phase one skips an unreadable entry.
+        let rd = match std::fs::read_dir(&dir) {
+            Ok(rd) => rd,
+            Err(_) => return,
+        };
+        for entry in rd.flatten() {
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            // corner: a dot-prefixed name is dropped before it is counted, matching scan.rs's own hidden rule.
+            if !self.hidden && name.starts_with('.') {
+                continue;
+            }
+            self.scanned += 1;
+            // d_type is free and answers is_dir with no stat, matching scan.rs's phase 1.
+            let is_dir = entry.file_type().map(|f| f.is_dir()).unwrap_or(false);
+            let child = if rel.is_empty() { name.to_string() } else { format!("{}/{}", rel, name) };
+            // corner: a symlink reports its own type here, so a link to a directory is never descended and no loop is possible.
+            if is_dir {
+                self.pending.push(child);
+                continue;
+            }
+            // The shipped classifier is the only filter: a name no photo or video glob claims is not a photo.
+            let media = mime.lookup(&child).is_some_and(|m| m.starts_with("image/") || m.starts_with("video/"));
+            if !media {
+                continue;
+            }
+            // symlink_metadata never follows, so a link to a photo sorts on its own mtime and a
+            // dangling one can never hang the walk the way a following stat on a dead mount could.
+            let mtime = std::fs::symlink_metadata(dir.join(name.as_ref()))
+                .and_then(|m| m.modified())
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            // The row's name is its path relative to the root, so base.join(name) still reaches the file and every per-row facility works unchanged.
+            listing.push(&child, false);
+            self.mtimes.push(mtime);
+        }
+    }
+
+    // The walk appends in discovery order, so the finish is one permutation of the spans at the
+    // end and the name arena never moves. Newest first, with the name breaking ties, so one walk
+    // over one tree always answers in exactly one order. Answers whether the row order changed,
+    // because a new order invalidates every outstanding row index the same way a sort does.
+    pub fn finish(&self, listing: &mut Listing) -> bool {
+        // A listing this walk did not fill by itself is never reordered: the mtimes would name other rows.
+        if self.mtimes.len() != listing.len() || listing.len() < 2 {
+            return false;
+        }
+        // Take the buffer out so the comparator can borrow it while spans are moved, as sort.rs does.
+        let names = std::mem::take(&mut listing.names);
+        let spans = &listing.spans;
+        let mtimes = &self.mtimes;
+        let mut order: Vec<usize> = (0..spans.len()).collect();
+        order.sort_by(|&a, &b| {
+            mtimes[b].cmp(&mtimes[a]).then_with(|| {
+                let an = &names[spans[a].off as usize..(spans[a].off + spans[a].len) as usize];
+                let bn = &names[spans[b].off as usize..(spans[b].off + spans[b].len) as usize];
+                an.cmp(bn)
+            })
+        });
+        let ranked: Vec<_> = order.iter().map(|&i| spans[i]).collect();
+        listing.spans = ranked;
+        listing.names = names;
+        true
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::backend::testdir::TestDir;
+
+    // Sample input, the globs the walk filters on: the shipped database answers these on this box,
+    // but a fixture database keeps the walk's tests off whatever update-mime-database merged here.
+    const GLOB_ROWS: &str = concat!(
+        "50:image/jpeg:*.jpg\n",
+        "50:image/heif:*.heic\n",
+        "50:video/quicktime:*.mov\n",
+        "50:video/mp4:*.mp4\n",
+        "50:text/plain:*.txt\n",
+    );
+
+    fn mime() -> Db {
+        Db::from_str(GLOB_ROWS)
+    }
+
+    fn root(d: &TestDir) -> &str {
+        d.path().to_str().expect("the sandbox path is utf-8")
+    }
+
+    fn touch_mtime(path: &std::path::Path, date: &str) {
+        // The same fixture clock src/backend/ordering.rs's tests use: touch is coreutils, not a crate.
+        let status = std::process::Command::new("touch")
+            .args(["-d", date, &path.to_string_lossy().into_owned()])
+            .status()
+            .expect("touch sets the fixture mtime");
+        assert!(status.success(), "touch sets the fixture mtime");
+    }
+
+    fn walk_all(dcim: &str, hidden: bool) -> (Listing, Photos) {
+        let mime = mime();
+        let mut w = Photos::new(dcim, hidden);
+        let mut l = Listing::new();
+        while !w.step(&mut l, &mime) {}
+        w.finish(&mut l);
+        (l, w)
+    }
+
+    // Finished order, which is the order the client is answered in.
+    fn names(l: &Listing) -> Vec<String> {
+        (0..l.len()).map(|i| l.name(i).to_string()).collect()
+    }
+
+    #[test]
+    fn only_photos_and_videos_walk_and_newest_sorts_first() {
+        let d = TestDir::new("photos");
+        d.dir("DCIM/100APPLE");
+        d.file("DCIM/100APPLE/IMG_4106.HEIC", "");
+        d.file("DCIM/100APPLE/IMG_4120.HEIC", "");
+        d.file("DCIM/100APPLE/IMG_4121.MOV", "");
+        d.file("DCIM/100APPLE/notes.txt", "");
+        d.file("DCIM/100APPLE/README", "");
+        d.dir("DCIM/100APPLE/sub");
+        touch_mtime(&d.join("DCIM/100APPLE/IMG_4106.HEIC"), "2026-01-01 10:00:00");
+        touch_mtime(&d.join("DCIM/100APPLE/IMG_4120.HEIC"), "2026-03-01 10:00:00");
+        touch_mtime(&d.join("DCIM/100APPLE/IMG_4121.MOV"), "2026-03-02 10:00:00");
+
+        let dcim = d.join("DCIM").to_str().unwrap().to_string();
+        let (l, w) = walk_all(&dcim, false);
+        assert_eq!(names(&l), ["100APPLE/IMG_4121.MOV", "100APPLE/IMG_4120.HEIC", "100APPLE/IMG_4106.HEIC"]);
+        // The root's own directory entry scans too, beside the six names inside it.
+        assert_eq!(w.scanned, 7);
+        // No row is a directory and its name still reaches the file from the walk root.
+        for i in 0..l.len() {
+            assert!(!l.is_dir(i));
+            assert!(d.join("DCIM").join(l.name(i)).is_file());
+        }
+    }
+
+    #[test]
+    fn an_equal_mtime_falls_back_to_name_order() {
+        let d = TestDir::new("phototie");
+        d.dir("DCIM");
+        d.file("DCIM/b.jpg", "");
+        d.file("DCIM/a.jpg", "");
+        touch_mtime(&d.join("DCIM/b.jpg"), "2026-03-01 10:00:00");
+        touch_mtime(&d.join("DCIM/a.jpg"), "2026-03-01 10:00:00");
+
+        let dcim = d.join("DCIM").to_str().unwrap().to_string();
+        let (l, _) = walk_all(&dcim, false);
+        assert_eq!(names(&l), ["a.jpg", "b.jpg"]);
+    }
+
+    #[test]
+    fn matching_ignores_case_the_way_the_mime_table_does() {
+        let d = TestDir::new("photocase");
+        d.dir("DCIM");
+        d.file("DCIM/IMG_0001.JPG", "");
+
+        let dcim = d.join("DCIM").to_str().unwrap().to_string();
+        let (l, _) = walk_all(&dcim, false);
+        assert_eq!(names(&l), ["IMG_0001.JPG"]);
+    }
+
+    #[test]
+    fn hidden_is_false_by_default_and_true_descends_dot_directories() {
+        let d = TestDir::new("photohidden");
+        d.dir("DCIM/.trash");
+        d.file("DCIM/.trash/old.jpg", "");
+        d.file("DCIM/new.jpg", "");
+
+        let dcim = d.join("DCIM").to_str().unwrap().to_string();
+        let (hidden_out, _) = walk_all(&dcim, false);
+        assert_eq!(names(&hidden_out), ["new.jpg"]);
+
+        let (shown, _) = walk_all(&dcim, true);
+        let mut both = names(&shown);
+        both.sort();
+        assert_eq!(both, [".trash/old.jpg", "new.jpg"]);
+    }
+
+    #[test]
+    fn a_symlink_to_a_parent_directory_is_never_descended() {
+        let d = TestDir::new("photoloop");
+        d.dir("DCIM/sub");
+        d.file("DCIM/sub/a.jpg", "");
+        std::os::unix::fs::symlink(d.path(), d.join("DCIM/sub/up")).unwrap();
+
+        let dcim = d.join("DCIM").to_str().unwrap().to_string();
+        let (l, _) = walk_all(&dcim, false);
+        assert_eq!(names(&l), ["sub/a.jpg"]);
+    }
+
+    #[test]
+    fn a_missing_root_finishes_with_nothing_rather_than_failing() {
+        let mime = mime();
+        let mut w = Photos::new("/definitely/not/here", false);
+        let mut l = Listing::new();
+        assert!(w.step(&mut l, &mime));
+        assert_eq!(l.len(), 0);
+        assert_eq!(w.scanned, 0);
+    }
+
+    #[test]
+    fn a_step_reads_a_bounded_slice_so_a_cancel_is_never_blocked() {
+        let d = TestDir::new("photoslice");
+        d.dir("DCIM");
+        for i in 0..DIRS_PER_TICK + 3 {
+            d.dir(&format!("DCIM/d{}", i));
+        }
+        let mime = mime();
+        let mut w = Photos::new(&d.join("DCIM").to_str().unwrap().to_string(), false);
+        let mut l = Listing::new();
+        // The root read queues every child, so the first step cannot also drain them.
+        assert!(!w.step(&mut l, &mime));
+    }
+
+    #[test]
+    fn a_cancelled_walk_keeps_what_it_found_in_newest_first_order() {
+        let d = TestDir::new("photocancel");
+        d.dir("DCIM");
+        d.file("DCIM/old.jpg", "");
+        d.file("DCIM/new.mp4", "");
+        touch_mtime(&d.join("DCIM/old.jpg"), "2026-01-01 10:00:00");
+        touch_mtime(&d.join("DCIM/new.mp4"), "2026-06-01 10:00:00");
+
+        let mime = mime();
+        let mut w = Photos::new(&d.join("DCIM").to_str().unwrap().to_string(), false);
+        let mut l = Listing::new();
+        // One bounded step, then the cancel: the terminal line still ranks what arrived.
+        while !w.step(&mut l, &mime) {}
+        w.finish(&mut l);
+        assert_eq!(names(&l), ["new.mp4", "old.jpg"]);
+    }
+
+    #[test]
+    fn a_listing_the_walk_did_not_fill_is_never_reordered() {
+        let w = Photos::new("/definitely/not/here", false);
+        let mut l = Listing::new();
+        l.push("b.jpg", false);
+        l.push("a.jpg", false);
+        assert!(!w.finish(&mut l));
+        assert_eq!(names(&l), ["b.jpg", "a.jpg"]);
+    }
+}
