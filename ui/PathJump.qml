@@ -54,23 +54,46 @@ Item {
     property bool enterWaiting: false
     // Where any row last saw the pointer, so rows changing under a resting pointer never move the cursor; see ui/MenuRow.qml.
     property point pointerGlobal: Qt.point(-1, -1)
+    // Rows appearing under a resting pointer must not take the cursor either: moves are ignored
+    // until the first frame after rows appear, the way ui/ContextMenu.qml settles them.
+    property bool pointerSettling: false
+    Connections {
+        target: root.pointerSettling ? root.Window.window : null
+        function onAfterAnimating() { root.pointerSettling = false }
+    }
 
     // ui/WindowBody.qml carries these to the pane's backend and back, the way it carries the bar's Tab.
     signal requested(int id, var favourites, var recent)
     signal chosen(string path)
     // Enter that the dropdown did not take after all: nothing matched, so the bar resolves the line as a path.
     signal declined()
+    // A click on the dropdown's own padding: the bar closes with nothing opened, the menu recipe.
+    signal dismissed()
+    // For tests/jump-ui.sh: whether the dropdown's frame stands, and the frame itself while it does.
+    readonly property bool dropBuilt: drop.item !== null
+    readonly property var dropItem: drop.item
 
     // The keys arrive through the field's Keys.forwardTo, which skips an invisible item, so this stays
-    // visible for the whole edit and hands back every key it does not use; only the frame hides.
+    // visible for the whole edit and hands back every key it does not use; only the dropdown unloads.
     visible: root.editing
     // The parent is the bar's path slot, which stops a hairline above the strip's bottom edge.
     y: root.parent ? root.parent.height + Theme.spacing.hairline : 0
     width: root.parent ? root.parent.width : 0
-    height: frame.height
+    height: drop.item ? drop.item.height : 0
 
     onEntriesChanged: root.cursor = Jump.step(root.entries, -1, 1)
-    onCursorChanged: scroll.reveal(rowItems.itemAt(root.cursor))
+    // The rows live behind the Loader below, so a cursor moved while they stand unbuilt asks nothing.
+    onCursorChanged: { if (drop.item) drop.item.reveal(root.cursor) }
+    onShownChanged: {
+        if (!root.shown) {
+            return
+        }
+        root.pointerGlobal = Qt.point(-1, -1)
+        root.pointerSettling = true
+        // An appearance that changes nothing drawn schedules no frame, so it asks for the one
+        // that ends the settle, the way ui/ContextMenu.qml's place() does.
+        if (root.Window.window) root.Window.window.update()
+    }
     onEditingChanged: {
         root.sources = ({})
         root.prepared = null
@@ -80,6 +103,8 @@ Item {
         root.wholeTaken = false
         root.provTaken = false
         root.wholeAsked = false
+        root.pointerGlobal = Qt.point(-1, -1)
+        root.pointerSettling = false
         root.asked += 1
         if (!root.editing) {
             return
@@ -254,73 +279,99 @@ Item {
         event.accepted = false
     }
 
-    Rectangle {
-        id: frame
-        visible: root.shown
-        width: root.width
-        height: Math.max(0, Math.min(rows.implicitHeight + 2 * Theme.spacing.rowPaddingY, root.room))
-        color: Theme.color.surface
-        border.width: Theme.spacing.hairline
-        border.color: Theme.color.muted
-        radius: Style.cornerRadius
+    // The dropdown's frame, built only while rows show: the scroll body, its window listener,
+    // both fades and the rows are nothing the first frame shows.
+    Loader {
+        id: drop
+        active: root.shown
+        sourceComponent: dropFrame
+    }
 
-        // The ground takes every pointer event the rows leave, so nothing reaches the listing beneath.
-        MouseArea {
-            anchors.fill: parent
-            acceptedButtons: Qt.LeftButton | Qt.RightButton
-            hoverEnabled: true
-            onWheel: function (wheel) { wheel.accepted = true }
-        }
+    Component {
+        id: dropFrame
+        Rectangle {
+            id: frame
+            width: root.width
+            height: Math.max(0, Math.min(rows.implicitHeight + 2 * Theme.spacing.rowPaddingY, root.room))
+            color: Theme.color.surface
+            border.width: Theme.spacing.hairline
+            border.color: Theme.color.muted
+            radius: Style.cornerRadius
 
-        Flea.CardScroll {
-            id: scroll
-            anchors.fill: parent
-            anchors.topMargin: Theme.spacing.rowPaddingY
-            anchors.bottomMargin: Theme.spacing.rowPaddingY
+            function reveal(index) { scroll.reveal(rowItems.itemAt(index)) }
+            // For tests/jump-ui.sh: how many delegates stand, and the one at an index.
+            readonly property int liveCount: rowItems.count
+            function liveAt(index) { return rowItems.itemAt(index) }
+            Component.onCompleted: reveal(root.cursor)
 
-            Column {
-                id: rows
-                width: parent.width
+            // The ground takes every pointer event the rows leave, so nothing reaches the listing beneath.
+            MouseArea {
+                id: ground
+                anchors.fill: parent
+                acceptedButtons: Qt.LeftButton | Qt.RightButton
+                hoverEnabled: true
+                // The sink records the point, so rows appearing under a resting pointer compare
+                // against where it already is, the menu's own recipe.
+                onEntered: root.pointerGlobal = ground.mapToItem(null, ground.mouseX, ground.mouseY)
+                onPositionChanged: function (mouse) { root.pointerGlobal = ground.mapToItem(null, mouse.x, mouse.y) }
+                // The recipe's close: a click that hit no row closes the bar with nothing opened.
+                onClicked: root.dismissed()
+                onWheel: function (wheel) { wheel.accepted = true }
+            }
 
-                Repeater {
-                    id: rowItems
-                    model: root.entries
-                    // The menu's own row, so the lift, the mark slot and the pointer rules are the context menu's;
-                    // the label is the path the chrome would draw, laid over its empty one.
-                    delegate: Flea.MenuRow {
-                        id: row
-                        required property var modelData
-                        required property int index
-                        width: rows.width
-                        entry: ({ glyph: "folder", label: "", hint: "" })
-                        current: root.cursor === row.index
-                        lastPointerGlobal: root.pointerGlobal
-                        onPointerSeen: function (at) { root.pointerGlobal = at }
-                        onPointerMoved: root.cursor = row.index
-                        onActivated: root.chosen(row.modelData.path)
+            Flea.CardScroll {
+                id: scroll
+                anchors.fill: parent
+                anchors.topMargin: Theme.spacing.rowPaddingY
+                anchors.bottomMargin: Theme.spacing.rowPaddingY
 
-                        Flea.JumpPath {
-                            entry: row.modelData
-                            anchors.left: parent.left
-                            anchors.leftMargin: Theme.spacing.rowPaddingX + row.slotSize + Theme.spacing.gap
-                            anchors.right: parent.right
-                            anchors.rightMargin: Theme.spacing.rowPaddingX
-                            anchors.verticalCenter: parent.verticalCenter
+                Column {
+                    id: rows
+                    width: parent.width
+
+                    Repeater {
+                        id: rowItems
+                        // A count, so keystrokes that keep the row count leave every delegate
+                        // standing: rows rebind to entries[index] instead of rebuilding.
+                        model: root.entries.length
+                        // The menu's own row, so the lift, the mark slot and the pointer rules are the context menu's;
+                        // the label is the path the chrome would draw, laid over its empty one.
+                        delegate: Flea.MenuRow {
+                            id: row
+                            required property int index
+                            // The row at this slot of the newest answer, undefined mid-swap.
+                            readonly property var rowData: root.entries[row.index]
+                            width: rows.width
+                            entry: ({ glyph: "folder", label: "", hint: "" })
+                            current: root.cursor === row.index
+                            lastPointerGlobal: root.pointerGlobal
+                            onPointerSeen: function (at) { root.pointerGlobal = at }
+                            onPointerMoved: { if (!root.pointerSettling) root.cursor = row.index }
+                            onActivated: { if (row.rowData !== undefined) root.chosen(row.rowData.path) }
+
+                            Flea.JumpPath {
+                                entry: row.rowData !== undefined ? row.rowData : ({})
+                                anchors.left: parent.left
+                                anchors.leftMargin: Theme.spacing.rowPaddingX + row.slotSize + Theme.spacing.gap
+                                anchors.right: parent.right
+                                anchors.rightMargin: Theme.spacing.rowPaddingX
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
                         }
                     }
                 }
             }
-        }
 
-        Flea.MenuEdgeFade {
-            anchors.top: parent.top
-            visible: scroll.contentY > 0
-        }
+            Flea.MenuEdgeFade {
+                anchors.top: parent.top
+                visible: scroll.contentY > 0
+            }
 
-        Flea.MenuEdgeFade {
-            anchors.bottom: parent.bottom
-            visible: scroll.contentY + scroll.height < scroll.contentHeight
-            rotation: 180
+            Flea.MenuEdgeFade {
+                anchors.bottom: parent.bottom
+                visible: scroll.contentY + scroll.height < scroll.contentHeight
+                rotation: 180
+            }
         }
     }
 }

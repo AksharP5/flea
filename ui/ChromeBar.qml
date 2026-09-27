@@ -363,6 +363,7 @@ Item {
             home: root.home
             onRequested: function (id, favourites, recent) { root.jumpRequested(id, favourites, recent) }
             onDeclined: root.commitEdit()
+            onDismissed: root.closeEdit()
             onChosen: function (path) { root.closeEdit(); if (path !== root.path) root.pathEntered(path) }
         }
     }

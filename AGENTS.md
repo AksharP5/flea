@@ -2055,7 +2055,8 @@ with `wc -l` on the integrated branch.
 
 0.3.6's folder jump records three ceilings, each re-derived with `wc -l` at the commit that recorded
 it. `ui/ChromeBar.qml` 421 to 438 for the jump's request signal and alias, the strip's rise over the
-listing while the dropdown shows, the field's `Keys.forwardTo` and the `PathJump` it owns with its decline back to the typed path; the dropdown,
+listing while the dropdown shows, the field's `Keys.forwardTo` and the `PathJump` it owns with its decline back to the typed path, and to 439 for the
+dropdown padding's dismiss into `closeEdit`; the dropdown,
 its sources and its keys are all `ui/PathJump.qml`. `ui/WindowBody.qml` 484 to 486 for carrying the
 request to the pane's backend and its answer back, the two lines Tab's peek already spends.
 `src/backend/run.rs` 427 to 428 for the `jump` arm, whose work is all `src/backend/jump.rs`.

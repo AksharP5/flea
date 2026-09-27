@@ -38,7 +38,7 @@ tests/js/mounts.js 383
 tests/js/ops.js 390
 tests/js/status.js 304
 ui/Backend.qml 435
-ui/ChromeBar.qml 438
+ui/ChromeBar.qml 439
 ui/ContextMenu.qml 578
 ui/ConvertDialog.qml 440
 ui/Ipc.qml 796

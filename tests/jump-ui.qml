@@ -64,6 +64,7 @@ ShellRoot {
             root.check("its rows are the kept sources alone", root.rows(), [
                 root.home + "/Projects", root.home + "/Documents/claude/omarchy", root.home + "/Documents",
                 root.home + "/Downloads", root.home + "/Documents/claude/flea"])
+            root.check("the dropdown builds only while rows show", chrome.jump.dropBuilt, true)
             return true
         },
         // The whole ask waits for the provisional answer and the history read, in either order.
@@ -80,11 +81,16 @@ ShellRoot {
         function () { return root.asked.length === 3 },
         function () {
             root.answer(0)
+            root.check("the settle arms when rows appear", chrome.jump.pointerSettling, true)
             root.type("o")
             // No frecency in this answer, so the own-name matches go favourites first, then zoxide, then recent.
             root.check("query o lists one ranked list", root.rows(), [
                 root.home + "/Projects", root.home + "/Documents/claude/omarchy", root.home + "/Documents",
                 root.home + "/Downloads", root.home + "/Pictures/screenshots", root.home + "/Documents/claude/flea", root.home + "/Work/field"])
+            root.check("its rows stand seven delegates deep", chrome.jump.dropItem.liveCount, 7)
+            var first = chrome.jump.dropItem.liveAt(0)
+            root.answer(0)
+            root.check("a second answer keeps delegates standing", chrome.jump.dropItem.liveAt(0) === first, true)
             root.check("the cursor opens on the first row", chrome.jump.cursor, 0)
             root.press(Qt.Key_Down); root.press(Qt.Key_Down); root.press(Qt.Key_Down)
             root.check("three downs move three rows", chrome.jump.cursor, 3)
@@ -116,6 +122,7 @@ ShellRoot {
             root.type("zzz")
             root.press(Qt.Key_Return)
             root.check("a name that matches nothing is still a relative path", root.entered[3], root.here + "/zzz")
+            root.check("with no rows the dropdown builds nothing", chrome.jump.dropBuilt, false)
             chrome.startEdit()
             return true
         },
