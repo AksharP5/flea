@@ -64,6 +64,14 @@ Item {
             : "transparent"
     }
 
+    // The eject mark's hover lift, the board's 8% rung; the mark itself lifts to foreground below.
+    Rectangle {
+        anchors.fill: parent
+        visible: ejectLoader.item !== null && ejectLoader.item.hovered
+        color: Theme.color.foreground
+        opacity: Theme.washHover
+    }
+
     Rectangle {
         visible: root.cursor
         width: Theme.spacing.hairline * 2
@@ -106,10 +114,10 @@ Item {
         anchors.left: mark.right
         anchors.leftMargin: Style.spacing.rowGap
         // The numbers column bounds a label only on a row that draws a number; a row with no detail
-        // runs its label to the 12 px slot itself, whose own 3 px of air either side of the dot is
-        // the gap. Measured: a phone's label needs 126 px and the numbers column left it 110.
+        // runs its label to the indicator slot, keeping one gap clear of the eject mark it may draw.
+        // Measured: a phone's label needs 126 px and the numbers column left it 110.
         anchors.right: root.detail.length > 0 ? detailText.left : dot.left
-        anchors.rightMargin: root.detail.length > 0 ? Style.spacing.rowGap : 0
+        anchors.rightMargin: root.detail.length > 0 || root.showsEject ? Style.spacing.rowGap : 0
         anchors.verticalCenter: parent.verticalCenter
         text: root.modelData.label
         color: root.modelData.error ? Theme.color.error : Theme.color.foreground
@@ -129,7 +137,7 @@ Item {
         anchors.left: mark.right
         anchors.leftMargin: Style.spacing.rowGap
         anchors.right: root.detail.length > 0 ? detailText.left : dot.left
-        anchors.rightMargin: root.detail.length > 0 ? Style.spacing.rowGap : 0
+        anchors.rightMargin: root.detail.length > 0 || root.showsEject ? Style.spacing.rowGap : 0
         anchors.verticalCenter: parent.verticalCenter
         height: Theme.railRowHeight - 2 * Theme.spacing.rowPaddingY
         sourceComponent: RenameField {
@@ -142,9 +150,11 @@ Item {
     // What the editor holds right now, for tests through ui/Ipc.qml's railRenameEditorText.
     readonly property string editorText: renameLoader.item ? renameLoader.item.current : ""
     readonly property bool editorShown: renameLoader.item !== null && renameLoader.item.visible
-    // RailEject: a mounted drive or SMB share draws the 15 px eject mark in place of
+    // RailEject: a mounted drive or SMB share draws the eject mark in place of
     // the square, so the label keeps its column; anything else keeps what it drew.
+    // The ink takes the rail's own mark token, the slot the leading mark already draws in.
     readonly property bool showsEject: Eject.releasable(root.modelData)
+    readonly property real ejectMarkSize: Theme.railIconSize
     // The rail's real trailing indicator slot, so ui/Ipc.qml measures this dot instead of recomputing it.
     readonly property Item indicatorSlot: dot
     readonly property Item detailItem: detailText
@@ -191,30 +201,65 @@ Item {
         }
 
         // The one-click release: the eject mark in the square's own slot, muted at rest and
-        // foreground under the cursor, the way a lifted row's metadata is.
-        Glyph {
-            visible: root.showsEject
+        // foreground under the cursor or the pointer, the way a lifted row's metadata is. Built
+        // only on a row that releases, the way the menu builds a brand mark only on its row.
+        Loader {
+            id: ejectLoader
             anchors.centerIn: parent
-            name: "eject"
-            color: root.cursor ? Theme.color.foreground : Theme.color.muted
-            width: 15
-            height: 15
-        }
-
-        // The slot itself is the hit target, so a press beside the 15 px ink still releases;
-        // the row's own TapHandler answers every press outside it, exactly as before.
-        TapHandler {
-            acceptedButtons: Qt.LeftButton
-            enabled: root.showsEject
-            onTapped: root.ejectRequested(root.index)
+            width: root.ejectMarkSize
+            height: root.ejectMarkSize
+            active: root.showsEject
+            sourceComponent: ejectMark
         }
     }
 
-    // Whether a scene point lands in the indicator slot, so the row's own tap never
-    // answers a press the mark's tap already took.
+    // The mark and its hit box, standing only while the row releases. The hit box grows to the
+    // WCAG floor and centres on the ink, the way the NETWORK header's own addMark does: a centre
+    // anchor quantises an odd size difference and leaves the two centres half a pixel apart.
+    Component {
+        id: ejectMark
+        Item {
+            property alias hit: hitBox
+            property alias hovered: hitHover.hovered
+            width: root.ejectMarkSize
+            height: root.ejectMarkSize
+
+            Glyph {
+                id: ink
+                anchors.centerIn: parent
+                name: "eject"
+                color: root.cursor || hitHover.hovered ? Theme.color.foreground : Theme.color.muted
+                width: root.ejectMarkSize
+                height: root.ejectMarkSize
+            }
+
+            Item {
+                id: hitBox
+                width: Math.max(Theme.hitMin, root.ejectMarkSize)
+                height: width
+                x: ink.x + (ink.width - width) / 2
+                y: ink.y + (ink.height - height) / 2
+                Accessible.role: Accessible.Button
+                Accessible.name: (root.modelData.group === "device" ? "Eject " : "Unmount ") + root.modelData.label
+                Accessible.onPressAction: { if (!root.renaming) root.ejectRequested(root.index) }
+                HoverHandler { id: hitHover }
+                TapHandler {
+                    acceptedButtons: Qt.LeftButton
+                    gesturePolicy: TapHandler.ReleaseWithinBounds
+                    enabled: root.showsEject && !root.renaming
+                    onTapped: root.ejectRequested(root.index)
+                }
+            }
+        }
+    }
+
+    // Whether a scene point lands in the mark's hit box, so the row's own tap never
+    // answers a press the mark's tap already took. The hit box overflows the slot it is
+    // centred on, so the slot alone would hand its rim to the row underneath.
     function ejectAt(scene) {
-        var p = dot.mapFromItem(null, scene.x, scene.y)
-        return p.x >= 0 && p.y >= 0 && p.x < dot.width && p.y < dot.height
+        var target = ejectLoader.item && ejectLoader.item.hit ? ejectLoader.item.hit : dot
+        var p = target.mapFromItem(null, scene.x, scene.y)
+        return p.x >= 0 && p.y >= 0 && p.x < target.width && p.y < target.height
     }
 
     TapHandler {

@@ -92,6 +92,13 @@ ShellRoot {
             root.answer(0)
             root.check("a second answer keeps delegates standing", chrome.jump.dropItem.liveAt(0) === first, true)
             root.check("the cursor opens on the first row", chrome.jump.cursor, 0)
+            // One motion: narrow, widen, step and open with no answer in between.
+            root.type("ma")
+            root.check("a narrowing keystroke lists the one folder still matching", root.rows(), [root.home + "/Documents/claude/omarchy"])
+            root.check("rebinding the standing delegates", chrome.jump.dropItem.liveAt(0) === first, true)
+            root.check("with the cursor back on the first row", chrome.jump.cursor, 0)
+            root.press(Qt.Key_Backspace); root.press(Qt.Key_Backspace)
+            root.check("widening again rebinds the same delegates", [root.rows().length, chrome.jump.dropItem.liveAt(0) === first], [7, true])
             root.press(Qt.Key_Down); root.press(Qt.Key_Down); root.press(Qt.Key_Down)
             root.check("three downs move three rows", chrome.jump.cursor, 3)
             root.press(Qt.Key_Down); root.press(Qt.Key_Up); root.press(Qt.Key_Down)

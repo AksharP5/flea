@@ -3,10 +3,10 @@ import qs.Commons
 import "." as Flea
 import "js/Format.js" as Format
 import "js/Filter.js" as Filter
+import "js/Focus.js" as Focus
 import "js/Ops.js" as Ops
 import "js/Status.js" as Status
 import "js/Trash.js" as Trash
-import "js/GvfsBridge.js" as GvfsBridge
 
 Item {
     id: root
@@ -79,7 +79,7 @@ Item {
     // this strip ends in advice. ui/js/Status.js owns the two of them.
     readonly property string noticeHint: root.stickyHere || root.searching
                                          ? "" : Status.hintOf(root.transient_)
-    readonly property bool hasUndo: root.noticeHint === Status.UNDO_HINT
+    readonly property bool hasUndo: Status.hasUndoHint(root.noticeHint)
     // Durability callout 6: "z undoes" takes a click, the same as z, on every line that carries
     // it. The undo segment draws as its own target while the rest draws as today.
     readonly property bool undoSplit: root.hasUndo
@@ -177,10 +177,9 @@ Item {
         root.transferCancelRequested(root.transfer.id)
     }
 
-    // The click passes the rename, search and selection gates the z key passes.
+    // The click refuses through the gate it shares with the z key.
     function clickUndo() {
-        if (!root.pane || root.pane.selectionBand !== null || root.pane.renameEditor() !== null) return
-        if (root.pane.searchMode === "typing" || root.pane.filterTyping) return
+        if (!Focus.canUndo(root.pane, root.pane ? root.pane.sidebar : null)) return
         Ops.undo(root.pane)
     }
 
@@ -193,7 +192,7 @@ Item {
 
     function setActivity(owner, text, transfer) {
         root.activities = Status.activityChanged(root.activities, owner, transfer.running ? Ops.progressLine(transfer) : text, transfer)
-        root.busy = root.activities.some(function (a) { return GvfsBridge.isStartingLine(a.text) })
+        root.busy = Status.displayedStarting(root.activities)
     }
 
     // A completion hidden by an error or live activity keeps its full display time after acknowledgement.

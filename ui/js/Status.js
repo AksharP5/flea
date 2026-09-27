@@ -1,6 +1,7 @@
 .pragma library
 
 .import "DirSizes.js" as DirSizes
+.import "GvfsBridge.js" as GvfsBridge
 .import "Keymap.js" as Keymap
 
 // A finished operation names its own reversal and the clipboard names the key that spends it. The
@@ -80,6 +81,19 @@ function hintOf(notice) {
         return trash
     }
     return ""
+}
+
+// Sample input: " · rclone uploads them in the background · z undoes"; any hint ending in UNDO_HINT carries undo.
+function hasUndoHint(hint) {
+    var text = String(hint || "")
+    return text.length >= UNDO_HINT.length
+        && text.lastIndexOf(UNDO_HINT) === text.length - UNDO_HINT.length
+}
+
+// Only the displayed activity's Starting line walks the busy mark, never one queued behind it.
+function displayedStarting(activities) {
+    var list = activities || []
+    return list.length > 0 && GvfsBridge.isStartingLine(list[0].text)
 }
 
 // The key it names. ui/StatusBar.qml draws the separator itself, so the key arrives without one.

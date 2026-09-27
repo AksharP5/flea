@@ -34,6 +34,27 @@ function shareBrowserHere(root) {
     return !!(root.shareBrowser && root.shareBrowser.active && (!root.shareBrowser.owner || root.shareBrowser.owner === root))
 }
 
+// The one gate the z key and the "z undoes" click share: no undo under a listing, rename, overlay or query line.
+function canUndo(pane, sidebar) {
+    if (!pane || Swap.swallows(pane.listInFlight, "undo"))
+        return false
+    if (pane.selectionBand !== null || pane.renameEditor() !== null)
+        return false
+    if (sidebar && sidebar.renameEditor() !== null)
+        return false
+    if (pane.searchMode === Search.TYPING || pane.filterTyping)
+        return false
+    if ((pane.preview && pane.preview.active) || shareBrowserHere(pane))
+        return false
+    if (pane.menuVisible || (pane.menuActions && pane.menuActions.opened))
+        return false
+    if ((pane.collide && (pane.collide.opened || pane.collide.pending !== null))
+            || (pane.keymapSheet && pane.keymapSheet.opened)
+            || (pane.settingsPanel && pane.settingsPanel.opened))
+        return false
+    return true
+}
+
 // The one lookup Pane.qml's Keys.onPressed calls. "addNetwork" is a rail-only action (the
 // dialog is reached from the rail's own "+" mark), so "a" does nothing in the list;
 // filtering it here, not in Keymap.js, keeps the generated file a pure keys.toml mirror.
@@ -324,6 +345,8 @@ function handleKey(event, root, sidebar) {
     }
     // No key acts on a row while a listing is out, see AGENTS.md "The listing swap"; it says why instead.
     if (Swap.swallows(root.listInFlight, action)) { root.message(Swap.LOADING, false); return true }
+    // Undo refuses through the gate it shares with the status bar's own click, saying nothing.
+    if (action === "undo" && !canUndo(root, sidebar)) return true
     if (Grid.arrow(event, action, root)) return true
     if (action.length > 0 || Keymap.lookup(event.key, event.text, event.modifiers).length > 0) {
         if (action.length > 0) root.act(action)

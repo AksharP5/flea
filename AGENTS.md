@@ -2447,6 +2447,13 @@ The menu unit moves three recorded ceilings, each re-derived with `wc -l`. `ui/C
 `releaseFromRows`, which picks the eject or unmount row by name instead of taking rows[0].
 `tests/ui.sh` `case_eject` seeds `showUnmounted` on now, with `menu_seek Eject` and a Mount tail.
 
+Fix2-rail moves two recorded ceilings, each re-derived with `wc -l`. `ui/js/Focus.js` 339 to 366
+for `canUndo`, the one predicate the z key and the status bar's click refuse through, and
+`tests/js/status.js` 304 to 354 for its checks (the verdict-note undo carry on both notes, the
+displayed-Starting busy rule and the shared gate). Inside their budgets: `ui/js/Status.js` at 216,
+`ui/StatusBar.qml` at 450 of its recorded 451, `ui/SidebarRow.qml` at 284, `ui/PathJump.qml` at 392,
+`ui/JumpPath.qml` at 51, `tests/jump-ui.qml` at 288.
+
 ## The key table is generated
 
 `keys.toml` at the repository root is the single source of truth for every binding.

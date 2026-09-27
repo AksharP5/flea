@@ -1,6 +1,8 @@
 .import "../../ui/js/Status.js" as Status
 .import "../../ui/js/Trash.js" as Trash
 .import "../../ui/js/Ops.js" as Ops
+.import "../../ui/js/Focus.js" as Focus
+.import "../../ui/js/Swap.js" as Swap
 
 // The status slot's precedence, which shipped with no suite of any kind. Operations.html states the
 // order as an unacknowledged error, then activity, and draws a failed copy holding the slot while a
@@ -274,6 +276,54 @@ function run(check) {
     check("and a retry line still reports",
           Status.secondaryText("", false, false, "", [], false, "", "c.txt selected for retry"),
           " · c.txt selected for retry")
+
+    // D-213: any hint ending in the undo hint is undo-carrying, including a verdict
+    // note riding ahead of it, so the split target draws on those lines too.
+    check("a plain undo hint is undo-carrying", Status.hasUndoHint(Status.UNDO_HINT), true)
+    check("a verdict note ahead of it stays undo-carrying",
+          Status.hasUndoHint(" · " + Status.VERDICT_NOTES[0] + Status.UNDO_HINT), true)
+    check("and so does the second verdict note",
+          Status.hasUndoHint(" · " + Status.VERDICT_NOTES[1] + Status.UNDO_HINT), true)
+    check("while a paste hint is not", Status.hasUndoHint(Status.PASTE_HINT), false)
+    check("and an empty hint is not", Status.hasUndoHint(""), false)
+
+    // I-211: the busy mark walks while the displayed Starting line stands, and only then.
+    var starting = [{ owner: {}, text: "Starting the GVFS bridge for Pixel 8", transfer: { running: false } }]
+    check("a displayed Starting line lights the busy mark", Status.displayedStarting(starting), true)
+    check("a Starting line behind another activity lights nothing",
+          Status.displayedStarting([{ owner: {}, text: "Copying 1 of 5", transfer: { running: true } }].concat(starting)), false)
+    check("and no activity lights nothing", Status.displayedStarting([]), false)
+
+    // I-511: one Focus.js predicate gates the z key and the click alike.
+    function undoPane(over) {
+        var p = { listInFlight: false, selectionBand: null, searchMode: "", filterTyping: false,
+                  menuVisible: false, preview: { active: false }, shareBrowser: { active: false },
+                  menuActions: { opened: false }, collide: { opened: false, pending: null },
+                  keymapSheet: null, settingsPanel: null,
+                  renameEditor: function () { return null } }
+        for (var k in over) { p[k] = over[k] }
+        return p
+    }
+    function undoRail() { return { renameEditor: function () { return null } } }
+    check("undo is allowed at rest", Focus.canUndo(undoPane({}), undoRail()), true)
+    check("not while a listing is out", Focus.canUndo(undoPane({ listInFlight: true }), undoRail()), false)
+    check("not while the rail renames",
+          Focus.canUndo(undoPane({}), { renameEditor: function () { return {} } }), false)
+    check("not while the preview owns the keys",
+          Focus.canUndo(undoPane({ preview: { active: true } }), undoRail()), false)
+    var shared = undoPane({})
+    shared.shareBrowser = { active: true, owner: shared }
+    check("not while the share browser owns the keys", Focus.canUndo(shared, undoRail()), false)
+    check("not while the menu stands",
+          Focus.canUndo(undoPane({ menuVisible: true }), undoRail()), false)
+    check("not while the collision card stands",
+          Focus.canUndo(undoPane({ collide: { opened: true, pending: null } }), undoRail()), false)
+    check("not while the query line holds the caret",
+          Focus.canUndo(undoPane({ searchMode: "typing" }), undoRail()), false)
+    check("the key refuses through the same gate",
+          sourceText("../../ui/js/Focus.js").indexOf('action === "undo" && !canUndo(') >= 0, true)
+    check("and the click refuses through it too",
+          sourceText("../../ui/StatusBar.qml").indexOf("Focus.canUndo(root.pane") >= 0, true)
 
     // The click is the key: both reach the backend through Ops.undo on the strip's own pane.
     var undone = []

@@ -35,6 +35,10 @@ Item {
         ? Jump.rowsPrepared(root.prepared, root.query) : []
     property int cursor: -1
     readonly property bool shown: root.entries.length > 0
+    // The high-water row count of this open: the Repeater holds this many delegates standing and
+    // hides the tail past the entries, so a keystroke that narrows the list rebinds rows instead
+    // of rebuilding them. Reset with the open below.
+    property int rowHighWater: 0
     // Every ask carries a new id and take() keeps only the newest open's answers, so a slow answer to
     // an earlier ask can never land in this one, or move a cursor the user has already moved.
     property int asked: 0
@@ -81,7 +85,10 @@ Item {
     width: root.parent ? root.parent.width : 0
     height: drop.item ? drop.item.height : 0
 
-    onEntriesChanged: root.cursor = Jump.step(root.entries, -1, 1)
+    onEntriesChanged: {
+        root.rowHighWater = Math.max(root.rowHighWater, root.entries.length)
+        root.cursor = Jump.step(root.entries, -1, 1)
+    }
     // The rows live behind the Loader below, so a cursor moved while they stand unbuilt asks nothing.
     onCursorChanged: { if (drop.item) drop.item.reveal(root.cursor) }
     onShownChanged: {
@@ -96,6 +103,7 @@ Item {
     }
     onEditingChanged: {
         root.sources = ({})
+        root.rowHighWater = 0
         root.prepared = null
         root.enterWaiting = false
         root.pathTyped = false
@@ -331,16 +339,23 @@ Item {
 
                     Repeater {
                         id: rowItems
-                        // A count, so keystrokes that keep the row count leave every delegate
-                        // standing: rows rebind to entries[index] instead of rebuilding.
-                        model: root.entries.length
+                        // The high-water count, so a keystroke that narrows the list leaves every
+                        // delegate standing: rows rebind to entries[index] instead of rebuilding, and
+                        // the tail past the entries hides. The max against the entries covers a growth
+                        // the high-water handler has not recorded yet, whichever runs first.
+                        model: Math.max(root.rowHighWater, root.entries.length)
                         // The menu's own row, so the lift, the mark slot and the pointer rules are the context menu's;
                         // the label is the path the chrome would draw, laid over its empty one.
                         delegate: Flea.MenuRow {
                             id: row
                             required property int index
-                            // The row at this slot of the newest answer, undefined mid-swap.
+                            // The row at this slot of the newest answer, undefined mid-swap or past it.
+                            // A hidden tail keeps its delegate standing at zero height, because an
+                            // invisible item still holds its Column position.
                             readonly property var rowData: root.entries[row.index]
+                            readonly property bool rowStanding: row.index < root.entries.length
+                            visible: row.rowStanding
+                            height: row.rowStanding ? Theme.rowHeight : 0
                             width: rows.width
                             entry: ({ glyph: "folder", label: "", hint: "" })
                             current: root.cursor === row.index
