@@ -816,6 +816,18 @@ unlinking a caller-supplied path is not this function's job even when that path 
 from a broken caller. The exit status is the contract: a caller must check it before
 trusting whatever `dest` currently holds.
 
+The gvfs outcome file beside it is the same shape with a claim on top. `flea --gvfs-prefetch`
+writes either gio's listing bytes (hidden included, so either scan can adopt) or the one-line
+failure marker `flea-gvfs-fail`, both through its own exclusive `0600` temp plus rename, so a
+reader never sees a partial. The first backend claims with `rename(dest, dest.claimed)` and reads
+the claim, which it keeps; a reader finding the claim, or finding neither dest nor claim more than
+2 s after the launch start, returns None at once and the scan takes today's gio path. Staleness is
+judged against the launch: mtime older than `FLEA_GVFS_START` is refused, and freshness is age under
+10 s against a clock read after the wait, never before it. The sweep reaps dest and claim leftovers
+by the same 60 s age rule. The child double-forks like `src/prefetch.rs`, so the launcher waits only
+for the fork and qs inherits no zombie; `gui.rs` exports `FLEA_GVFS_*` only when that spawn succeeded.
+A local or USB launch pays only the `is_gvfs` prefix check in `prepare` and arms nothing.
+
 ## The state file
 
 `~/.local/state/flea/ui.json`, or `$XDG_STATE_HOME/flea/ui.json` when that is set and not empty, is

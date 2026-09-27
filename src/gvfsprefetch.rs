@@ -1,6 +1,4 @@
-// The gvfs early listing: the launcher starts gio while the window builds, and the
-// backend's first scan of that path adopts the output instead of spawning gio itself.
-// Local and USB launches do nothing past the is_gvfs prefix check in prepare.
+// The gvfs early listing adopts the launcher's gio output instead of spawning gio itself.
 use crate::backend::gvfslist;
 use crate::backend::listing::Listing;
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
@@ -10,28 +8,31 @@ use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-// The launcher hands qs the prefetch file, the path it lists and the launch start in
-// these variables, which the backend Process inherits; empty is absent throughout.
+// Launcher hands qs the prefetch file, path and launch start; empty is absent throughout.
 pub const PREFETCH_ENV: &str = "FLEA_GVFS_PREFETCH";
 pub const PATH_ENV: &str = "FLEA_GVFS_PATH";
 pub const START_ENV: &str = "FLEA_GVFS_START";
-// A file older than this never names the launch's directory, so it is refused, not read.
+// A file with mtime older than the launch is a previous launch's leftover.
 const STALE_SECS: u64 = 10;
-// A launch's leftovers stop being adoptable long before this reaps them.
+// Leftovers stop being adoptable long before this reaps them.
 const SWEEP_SECS: u64 = 60;
-// The wait between dest polls while the prefetch child is still enumerating.
+// No dest and no claim this long after the launch means the child is gone.
+const GRACE_SECS: u64 = 2;
+// Wait between dest polls while the prefetch child is still enumerating.
 const POLL_MS: u64 = 20;
 // A 10k NAS listing is about a megabyte; anything past this is not gio's output.
 const MAX_BYTES: u64 = 64 * 1024 * 1024;
-// A prefetch is adopted once: the file is deleted on read, and this stops a second
-// listing from adopting one that arrived after the first listing's deadline passed.
+// Sample gio failure outcome: "flea-gvfs-fail\n", never a valid listing line.
+const FAIL_MARKER: &[u8] = b"flea-gvfs-fail\n";
+// A prefetch is adopted once; this stops a second listing adopting a late arrival.
 static CONSUMED: AtomicBool = AtomicBool::new(false);
 // Two prepares in one process still name different files.
 static NEXT: AtomicU64 = AtomicU64::new(0);
 
-// std already links the system libc, so the one symbol is declared here rather than taking a crate.
+// std already links libc, so these symbols are declared here rather than taking a crate.
 extern "C" {
     fn geteuid() -> u32;
+    fn fork() -> i32;
 }
 
 // The one adoption the backend attempts: None unless the launcher named all three.
@@ -55,7 +56,7 @@ pub fn runtime_dir() -> Option<PathBuf> {
     Some(PathBuf::from(root).join("flea"))
 }
 
-// A directory this user owns and only this user can enter; anything else refuses the prefetch.
+// A directory this user owns and only this user can enter; anything else refuses.
 fn check_dir(dir: &Path) -> Result<(), String> {
     let meta = std::fs::symlink_metadata(dir)
         .map_err(|e| format!("gvfs prefetch dir {} could not be read ({:?})", dir.display(), e.kind()))?;
@@ -105,8 +106,7 @@ fn sweep_dir(dir: &Path, now: SystemTime) {
     }
 }
 
-// The launcher's side: our dir, last launch's leftovers gone, this launch's file named.
-// None means local rules: no gvfs path, no runtime dir, or a dir that is not ours.
+// The launcher's side: our dir, last leftovers gone, this launch's file named.
 pub fn prepare(path: &str) -> Option<(PathBuf, u64)> {
     if !gvfslist::is_gvfs(Path::new(path)) {
         return None;
@@ -121,10 +121,10 @@ pub fn prepare(path: &str) -> Option<(PathBuf, u64)> {
     Some((dest, start_ms))
 }
 
-// The enumeration starts while the window builds; the child outlives the exec below it.
-pub fn spawn(path: &str, dest: &Path) {
-    let Ok(exe) = std::env::current_exe() else { return };
-    let _ = Command::new(exe)
+// The enumeration starts while the window builds; true when the child was started.
+pub fn spawn(path: &str, dest: &Path) -> bool {
+    let Ok(exe) = std::env::current_exe() else { return false };
+    let spawned = Command::new(exe)
         .arg("--gvfs-prefetch")
         .arg(path)
         .arg(dest)
@@ -133,12 +133,20 @@ pub fn spawn(path: &str, dest: &Path) {
         .stderr(Stdio::null())
         .process_group(0)
         .spawn();
+    // The child forks and its parent exits at once, so this wait is only the fork.
+    if let Ok(mut child) = spawned {
+        let _ = child.wait();
+        return true;
+    }
+    false
 }
 
-// flea --gvfs-prefetch <path> <dest>: the same gio call the backend would make, with hidden
-// entries included so either hidden setting can adopt it. 0 published, 1 gio or the write
-// failed and dest is untouched, 2 the request itself is refused.
+// flea --gvfs-prefetch <path> <dest>: same gio call the backend would make, hidden included.
 pub fn run(path: &str, dest: &Path, gio: &str) -> i32 {
+    // The helper forks so the launcher waits only for the fork; the grandchild outlives exec.
+    if unsafe { fork() } > 0 {
+        return 0;
+    }
     run_in(path, dest, gio, runtime_dir().as_deref())
 }
 
@@ -170,14 +178,15 @@ pub(crate) fn run_in(path: &str, dest: &Path, gio: &str, runtime: Option<&Path>)
             }
         },
         Err(e) => {
+            // A failed gio still publishes an outcome, so the backend stops waiting at once.
+            let _ = publish(dest, FAIL_MARKER);
             eprintln!("flea: gvfs prefetch for {} failed ({}), the window lists it itself", path, e);
             1
         }
     }
 }
 
-// Our own temp file, created exclusively at 0600, then a rename; only gio's exit 0 reaches here,
-// so a reader never sees a partial file.
+// Our own temp file, created exclusively at 0600, then a rename; readers never see a partial.
 fn publish(dest: &Path, bytes: &[u8]) -> Result<(), String> {
     let tmp = PathBuf::from(format!("{}.{}.tmp", dest.display(), std::process::id()));
     let _ = std::fs::remove_file(&tmp);
@@ -202,9 +211,12 @@ fn publish(dest: &Path, bytes: &[u8]) -> Result<(), String> {
     written
 }
 
-// The backend's first gvfs scan of exactly the prefetched path waits for the file up to the
-// launch's deadline, parses it with gvfslist's parser, deletes it and never reads it again.
-// Anything else answers None and the scan takes today's gio path unchanged.
+// The claim a reader renames dest to; a second reader finding it returns None at once.
+pub(crate) fn claimed_path(dest: &Path) -> PathBuf {
+    PathBuf::from(format!("{}.claimed", dest.display()))
+}
+
+// The backend's first gvfs scan of the prefetched path adopts the file; else None.
 pub(crate) fn adopt_matching(path: &str, hidden: bool, prefetch: &Prefetch) -> Option<(Listing, f64)> {
     if prefetch.path != path {
         return None;
@@ -213,41 +225,59 @@ pub(crate) fn adopt_matching(path: &str, hidden: bool, prefetch: &Prefetch) -> O
         return None;
     }
     let deadline = UNIX_EPOCH + Duration::from_millis(prefetch.start_ms) + gvfslist::GIO_TIMEOUT;
-    adopt(path, hidden, &prefetch.dest, deadline)
+    adopt_in(path, hidden, &prefetch.dest, deadline, prefetch.start_ms, runtime_dir().as_deref())
 }
 
-pub(crate) fn adopt(path: &str, hidden: bool, dest: &Path, deadline: SystemTime) -> Option<(Listing, f64)> {
-    adopt_in(path, hidden, dest, deadline, SystemTime::now(), runtime_dir().as_deref())
-}
-
-// Split so a test can name the clock and the runtime dir without touching the environment.
+// Split so a test can name the launch start and runtime dir without touching the environment.
 pub(crate) fn adopt_in(
     path: &str,
     hidden: bool,
     dest: &Path,
     deadline: SystemTime,
-    now: SystemTime,
+    start_ms: u64,
     runtime: Option<&Path>,
 ) -> Option<(Listing, f64)> {
     let t = Instant::now();
-    // The file may still be enumerating; wait for it, but never past the launch's own deadline.
+    let launch = UNIX_EPOCH + Duration::from_millis(start_ms);
+    let claimed = claimed_path(dest);
+    // A claimed sibling means another backend already took this launch's file.
+    if std::fs::symlink_metadata(&claimed).is_ok() {
+        return None;
+    }
+    // No dest and no claim long after the launch means the child is gone; do not wait out the deadline.
+    if std::fs::symlink_metadata(dest).is_err()
+        && SystemTime::now().duration_since(launch).unwrap_or(Duration::ZERO) > Duration::from_secs(GRACE_SECS)
+    {
+        return None;
+    }
     loop {
         if std::fs::symlink_metadata(dest).is_ok() {
             break;
+        }
+        // A claim landing mid-wait means the other reader won the rename below.
+        if std::fs::symlink_metadata(&claimed).is_ok() {
+            return None;
         }
         if SystemTime::now() >= deadline {
             return None;
         }
         std::thread::sleep(Duration::from_millis(POLL_MS));
     }
-    let bytes = read_prefetch(dest, now, runtime)?;
-    let _ = std::fs::remove_file(dest);
+    // Atomic claim: only the rename winner reads; the loser finds the claim above.
+    if std::fs::rename(dest, &claimed).is_err() {
+        return None;
+    }
+    let bytes = read_prefetch(&claimed, start_ms, runtime)?;
+    // A failure marker ends the wait immediately; the scan takes today's gio path.
+    if bytes == FAIL_MARKER {
+        return None;
+    }
     let text = String::from_utf8(bytes).ok()?;
     Some((gvfslist::build_listing(&text, hidden, path).ok()?, t.elapsed().as_secs_f64() * 1000.0))
 }
 
 // The checks a reader applies before trusting a file it did not write itself.
-fn read_prefetch(dest: &Path, now: SystemTime, runtime: Option<&Path>) -> Option<Vec<u8>> {
+fn read_prefetch(dest: &Path, start_ms: u64, runtime: Option<&Path>) -> Option<Vec<u8>> {
     // The file must live in our own runtime dir, or it is not this launch's.
     let dir = dest.parent()?;
     if Some(dir) != runtime {
@@ -262,8 +292,14 @@ fn read_prefetch(dest: &Path, now: SystemTime, runtime: Option<&Path>) -> Option
     if meta.uid() != unsafe { geteuid() } {
         return None;
     }
-    // Older than a few seconds is a previous launch's, swept but not yet gone.
-    let age = now.duration_since(meta.modified().ok()?).ok()?;
+    let mtime = meta.modified().ok()?;
+    let launch = UNIX_EPOCH + Duration::from_millis(start_ms);
+    // Older than the launch is a previous launch's leftover, swept but not yet gone.
+    if mtime < launch {
+        return None;
+    }
+    // Freshness against a clock read after the wait; a future mtime reads as age zero.
+    let age = SystemTime::now().duration_since(mtime).unwrap_or(Duration::ZERO);
     if age > Duration::from_secs(STALE_SECS) {
         return None;
     }

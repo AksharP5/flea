@@ -15,10 +15,10 @@ pub fn exec_qs(ui: &Path, start: Option<&str>, select: Option<&str>) -> i32 {
         prefetch::warm(list);
     }
     // A gvfs share lists for a second over the network; start gio while the window builds.
-    let gvfs: Option<(PathBuf, u64)> = start.and_then(crate::gvfsprefetch::prepare);
-    if let (Some(path), Some((dest, _))) = (start, &gvfs) {
-        crate::gvfsprefetch::spawn(path, dest);
-    }
+    let gvfs: Option<(PathBuf, u64)> = match start.and_then(crate::gvfsprefetch::prepare) {
+        Some((dest, start_ms)) if start.is_some_and(|p| crate::gvfsprefetch::spawn(p, &dest)) => Some((dest, start_ms)),
+        _ => None,
+    };
     let mut cmd = qs_command(ui.join(paths::ENTRY));
     if let Some(list) = &list {
         cmd.env(prefetch::LIST_ENV, list);
@@ -40,8 +40,7 @@ pub fn exec_qs(ui: &Path, start: Option<&str>, select: Option<&str>) -> i32 {
     exec(cmd)
 }
 
-// flea --pick <reply>: the picker window tools/flea-portal opens for one portal request. Same shell
-// and the same renderer choice, on a second entry point, so a chooser is not a second application.
+// flea --pick <reply>: the portal's chooser window on the same shell and renderer choice.
 pub fn pick(reply: &str) -> i32 {
     // Empty is absent, the rule paths::has_display() applies: a wrapper's unset variable is not a request.
     if !std::env::var_os("FLEA_PICKER").is_some_and(|value| !value.is_empty()) {
@@ -65,8 +64,7 @@ pub fn pick(reply: &str) -> i32 {
     exec(cmd)
 }
 
-// The qs invocation both entry points share: the target, the binary the shell calls back into, and
-// the renderer, which is chosen here because this is the last point that can hand it to qs.
+// The qs invocation both entry points share, including the renderer chosen at the last hand-off point.
 fn qs_command(target: PathBuf) -> Command {
     let mut cmd = Command::new("qs");
     cmd.arg("-p").arg(target);
@@ -78,8 +76,7 @@ fn qs_command(target: PathBuf) -> Command {
     cmd.env_remove(crate::gvfsprefetch::PATH_ENV);
     cmd.env_remove(crate::gvfsprefetch::START_ENV);
     skip_gtk_platform_theme(&mut cmd);
-    // An explicit choice is the operator's, the same rule FLEA_UI and QSG_RHI_BACKEND follow here.
-    // map_or, not is_none_or: that method landed in 1.82 and Cargo.toml declares a 1.77 floor.
+    // An explicit choice is the operator's; map_or because is_none_or needs Rust 1.82 over the 1.77 floor.
     if std::env::var_os("FLEA_BIN").map_or(true, |value| value.is_empty()) {
         if let Ok(binary) = std::env::current_exe() {
             cmd.env("FLEA_BIN", binary);
