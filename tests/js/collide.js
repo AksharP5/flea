@@ -45,10 +45,10 @@ function run(check) {
           Ops.trashed(1000, 204), "Moved 1,000 items to Trash, 204 failed · z undoes")
     check("the pane's delete verdict groups what it deleted of",
           Ops.deletedLine({ deleted: 3, count: 1204, failed: 0, cancelled: false }),
-          "Deleted 3 of 1,204")
+          "Deleted 3 of 1,204 items")
     check("and the failure and cancel it can carry",
           Ops.deletedLine({ deleted: 3, count: 1204, failed: 204, cancelled: true }),
-          "Deleted 3 of 1,204 · 204 failed · cancelled")
+          "Deleted 3 of 1,204 items · 204 failed · cancelled")
 
     // Focus: Keep both first, h and l stop at the ends, Tab and Backtab come round.
     check("the card opens on Keep both", Collide.START, "keep")
