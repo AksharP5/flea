@@ -133,10 +133,6 @@ mod tests {
         Db::from_str(GLOB_ROWS)
     }
 
-    fn root(d: &TestDir) -> &str {
-        d.path().to_str().expect("the sandbox path is utf-8")
-    }
-
     fn touch_mtime(path: &std::path::Path, date: &str) {
         // The same fixture clock src/backend/ordering.rs's tests use: touch is coreutils, not a crate.
         let status = std::process::Command::new("touch")
