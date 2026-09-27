@@ -131,7 +131,13 @@ Flea.PreviewColumn {
     function followSelection() {
         if (!root.canRead) return
         var candidate = root.pane.rowFor(root.pane.cursorIndex)
-        var hold = !root.pane.storageKnown || ExtThumbs.manualHold(root.pane.storageClass, ViewState.preview)
+        // Unknown is never held: the class has not named its verdict yet, so the frame waits
+        // under the swap's cap and onStorageKnownChanged decides when it lands, never a held mark.
+        if (!root.pane.storageKnown) {
+            if (root.swap) root.swap.start(false)
+            return
+        }
+        var hold = ExtThumbs.manualHold(root.pane.storageClass, ViewState.preview)
         if (root.loadedDirectory === root.pane.path && root.loadedIndex === root.pane.cursorIndex
                 && root.loadedIdentity === root.identity(candidate) && root.manualHold === hold) return
         // An off class holds the frame on the listing's own facts until Ctrl+Space loads it; nothing loads, so no swap.
@@ -196,7 +202,7 @@ Flea.PreviewColumn {
         id: settle
         interval: root.pane ? root.pane.settleMs : 120
         // The automatic settle holds an off class; Ctrl+Space's direct loadSelection stays full.
-        // Unknown is held too, so the first settle never spends the class fsinfo has not named yet.
+        // Unknown waits through followSelection, so the first settle never spends the class fsinfo has not named yet.
         onTriggered: if (ViewState.previewAutomatic) {
             var hold = root.pane ? (!root.pane.storageKnown || ExtThumbs.manualHold(root.pane.storageClass, ViewState.preview)) : false
             if (hold) root.followSelection()

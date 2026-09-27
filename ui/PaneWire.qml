@@ -10,6 +10,7 @@ import "js/Search.js" as Search
 import "js/Photos.js" as Photos
 import "js/Swap.js" as Swap
 import "js/Thumbs.js" as Thumbs
+import "js/ExtThumbs.js" as ExtThumbs
 import "js/Transfer.js" as Transfer
 
 // Every reply from outside the window lands here: the backend's, and those of the three foreign
@@ -385,6 +386,9 @@ Item {
             if (ours) {
                 pane.storageClass = storageClass || ""
                 pane.storageKnown = true
+                // The verdict follows the directory, so a class switch later compares
+                // against this listing's own gate rather than the one navigated from.
+                pane.extVerdict = ExtThumbs.verdict(pane.storageClass, ViewState.preview)
                 if (pane.listArea) pane.listArea.restartSettle()
             }
         }

@@ -2454,6 +2454,12 @@ displayed-Starting busy rule and the shared gate). Inside their budgets: `ui/js/
 `ui/StatusBar.qml` at 450 of its recorded 451, `ui/SidebarRow.qml` at 284, `ui/PathJump.qml` at 392,
 `ui/JumpPath.qml` at 51, `tests/jump-ui.qml` at 288.
 
+Fix2-preview moves one recorded ceiling, re-derived with `wc -l`: `ui/Pane.qml` 730 to 737
+for the ExtThumbs verdict (`extVerdict`, the edge `refreshExtThumbs` spends, and the single
+refresh `toggleExtThumbs` keeps through `onPreviewChanged`). `ui/PaneWire.qml` takes the
+verdict sync on `fsinfo` and stays at 483 inside its recorded 485; `ui/PreviewColumn.qml`
+keeps its recorded 499 with no added line.
+
 ## The key table is generated
 
 `keys.toml` at the repository root is the single source of truth for every binding.

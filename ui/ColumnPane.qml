@@ -89,7 +89,8 @@ Item {
         // Only the loaded preview owns an off-viewport request; manual cursor movement asks nothing extra.
         work.drop = work.drop.filter(function (index) { return index !== root.pane.previewIndex })
         root.pane.backend.thumbcancel(work.drop)
-        root.pane.backend.thumb(work.ask, ExtThumbs.cacheOnly(root.pane.storageClass, ViewState.preview))
+        work.cacheOnly = ExtThumbs.cacheOnly(root.pane.storageClass, ViewState.preview)
+        root.pane.backend.thumb(work.ask, work.cacheOnly)
         if (work.ask.length > 0) settle.interval = root.pane.settleMs
         root.thumbsApplied(work)
     }

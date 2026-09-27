@@ -25,7 +25,7 @@ function run(check) {
           && sourceText("../../ui/js/Focus.js").indexOf("Search.TYPING") >= 0, true)
     check("busy mark sizes from the chrome token", bar.indexOf("Theme.chromeMarkSize") >= 0, true)
     check("Quick Look ground takes the wheel", look.indexOf("onWheel") >= 0, true)
-    check("afterAnimating runs only under a hold", swap.indexOf("(root.capturing || root.holding) ? root.Window.window : null") >= 0, true)
+    check("afterAnimating stays live until ready lands after a release", swap.indexOf("(root.capturing || root.holding || root.dropping || !root.ready) ? root.Window.window : null") >= 0, true)
     check("hold sink keeps Back for the window", swap.indexOf("Qt.AllButtons") < 0, true)
     check("Quick Look asks no meta for a photo", look.indexOf("askImage") < 0, true)
     check("Quick Look keeps no EXIF turn", look.indexOf("imageTurn") < 0 && image.indexOf("property int turn") < 0, true)

@@ -1,5 +1,7 @@
 .pragma library
 
+.import "Thumbs.js" as Thumbs
+
 // The ExtThumbs board's storage-class gate: network shares and phones are off, USB
 // drives are on, and anything else is local and always gets thumbnails. A class is
 // src/backend/extclass.rs's own word, carried beside the fsinfo line once per
@@ -65,18 +67,24 @@ function statusLine(storageClass, on) {
     return noun + " thumbnails are " + (on ? "on" : "off")
 }
 
-// A class switched on decodes again: its cache-only misses were final answers,
-// so they leave the map and the settle re-asks the viewport. Sample input:
-// {file: {3: "", 4: "/c/x.png"}, order: [3, 4]} forgets 3 and keeps 4.
+// A class switched on decodes again: only its cache-only marks leave the map, so a
+// real refusal stays answered and is never decoded twice. Sample input:
+// {file: {3: "", 4: "/c/x.png", 5: "cache-missed"}, order: [3, 4, 5]} forgets 5 alone.
 function forgetMisses(state) {
     var kept = []
     for (var i = 0; i < state.order.length; i++) {
         var at = state.order[i]
-        if (state.file[at] === "") delete state.file[at]
+        if (state.file[at] === Thumbs.CACHE_MISS || state.file[at] === Thumbs.CACHE_ASKED) delete state.file[at]
         else kept.push(at)
     }
     state.order = kept
     return { file: state.file, order: state.order }
+}
+
+// Sample input: ("network", {}) answers "only|media"; a zoom step or another class keeps it, so refreshes nothing.
+function verdict(storageClass, preview) {
+    var mode = preview && preview.thumbnails ? preview.thumbnails : "media"
+    return (cacheOnly(storageClass, preview) ? "only" : "full") + "|" + mode
 }
 
 // FileView reads the whole file, so a row over the gate is refused, not truncated, the

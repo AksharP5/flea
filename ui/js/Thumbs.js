@@ -1,7 +1,15 @@
 .pragma library
 
 // A row this listing has dealt with: null means asked and waiting, a string is the answer.
+// A cache-only ask carries a mark, so its empty answer means "not tried" and a class switch forgets it.
 var ASKED = null
+var CACHE_ASKED = "cache-asked"
+var CACHE_MISS = "cache-missed"
+
+// Asked and not answered yet, a plain ask or a cache-only one; only these have a job to cancel.
+function pending(value) {
+    return value === ASKED || value === CACHE_ASKED
+}
 
 function empty() {
     return { file: {}, order: [] }
@@ -29,7 +37,7 @@ function plan(state, rows, held, first, last, mode) {
     }
     var drop = []
     for (var key in state.file) {
-        if (state.file[key] !== ASKED) {
+        if (!pending(state.file[key])) {
             continue
         }
         var at = Number(key)
@@ -54,8 +62,9 @@ function applied(state, work) {
     for (var i = 0; i < work.drop.length; i++) {
         forget(state, work.drop[i])
     }
+    var mark = work.cacheOnly === true ? CACHE_ASKED : ASKED
     for (var j = 0; j < work.ask.length; j++) {
-        state.file[work.ask[j]] = ASKED
+        state.file[work.ask[j]] = mark
         state.order.push(work.ask[j])
     }
     return { file: state.file, order: state.order }
@@ -66,7 +75,8 @@ function remember(state, row, file, cap) {
     if (state.file[row] === undefined) {
         state.order.push(row)
     }
-    state.file[row] = file
+    // An empty answer to a cache-only ask was never a decode, so it keeps its mark.
+    state.file[row] = (file === "" && state.file[row] === CACHE_ASKED) ? CACHE_MISS : file
     while (state.order.length > cap) {
         delete state.file[state.order.shift()]
     }
@@ -75,6 +85,7 @@ function remember(state, row, file, cap) {
 
 function fileFor(state, row) {
     var value = state.file[row]
+    if (value === CACHE_ASKED || value === CACHE_MISS) return ""
     return typeof value === "string" ? value : ""
 }
 

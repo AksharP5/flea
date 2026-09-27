@@ -95,16 +95,22 @@ Item {
                 && (root.cursorRow !== null) === root.shownHasRow)
             return
         var idle = !thirdSwap.capturing && !thirdSwap.holding
-        var held = !root.pane.storageKnown || ExtThumbs.manualHold(root.pane.storageClass, ViewState.preview)
+        // Unknown is never held: the class has not named its verdict yet, so a file waits
+        // for it the way a load does and onStorageKnownChanged decides when it lands.
+        var held = ExtThumbs.manualHold(root.pane.storageClass, ViewState.preview)
         var fileLoad = !root.cursorIsDir && ViewState.previewColumn && ViewState.previewAutomatic && !held
         var folderLoad = root.cursorIsDir && !root.answered(root.childPath)
         if (!fileLoad && !folderLoad) {
-            root.showCursorRow()
-            if (!root.cursorIsDir) preview.followSelection()
-            return
-        }
-        if (idle && root.cursorIsDir && root.answered(root.childPath)) {
-            root.showCursorRow()
+            // A hold already live owns the picture, so the no-load change joins it under
+            // the cap; landing it at once would freeze the column and block the pointer.
+            if (!idle) {
+                thirdSwap.hold(root.showCursorRow, root.swapKey())
+                thirdSwap.start(false)
+                if (!root.cursorIsDir) preview.followSelection()
+            } else {
+                root.showCursorRow()
+                if (!root.cursorIsDir) preview.followSelection()
+            }
             return
         }
         thirdSwap.hold(root.showCursorRow, root.swapKey())

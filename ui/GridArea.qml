@@ -254,7 +254,8 @@ GridView {
         var work = Filter.cut(Thumbs.plan(root.pane.thumbState, root.pane.rows, root.pane.held, span.first, span.last, ViewState.thumbnailMode), root.pane.shown, root.pane.thumbState)
         work.drop = work.drop.filter(function (index) { return index !== root.pane.previewIndex })
         root.pane.backend.thumbcancel(work.drop)
-        root.pane.backend.thumb(work.ask, ExtThumbs.cacheOnly(root.pane.storageClass, ViewState.preview))
+        work.cacheOnly = ExtThumbs.cacheOnly(root.pane.storageClass, ViewState.preview)
+        root.pane.backend.thumb(work.ask, work.cacheOnly)
         root.thumbsApplied(work)
     }
 

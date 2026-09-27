@@ -46,6 +46,9 @@ function run(check) {
     check("an answered row reports its file", Thumbs.fileFor(s, 13), "/cache/13.png")
     check("and is never asked for again", Thumbs.plan(s, rows, 10, 13, 13).ask.length, 0)
     check("and is never cancelled, having no job to drop", Thumbs.plan(s, rows, 10, 0, 1).drop.indexOf(13), -1)
+    var c = Thumbs.applied(Thumbs.empty(), { ask: [10, 11], drop: [], cacheOnly: true })
+    check("a cache-only ask the viewport left is cancelled too", Thumbs.plan(c, rows, 10, 12, 13).drop.join(","), "10,11")
+    check("and a cache-only ask counts as pending", Thumbs.pending(c.file[10]), true)
 
     s = Thumbs.remember(s, 11, "", 240)
     check("a row answered with no thumbnail reports nothing", Thumbs.fileFor(s, 11), "")
@@ -82,6 +85,19 @@ function run(check) {
     check("and it still reads as no file", Thumbs.fileFor(r, 10), "")
     r = Thumbs.remember(r, 11, "/cache/b.png", 8)
     check("a real answer is not a refusal", Thumbs.refused(r, 11), false)
+
+    // A row asked while its class is cache-only: an empty answer means "not tried",
+    // so it reads as no file without reading as a refusal, and the class switch
+    // forgets it while a real refusal stays answered.
+    var c = Thumbs.applied(Thumbs.empty(), { ask: [7], drop: [], cacheOnly: true })
+    check("a cache-only ask marks the row without naming a file", Thumbs.fileFor(c, 7), "")
+    check("and the marked row is not a refusal", Thumbs.refused(c, 7), false)
+    check("and is not asked twice while marked", Thumbs.plan(c, [{ t: true }], 7, 7, 7, "media").ask.length, 0)
+    c = Thumbs.remember(c, 7, "", 240)
+    check("its empty answer still reads as no file", Thumbs.fileFor(c, 7), "")
+    check("but still not as a refusal", Thumbs.refused(c, 7), false)
+    c = Thumbs.remember(c, 7, "/cache/7.png", 240)
+    check("a real answer overwrites the mark", Thumbs.fileFor(c, 7), "/cache/7.png")
 
     // The viewport is the only range a request may name, so its clamp is the no-sweep rule in arithmetic.
     var v = Thumbs.viewport(0, 37, 36, 2000)

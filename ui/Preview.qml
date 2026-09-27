@@ -195,7 +195,7 @@ Item {
 
     Connections {
         target: root.pane ? root.pane.backend : null
-        function onMeta(row, w, h, durationMs, sampleRate, entries, unpacked, archiveFailed, names, lines, partial, linesFailed, target, targetDir, owner) {
+        function onMeta(row, w, h, orient, durationMs, sampleRate, entries, unpacked, archiveFailed, names, lines, partial, linesFailed, target, targetDir, owner) {
             if (root.isArchive && row === root.archiveRow)
                 root.archiveMeta = { entries: entries, unpacked: unpacked, archiveFailed: archiveFailed, names: names }
             if (root.isMedia && row === root.mediaRow)

@@ -173,6 +173,9 @@ FocusScope {
     // Seven screens of history at this row height, so a policy bug costs memory slowly, not without limit.
     readonly property int thumbCap: 240
     property var thumbState: Thumbs.empty()
+    // The class verdict the last refresh spent, so a preview change that moves nothing for
+    // this directory (zoom step, other classes) refreshes nothing; see ui/js/ExtThumbs.js.
+    property string extVerdict: ExtThumbs.verdict("", ViewState.preview)
     // Same cap as thumbState, same reason; a directory row's size is only ever asked for by a viewport.
     property var dirSizeState: DirSizes.empty()
     // Input to rows is stamped inside the UI, because a harness that polls IPC across the interval times itself; see AGENTS.md "Testing".
@@ -565,11 +568,15 @@ FocusScope {
         var key = ExtThumbs.keyForClass(root.storageClass)
         if (key === "") return
         var on = !ExtThumbs.classOn(root.storageClass, ViewState.preview)
+        // No direct refresh: the setting change below routes through onPreviewChanged,
+        // which refreshes once on the verdict edge instead of twice.
         ViewState.changeSetting("preview." + key, on)
-        root.refreshExtThumbs()
         root.message(ExtThumbs.statusLine(root.storageClass, on), false)
     }
     function refreshExtThumbs() {
+        var now = ExtThumbs.verdict(root.storageClass, ViewState.preview)
+        if (now === root.extVerdict) return
+        root.extVerdict = now
         root.thumbState = ExtThumbs.forgetMisses(root.thumbState)
         if (root.listArea) root.listArea.restartSettle()
         // The preview follows rather than loads, so a class just switched off holds instead of decoding.

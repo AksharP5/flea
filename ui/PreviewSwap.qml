@@ -221,9 +221,9 @@ Item {
     }
 
     // afterAnimating runs on this thread just before each frame is synchronised, so it sees what that frame draws.
-    // Gated to a hold or capture, so an idle window pays no JS call per frame.
+    // Live from the first hold until ready lands after the release, so a half-built frame is never drawn uncounted; an idle window still pays nothing.
     Connections {
-        target: (root.capturing || root.holding) ? root.Window.window : null
+        target: (root.capturing || root.holding || root.dropping || !root.ready) ? root.Window.window : null
         function onAfterAnimating() {
             if (!root.visible)
                 return

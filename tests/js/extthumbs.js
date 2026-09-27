@@ -1,4 +1,5 @@
 .import "../../ui/js/ExtThumbs.js" as ExtThumbs
+.import "../../ui/js/Thumbs.js" as Thumbs
 .import "../../ui/js/Menu.js" as Menu
 .import "../../ui/js/Settings.js" as Settings
 
@@ -49,11 +50,26 @@ function run(check) {
           .filter(function (r) { return r.action === "extThumbs" }).length, 0)
     check("the toggle says what it did", [ExtThumbs.statusLine("network", true), ExtThumbs.statusLine("usb", false), ExtThumbs.statusLine("phone", true)].join("|"),
           "Network thumbnails are on|USB thumbnails are off|Phone thumbnails are on")
-    check("a cache-only miss leaves and a hit stays", (function () {
-        var st = { file: { 3: "", 4: "/c/x.png" }, order: [3, 4] }
+    check("a real refusal and a hit stay while both cache-only marks leave", (function () {
+        var miss = Thumbs.CACHE_MISS === undefined ? "cache-missed" : Thumbs.CACHE_MISS
+        var asked = Thumbs.CACHE_ASKED === undefined ? "cache-asked" : Thumbs.CACHE_ASKED
+        var st = { file: { 3: "", 4: "/c/x.png", 5: miss, 6: asked }, order: [3, 4, 5, 6] }
         ExtThumbs.forgetMisses(st)
-        return st.order.join(",") + "|" + (st.file[3] === undefined) + "|" + st.file[4]
-    })(), "4|true|/c/x.png")
+        return st.order.join(",") + "|" + (st.file[3] === "") + "|" + st.file[4]
+            + "|" + (st.file[5] === undefined) + "|" + (st.file[6] === undefined)
+    })(), "3,4|true|/c/x.png|true|true")
+    check("the verdict names the current class's cache gate and mode", (function () {
+        if (typeof ExtThumbs.verdict !== "function") return "missing"
+        return [ExtThumbs.verdict("network", {}), ExtThumbs.verdict("network", { thumbNetwork: true }),
+            ExtThumbs.verdict("", {})].join("|")
+    })(), "only|media|full|media|full|media")
+    check("and only that: zoom and other classes move nothing", (function () {
+        if (typeof ExtThumbs.verdict !== "function") return "missing"
+        var a = ExtThumbs.verdict("network", {})
+        return [ExtThumbs.verdict("network", { thumbSize: "large" }) === a,
+            ExtThumbs.verdict("network", { thumbUsb: false }) === a,
+            ExtThumbs.verdict("network", { column: false }) === a].join("|")
+    })(), "true|true|true")
     check("text on network and phone reads at most 256 KiB", [ExtThumbs.textLimit("network"), ExtThumbs.textLimit("phone")].join("|"), "262144|262144")
     check("local and USB keep the megabyte", [ExtThumbs.textLimit(""), ExtThumbs.textLimit("usb")].join("|"), "1048576|1048576")
 

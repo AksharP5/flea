@@ -220,7 +220,8 @@ ListView {
         work.drop = work.drop.filter(function (index) { return index !== root.pane.previewIndex })
         root.pane.backend.thumbcancel(work.drop)
         // An off class still asks; the backend answers from the cache alone, see ui/js/ExtThumbs.js.
-        root.pane.backend.thumb(work.ask, ExtThumbs.cacheOnly(root.pane.storageClass, ViewState.preview))
+        work.cacheOnly = ExtThumbs.cacheOnly(root.pane.storageClass, ViewState.preview)
+        root.pane.backend.thumb(work.ask, work.cacheOnly)
         // The short first settle latches to the fling debounce only once a request has actually gone out.
         if (work.ask.length > 0)
             settle.interval = root.pane.settleMs

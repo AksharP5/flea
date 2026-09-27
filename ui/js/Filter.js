@@ -110,7 +110,7 @@ function cut(work, list, state) {
         for (var j = 0; j < drop.length; j++) dropping[drop[j]] = true
         for (var key in state.file) {
             var row = Number(key)
-            if (state.file[key] === Thumbs.ASKED && drawn[row] !== true && dropping[row] !== true)
+            if (Thumbs.pending(state.file[key]) && drawn[row] !== true && dropping[row] !== true)
                 drop.push(row)
         }
     }

@@ -425,7 +425,7 @@ Item {
     // Whether a player object exists at all, for the teardown check; playing false alone would mask one that survived.
     function playerLoaded() { return playerLoader.item !== null }
     // What the text, archive and failure surfaces actually draw, for ui/Ipc.qml: the lines, the member names, the sentence.
-    function textLines() { return (lines.tooLarge && !root.truncateText) ? "too large" : lines.lines.join("|") }
+    function textLines() { return lines.tooLarge ? "too large" : lines.lines.join("|") }
     function archiveNames() { return root.meta && root.meta.names ? root.meta.names.map(function (e) { return e.n }).join("|") : "" }
     function failureText() { return root.failure }
 
@@ -483,7 +483,7 @@ Item {
         if (root.wantsThumb && root.noThumbComing && root.picturesFromThumb && !root.thumbDrawn) {
             return "no preview could be made"
         }
-        if ((root.previewState === Facts.TEXT || root.previewState === Facts.CODE) && lines.tooLarge && !root.truncateText) {
+        if ((root.previewState === Facts.TEXT || root.previewState === Facts.CODE) && lines.tooLarge) {
             return "too large to preview"
         }
         return ""

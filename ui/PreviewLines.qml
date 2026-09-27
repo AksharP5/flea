@@ -15,20 +15,19 @@ Item {
     property bool numbered: false
 
     // The same gate ui/PreviewText.qml uses: FileView reads the whole file, so a row over it is
-    // refused rather than truncated, except on remote storage where the board shows the first 256 KiB.
+    // refused on every class; truncating would still read all of it first, a 2 GB log over SMB.
     property int maxBytes: 1048576
-    // True on network and phone storage, where an over-limit file shows its first bytes instead of refusing.
+    // Retained for its callers; over-limit rows are refused, never truncated, so it reads nothing.
     property bool truncate: false
     readonly property bool tooLarge: root.size > root.maxBytes
     // More than a small frame can show is wasted work, so only this many are ever built into rows.
     readonly property int maxLines: 14
 
-    // The first bytes shown when truncating; a JS slice counts UTF-16 units, close enough for a preview.
-    readonly property string shownText: root.truncate && root.tooLarge ? file.text().slice(0, root.maxBytes) : file.text()
+    readonly property string shownText: file.text()
     readonly property var lines: {
         if (!root.active || (!file.loaded))
             return []
-        if (root.tooLarge && !root.truncate)
+        if (root.tooLarge)
             return []
         return root.shownText.split("\n").slice(0, root.maxLines)
     }
@@ -37,13 +36,13 @@ Item {
     property bool readFailed: false
     // True when the reader has settled with nothing to put in the frame, so the column stands the
     // kind's mark in rather than draw a bordered empty box: refused for size, or a file with no bytes.
-    readonly property bool blank: (root.tooLarge && !root.truncate)
+    readonly property bool blank: root.tooLarge
         || (root.active && !root.readFailed && file.loaded && root.shownText.length === 0)
-    readonly property bool loading: root.active && !root.readFailed && !file.loaded && !(root.tooLarge && !root.truncate)
+    readonly property bool loading: root.active && !root.readFailed && !file.loaded && !root.tooLarge
 
     FileView {
         id: file
-        path: (root.active && (!root.tooLarge || root.truncate)) ? root.path : ""
+        path: (root.active && !root.tooLarge) ? root.path : ""
         printErrors: false
         onLoadFailed: root.readFailed = true
         onPathChanged: root.readFailed = false

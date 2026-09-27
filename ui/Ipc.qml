@@ -484,7 +484,7 @@ QtObject {
         function thumbnailPolicyState(): string {
             var pane = root.pane, column = pane.previewColumnItem
             return JSON.stringify({view: pane.viewMode, mode: ViewState.thumbnailMode, files: pane.thumbState.file,
-                pending: Object.keys(pane.thumbState.file).filter(function(index) { return pane.thumbState.file[index] === null }).map(Number),
+                pending: Object.keys(pane.thumbState.file).filter(function(index) { var v = pane.thumbState.file[index]; return v === null || v === "cache-asked" }).map(Number),
                 contentY: pane.viewMode === "columns" && root.columns ? root.columns.activeContentY() : pane.listArea.contentY,
                 cursor: pane.cursorIndex, previewIndex: pane.previewIndex, previewPath: column ? column.path : "",
                 previewReady: column !== null && column.frameStatus === Image.Ready})
