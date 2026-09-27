@@ -1,16 +1,16 @@
-// A gvfs FUSE directory lists through one gio child instead of readdir plus per-row
-// stats. The daemon answers names with size, type and mtime in one pass, where the FUSE
-// path would block in getdents64 and then pay one round trip per row.
+// A gvfs FUSE directory lists through one gio child; see AGENTS.md "Two-phase listing".
 use crate::backend::extclass;
 use crate::backend::listing::{CachedMeta, Listing};
 use std::os::unix::fs::MetadataExt;
 use std::path::Path;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 // Sample input: gio list -u -a standard::type,standard::size,time::modified,standard::symlink-target,unix::mode --nofollow-symlinks <path>
 const GIO_ATTRS: &str = "standard::type,standard::size,time::modified,standard::symlink-target,unix::mode";
-// A 10k NAS folder answers in about 1.1 s; 15 s bounds a hung daemon without cutting one off.
+// A 10k NAS folder answers in about 1.1 s; 15 s of no output bounds a hung daemon, never a large listing.
 pub const GIO_TIMEOUT: Duration = Duration::from_secs(15);
+const POLL_MS: Duration = Duration::from_millis(20);
 // Fallback modes for a gio that omits unix::mode, matching what the SMB FUSE stat reports.
 const MODE_FILE: u32 = 0o100700;
 const MODE_DIR: u32 = 0o40700;
@@ -111,11 +111,7 @@ pub fn parse_line(line: &str, hidden: bool) -> Result<Option<GvfsRow>, String> {
     let attrs = parts.next().ok_or_else(|| format!("gio line has no attrs: {}", line))?;
     // The URI is encoded, so a tab or newline in a name cannot split this line; decode only the last segment.
     let slash = uri.rfind('/').ok_or_else(|| format!("gio uri has no slash: {}", uri))?;
-    let mut segment = &uri[slash + 1..];
-    // A directory URI never carries a trailing slash here, but a stray one must not name an empty row.
-    while segment.ends_with('/') && !segment.is_empty() {
-        segment = &segment[..segment.len() - 1];
-    }
+    let segment = &uri[slash + 1..];
     if segment.is_empty() {
         return Err(format!("gio uri names nothing: {}", uri));
     }
@@ -134,26 +130,34 @@ pub fn parse_line(line: &str, hidden: bool) -> Result<Option<GvfsRow>, String> {
         "(regular)" | "(special)" | "(shortcut)" | "(mountable)" | "(unknown)" => (false, false),
         _ => return Err(format!("gio type is not known: {}", type_str)),
     };
+    // gio prints standard::* before time::* before unix::*, so the real keys follow the target.
+    let mut target = String::new();
+    let keys = match (is_symlink, attrs.find("standard::symlink-target=")) {
+        (true, Some(at)) => {
+            let rest = &attrs[at + "standard::symlink-target=".len()..];
+            match rest.rfind(" time::modified=") {
+                Some(rel) => {
+                    target = unescape_target(&rest[..rel]);
+                    &rest[rel + 1..]
+                }
+                None => {
+                    target = unescape_target(rest);
+                    ""
+                }
+            }
+        }
+        _ => attrs,
+    };
     let mtime_key = "time::modified=";
-    let mtime_at = attrs.find(mtime_key).ok_or_else(|| format!("gio attrs name no mtime: {}", attrs))?;
-    let mtime_rest = &attrs[mtime_at + mtime_key.len()..];
+    let mtime_at = keys.find(mtime_key).ok_or_else(|| format!("gio attrs name no mtime: {}", attrs))?;
+    let mtime_rest = &keys[mtime_at + mtime_key.len()..];
     let mtime_end = mtime_rest.find(' ').map(|at| at).unwrap_or(mtime_rest.len());
     let mtime: i64 =
         mtime_rest[..mtime_end].parse().map_err(|_| format!("gio mtime is not a number: {}", mtime_rest))?;
-    let mut target = String::new();
-    if is_symlink {
-        let target_key = "standard::symlink-target=";
-        if let Some(at) = attrs.find(target_key) {
-            let rest = &attrs[at + target_key.len()..];
-            // The target may hold spaces, so it runs until the mtime key or the end, never to the next space.
-            let end = rest.find(" time::").unwrap_or(rest.len());
-            target = unescape_target(&rest[..end]);
-        }
-    }
     // corner: only a parsed decimal unix::mode replaces the fallback; absent or garbled keeps it.
     let mode_key = "unix::mode=";
-    let unix_mode = attrs.find(mode_key).and_then(|at| {
-        let rest = &attrs[at + mode_key.len()..];
+    let unix_mode = keys.find(mode_key).and_then(|at| {
+        let rest = &keys[at + mode_key.len()..];
         rest[..rest.find(' ').unwrap_or(rest.len())].parse::<u32>().ok()
     });
     Ok(Some(GvfsRow { name, is_dir, is_symlink, size, mtime, target, unix_mode }))
@@ -165,18 +169,16 @@ pub fn list_via_gio(path: &str, hidden: bool, gio: &str, timeout: Duration) -> R
 }
 
 fn list_via_gio_at(path: &str, hidden: bool, gio: &str, timeout: Duration, t: Instant) -> Result<(Listing, f64), String> {
-    let bytes = raw_output(path, hidden, gio, timeout)?;
+    let bytes = raw_output(path, gio, timeout)?;
     let text = String::from_utf8(bytes).map_err(|_| "gio output is not UTF-8".to_string())?;
     Ok((build_listing(&text, hidden, path)?, t.elapsed().as_secs_f64() * 1000.0))
 }
 
-// The child half the prefetch subcommand shares: the same argv, the same deadline, raw bytes out.
+// The child half the prefetch subcommand shares: the same argv, the same idle deadline, raw bytes out.
 // Sample input: path "/run/user/1000/gvfs/smb-share:server=x,share=y/dir", hidden false.
-pub(crate) fn raw_output(path: &str, hidden: bool, gio: &str, timeout: Duration) -> Result<Vec<u8>, String> {
-    let mut argv = vec!["list".to_string(), "-u".to_string(), "-a".to_string(), GIO_ATTRS.to_string(), "--nofollow-symlinks".to_string()];
-    if hidden {
-        argv.push("-h".to_string());
-    }
+pub(crate) fn raw_output(path: &str, gio: &str, timeout: Duration) -> Result<Vec<u8>, String> {
+    // -h rides on every call so gio's own hidden rule never forks the rows; parse_line's dot filter stays the only hidden rule.
+    let mut argv = vec!["list".to_string(), "-u".to_string(), "-a".to_string(), GIO_ATTRS.to_string(), "--nofollow-symlinks".to_string(), "-h".to_string()];
     argv.push(path.to_string());
     let mut child = std::process::Command::new(gio)
         .args(&argv)
@@ -185,27 +187,41 @@ pub(crate) fn raw_output(path: &str, hidden: bool, gio: &str, timeout: Duration)
         .stderr(std::process::Stdio::null())
         .spawn()
         .map_err(|e| format!("gio did not start: {}", e))?;
-    // The reader drains stdout beside the wait, so a 10k-row listing cannot block on a full pipe.
+    // The reader drains stdout beside the wait and stamps every chunk, so the deadline bounds idleness, never size.
     let stdout = child.stdout.take();
+    let last = Arc::new(Mutex::new(Instant::now()));
+    let stamp = Arc::clone(&last);
     let reader = std::thread::spawn(move || {
         let mut bytes = Vec::new();
         if let Some(mut out) = stdout {
             use std::io::Read;
-            let _ = out.read_to_end(&mut bytes);
+            let mut chunk = [0u8; 8192];
+            loop {
+                match out.read(&mut chunk) {
+                    Ok(0) => break,
+                    Ok(n) => {
+                        bytes.extend_from_slice(&chunk[..n]);
+                        if let Ok(mut t) = stamp.lock() {
+                            *t = Instant::now();
+                        }
+                    }
+                    Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
+                    Err(_) => break,
+                }
+            }
         }
         bytes
     });
-    let deadline = Instant::now() + timeout;
     let status = loop {
         match child.try_wait().map_err(|e| format!("gio wait failed: {}", e))? {
             Some(status) => break status,
-            // A hung daemon must not strand the listing: kill on the deadline and reap, never leave a zombie.
-            None if Instant::now() >= deadline => {
+            // A hung daemon must not strand the listing: kill when no byte arrived for the timeout, then reap.
+            None if last.lock().unwrap_or_else(|e| e.into_inner()).elapsed() >= timeout => {
                 let _ = child.kill();
                 let _ = child.wait();
                 return Err("gio list timed out".to_string());
             }
-            None => std::thread::sleep(Duration::from_millis(20)),
+            None => std::thread::sleep(POLL_MS),
         }
     };
     if !status.success() {
@@ -315,6 +331,31 @@ mod tests {
         std::fs::write(&p, body).unwrap();
         std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
         p.to_string_lossy().into_owned()
+    }
+
+    #[test]
+    fn hidden_false_still_asks_gio_for_hidden_names() {
+        let d = TestDir::new("gvfs-always-h");
+        let fake = fake_gio(&d, "gio", "#!/bin/sh\ncase \" $* \" in *' -h '*) printf '%s\\n' 'smb://h/share/.hidden\t0\t(regular)\ttime::modified=1' 'smb://h/share/seen.txt\t1\t(regular)\ttime::modified=2';; *) exit 3;; esac\n");
+        let (l, _) = list_via_gio(d.path().to_str().unwrap(), false, &fake, Duration::from_secs(5)).unwrap();
+        assert_eq!(l.len(), 1, "gio sent the dotfile and the dot filter dropped it");
+        assert_eq!(l.name(0), "seen.txt");
+    }
+
+    #[test]
+    fn a_symlink_target_cannot_spoof_mtime_or_mode() {
+        let row = parse_line(&format!("{}/l\t5\t(symlink)\tstandard::is-symlink=TRUE standard::symlink-target=x time::modified=5 unix::mode=16877 time::modified=7 unix::mode=41471", NAS), false).unwrap().expect("spoof row");
+        assert_eq!(row.target, "x time::modified=5 unix::mode=16877");
+        assert_eq!(row.mtime, 7);
+        assert_eq!(row.unix_mode, Some(41471));
+    }
+
+    #[test]
+    fn a_slow_stream_past_the_old_total_still_lists() {
+        let d = TestDir::new("gvfs-slow");
+        let fake = fake_gio(&d, "gio", "#!/bin/sh\nprintf '%s\\n' 'smb://h/share/a.txt\t3\t(regular)\ttime::modified=100'\nsleep 0.3\nprintf '%s\\n' 'smb://h/share/b.txt\t4\t(regular)\ttime::modified=200'\nsleep 0.3\nprintf '%s\\n' 'smb://h/share/c.txt\t5\t(regular)\ttime::modified=300'\n");
+        let (l, _) = list_via_gio(d.path().to_str().unwrap(), false, &fake, Duration::from_millis(500)).unwrap();
+        assert_eq!(l.len(), 3, "progress, not total time, bounds the listing");
     }
 
     #[test]

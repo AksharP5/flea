@@ -169,7 +169,7 @@ pub(crate) fn run_in(path: &str, dest: &Path, gio: &str, runtime: Option<&Path>)
         eprintln!("flea: {}", e);
         return 2;
     }
-    match gvfslist::raw_output(path, true, gio, gvfslist::GIO_TIMEOUT) {
+    match gvfslist::raw_output(path, gio, gvfslist::GIO_TIMEOUT) {
         Ok(bytes) => match publish(dest, &bytes) {
             Ok(()) => 0,
             Err(e) => {

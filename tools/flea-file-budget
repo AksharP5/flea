@@ -12,6 +12,7 @@ shelf/Panel.qml 430
 shelf/ShelfCard.qml 443
 shelf/ShelfService.qml 481
 src/backend/copyfile.rs 404
+src/backend/gvfslist.rs 434
 src/backend/imagesize.rs 475
 src/backend/localsend.rs 403
 src/backend/menu_actions.rs 560

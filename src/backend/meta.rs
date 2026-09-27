@@ -26,10 +26,7 @@ pub fn thumbnailable(mode: u32) -> bool {
     mode & S_IFMT == S_IFREG || mode & S_IFMT == S_IFLNK
 }
 
-// A stat on FUSE, a network share or a cold vfat stick is a round trip of a millisecond or more; a
-// local stat is microseconds. The pass runs serially until it has spent SLOW_PASS_MS, then the
-// remainder goes across threads, so kernel cifs/nfs/sshfs mounts that serve concurrently gain
-// threads while a warm local window (0.4 ms for 321 rows) never triggers one.
+// The pass runs serially until it has spent SLOW_PASS_MS; see AGENTS.md "Two-phase listing".
 pub const SLOW_PASS_MS: f64 = 10.0;
 const STAT_THREADS: usize = 8;
 

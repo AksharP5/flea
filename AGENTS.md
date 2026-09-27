@@ -170,6 +170,21 @@ bytes. `kind` orders by MIME group after phase 1, `date` is an alias for `mtime`
 other key, `mode` included, reaches neither phase: `ordering.rs` refuses it with the one
 sentence that names the four it accepts.
 
+A gvfs FUSE path is the exception to both halves. `scan.rs` lists it through one `gio list`
+child (`backend/gvfslist.rs`) instead of readdir: the daemon answers names with size, type
+and mtime in one pass, where the FUSE path would block in getdents64 and then pay one round
+trip per row. That per-row metadata lives in `Listing.meta_cache` for the listing's life
+rather than for one request, and every re-list rebuilds it, which every Flea write triggers;
+a remote change raises no inotify on either route, so the watched re-read never fires for
+one. `stat_range()` answers those rows from the cache with no stat at all, and past
+`SLOW_PASS_MS` (10 ms) the remainder of a window goes across 8 threads: a stat on FUSE, a
+network share or a cold vfat stick is a round trip of a millisecond or more against
+microseconds local, so kernel cifs/nfs/sshfs mounts that serve concurrently gain threads
+while a warm local window (0.4 ms for 321 rows) never triggers one. The gio call carries
+`-h` on every listing and `parse_line`'s dot filter stays the only hidden rule, so both
+routes list the same rows; `-h` adds one attribute to the same reply and the progress bound
+adds no round trip, which is what F13 and F19 cost on the NAS.
+
 ## The open directory is watched
 
 Issue 68: a folder open in Flea did not follow a create, rename or delete made by another program.
@@ -2480,6 +2495,12 @@ for the ExtThumbs verdict (`extVerdict`, the edge `refreshExtThumbs` spends, and
 refresh `toggleExtThumbs` keeps through `onPreviewChanged`). `ui/PaneWire.qml` takes the
 verdict sync on `fsinfo` and stays at 483 inside its recorded 485; `ui/PreviewColumn.qml`
 keeps its recorded 499 with no added line.
+
+Fix2-gvfsparse records one ceiling, re-derived with `wc -l`: `src/backend/gvfslist.rs` 393 to
+434 for the always-on `-h`, the spoof-proof target split, the progress-bound gio wait with its
+chunk-stamping reader, and the three tests that pin them. `src/backend/meta.rs` falls 388 to
+385 inside the soft budget for the one-line `SLOW_PASS_MS` comment; `src/gvfsprefetch.rs` keeps
+288 lines with the `raw_output` call shortened in place.
 
 ## The key table is generated
 
