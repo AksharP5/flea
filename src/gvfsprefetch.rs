@@ -112,7 +112,11 @@ pub fn prepare(path: &str) -> Option<(PathBuf, u64)> {
         return None;
     }
     let dir = runtime_dir()?;
-    ensure_dir(&dir).ok()?;
+    // A refused runtime dir says why on stderr, then the launch lists the share itself.
+    if let Err(e) = ensure_dir(&dir) {
+        eprintln!("flea: {}, so the share lists without a head start", e);
+        return None;
+    }
     let now = SystemTime::now();
     sweep_dir(&dir, now);
     let start_ms = now.duration_since(UNIX_EPOCH).ok()?.as_millis() as u64;
