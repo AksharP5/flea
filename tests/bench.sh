@@ -344,4 +344,17 @@ case $kill_rows in *" localsearch-ext| "*) extractor=listed ;; *) extractor=miss
 check "and its extractor, by the 15-character comm the kernel keeps" listed "$extractor"
 check "ONLY=nautilus scopes the indexer and its extractor in" "nautilus localsearch-3 localsearch-ext" "$(kill_comms_for nautilus | tr '\n' ' ' | sed 's/ $//')"
 
+# ---------------------------------------------------------------- fieldnet: NAS and USB fixtures
+# None of this launches an entrant; see AGENTS.md "Testing" for the gvfs settle clock.
+bash -n "$bench"
+check "the bench parses" 0 $?
+check "ONLY=flea-tui resolves to the flea kill row" "flea" "$(kill_comms_for flea-tui | tr '\n' ' ' | sed 's/ $//')"
+case $rows in
+  *"flea-tui|tui|"*) echo "ok   the flea-tui entrant rides the TUI bracket" ;;
+  *) echo "FAIL the flea-tui entrant is missing from the bench table"; fail=1 ;;
+esac
+eval "$(sed -n '/^settle_gap_for() {/,/^}/p' "$bench")"
+check "the settle gap defaults to 500 on a local fixture" 500 "$(settle_gap_for /home/flea-sandbox/flea-bench-btrfs)"
+check "and to 2000 on a gvfs fixture" 2000 "$(settle_gap_for /run/user/1000/gvfs/smb-share:server=nas,share=data)"
+
 exit $fail

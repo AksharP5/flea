@@ -2748,6 +2748,17 @@ waits for its consumer.
   where the watched set earned no tick, because it costs a read per thread and per descendant.
   **`cutime` alone is not enough**: it holds only what a watched pid has REAPED, so a decode still
   running is invisible to it, and Flea's decode is two levels down under `bwrap`.
+- **A gvfs fixture lists outside every entrant's tree, so the settle clock watches the daemons and the
+  gap outlasts the server.** On a fixture under `/run/user/*/gvfs/` the readdir runs in `gvfsd-fuse`
+  and the share's `gvfsd-smb` backend, so an entrant blocked in readdir earned no tick and read as
+  settled (nnn "settled" in 0.55 s on the NAS while the same stat work takes 19 s on USB): those pids,
+  resolved once, join `TREE_TICKS` and never the entrant's own `cpu_s`, and the log and the manifest
+  record which ones. Even watched, nothing on the box ticks for about 0.9 s while the server enumerates
+  a 10k folder, so a 500 ms quiet gap still settles early: `SETTLE_GAP_MS` is an override defaulting to
+  500 and to 2000 on a gvfs fixture unless the caller set one, and `settled` stays the last tick so the
+  gap never inflates it. Both move `settled_ms` on NAS only; `FIXTURE_KIND=nas|usb` skips the btrfs and
+  marker checks while still asserting `EXPECT_FILES`, `flea-tui` adds TUI `preview_ms` rows, and the
+  per-run receive bytes on the NAS interface land on stderr beside each row, moving no column.
 - **`cpu_tree_s` was added at the END of each row**, so an old parser still works. Until 0.3.2 it
   carried the watched set's tree total; `cpu_s` still reports the entrant process alone. On the media
   fixture they diverged hard then: pcmanfm read 38.83 against 90.00 and dolphin 3.29 against 68.59.

@@ -208,6 +208,7 @@ say ""
 say "- date: $(date -Is)"
 say "- host: $(hostname), kernel $(uname -r)"
 say "- fixture: $FIXTURE"
+say "- fixture kind: ${FIXTURE_KIND:-btrfs}"
 say "- fixture payload: $(ls -U "$FIXTURE" | wc -l) visible entries, filesystem $(findmnt -no FSTYPE -T "$FIXTURE")"
 say "- TUI terminal: $TUI_TERMINAL $(pkg_version "$TUI_TERMINAL")"
 say "- flea launch line: ${FLEA_LAUNCH_LINE:-not recorded by the caller}"
@@ -216,6 +217,10 @@ say "- flea launch line: ${FLEA_LAUNCH_LINE:-not recorded by the caller}"
 # this window fails there and reads as an archive regression.
 say "- load average at start: $(cut -d' ' -f1-3 /proc/loadavg)"
 say "- waited $(( ${BENCH_IDLE_WAITED:-0} )) seconds for the box to go idle before starting"
+# The settle clock's shape, so a nas or usb row stays comparable to the run that produced it.
+say "- settle gap: ${SETTLE_GAP_MS:-500} ms of quiet ticks"
+say "- settle clock watches the entrant tree plus: ${SETTLE_WATCH_PIDS:-none}"
+if [ -n "${NET_IFACE:-}" ]; then say "- receive bytes counted on: $NET_IFACE"; fi
 say "- TUI preview target: ${PREVIEW_TARGET:-not recorded by the caller}"
 # This line WROTE "PASSED" from the mere presence of EXPECT_FILES and never compared it to the count
 # printed beside it, so it recorded a claim instead of making a check. It was true only because
