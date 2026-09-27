@@ -2057,6 +2057,16 @@ arrival gate, which checks child counts through `matches()` because a same-tick 
 directory's size and mtime, plus the thread-local walk counter that proves one delete runs exactly
 one `matches()` walk. Count re-derived with `wc -l`.
 
+The GVFS bridge raises two recorded ceilings rather than splitting a third file.
+`ui/NetworkMounts.qml` goes from its recorded 560 to 578 for the bridge hold (the `sticky`
+signal, the `GvfsBridge` service with its four handlers, and the info leg opening through
+`bridge.ensure` instead of at once), and `ui/Sidebar.qml` from its recorded 543 to 545 for
+the one `onSticky` line that hands the wait's line to the pane that asked. The decisions
+went to the new `ui/js/GvfsBridge.js`, 177 lines inside the soft budget, and the processes
+and timers to the new `ui/GvfsBridge.qml`, 122 lines inside it; `ui/StatusBar.qml` takes the
+busy mark and stays at 397, inside its 400 hard cap. Each count re-derived with `wc -l` at
+the commit that recorded it.
+
 `src/backend/ops.rs` split to `src/backend/renamecompat.rs` at 455: composing PR 35's safe rclone
 rename into the release tree put the rename exception over the 400-line hard cap, so the exception
 and its tests moved to the module that already owned classifying which rename failures need it.

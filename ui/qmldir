@@ -52,6 +52,7 @@ FileDrag 1.0 FileDrag.qml
 RowDrag 1.0 RowDrag.qml
 WindowDrag 1.0 WindowDrag.qml
 Glyph 1.0 Glyph.qml
+GvfsBridge 1.0 GvfsBridge.qml
 GridTile 1.0 GridTile.qml
 GridArea 1.0 GridArea.qml
 Header 1.0 Header.qml

@@ -150,6 +150,8 @@ Item {
         bookmarksText: bookmarksFile.text()
         onOpened: function (path, origin) { root.networkOpened(path, origin) }
         onMessage: function (text, isError) { root.message(text, isError) }
+        // The bridge wait's sticky line reaches the pane that asked, or the navigating one.
+        onSticky: function (text, origin) { (origin || root.navigationPane).sticky(text) }
         onSharesListed: function (baseUri, baseLabel, names, origin) { root.sharesListed(baseUri, baseLabel, names, origin) }
         onRetryRequested: function (uri, label, password, reason, failedConnect, origin) {
             root.networkRetryRequested(uri, label, password, reason, failedConnect, origin)

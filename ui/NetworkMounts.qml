@@ -21,6 +21,8 @@ Item {
 
     signal opened(string path, var origin)
     signal message(string text, bool isError)
+    // The bridge wait's own sticky line, cleared with "" when the folder lands or fails.
+    signal sticky(string text, var origin)
     // Client-side only, see "listShares" below: ui/ShareBrowser.qml renders these as pane rows.
     signal sharesListed(string baseUri, string baseLabel, var names, var origin)
     // Fired once ui/NetworkPlaces.qml's write has actually landed, so a caller's reload reads it.
@@ -194,6 +196,22 @@ Item {
         entries: root.entries
         onMessage: function (text, isError) { root.message(text, isError) }
         onWrote: root.renamed()
+    }
+
+    // Phones and shares open through the GVFS FUSE bridge: the folder gio resolved is held
+    // here until the bridge serves it, so the window stays put meanwhile and stays there on
+    // a bridge that will not start.
+    GvfsBridge {
+        id: bridge
+        environment: root.gioEnvironment
+        onReady: function (path, origin) { root.sticky("", origin); root.opened(path, origin) }
+        onStarting: function (text, origin) { root.sticky(text, origin) }
+        onFailed: function (text, origin) {
+            root.result = "failed"
+            root.sticky("", origin)
+            root.message(text, true)
+        }
+        onNotice: function (text, origin) { root.message(text, false) }
     }
 
     // Three sources, deduped on the normalized uri (see ui/js/Mounts.js "normalize"): a live gio mount wins over a bookmark for the same share even when the trailing slash differs.
@@ -500,7 +518,7 @@ Item {
             if (exitCode === 0 && path.length > 0) {
                 root.result = "mounted"
                 root.finishRequest(true, "")
-                root.opened(path, root._pendingOrigin)
+                bridge.ensure(path, root._pendingLabel, root._pendingOrigin)
                 return
             }
             // A refused keyless sftp attempt is a missing credential and not a refused location, sftp only.

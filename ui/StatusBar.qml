@@ -6,6 +6,7 @@ import "js/Filter.js" as Filter
 import "js/Ops.js" as Ops
 import "js/Status.js" as Status
 import "js/Trash.js" as Trash
+import "js/GvfsBridge.js" as GvfsBridge
 
 Item {
     id: root
@@ -57,6 +58,8 @@ Item {
     readonly property var centreItem: centre
     readonly property bool transientIsError: root.shown.isError
     property var activities: []
+    // The bridge board's busy mark walks while a Starting line stands, and only then.
+    property bool busy: false
     property var dragFeedbackOwner: null
     readonly property var activity: root.activities.length ? root.activities[0] : null
     // StatusBar rule 8: the card owns a transfer's progress and it is up whenever one runs, so the
@@ -179,6 +182,7 @@ Item {
 
     function setActivity(owner, text, transfer) {
         root.activities = Status.activityChanged(root.activities, owner, transfer.running ? Ops.progressLine(transfer) : text, transfer)
+        root.busy = root.activities.some(function (a) { return GvfsBridge.isStartingLine(a.text) })
     }
 
     // A completion hidden by an error or live activity keeps its full display time after acknowledgement.
@@ -295,12 +299,23 @@ Item {
         // Rule 2: the disk keeps its zone whatever the transient says, so the pair share this and elide
         // inside it rather than growing into the facts beside them.
         readonly property real room: root.transientRoom
+        readonly property real busyRoom: root.busy ? busyMark.width + centre.spacing : 0
+        spacing: root.busy ? Theme.spacing.gap : 0
+
+        // The bridge board's busy mark, caption-sized because the bar's own text is.
+        Flea.Spinner {
+            id: busyMark
+            visible: root.busy
+            width: visible ? Theme.font.caption : 0
+            height: Theme.font.caption
+            color: Theme.color.muted
+        }
 
         Text {
             id: primary
             text: root.centreText()
             color: root.centreColor()
-            width: Math.min(implicitWidth, Math.max(0, centre.room - secondary.width))
+            width: Math.min(implicitWidth, Math.max(0, centre.room - secondary.width - centre.busyRoom))
             font.family: Theme.font.family
             font.pixelSize: Theme.font.caption
             elide: Text.ElideMiddle

@@ -75,6 +75,7 @@ import "thumbs.js" as ThumbsSuite
 import "uistate.js" as UiStateSuite
 import "update.js" as UpdateSuite
 import "watch.js" as WatchSuite
+import "gvfsbridge.js" as GvfsBridgeSuite
 
 Item {
     Component.onCompleted: {
@@ -113,7 +114,7 @@ Item {
             ["sort", SortSuite], ["swap", SwapSuite], ["startup", StartupSuite], ["trashdates", TrashDatesSuite], ["permissions", PermissionsSuite], ["status", StatusSuite], ["taildrop", TaildropSuite], ["textsize", TextSizeSuite],
             ["trash", TrashSuite], ["tap", TapSuite], ["marquee", MarqueeSuite], ["tabs", TabsSuite], ["tabs-switch", TabsSwitchSuite], ["shelfmodel", ShelfModelSuite],
             ["themes", ThemesSuite], ["thumbs", ThumbsSuite], ["transfer", TransferSuite], ["uistate", UiStateSuite], ["update", UpdateSuite],
-            ["watch", WatchSuite]
+            ["watch", WatchSuite], ["gvfsbridge", GvfsBridgeSuite]
         ]
         var argv = Qt.application.arguments
         var only = ""
