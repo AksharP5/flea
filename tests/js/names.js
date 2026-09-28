@@ -38,24 +38,67 @@ function run(check) {
           Names.middleElide("abcdefghij", 3), "a…j")
     check("a two-wide budget keeps the head and the mark",
           Names.middleElide("abcdefghij", 2), "a…")
-    runGridBudget(check)
+    runGridCaption(check)
 }
 
-// A grid caption wraps at word boundaries, so the tile budgets the face it draws and the first
-// line whole with each continuation half, keeping the extension on the second line.
-function runGridBudget(check) {
-    check("one line budgets whole", Names.gridBudget(128, 7.8, 1), 16)
-    check("two lines budget whole plus half", Names.gridBudget(128, 7.8, 2), 24)
-    check("a dead width budgets nothing", Names.gridBudget(0, 7.8, 2), -1)
-    check("a dead advance budgets nothing", Names.gridBudget(128, 0, 2), -1)
+// The grid caption carries Flea's own breaks, so Qt's word wrap never strands a token on line 2.
+function runGridCaption(check) {
     var full = "screenshot-2026-08-30-final-review-for-gm-after-the-bench-v3.png"
-    check("the board sample keeps its extension under word wrap",
-          Names.middleElide(full, Names.gridBudget(128, 7.8, 2)).slice(-4), ".png")
+    function linesOf(caption) {
+        return String(caption).split("\n")
+    }
+    // Each line holds at most perLine code points; a surrogate pair is one, never two.
+    function fits(caption, per) {
+        var out = linesOf(caption)
+        for (var i = 0; i < out.length; i++)
+            if (Names.charsOf(out[i]).length > per)
+                return false
+        return true
+    }
+    var board = Names.gridCaption(full, 16, 2)
+    check("the board sample breaks deterministically",
+          board, "screenshot-2026-\n…he-bench-v3.png")
+    check("every board line fits one line", fits(board, 16), true)
+    var token = Names.gridCaption("a verylongnamewithoutanyspacesatall.png", 16, 2)
+    check("a short word then a long token keeps the extension",
+          token, "a verylongnamewi\n…spacesatall.png")
+    check("every token line fits one line", fits(token, 16), true)
+    check("a name that fits in one line gains no break",
+          Names.gridCaption("IMG_4121.jpg", 16, 2), "IMG_4121.jpg")
+    check("an empty name stays empty",
+          Names.gridCaption("", 16, 2), "")
+    var plain = Names.gridCaption("a-very-long-filename-with-no-extension-at-all", 20, 2)
+    check("a name with no extension still breaks and fits", fits(plain, 20), true)
+    check("a name with no extension elides only when it cannot fit",
+          plain.indexOf("…") >= 0, true)
+    var tiny = Names.gridCaption("abcd", 1, 2)
+    check("a line length of 1 fits every line", fits(tiny, 1), true)
+    check("a line length of 1 still answers two lines", linesOf(tiny).length, 2)
+    var single = Names.gridCaption(full, 16, 1)
+    check("one line takes no break", single.indexOf("\n") >= 0, false)
+    check("one line fits and keeps the extension",
+          fits(single, 16) && single.slice(-4) === ".png", true)
+    check("a dead width hands the whole name back",
+          Names.gridCaption(full, 0, 2), full)
+    check("a dead line count hands the whole name back",
+          Names.gridCaption(full, 16, 0), full)
+    check("gridBudget is gone", typeof Names.gridBudget, "undefined")
     var tile = source("ui/GridTile.qml")
+    check("the caption breaks through the wrap-safe helper",
+          tile.indexOf("Names.gridCaption") >= 0, true)
+    check("the wrap guess is gone",
+          tile.indexOf("Names.gridBudget") >= 0, false)
     check("the caption budgets off the face it draws",
-          tile.indexOf("Theme.bodyAdvance") >= 0, true)
-    check("through the wrap-safe helper",
-          tile.indexOf("Names.gridBudget") >= 0, true)
+          tile.indexOf("Theme.bodySmallAdvance") >= 0, true)
+    check("the caption no longer budgets off the body face",
+          tile.indexOf("Theme.bodyAdvance") >= 0, false)
+    check("the breaks are Flea's own",
+          tile.indexOf("wrapMode: Text.NoWrap") >= 0, true)
+    var labelAt = tile.indexOf("id: nameLabel")
+    var tipAt = tile.indexOf("id: tip")
+    check("NoWrap sits on the caption label, ahead of the tooltip",
+          labelAt >= 0 && tipAt > labelAt
+              && tile.indexOf("Text.NoWrap", labelAt) < tipAt, true)
     check("the mark sits in the reserved strip past the last glyph",
           tile.indexOf("nameLabel.x + nameLabel.width + Theme.spacing.gap") >= 0, true)
 }

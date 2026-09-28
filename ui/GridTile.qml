@@ -105,9 +105,10 @@ Item {
 
     HoverHandler { id: hover }
 
-    // corner: a filename is arbitrary text, so PlainText; Qt elides wrapped text only with ElideRight, so Names.js keeps the extension visible.
+    // corner: a filename is arbitrary text, so PlainText; the breaks are Flea's own, so the label never wraps.
     readonly property int captionLines: root.dropTarget ? 1 : 2
-    readonly property int captionBudget: Names.gridBudget(nameLabel.width, Theme.bodyAdvance, root.captionLines)
+    // Characters of one caption line at the bodySmall advance the label draws at; Flea's font is monospace, so this is a floor.
+    readonly property int captionPerLine: Theme.bodySmallAdvance > 0 && nameLabel.width > 0 ? Math.floor(nameLabel.width / Theme.bodySmallAdvance) : -1
     Text {
         id: nameLabel
         visible: !root.renaming
@@ -120,12 +121,12 @@ Item {
         anchors.rightMargin: Theme.spacing.gap + (root.clipMark.length > 0 ? Theme.spacing.gap + root.clipPx : 0)
         height: root.dropTarget ? Theme.grid.captionLineHeight : Theme.grid.captionHeight
         horizontalAlignment: Text.AlignHCenter
-        text: root.row && root.captionBudget >= 0 ? Names.middleElide(root.row.n, root.captionBudget) : (root.row ? root.row.n : "")
+        text: root.row ? Names.gridCaption(root.row.n, root.captionPerLine, root.captionLines) : ""
         color: Theme.color.foreground
         font.family: Theme.font.family
         font.pixelSize: Theme.font.bodySmall
         textFormat: Text.PlainText
-        wrapMode: Text.Wrap
+        wrapMode: Text.NoWrap
         maximumLineCount: root.captionLines
         lineHeightMode: Text.FixedHeight
         lineHeight: Theme.grid.captionLineHeight
