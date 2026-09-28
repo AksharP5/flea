@@ -1,5 +1,4 @@
-// The path bar's folder jump: the three sources ui/PathJump.qml filters, answered once per open of the
-// bar; see docs/protocol.md "jump". Nothing here writes, to zoxide's database or anywhere else.
+// The path bar's folder jump, answered once per open of the bar; see docs/protocol.md "jump".
 use crate::backend::opsreq::OpMsg;
 use crate::json::escape;
 use crate::backend::mountinfo::{enclosing, mounts_in};
@@ -12,20 +11,20 @@ use std::sync::mpsc::{channel, Sender};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-// zoxide answers from one local file in milliseconds, so past this it is wedged and its source draws nothing.
+// zoxide answers from one local file in milliseconds, so past this it is wedged and draws nothing.
 const ZOXIDE_LIMIT: Duration = Duration::from_secs(2);
 // About ten thousand paths, far past any ranking a person reads; a larger database is cut at its tail.
 const ZOXIDE_BYTES: u64 = 1 << 20;
-// The ranked head kept for the existence checks, which is already more than a dropdown ever draws.
+// The ranked head kept for the existence checks, already more than a dropdown ever draws.
 const ZOXIDE_ROWS: usize = 1000;
-// One budget for every existence check, so a stat wedged on a dead network mount costs its own source's
-// rows from that one on, never the other sources and never the whole answer.
+// One budget for every existence check: a wedged stat costs its own source's later rows, never the answer.
 const CHECK_LIMIT: Duration = Duration::from_secs(1);
-// One zoxide at a time, and every existence check in flight from any open with that open's deadline: a
-// check its own open has given up on is wedged, and the next open skips its key rather than wedge behind it.
+// One zoxide at a time; checks in flight carry their open's deadline, and the next open skips a wedged key.
 static ZOXIDE_RUNNING: AtomicBool = AtomicBool::new(false);
 static CHECKING: Mutex<BTreeMap<String, Vec<(u64, Instant)>>> = Mutex::new(BTreeMap::new());
 static TICKETS: AtomicU64 = AtomicU64::new(0);
+// The last ranking a run answered before its limit, drawn while a later run is still in flight.
+static LAST_ZOXIDE: Mutex<Vec<(String, f64)>> = Mutex::new(Vec::new());
 // Where the mount table is read, once per answer, and never through the filesystems it lists.
 const MOUNTINFO: &str = "/proc/self/mountinfo";
 
@@ -45,8 +44,7 @@ struct Candidate {
     path: String,
 }
 
-// Answered on its own thread, because zoxide is a subprocess and a stat can block on a mount; the loop
-// never waits on either. id is the client's own, echoed so it can tell this open's answer from an older one.
+// Answered on its own thread: zoxide is a subprocess and a stat can block, so the loop never waits.
 pub fn request(id: usize, favourites: Vec<String>, recent: Vec<String>, replies: Sender<OpMsg>) {
     // Meta's variant carries any finished line; it exists for the same reason, a subprocess the loop must not wait on.
     std::thread::spawn(move || {
@@ -54,32 +52,32 @@ pub fn request(id: usize, favourites: Vec<String>, recent: Vec<String>, replies:
     });
 }
 
-// program is zoxide's name on PATH; the tests hand it a script of their own, so no test reads a real database.
+// Production entry: the recent files go through recent_folder on the same budget as every other check.
 fn answer(program: &str, id: usize, favourites: &[String], recent: &[String]) -> String {
+    answer_checked(program, id, favourites, recent, CHECK_LIMIT, recent_folder)
+}
+
+// recent_check is a parameter so tests can stand a wedged stat in for the real one.
+fn answer_checked(program: &str, id: usize, favourites: &[String], recent: &[String], limit: Duration, recent_check: fn(&Candidate) -> Option<String>) -> String {
     let started = Instant::now();
     let ranked = zoxide(program, ZOXIDE_LIMIT);
     let paths: Vec<String> = ranked.iter().map(|(path, _)| path.clone()).collect();
     let mounts = mounts_in(&std::fs::read_to_string(MOUNTINFO).unwrap_or_default());
-    // A favourite or a zoxide row must itself be a folder; a recent file stands for the folder holding
-    // it, whose parents resolve first so one open stats each folder once no matter how many files sit
-    // in it. jumped_line answers each folder once in its first source either way.
-    let mut found = existing(candidates(favourites, &paths, &[]), CHECK_LIMIT, folder, &mounts);
+    let mut found = existing(candidates(favourites, &paths), limit, folder, &mounts);
     let (parents, files) = recent_parents(recent);
-    let resolved = resolve_parents(parents, CHECK_LIMIT, &mounts);
-    for (file, parent) in files {
-        if let Some(folder) = resolve_recent(&file, &parent, &resolved) {
-            found.push((Source::Recent, folder));
-        }
-    }
+    let resolved = resolve_parents(parents, limit, &mounts);
+    let recent_candidates: Vec<Candidate> = files.into_iter()
+        .filter(|(_, parent)| resolved.contains(parent))
+        .map(|(file, _)| Candidate { source: Source::Recent, path: file })
+        .collect();
+    found.extend(existing(recent_candidates, limit, recent_check, &mounts));
     jumped_line(id, &found, &ranked, started.elapsed().as_secs_f64() * 1000.0)
 }
 
-// --all lists missing folders too, which is what keeps zoxide from pruning its own database on a query Flea made;
-// the existence check below drops them instead. --score is the frecency the client ranks by, and a zoxide
-// that is not installed is an empty source and says nothing.
+// --all keeps zoxide from pruning its database on a query Flea made; --score is the frecency the client ranks by.
 fn zoxide(program: &str, limit: Duration) -> Vec<(String, f64)> {
     if ZOXIDE_RUNNING.swap(true, Ordering::SeqCst) {
-        return Vec::new();
+        return last_ranking();
     }
     let spawned = Command::new(program)
         .args(["query", "--list", "--all", "--score"])
@@ -103,9 +101,9 @@ fn zoxide(program: &str, limit: Duration) -> Vec<(String, f64)> {
         }
         let _ = tx.send(text);
     });
-    let text = rx.recv_timeout(limit).unwrap_or_default();
+    let text = rx.recv_timeout(limit).map(|text| (true, text)).unwrap_or((false, Vec::new()));
     // Short of the cap means the pipe closed; at the cap, or past the limit with nothing, zoxide may still be running.
-    let whole = !text.is_empty() && (text.len() as u64) < ZOXIDE_BYTES;
+    let whole = !text.1.is_empty() && (text.1.len() as u64) < ZOXIDE_BYTES;
     if !whole {
         let _ = child.kill();
     }
@@ -114,14 +112,20 @@ fn zoxide(program: &str, limit: Duration) -> Vec<(String, f64)> {
         let _ = child.wait();
         ZOXIDE_RUNNING.store(false, Ordering::SeqCst);
     });
-    ranked_paths(&String::from_utf8_lossy(&text), whole)
+    let ranked = ranked_paths(&String::from_utf8_lossy(&text.1), whole);
+    if text.0 {
+        *LAST_ZOXIDE.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = ranked.clone();
+    }
+    ranked
 }
 
-// Sample input, `zoxide query --list --all --score`, one folder per line, best ranked first:
-//     80.0 /home/gm/Documents
-//      0.2 /home/gm/Work/field
-// A cut read can end halfway through a line, so its last line is dropped. A line is a row only when its
-// score is a finite number and its path is absolute; the path is everything after the score's one space.
+// The ranking kept from the last run that answered before its limit, empty on a first-ever open.
+fn last_ranking() -> Vec<(String, f64)> {
+    LAST_ZOXIDE.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).clone()
+}
+
+// Sample input: "80.0 /home/gm/Documents" one folder per line, best ranked first.
+// A cut read drops its last line; a row needs a finite score and an absolute path.
 fn ranked_paths(text: &str, whole: bool) -> Vec<(String, f64)> {
     let mut lines: Vec<&str> = text.lines().collect();
     if !whole {
@@ -144,12 +148,11 @@ fn ranked_paths(text: &str, whole: bool) -> Vec<(String, f64)> {
     out
 }
 
-// Favourites, then zoxide's ranking, then the recent history, each in its own order. A path named twice is
-// kept in its first source only, so no two checks of one path run at once and a favourite stays a favourite.
-fn candidates(favourites: &[String], ranked: &[String], recent: &[String]) -> Vec<Candidate> {
+// Favourites, then zoxide's ranking, each in its own order; a path named twice is kept in its first source only.
+fn candidates(favourites: &[String], ranked: &[String]) -> Vec<Candidate> {
     let mut seen = HashSet::new();
     let mut out = Vec::new();
-    for (source, paths) in SOURCES.into_iter().zip([favourites, ranked, recent]) {
+    for (source, paths) in [Source::Favourite, Source::Zoxide].into_iter().zip([favourites, ranked]) {
         for path in paths.iter().filter(|path| path.starts_with('/')) {
             if seen.insert(path.as_str()) {
                 out.push(Candidate { source, path: path.clone() });
@@ -159,24 +162,12 @@ fn candidates(favourites: &[String], ranked: &[String], recent: &[String]) -> Ve
     out
 }
 
-// The folder a candidate stands for now, or None: a favourite or a zoxide row must itself be a directory,
-// and a recent entry is a file, so it stands for the folder it sits in unless it is a folder itself.
+// The folder a favourite or zoxide row stands for now, or None when it is not a directory.
 fn folder(candidate: &Candidate) -> Option<String> {
-    let path = Path::new(&candidate.path);
-    if path.is_dir() {
-        return Some(candidate.path.clone());
-    }
-    if candidate.source != Source::Recent {
-        return None;
-    }
-    let parent = path.parent()?;
-    parent.is_dir().then(|| parent.to_string_lossy().into_owned())
+    Path::new(&candidate.path).is_dir().then(|| candidate.path.clone())
 }
 
-// Each recent file with the folder it sits in, and every such folder once in first-seen order, so one
-// open stats each folder a single time no matter how many files sit in it. Sample input:
-// ["/a/f.txt", "/a/g.txt", "/b/h.txt"] names "/a" and "/b" once each and pairs every file with its
-// folder; a path that is not absolute, and the root's own empty parent, name no folder to check.
+// Sample input: ["/a/f.txt", "/a/g.txt"] names "/a" once and pairs every file with its folder.
 fn recent_parents(recent: &[String]) -> (Vec<String>, Vec<(String, String)>) {
     let mut seen = HashSet::new();
     let mut parents = Vec::new();
@@ -191,21 +182,16 @@ fn recent_parents(recent: &[String]) -> (Vec<String>, Vec<(String, String)>) {
     (parents, files)
 }
 
-// What one recent file stands for now: itself when it is a folder, the folder it sits in when that
-// folder resolved above, and nothing when neither does. The metadata follows links, the rule folder()
-// follows, so a symlink to a folder still stands for itself; a file stands for its folder without a
-// second stat, because a file that exists sits in a folder that does.
-fn resolve_recent(file: &str, parent: &str, resolved: &HashSet<String>) -> Option<String> {
-    match std::fs::metadata(file) {
-        Ok(meta) if meta.is_dir() => Some(file.to_string()),
-        Ok(_) => Some(parent.to_string()),
-        Err(_) => resolved.contains(parent).then(|| parent.to_string()),
+// What one recent file stands for: itself when it is a folder, else the parent the caller already resolved.
+fn recent_folder(candidate: &Candidate) -> Option<String> {
+    let path = Path::new(&candidate.path);
+    if path.is_dir() {
+        return Some(candidate.path.clone());
     }
+    path.parent().filter(|parent| !parent.as_os_str().is_empty()).map(|parent| parent.to_string_lossy().into_owned())
 }
 
-// Every folder recent files sit in, checked once on the same budget and wedged-mount keys the per-row
-// checks use: a parent that never answers drops every file under it, the way one wedged stat drops its
-// source's rows from that one on.
+// Every folder recent files sit in, checked once each; an unresolved parent drops every file under it.
 fn resolve_parents(parents: Vec<String>, limit: Duration, mounts: &[(PathBuf, String)]) -> HashSet<String> {
     let own: Vec<Candidate> = parents.into_iter().map(|path| Candidate { source: Source::Recent, path }).collect();
     existing(own, limit, is_dir_path, mounts).into_iter().map(|(_, path)| path).collect()
@@ -216,13 +202,12 @@ fn is_dir_path(candidate: &Candidate) -> Option<String> {
     Path::new(&candidate.path).is_dir().then(|| candidate.path.clone())
 }
 
-// A filesystem that answers over the network or through FUSE, the kind whose stat can wedge for good.
+// A filesystem whose stat can wedge for good: network kinds and any FUSE mount.
 fn remote(kind: &str) -> bool {
     matches!(kind, "nfs" | "nfs4" | "cifs" | "smb3" | "smbfs" | "9p" | "ceph" | "afs" | "fuse") || kind.starts_with("fuse.")
 }
 
-// What a check is known by: on a remote mount, the mount, because one wedged stat there means every path
-// there wedges; anywhere else the path itself. Lexical, so it never touches the filesystem it names.
+// What a check is known by: the mount on a remote filesystem, else the path itself; lexical, never a stat.
 fn key_for(path: &str, mounts: &[(PathBuf, String)]) -> String {
     match enclosing(Path::new(path), mounts) {
         Some((point, kind)) if remote(kind) => format!("mount {}", point.display()),
@@ -234,9 +219,7 @@ fn checking() -> std::sync::MutexGuard<'static, BTreeMap<String, Vec<(u64, Insta
     CHECKING.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
-// One check, unless a check on the same key is still running past the deadline of the open that started it:
-// that one is wedged and this one would only wedge behind it. One inside its deadline is merely slow, so
-// this checks again rather than skip a row the earlier open may still answer.
+// One check, unless a check on the same key already ran past its open's deadline: that one is wedged.
 fn checked(candidate: &Candidate, key: &str, deadline: Instant, check: fn(&Candidate) -> Option<String>) -> Option<String> {
     let ticket = TICKETS.fetch_add(1, Ordering::SeqCst);
     {
@@ -258,8 +241,7 @@ fn checked(candidate: &Candidate, key: &str, deadline: Instant, check: fn(&Candi
     answer
 }
 
-// Each source is checked on a thread of its own, in its own order, and whatever has not answered by the
-// limit is dropped: a blocked stat cannot be cancelled, so it finishes later into a closed channel.
+// Each source is checked on a thread of its own; whatever has not answered by the limit is dropped.
 fn existing(candidates: Vec<Candidate>, limit: Duration, check: fn(&Candidate) -> Option<String>, mounts: &[(PathBuf, String)]) -> Vec<(Source, String)> {
     let total = candidates.len();
     let deadline = Instant::now() + limit;
@@ -287,10 +269,7 @@ fn existing(candidates: Vec<Candidate>, limit: Duration, check: fn(&Candidate) -
     found.into_iter().flatten().collect()
 }
 
-
-// A folder appears once, in the first source that names it, the same first-position rule Places.favorites
-// follows. frecency carries zoxide's score for each folder answered that zoxide ranks, whichever source
-// draws it, which is what the client ranks by after the match itself.
+// A folder appears once, in the first source that names it; frecency rides along for any ranked folder.
 fn jumped_line(id: usize, found: &[(Source, String)], scores: &[(String, f64)], ms: f64) -> String {
     let ranked: HashMap<&str, f64> = scores.iter().map(|(path, score)| (path.as_str(), *score)).collect();
     let mut seen = HashSet::new();

@@ -1743,6 +1743,9 @@ failure fails the check rather than passing it.
   `the_exact_scores_the_jump_port_mirrors` share, value for value. The history is read once and kept,
   and a `FileView` that never loads it re-reads it only after the file changes.
   `backend/jump.rs` answers the three sources once per open of the bar, see docs/protocol.md "jump".
+  A recent file stands for its folder only after that folder resolved, checked through `existing()` on
+  the shared budget under its own mount key, so a wedged recent file costs its row and never the answer.
+  An open behind a slow zoxide draws the last ranking that answered in time, empty on a first-ever open.
   A line with a slash in it, starting with `~`, or `.` or `..` alone, is typed as a path exactly as
   before the jump, and so is every line once Tab has completed it, so "Wo", Tab, Enter still opens
   `./Work`; so is a name that matches nothing. A name's Enter before the backend has answered is held

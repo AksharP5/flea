@@ -842,9 +842,11 @@ on the answer, so an answer to an earlier open is told apart from this one's.
 without it zoxide deletes entries missing for 90 days and saves. zoxide is optional: absent, it is an
 empty source and says nothing. A zoxide that runs past 2 s is killed and draws nothing, and its answer is
 read up to 1 MiB and its first 1,000 rows. Only one zoxide runs at a time: an open while an earlier one is
-still being reaped draws no zoxide rather than starting a second. Each source is checked on a thread of its
+still running draws the last ranking that answered in time rather than starting a second, and an
+open with no ranking kept yet draws no zoxide. Each source is checked on a thread of its
 own against one shared 1 s budget, so a stat wedged on a dead mount drops that source's rows from that one on
-and never the other sources. A check still running past the budget of the open that started it is wedged, and
+and never the other sources. A recent file is checked only once the folder holding it resolved, on that
+same budget and under that same key rule, so a wedged recent file costs its own row and never the answer. A check still running past the budget of the open that started it is wedged, and
 the next open skips what it names rather than wedge behind it: its whole mount when that mount is NFS, SMB,
 9p, Ceph, AFS or FUSE (read lexically from `/proc/self/mountinfo`, never through the mount), its own path
 anywhere else. A dead share therefore holds at most one thread per source for good, not more per open, and a
