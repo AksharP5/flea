@@ -526,7 +526,7 @@ fn a_durable_copy_confirms_slices_while_it_writes() {
     let d = TestDir::new("durable-slices");
     let out = d.dir("out");
     test_mark_durable(&out);
-    // Three confirm slices plus a tail: pipelined writeback reports through k-1, so two mids plus the final.
+    // Ramp slices 1, 2, 4, 8, 8 MiB plus a tail: pipelined writeback reports through k-1, so four mids plus the final.
     let confirm = crate::backend::copyfile::CONFIRM_BYTES as usize;
     let total: usize = confirm * 3 + 1024 * 1024;
     let src = d.join("big.bin");
@@ -539,7 +539,9 @@ fn a_durable_copy_confirms_slices_while_it_writes() {
     let mut p = quiet(&flag, &mut sink, &mut durability);
     crate::backend::copyfile::copy_any(&src, &out.join("big.bin"), &mut p).expect("copy");
     drop(p);
-    assert_eq!(seen.len(), 3, "two pipelined mids plus the final, got {:?}", seen);
+    let mib = 1024 * 1024 as u64;
+    assert_eq!(seen.len(), 5, "four ramped mids plus the final, got {:?}", seen);
+    assert_eq!((seen[0].0, seen[1].0, seen[2].0, seen[3].0), (mib, mib * 3, mib * 7, mib * 15), "the ramped mids, got {:?}", seen);
     assert!(seen.windows(2).all(|w| w[1].0 > w[0].0), "confirmed counts only ever rise, got {:?}", seen);
     assert_eq!(seen.last().copied(), Some((total as u64, total as u64)), "the last report is the whole file, got {:?}", seen.last());
     test_reset();
@@ -631,11 +633,14 @@ fn every_mid_file_report_follows_a_completed_wait() {
     crate::backend::copyfile::copy_any(&src, &out.join("big.bin"), &mut p).expect("copy");
     drop(p);
     let waits = crate::backend::durable::test_range_waits();
-    assert_eq!(waits, 2, "two pipelined waits for three slices, got {}", waits);
+    let mib = 1024 * 1024 as u64;
+    assert_eq!(waits, 4, "four pipelined waits for five ramp slices, got {}", waits);
     assert_eq!(seen.len(), waits + 1, "mids plus the final, got {:?}", seen);
-    assert_eq!((seen[0].0, seen[0].2), (confirm, 1), "the first mid follows one wait, got {:?}", seen);
-    assert_eq!((seen[1].0, seen[1].2), (confirm * 2, 2), "the second mid follows two waits, got {:?}", seen);
-    assert_eq!(seen[2].2, 2, "the final fsync adds no wait, got {:?}", seen);
+    assert_eq!((seen[0].0, seen[0].2), (mib, 1), "the first mid follows one wait, got {:?}", seen);
+    assert_eq!((seen[1].0, seen[1].2), (mib * 3, 2), "the second mid follows two waits, got {:?}", seen);
+    assert_eq!((seen[2].0, seen[2].2), (mib * 7, 3), "the third mid follows three waits, got {:?}", seen);
+    assert_eq!((seen[3].0, seen[3].2), (mib * 15, 4), "the fourth mid follows four waits, got {:?}", seen);
+    assert_eq!(seen[4].2, 4, "the final fsync adds no wait, got {:?}", seen);
     assert_eq!(seen.last().map(|s| (s.0, s.1)), Some((total as u64, total as u64)));
     test_reset();
 }
@@ -665,9 +670,10 @@ fn a_wait_einval_stops_slicing_and_reports_only_the_final_count() {
     assert_eq!(seen, vec![(total as u64, total as u64)], "only the final whole-file count, got {:?}", seen);
     assert_eq!(crate::backend::durable::test_range_waits(), 0, "no wait completed");
     assert_eq!(test_counts().0, 3, "two writes plus the final fsync, got {:?}", test_counts());
+    let mib = 1024 * 1024;
     assert_eq!(crate::backend::durable::test_range_log(), vec![
         "write 0".to_string(),
-        format!("write {confirm}"),
+        format!("write {mib}"),
         "wait 0".to_string(),
         "fsync".to_string(),
     ], "slicing stops at the failing wait, got {:?}", crate::backend::durable::test_range_log());
@@ -720,13 +726,41 @@ fn slices_start_with_write_alone_before_the_previous_waits() {
     let mut p = quiet(&flag, &mut sink, &mut durability);
     crate::backend::copyfile::copy_any(&src, &out.join("big.bin"), &mut p).expect("copy");
     drop(p);
+    let mib: u64 = 1024 * 1024;
     assert_eq!(crate::backend::durable::test_range_log(), vec![
         format!("write 0"),
-        format!("write {confirm}"),
+        format!("write {mib}"),
         "wait 0".to_string(),
-        format!("write {}", confirm * 2),
-        format!("wait {confirm}"),
+        format!("write {}", mib * 3),
+        format!("wait {mib}"),
+        format!("write {}", mib * 7),
+        format!("wait {}", mib * 3),
+        format!("write {}", mib * 15),
+        format!("wait {}", mib * 7),
         "fsync".to_string(),
     ], "pipelined writes before waits, got {:?}", crate::backend::durable::test_range_log());
+    test_reset();
+}
+
+// The first progress lands after the first ramp slice, so a large copy reports in milliseconds.
+#[test]
+fn first_confirmed_slice_is_first_confirm_bytes() {
+    test_reset();
+    let d = TestDir::new("durable-ramp-first");
+    let out = d.dir("out");
+    test_mark_durable(&out);
+    let confirm = crate::backend::copyfile::CONFIRM_BYTES as usize;
+    let total: usize = confirm * 3 + 1024 * 1024;
+    let src = d.join("big.bin");
+    std::fs::write(&src, vec![b'a'; total]).expect("test sandbox file");
+    let mut durability = Durability::begin(&out);
+    assert!(durability.durable, "the marked target is durable");
+    let flag = std::sync::atomic::AtomicBool::new(false);
+    let mut seen: Vec<(u64, u64)> = Vec::new();
+    let mut sink = |done: u64, against: u64| seen.push((done, against));
+    let mut p = quiet(&flag, &mut sink, &mut durability);
+    crate::backend::copyfile::copy_any(&src, &out.join("big.bin"), &mut p).expect("copy");
+    drop(p);
+    assert_eq!(seen[0].0, crate::backend::copyfile::FIRST_CONFIRM_BYTES, "the first report is the first ramp slice, got {:?}", seen);
     test_reset();
 }

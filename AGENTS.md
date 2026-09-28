@@ -2622,7 +2622,12 @@ P036statfs records one ceiling, re-derived with `wc -l`: `src/backend/meta.rs` 3
 slow vfat/exfat pass stays on one thread while slow ext4/cifs still thread).
 `src/backend/listing.rs` stands at 214 inside the soft budget for the per-listing `fs_magic`
 with its `threaded_for` decision and test; `src/backend/scan.rs` stands at 163 inside the
-soft budget for the one statfs per listing every window reuses.
+soft budget for the one statfs per local listing every window reuses.
+
+P036ramp takes `src/backend/copyfile.rs` 480 to 491 for the doubling slice ramp (FIRST_CONFIRM_BYTES
+with its one-line reason, the next_slice_len helper, and the offset-plus-len inflight pair) and
+`src/backend/durable_tests.rs` 732 to 766 for the ramped expectations (four mids at 1, 3, 7, 15 MiB,
+the ramped wait log, and the first-slice red test), each re-derived with `wc -l`.
 
 ## The key table is generated
 

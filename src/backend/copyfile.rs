@@ -8,6 +8,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 const CHUNK: usize = 256 * 1024;
 // 8 MiB is 32 chunks, so one range sync per 32 writes keeps the card live without a syscall per chunk.
 pub(crate) const CONFIRM_BYTES: u64 = 8 * 1024 * 1024;
+// 1 MiB starts the ramp, so the first confirmed report lands after 1 MiB rather than 16 MiB.
+pub(crate) const FIRST_CONFIRM_BYTES: u64 = 1024 * 1024;
 // rename(2) sets EXDEV when the two paths are on different filesystems, which is the one failure that means "copy instead".
 const EXDEV: i32 = 18;
 use crate::oflags::{O_DIRECTORY, O_NOFOLLOW};
@@ -32,6 +34,14 @@ pub struct Progress<'a> {
 
 pub fn cancelled(p: &Progress) -> bool {
     p.cancel.load(Ordering::Relaxed)
+}
+
+// Doubling ramp slices cap at CONFIRM_BYTES, so early progress is quick and steady state matches today.
+fn next_slice_len(prev: Option<u64>) -> u64 {
+    match prev {
+        None => FIRST_CONFIRM_BYTES,
+        Some(len) => (len * 2).min(CONFIRM_BYTES),
+    }
 }
 
 // The one durable call every copy path makes: a no-op unless the destination needs confirming.
@@ -82,8 +92,8 @@ fn copy_file_at(src: At, dst: At, total: u64, p: &mut Progress) -> Result<(), Fl
     let mut confirmed: u64 = 0;
     // A filesystem without range writeback (some FUSE mounts answer EINVAL) leaves the verdict to the final fsync.
     let mut slicing = durable;
-    // Offset of the slice whose writeback started but whose wait is still owed.
-    let mut inflight: Option<u64> = None;
+    // Offset of the slice whose writeback started but whose wait is still owed, with its length.
+    let mut inflight: Option<(u64, u64)> = None;
     loop {
         if cancelled(p) {
             // The partial file goes with the cancel: a half-written destination is not a result anyone asked for.
@@ -111,11 +121,12 @@ fn copy_file_at(src: At, dst: At, total: u64, p: &mut Progress) -> Result<(), Fl
         } else {
             // Pipelined writeback: slice k starts with WRITE alone, then slice k-1 waits and reports.
             loop {
-                let next = confirmed + inflight.map(|_| CONFIRM_BYTES).unwrap_or(0);
-                if !slicing || done < next + CONFIRM_BYTES {
+                let next = inflight.map(|(off, len)| off + len).unwrap_or(confirmed);
+                let len = next_slice_len(inflight.map(|(_, len)| len));
+                if !slicing || done < next + len {
                     break;
                 }
-                if let Err(e) = crate::backend::durable::sync_range_write(&w, next, CONFIRM_BYTES) {
+                if let Err(e) = crate::backend::durable::sync_range_write(&w, next, len) {
                     if crate::backend::durable::range_unsupported(&e) {
                         slicing = false;
                         inflight = None;
@@ -126,8 +137,8 @@ fn copy_file_at(src: At, dst: At, total: u64, p: &mut Progress) -> Result<(), Fl
                     }
                     return Err(left_half_written(p, dst, &w, from_io("copy", &dst.named.to_string_lossy(), &e)));
                 }
-                if let Some(prev) = inflight {
-                    if let Err(e) = crate::backend::durable::sync_range(&w, prev, CONFIRM_BYTES) {
+                if let Some((prev_off, prev_len)) = inflight {
+                    if let Err(e) = crate::backend::durable::sync_range(&w, prev_off, prev_len) {
                         if crate::backend::durable::range_unsupported(&e) {
                             slicing = false;
                             inflight = None;
@@ -138,14 +149,14 @@ fn copy_file_at(src: At, dst: At, total: u64, p: &mut Progress) -> Result<(), Fl
                         }
                         return Err(left_half_written(p, dst, &w, from_io("copy", &dst.named.to_string_lossy(), &e)));
                     }
-                    confirmed += CONFIRM_BYTES;
+                    confirmed = prev_off + prev_len;
                     let (reported, against) = match p.tree {
                         Some(carried) => (carried + confirmed, 0),
                         None => (confirmed, total),
                     };
                     (p.on_bytes)(reported, against);
                 }
-                inflight = Some(next);
+                inflight = Some((next, len));
             }
         }
     }
