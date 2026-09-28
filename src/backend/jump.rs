@@ -63,7 +63,7 @@ fn answer_checked(program: &str, id: usize, favourites: &[String], recent: &[Str
     let ranked = zoxide(program, ZOXIDE_LIMIT);
     let paths: Vec<String> = ranked.iter().map(|(path, _)| path.clone()).collect();
     let mounts = mounts_in(&std::fs::read_to_string(MOUNTINFO).unwrap_or_default());
-    let mut found = existing(candidates(favourites, &paths), limit, folder, &mounts);
+    let mut found = existing(candidates(favourites, &paths), limit, is_dir_path, &mounts);
     let (parents, files) = recent_parents(recent);
     let resolved = resolve_parents(parents, limit, &mounts);
     let recent_candidates: Vec<Candidate> = files.into_iter()
@@ -124,7 +124,7 @@ fn last_ranking() -> Vec<(String, f64)> {
     LAST_ZOXIDE.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).clone()
 }
 
-// Sample input: "80.0 /home/gm/Documents" one folder per line, best ranked first.
+// Sample input: "  80.0 /home/gm/My Documents", a right-aligned score, one space, then the path, which may hold spaces.
 // A cut read drops its last line; a row needs a finite score and an absolute path.
 fn ranked_paths(text: &str, whole: bool) -> Vec<(String, f64)> {
     let mut lines: Vec<&str> = text.lines().collect();
@@ -160,11 +160,6 @@ fn candidates(favourites: &[String], ranked: &[String]) -> Vec<Candidate> {
         }
     }
     out
-}
-
-// The folder a favourite or zoxide row stands for now, or None when it is not a directory.
-fn folder(candidate: &Candidate) -> Option<String> {
-    Path::new(&candidate.path).is_dir().then(|| candidate.path.clone())
 }
 
 // Sample input: ["/a/f.txt", "/a/g.txt"] names "/a" once and pairs every file with its folder.

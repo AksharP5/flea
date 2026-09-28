@@ -133,15 +133,20 @@ mod tests {
         assert!(matches!(verdict(&mut child), Ran::NotStarted));
     }
 
-    // A try_wait loop sleeping one period between looks, the step waiter this test must tell apart.
+    // A try_wait loop looking at fixed multiples of one period from its spawn, the step waiter this test must tell apart.
     fn poll_wait(full: &[String], period: Duration) -> bool {
+        let spawned = Instant::now();
         let mut child = std::process::Command::new(&full[0]).args(&full[1..])
             .stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null()).spawn().unwrap();
+        let mut looks: u32 = 1;
         loop {
             match child.try_wait() {
                 Ok(Some(status)) => return status.success(),
-                Ok(None) => std::thread::sleep(period),
+                Ok(None) => {
+                    std::thread::sleep((spawned + period * looks).saturating_duration_since(Instant::now()));
+                    looks += 1;
+                }
                 Err(_) => { kill_and_reap(&mut child); return false; }
             }
         }
@@ -152,10 +157,10 @@ mod tests {
     // The shortest step waiter the test promises to catch, at twice GAP.
     const SLOWEST_CAUGHT: Duration = Duration::from_millis(10);
 
-    // How far one waiter's median overshoot moves between two sleeps GAP apart; both sleeps share every run, so load shifts both medians together.
+    // How far one waiter's least overshoot moves between two sleeps GAP apart; load only ever adds delay, so the least of the runs is the waiter's own floor.
     fn overshoot_drift(wait: &dyn Fn(&[String]) -> bool) -> Duration {
         const NEAR_SLEEP: Duration = Duration::from_millis(30);
-        // Nine runs a sleep, so a single scheduling stall cannot move either fifth value.
+        // Nine runs a sleep, so at least one of them meets an idle scheduler even on a loaded builder.
         const RUNS: usize = 9;
         // Four decimals, so a sub-millisecond gap is spelled out.
         let argv = |sleep: Duration| vec!["/usr/bin/sleep".to_string(), format!("{:.4}", sleep.as_secs_f64())];
@@ -171,18 +176,24 @@ mod tests {
                 out.push(took - sleep);
             }
         }
-        near.sort();
-        far.sort();
-        near[RUNS / 2].abs_diff(far[RUNS / 2])
+        let least = |samples: &[Duration]| samples.iter().copied().min().unwrap_or_default();
+        least(&near).abs_diff(least(&far))
     }
 
     #[test]
     fn a_child_is_noticed_when_it_exits_rather_than_at_the_next_poll_boundary() {
-        let exact = overshoot_drift(&|full| matches!(run_with_timeout(full, A_LONG_LIMIT), Ran::Succeeded));
-        let stepped = overshoot_drift(&|full| poll_wait(full, SLOWEST_CAUGHT));
-        // The reference proves the run could see a step at all, so a quiet exact arm is a pass and never a blind one.
-        assert!(stepped >= GAP / 2, "a {SLOWEST_CAUGHT:?} poll waiter moved only {stepped:?}, so this run cannot see a step");
-        assert!(exact < GAP / 2, "median overshoot moves {exact:?} between a 30 ms and a 35 ms child, against {stepped:?} for a {SLOWEST_CAUGHT:?} poll waiter");
+        // A loaded builder can blur the reference itself; an attempt that cannot see a step judges nothing and is taken again.
+        const ATTEMPTS: usize = 3;
+        for attempt in 1..=ATTEMPTS {
+            let exact = overshoot_drift(&|full| matches!(run_with_timeout(full, A_LONG_LIMIT), Ran::Succeeded));
+            let stepped = overshoot_drift(&|full| poll_wait(full, SLOWEST_CAUGHT));
+            if stepped < GAP / 2 && attempt < ATTEMPTS {
+                continue;
+            }
+            assert!(stepped >= GAP / 2, "a {SLOWEST_CAUGHT:?} poll waiter moved only {stepped:?} in {ATTEMPTS} attempts, so this builder cannot see a step");
+            assert!(exact < GAP / 2, "least overshoot moves {exact:?} between a 30 ms and a 35 ms child, against {stepped:?} for a {SLOWEST_CAUGHT:?} poll waiter");
+            return;
+        }
     }
 
     #[test]

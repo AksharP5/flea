@@ -1744,7 +1744,8 @@ failure fails the check rather than passing it.
   and a `FileView` that never loads it re-reads it only after the file changes.
   `backend/jump.rs` answers the three sources once per open of the bar, see docs/protocol.md "jump".
   A recent file stands for its folder only after that folder resolved, checked through `existing()` on
-  the shared budget under its own mount key, so a wedged recent file costs its row and never the answer.
+  the shared budget under its own mount key, so a wedged recent file costs its row and the recent rows
+  after it, never the answer or the other two sources.
   An open behind a slow zoxide draws the last ranking that answered in time, empty on a first-ever open.
   A line with a slash in it, starting with `~`, or `.` or `..` alone, is typed as a path exactly as
   before the jump, and so is every line once Tab has completed it, so "Wo", Tab, Enter still opens
@@ -2535,8 +2536,8 @@ the single journalled step; `src/backend/photosreq.rs` at 43, `src/backend/proto
 `src/backend/proto_tests.rs` at 298 stay inside their budgets.
 
 Fsinfoearly moves one recorded ceiling, re-derived with `wc -l`: `src/backend/run.rs` 455 to
-470 for the slow-mount hook (the `FsInfo` owner, its `Event::FsInfo` arm, the `list` hook ahead of
-the scan and the `fsinfo` answer that never blocks). The worker is the new
+470 for the slow-mount hook (the `FsInfo` owner, its `Event::FsInfo` arm, the `list` hook after the
+rows and the `fsinfo` answer that never blocks). The worker is the new
 `src/backend/fsinforeq.rs` at 319, over the soft budget and inside the hard cap; `src/backend/extclass.rs` stands at 219
 with `gvfs_root` and `classify_entry`, and `src/backend/mountinfo.rs` at 142 carries the mount point.
 

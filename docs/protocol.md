@@ -467,7 +467,7 @@ Answers one `fsinfo` line for the directory the current listing came from:
 process; `path` is the directory they are of, so a client that has since moved can
 tell they describe somewhere else. `class` is that directory's storage class,
 `network`, `phone`, `usb` or `""` for local, computed once per directory change
-beside this line and never per row: network is cifs, smb2, nfs, sshfs, rclone, 9p,
+beside this line and never per row: network is cifs, smb3, nfs, sshfs, rclone, 9p,
 ceph and any gvfs FUSE share, phone is gvfs mtp, gphoto2 and afc, and usb is a block
 device whose sysfs path runs through USB or whose removable flag is 1. An unreadable
 path answers an empty `fs` with a free of 0 rather than a wrong number.

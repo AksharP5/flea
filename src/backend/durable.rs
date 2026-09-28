@@ -22,7 +22,7 @@ pub fn fstype_is_rclone(fstype: &str) -> bool {
 // Sample input: "vfat" trues, "ext4" falses.
 pub fn fat_name_is_durable(name: &str) -> bool {
     let lower = name.to_ascii_lowercase();
-    lower == "vfat" || lower == "exfat" || lower == "ntfs"
+    lower == "vfat" || lower == "exfat" || lower == "ntfs" || lower == "ntfs3"
 }
 
 // Linux statfs magics for removable Windows filesystems; MSDOS and EXFAT match linux/magic.h.

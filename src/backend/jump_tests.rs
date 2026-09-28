@@ -12,11 +12,16 @@ const REAP_WAIT: Duration = Duration::from_secs(2);
 
 fn serial() -> MutexGuard<'static, ()> {
     let guard = SERIAL.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    reaped();
+    guard
+}
+
+// Every run is reaped on a thread of its own, so a test starting another run waits for the slot first.
+fn reaped() {
     let started = Instant::now();
     while ZOXIDE_RUNNING.load(Ordering::SeqCst) && started.elapsed() < REAP_WAIT {
         std::thread::sleep(Duration::from_millis(5));
     }
-    guard
 }
 
 fn strings(paths: &[&str]) -> Vec<String> {
@@ -62,6 +67,19 @@ fn a_wedged_zoxide_is_ended_at_the_limit_and_draws_nothing() {
     }
     assert!(!ZOXIDE_RUNNING.load(Ordering::SeqCst), "the killed run released the one zoxide slot");
     assert!(!PathBuf::from(format!("/proc/{}", pid)).exists(), "the fake zoxide process is gone");
+}
+
+#[test]
+fn a_run_past_its_limit_keeps_the_ranking_that_answered_in_time() {
+    let _turn = serial();
+    let dir = TestDir::new("jump-keep");
+    let full = script(&dir, "full", "printf '   2.0 /a\\n'");
+    let wedged = script(&dir, "wedged", "printf '   9.0 /b\\n'; exec sleep 30");
+    assert_eq!(zoxide(&full, ZOXIDE_LIMIT), vec![("/a".to_string(), 2.0)], "a run inside its limit keeps its ranking");
+    reaped();
+    assert!(zoxide(&wedged, Duration::from_millis(200)).is_empty(), "a run past its limit draws nothing");
+    assert_eq!(last_ranking(), vec![("/a".to_string(), 2.0)], "and never overwrites the ranking that answered in time");
+    *LAST_ZOXIDE.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Vec::new();
 }
 
 #[test]
@@ -128,7 +146,7 @@ fn missing_folders_are_dropped_and_a_recent_file_stands_for_its_folder() {
     std::fs::write(dir.path().join("kept/note.txt"), "x").unwrap();
     let favourites = strings(&[&format!("{}/kept", root), &format!("{}/gone", root), "relative"]);
     let ranked = strings(&[&format!("{}/gone-too", root), &root, &format!("{}/kept", root)]);
-    let mut found = existing(candidates(&favourites, &ranked), CHECK_LIMIT, folder, &[]);
+    let mut found = existing(candidates(&favourites, &ranked), CHECK_LIMIT, is_dir_path, &[]);
     // Recent files take the production recent path: parents resolve once, then each file stands for its folder.
     let recent = strings(&[&format!("{}/kept/note.txt", root), &format!("{}/gone/file.txt", root), &format!("{}/kept/deleted.txt", root)]);
     let (parents, files) = recent_parents(&recent);
@@ -232,6 +250,7 @@ fn a_stuck_recent_file_returns_within_the_limit_with_the_other_sources() {
     let started = Instant::now();
     let line = answer_checked(&fake, 11, &strings(&[&root]), &recent, limit, stuck_recent_check);
     assert!(started.elapsed() < STUCK_FOR, "the budget answers, took {:?}", started.elapsed());
+    assert!(STUCK_RECENT_CALLS.load(Ordering::SeqCst) >= 1, "the wedged file was reached, so the budget and not a pre-filter answered");
     let expected = format!(r#"{{"t":"jumped","id":11,"favourites":["{}"],"zoxide":["{}/ranked"],"recent":["{}/kept"],"frecency":{{"{}/ranked":8}},"ms":"#, root, root, root, root);
     assert!(line.starts_with(&expected), "{}", line);
 }

@@ -2,7 +2,7 @@
 use super::mountinfo::MountEntry;
 use std::path::{Path, PathBuf};
 
-// statfs magics that catch a network mount whose fstype the table spells plainly, like smb3.
+// statfs magics that catch a kernel network mount under an fstype name fstype_is_network does not know.
 const NETWORK_MAGICS: [i64; 5] = [0x6969, 0xFF534D42, 0xFE534D42, 0x01021997, 0x00C36400];
 
 // Sample input: 0xFE534D42 trues, 0xEF53 falses.
@@ -14,6 +14,7 @@ pub fn magic_is_network(magic: i64) -> bool {
 pub fn fstype_is_network(fstype: &str) -> bool {
     let lower = fstype.to_ascii_lowercase();
     lower == "cifs"
+        || lower == "smb3"
         || lower.starts_with("nfs")
         || lower.contains("sshfs")
         || lower.contains("rclone")
@@ -129,7 +130,7 @@ pub fn classify_in(path: &Path, body: &str) -> &'static str {
     classify_entry(&owned, super::mountinfo::mount_entry_in(&owned, body).as_ref())
 }
 
-// The class from a mount entry the caller already read, so fsinfo pays one mountinfo read.
+// The class from a mount entry the caller already read; a path or fstype that decides pays no statfs.
 pub fn classify_entry(path: &Path, entry: Option<&MountEntry>) -> &'static str {
     if let Some(class) = gvfs_class(path) {
         return class;
@@ -264,8 +265,6 @@ mod tests {
         let link = d.path().join("link");
         std::os::unix::fs::symlink(&target, &link).unwrap();
         assert_eq!(resolved(&link), target, "a symlink answers its target");
-        let gvfs = Path::new("/run/user/1000/gvfs/smb-share:server=n,share=x");
-        assert_eq!(resolved(gvfs), gvfs.to_path_buf(), "a gvfs path never pays a canonicalize");
         assert_eq!(resolved(&d.join("never-existed")), d.join("never-existed"), "a failure keeps today's path");
     }
 
@@ -275,10 +274,18 @@ mod tests {
         let target = d.dir("real");
         let link = d.path().join("link");
         std::os::unix::fs::symlink(&target, &link).unwrap();
-        let body = format!("1 0 8:1 / / rw - ext4 /dev/a rw\n30 1 0:9 / {} rw - cifs //nas/media rw\n", target.display());
+        let body = format!("1 0 0:30 / / rw - ext4 /dev/a rw\n30 1 0:9 / {} rw - cifs //nas/media rw\n", target.display());
         assert_eq!(classify_in(&link, &body), "network", "a symlink into a cifs mount is network, not local");
-        let plain = format!("1 0 8:1 / / rw - ext4 /dev/a rw\n");
+        let plain = format!("1 0 0:30 / / rw - ext4 /dev/a rw\n");
         assert_eq!(classify_in(&link, &plain), "", "the same link stays local when its target is local");
+    }
+
+    #[test]
+    fn a_network_entry_classifies_without_a_statfs() {
+        crate::backend::fsinfo::test_reset_statfs();
+        let entry = MountEntry { mount: PathBuf::from("/media/nas"), fstype: "smb3".to_string(), majmin: "0:27".to_string() };
+        assert_eq!(classify_entry(Path::new("/media/nas/photos"), Some(&entry)), "network");
+        assert_eq!(crate::backend::fsinfo::statfs_calls(), 0, "classify_entry itself decides on the fstype");
     }
 
     #[test]

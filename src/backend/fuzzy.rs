@@ -18,7 +18,7 @@ fn is_separator(c: char) -> bool {
     c == '/' || c == '-' || c == '_' || c == '.' || c == ' '
 }
 
-// One candidate character folded once per candidate for index comparison; a multi-char lowercase (Turkish dotted capital I) keeps only its first, matching ui/js/Match.js.
+// corner: a multi-char lowercase (Turkish dotted capital I) keeps only its first char, as ui/js/Match.js does.
 #[derive(Clone, Copy)]
 struct Folded {
     lower: char,
@@ -232,7 +232,7 @@ mod tests {
         assert_eq!(rank_order(4, "a.txt", 4, "a.txt"), Ordering::Equal);
     }
 
-    // Sample input: ["report.txt", "rep", 34] or [bounded + "ab", "ab", 6], one row per entry of the SCORES array below.
+    // Sample input: var SCORES = [["report.txt", "rep", 34], [bounded + "ab", "ab", 6]] with rows split on "]," and the table closed by "]]".
     fn js_scores(src: &str, bounded: &str) -> Vec<(String, String, Option<i32>)> {
         let table = src.split("var SCORES = [").nth(1).expect("tests/js/jump.js carries SCORES").split("]]").next().expect("SCORES closes");
         let mut out = Vec::new();
@@ -267,7 +267,7 @@ mod tests {
     fn the_exact_scores_the_jump_port_mirrors() {
         let bounded = format!("{}ab", "ax".repeat(16));
         let rows = js_scores(include_str!("../../tests/js/jump.js"), &bounded);
-        assert_eq!(rows.len(), 15, "SCORES grew or shrank; change both tables together");
+        assert_eq!(rows.len(), 15, "SCORES in tests/js/jump.js grew or shrank; change this row count with it");
         for (hay, query, expected) in &rows {
             assert_eq!(score(hay, query), *expected, "{query} against {hay}");
         }

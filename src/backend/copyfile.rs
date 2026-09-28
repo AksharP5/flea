@@ -24,7 +24,7 @@ pub struct Progress<'a> {
     pub partial: Option<PathBuf>,
     // Where a tree copy records every path it creates; a finished copy drops it unread.
     pub manifest: Option<super::copymanifest::Writer>,
-    // Some while the destination needs its bytes confirmed: the transfer created it for its dest.
+    // Some while the destination needs its bytes confirmed: transfer, duplicate and redo each make one for theirs.
     pub durability: Option<&'a mut super::durable::Durability>,
 }
 

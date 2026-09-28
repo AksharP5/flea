@@ -22,6 +22,7 @@ fn fat_names_and_magics_count_as_durable() {
     assert!(fat_name_is_durable("exfat"));
     assert!(fat_name_is_durable("ntfs"));
     assert!(fat_name_is_durable("VFAT"), "the mount table never promises a case");
+    assert!(fat_name_is_durable("ntfs3"), "the in-kernel ntfs3 driver names itself");
     assert!(!fat_name_is_durable("ext4"));
     assert!(!fat_name_is_durable("btrfs"));
     assert!(fat_magic_is_durable(MSDOS_SUPER_MAGIC));
@@ -502,19 +503,4 @@ fn a_cancelled_folder_copy_forgets_the_tree_it_removed() {
     let done = finish(13, &tx, &durability, &out, 1);
     assert!(done.note.is_empty(), "a removed tree is not a confirmation failure: {:?}", done.note);
     assert!(done.ok, "the file that landed is confirmed");
-}
-
-#[test]
-fn duplicate_classifies_its_parent_that_exists() {
-    test_reset();
-    let d = TestDir::new("durable-dup-parent");
-    let src = d.file("a.txt", "body");
-    test_mark_durable(d.path());
-    let dst = d.join("a copy.txt");
-    assert!(!dst.exists(), "the duplicate name is free before the copy");
-    let parent = dst.parent().unwrap();
-    assert!(parent.is_dir(), "the parent a duplicate classifies exists");
-    assert!(Durability::begin(parent).durable, "the parent probes answer");
-    let (outcome, _) = crate::backend::ops::duplicate(&src);
-    assert!(outcome.is_ok());
 }

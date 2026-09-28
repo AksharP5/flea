@@ -104,7 +104,7 @@ pub fn statfs_calls() -> usize {
     STATFS_CALLS.with(|n| n.get())
 }
 
-// Raw f_type for the class decision to catch a network mount fstype_is_network misses, like smb3.
+// Raw f_type for the class decision to catch a network mount under an fstype name fstype_is_network does not know.
 pub fn magic_of(path: &Path) -> Option<i64> {
     read_with_magic(path).1
 }

@@ -359,14 +359,14 @@ mod tests {
         std::fs::create_dir(&target).unwrap();
         let link = sandbox.path().join("link");
         std::os::unix::fs::symlink(&target, &link).unwrap();
-        let body = format!("1 0 8:1 / / rw - ext4 /dev/a rw\n30 1 0:9 / {} rw - cifs //nas/media rw\n", target.display());
-        let (mut fs, _rx, calls) = counted(0, 7);
+        let body = format!("1 0 0:30 / / rw - ext4 /dev/a rw\n30 1 0:9 / {} rw - cifs //nas/media rw\n", target.display());
+        // A statfs that takes half a second, so an answer inside a quarter of one proves it ran on the worker.
+        let (mut fs, _rx, _) = counted(500, 7);
         let t = Instant::now();
         let (info, class) = fs.answer_in(&link, &body);
+        assert!(t.elapsed() < Duration::from_millis(250), "no statfs ran on the loop, took {:?}", t.elapsed());
         assert_eq!(class, "network", "a symlink into a cifs mount is network, not local");
         assert!(info.is_none(), "its figures arrive on the worker, never blocked");
-        assert!(t.elapsed() < Duration::from_millis(250), "no statfs ran on the loop");
-        assert_eq!(calls.load(Ordering::SeqCst), 0, "the slow path starts the worker instead of reading here");
     }
 
     #[test]
@@ -378,7 +378,7 @@ mod tests {
         std::fs::create_dir(&real).unwrap();
         let link = share.join("link");
         std::os::unix::fs::symlink(&real, &link).unwrap();
-        let body = format!("1 0 8:1 / / rw - ext4 /dev/a rw\n30 1 0:9 / {} rw - cifs //nas/media rw\n", share.display());
+        let body = format!("1 0 0:30 / / rw - ext4 /dev/a rw\n30 1 0:9 / {} rw - cifs //nas/media rw\n", share.display());
         let (mut fs, _rx, _) = counted(0, 7);
         let (_, class) = fs.answer_in(&link, &body);
         assert_eq!(class, "network", "a path under a cifs mount is network by its own mount, before its link is followed");
@@ -394,7 +394,7 @@ mod tests {
         assert_eq!(class, "network");
         assert_eq!(statfs_calls(), 0, "fstype already decided; a dead server gets no statfs for nothing");
         let sandbox = super::super::testdir::TestDir::new("fsinfoonestatfs");
-        let local = "1 0 8:1 / / rw - ext4 /dev/a rw\n";
+        let local = "1 0 0:30 / / rw - ext4 /dev/a rw\n";
         let (events, _rx) = std::sync::mpsc::channel();
         let mut real = FsInfo::new(events);
         test_reset_statfs();
