@@ -178,6 +178,23 @@ impl Durability {
         }
     }
 
+    // One confirm for a whole move batch: every touched folder any of its items filled, flushed once.
+    pub fn flush_dirs_for_many(&self, dsts: &[PathBuf]) -> std::io::Result<()> {
+        let mut first: Option<std::io::Error> = None;
+        for dir in self.ordered() {
+            let wanted = dsts.iter().any(|dst| dir.starts_with(dst) || Some(dir.as_path()) == dst.parent());
+            if wanted {
+                if let Err(e) = fsync_dir(&dir) {
+                    first.get_or_insert(e);
+                }
+            }
+        }
+        match first {
+            Some(e) => Err(e),
+            None => Ok(()),
+        }
+    }
+
     // Every touched directory, best effort per directory: one bad folder never skips the rest.
     pub fn flush_dirs(&self) -> std::io::Result<()> {
         let mut first: Option<std::io::Error> = None;

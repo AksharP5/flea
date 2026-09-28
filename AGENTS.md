@@ -2063,6 +2063,12 @@ soft budget and not the hard cap. The row spends the last line of `ui/SettingsPa
 raises `ui/SettingsRow.qml`'s from 409 to 410 for the note that elides on one line instead of wrapping. `src/update.rs` is 301 lines with its tests in `src/update_tests.rs`, over the soft budget and
 not the hard cap; the seam if it needs one is the six parsers of what each command printed.
 
+Movebatch moves one ceiling, re-derived with `wc -l`: `src/backend/opsreq.rs` 402
+to 467 for driving cross-device moves through the batch (full, folder-change, cancel, failure
+and end closes); the batch itself is the new `src/backend/movebatch.rs` at 349 with its tests
+in `src/backend/movebatch_tests.rs` at 279, both over the soft budget and inside the hard cap,
+and `src/backend/durable.rs` stands at 364 with the batch's one-confirm union flush.
+
 Durable copies record two ceilings, each re-derived with `wc -l` on the integrated 0.3.6 branch.
 `src/backend/copyfile.rs` 404 for the per-file sync a removable or network destination takes, and
 `src/backend/opsreq.rs` 402 for carrying the batch's durability context and its verdict on the
@@ -4872,6 +4878,18 @@ cancel (ENOSPC, EPERM, a socket deeper in the tree) leaves the partial destinati
 because removing it on a transient error would destroy data, and `copyfile.rs` reports that path in
 `Progress.partial` so `transfer` and `duplicate` journal it as a `Copied` step. A failed tree copy records every path it creates in `copymanifest.rs` as it runs, each identity captured at create from the copy's own descriptor (fstat) or its at-path pin and buffered to an anonymous file on the runtime filesystem in 64 KiB batches, never on the destination, so a full destination cannot fail the manifest and the journal holds no descriptor on the mount being ejected; every directory move is manifested, since EXDEV through a symlinked parent defeats a device check and a rename drops it unread. A failed append latches and the transfer reports it loud beside the copy error. Finish stats nothing, so a failed or cancelled copy answers at once. Undo walks that manifest deepest first and removes each recorded path only while it still holds the recorded identity, keeping a file edited after the copy, a path replaced by another inode, and a directory left non-empty by a stray, and reporting each kept path with its cause; a manifest that never verified a record falls back to the whole-tree check, and a success journals the plain step with no manifest. A destination that already existed is never reported, because nothing was created there.
 corner: a copy is not snapshot-isolated, so a concurrent write into a recorded path that keeps its identity goes with the tree; only identity mismatch keeps a path.
+
+**A cross-device move of many items confirms its folders once per batch instead of once per item.**
+`src/backend/movebatch.rs` stages each copy with its durable file fsync as today and only removes a
+batch's sources after one confirm of the folders that batch filled (`Durability::flush_dirs_for_many`,
+or each filled parent once with no durability context). A batch closes after `BATCH_ITEMS` (64, which
+bounds one unconfirmed batch to one folder fsync while keeping a cancel's cleanup cheap), when the
+destination folder changes, on cancel, on the first failure, and at the end. A failed confirm keeps
+every source of that batch whole and journals each copy as a partial exactly as the single-item failure
+does; a cancel removes the batch's copies and keeps every source whole; a same-filesystem rename and a
+replace never stage and run exactly as before, and `move_any` keeps its single-item contract for redo.
+A batch's item lines go out when the batch closes rather than when each copy landed, so an early item's
+`ok` waits for the batch behind it; progress lines still stream per item while it copies.
 
 **A paste or a drop onto names that exist asks once, and the answer covers only what was asked.**
 Before it sends a transfer, `ui/CollideHost.qml` sends `collisions`, which `collide.rs` `ask_beside` serves
