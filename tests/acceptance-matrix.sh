@@ -73,7 +73,7 @@ assert ['delete', 'deletePermanently', 'Delete permanently', 'file'] in rows
 assert ['moveto', 'moveTo', 'Move to', 'file'] in rows
 assert ['openwith', 'openWith', 'Open with', 'file'] in rows
 assert {row[3] for row in rows if row[0] == 'open'} == {'file', 'places', 'trash'}
-assert ['openTab', 'openTab', 'Open in new tab', 'places'] in rows
+assert ['openTab', 'openTab', 'New tab', 'places'] in rows
 assert ['removeFavourite', 'removeFavourite', 'Remove from Favorites', 'places'] in rows
 assert {row[3] for row in rows if row[0] == 'paste'} == {'file', 'background'}
 assert ['updateFlea', 'updateFlea', 'Update Flea', 'background'] in rows

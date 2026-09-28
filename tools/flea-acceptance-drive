@@ -2009,6 +2009,9 @@ for row in array('INVENTORY'):
         raise SystemExit('invalid or duplicate Menu.INVENTORY row: ' + repr(row))
     seen.add(row[0])
     for context in row[3]:
+        # Rail rows (R) open from the sidebar, which tests/ui.sh's rail cases drive; this matrix drives listing menus.
+        if context == 'R':
+            continue
         fields = [row[0], row[5] if len(row) == 6 else row[0], row[1], contexts[context]]
         if any(not value or any(char in value for char in '|\r\n') for value in fields):
             raise SystemExit('unrepresentable Menu.INVENTORY row: ' + repr(row))
