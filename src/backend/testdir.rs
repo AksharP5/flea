@@ -74,8 +74,7 @@ impl TestDir {
         p
     }
 
-    // Written by a child process, so this process never holds the script open for write while a
-    // parallel test forks: the fork's copy of that fd is what made exec fail with ETXTBSY.
+    // Written by a child process: the fork's copy of a held write fd is what made exec fail with ETXTBSY.
     pub fn script(&self, name: &str, body: &str) -> PathBuf {
         let p = self.join(name);
         self.assert_contains(&p);

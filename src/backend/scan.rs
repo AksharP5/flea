@@ -23,8 +23,7 @@ pub fn scan_with(
 ) -> Result<(Listing, f64), FleaError> {
     // One prefix check: local and USB paths take exactly today's code past it.
     if super::gvfslist::is_gvfs(std::path::Path::new(path)) {
-        // The launcher's head start on this exact path; anything else lists as before.
-        // A gvfs listing takes no statfs: FUSE stalls on it when gvfsd-fuse is down, and it threads like today.
+        // The launcher's head start on this exact path; anything else takes today's gio path.
         if let Some(found) = prefetch.as_ref().and_then(|p| crate::gvfsprefetch::adopt_matching(path, hidden, p)) {
             return Ok(found);
         }
@@ -52,10 +51,6 @@ pub fn scan_with(
         let index = l.len();
         l.push(&name, file_type.is_some_and(|kind| kind.is_dir()));
         l.spans[index].is_symlink = file_type.is_some_and(|kind| kind.is_symlink());
-    }
-    // One statfs per local listing, reused by every window; gvfs and a failure thread like today.
-    if !super::gvfslist::is_gvfs(std::path::Path::new(path)) {
-        l.fs_magic = crate::backend::fsinfo::magic_of(std::path::Path::new(path));
     }
     Ok((l, t.elapsed().as_secs_f64() * 1000.0))
 }
@@ -140,6 +135,16 @@ mod tests {
     fn a_path_that_cannot_be_stat_at_all_answers_zero() {
         let d = TestDir::new("scan-missing-mode");
         assert_eq!(mode_of(d.join("missing").to_str().unwrap()), 0);
+    }
+
+    #[test]
+    fn a_local_scan_makes_no_statfs_call() {
+        let d = TestDir::new("scan-no-statfs");
+        d.file("a.txt", "");
+        crate::backend::fsinfo::test_reset_statfs();
+        let (l, _) = scan(d.path().to_str().unwrap(), false).unwrap();
+        assert_eq!(l.len(), 1);
+        assert_eq!(crate::backend::fsinfo::statfs_calls(), 0, "the fsinfo answer never blocks a listing, so scan makes no statfs call");
     }
 
     #[test]

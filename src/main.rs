@@ -39,7 +39,7 @@ mod vulkan;
 
 use crate::backend::proto::error_line;
 use std::io::IsTerminal;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::exit;
 
 // --default owns both per-user steps, because a user updating from 0.1.3 has no picker routing yet.
@@ -173,22 +173,6 @@ fn main() {
     // flea --thumb-worker: only ever started by the backend, inside its sandbox, with a socket on stdin.
     if args.len() == 2 && args[1] == "--thumb-worker" {
         exit(backend::thumbworker::run());
-    }
-
-    // flea --prefetch <list>: only ever started by the launcher, see src/prefetch.rs.
-    if args.len() == 3 && args[1] == "--prefetch" {
-        exit(prefetch::helper(&PathBuf::from(&args[2])));
-    }
-    if args.get(1).map(String::as_str) == Some("--prefetch") {
-        usage("--prefetch takes the list path");
-    }
-
-    // flea --gvfs-prefetch <path> <dest>: the launcher's head start on a gvfs listing, see src/gvfsprefetch.rs.
-    if args.len() == 4 && args[1] == "--gvfs-prefetch" {
-        exit(gvfsprefetch::run(&args[2], Path::new(&args[3]), &crate::backend::gvfslist::gio_bin()));
-    }
-    if args.get(1).map(String::as_str) == Some("--gvfs-prefetch") {
-        usage("--gvfs-prefetch takes a path and a destination");
     }
 
     // flea --launch-warm <list> <gvfs-path> <gvfs-dest>: one fork for both launch jobs, "-" skips one.

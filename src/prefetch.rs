@@ -32,10 +32,9 @@ const STAT_STARTTIME_AFTER_NAME: usize = 19;
 const PAGEMAP_ENTRY_BYTES: u64 = 8;
 const PAGEMAP_PRESENT: u64 = 1 << 63;
 
-// std already links the system libc, so the three symbols are declared here rather than taking a crate.
+// std already links the system libc, so the two symbols are declared here rather than taking a crate.
 extern "C" {
     fn posix_fadvise(fd: i32, offset: i64, len: i64, advice: i32) -> i32;
-    fn fork() -> i32;
     fn sysconf(name: i32) -> i64;
 }
 
@@ -54,16 +53,6 @@ pub fn list_path() -> Option<PathBuf> {
         None => crate::userfile::env_dir("HOME")?.join(".cache"),
     };
     Some(cache.join("flea/prefetch"))
-}
-
-// flea --prefetch <list>: forks, so the launcher's wait returns at once and its shell holds no unreaped child.
-pub fn helper(list: &Path) -> i32 {
-    // corner: a fork that fails keeps the work here, and the launcher waits it out, which is still a launch.
-    if unsafe { fork() } > 0 {
-        return 0;
-    }
-    do_warm(list);
-    0
 }
 
 // The page-cache half the combined launch helper shares: the same bounded read and advice, no fork.

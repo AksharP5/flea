@@ -56,7 +56,7 @@ fn stat_range_with(
     for i in start..end {
         out.push(cached_or(base, l, i, &stat));
         let elapsed_ms = t.elapsed().as_secs_f64() * 1000.0;
-        if elapsed_ms >= slow_ms && end - (i + 1) > 1 && crate::backend::listing::threaded_for(l.fs_magic) {
+        if elapsed_ms >= slow_ms && end - (i + 1) > 1 && l.threaded_cached(base) {
             out.extend(stat_parallel_with(base, l, i + 1, end, &stat));
             break;
         }
@@ -359,15 +359,18 @@ mod tests {
         use std::collections::HashSet;
         use std::sync::{Arc, Mutex};
         let d = TestDir::new("statfatserial");
-        let mk = |magic: Option<i64>| {
+        // Sample mountinfo: the stick is vfat on 8:17, the card exfat on 8:33, the nas nfs on 0:45.
+        let body = "1 0 8:1 / / rw - ext4 /dev/a rw\n30 1 8:17 / /media/stick rw - vfat /dev/sdb1 rw\n31 1 8:33 / /media/card rw - exfat /dev/sdc1 rw\n32 1 0:45 / /media/nas rw - nfs nas:/share rw\n";
+        let mk = |dev: u64| {
             let mut l = Listing::new();
             for n in 0..16 {
                 l.push(&format!("f{:02}", n), false);
             }
-            l.fs_magic = magic;
+            l.base_dev = dev;
+            l.threaded_cached_with(body);
             l
         };
-        let run = |magic: Option<i64>| {
+        let run = |dev: u64| {
             let seen: Arc<Mutex<HashSet<std::thread::ThreadId>>> = Arc::new(Mutex::new(HashSet::new()));
             let slow = {
                 let seen = Arc::clone(&seen);
@@ -377,15 +380,15 @@ mod tests {
                     Meta { size: name[1..].parse().unwrap_or(0), mtime: 1, mode: 0o100644, target_is_dir: false, target: String::new(), dev: 0 }
                 }
             };
-            let (metas, _) = stat_range_with(d.path(), &mk(magic), 0, 16, SLOW_PASS_MS, slow);
+            let (metas, _) = stat_range_with(d.path(), &mk(dev), 0, 16, SLOW_PASS_MS, slow);
             assert_eq!((metas.len(), metas[0].size, metas[15].size), (16, 0, 15));
             let n = seen.lock().unwrap().len();
             n
         };
-        assert_eq!(run(Some(0x4D44)), 1, "a slow vfat pass must not pay for threads");
-        assert_eq!(run(Some(0x2011BAB0)), 1, "a slow exfat pass must not pay for threads");
-        assert!(run(Some(0xEF53)) > 1, "a slow ext4 pass keeps today's threads");
-        assert!(run(Some(0xFF534D42)) > 1, "a slow cifs pass keeps today's threads");
+        assert_eq!(run(0x811), 1, "a slow vfat pass must not pay for threads");
+        assert_eq!(run(0x821), 1, "a slow exfat pass must not pay for threads");
+        assert!(run(0x801) > 1, "a slow ext4 pass keeps today's threads");
+        assert!(run(45) > 1, "a slow nfs pass keeps today's threads");
     }
 
     #[test]

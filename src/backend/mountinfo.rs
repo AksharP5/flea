@@ -8,6 +8,19 @@ pub(crate) fn mount_type_in(path: &Path, body: &str) -> Option<String> {
     mount_entry_in(path, body).map(|entry| entry.fstype)
 }
 
+// Sample dev: makedev(8,17) is 0x811 and answers "8:17"; the glibc major/minor packing, see sys/sysmacros.h.
+fn dev_majmin(dev: u64) -> String {
+    let major = ((dev >> 8) & 0xfff) | ((dev >> 32) & 0xffff_f000);
+    let minor = (dev & 0xff) | ((dev >> 12) & 0xffff_ff00);
+    format!("{major}:{minor}")
+}
+
+// Sample input: dev 0x811 against a line carrying "8:17 ... - vfat ..." answers Some("vfat").
+pub(crate) fn fstype_for_dev(dev: u64, body: &str) -> Option<String> {
+    let want = dev_majmin(dev);
+    body.lines().filter_map(parse_line).find(|(_, _, majmin)| *majmin == want).map(|(_, fstype, _)| fstype)
+}
+
 // The mount that owns a path: its mount point, its filesystem type and its device numbers.
 pub(crate) struct MountEntry {
     pub mount: PathBuf,
@@ -112,6 +125,19 @@ mod tests {
             mount_type_in(Path::new("/elsewhere"), info).as_deref(),
             Some("ext4")
         );
+    }
+
+    #[test]
+    fn a_device_lookup_names_the_fstype_for_the_slow_pass_gate() {
+        let info = "1 0 8:1 / / rw - ext4 /dev/a rw\n\
+                    30 1 8:17 / /media/stick rw - vfat /dev/sdb1 rw\n\
+                    31 1 0:45 / /media/nas rw - nfs nas:/share rw\n\
+                    32 1 0:46 / /media/cloud rw - fuse.rclone remote: rw\n";
+        // Sample dev numbers: makedev(8,17) is 0x811, makedev(0,45) is 45.
+        assert_eq!(fstype_for_dev(0x811, info).as_deref(), Some("vfat"));
+        assert_eq!(fstype_for_dev(45, info).as_deref(), Some("nfs"));
+        assert_eq!(fstype_for_dev(46, info).as_deref(), Some("fuse.rclone"));
+        assert_eq!(fstype_for_dev(0x812, info), None);
     }
 
     #[test]

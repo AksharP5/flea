@@ -23,7 +23,7 @@ src/backend/imagesize.rs 475
 src/backend/localsend.rs 403
 src/backend/menu_actions.rs 560
 src/backend/menu_registry.rs 563
-src/backend/meta.rs 433
+src/backend/meta.rs 436
 src/backend/metareq.rs 423
 src/backend/opsdispatch.rs 536
 src/backend/opsreq.rs 477
@@ -34,6 +34,7 @@ src/backend/thumbs.rs 441
 src/backend/thumbworker.rs 953
 src/backend/trashbrowse.rs 698
 src/backend/trashdelete.rs 901
+src/gui.rs 407
 src/tui/actions.rs 1021
 src/tui/input.rs 449
 src/tui/model.rs 1247

@@ -92,12 +92,21 @@ pub fn run_launch_warm(list: &str, gvfs_path: &str, gvfs_dest: &str) -> i32 {
     if unsafe { fork() } > 0 {
         return 0;
     }
-    if list != "-" {
-        prefetch::do_warm(Path::new(list));
-    }
+    let gio = crate::backend::gvfslist::gio_bin();
+    run_warm_jobs(list, gvfs_path, gvfs_dest, &gio, crate::gvfsprefetch::runtime_dir().as_deref())
+}
+
+// Both jobs at once: gio runs here while the page-cache warm runs on a thread, then both join.
+fn run_warm_jobs(list: &str, gvfs_path: &str, gvfs_dest: &str, gio: &str, runtime: Option<&Path>) -> i32 {
+    let warm = (list != "-").then(|| {
+        let list = list.to_owned();
+        std::thread::spawn(move || prefetch::do_warm(Path::new(&list)))
+    });
     if gvfs_path != "-" && gvfs_dest != "-" {
-        let gio = crate::backend::gvfslist::gio_bin();
-        let _ = crate::gvfsprefetch::run_in(gvfs_path, Path::new(gvfs_dest), &gio, crate::gvfsprefetch::runtime_dir().as_deref());
+        let _ = crate::gvfsprefetch::run_in(gvfs_path, Path::new(gvfs_dest), gio, runtime);
+    }
+    if let Some(warm) = warm {
+        let _ = warm.join();
     }
     0
 }
@@ -370,6 +379,22 @@ mod tests {
         let list = dir.file("prefetch", "flea-prefetch 2\n");
         let cmd = launch_warm_command(Path::new("flea"), Some(list.as_path()), None).expect("a local launch with a list warms");
         assert_eq!(argv_of(&cmd), vec!["--launch-warm", list.to_str().unwrap(), "-", "-"]);
+    }
+
+    #[test]
+    fn a_launch_warm_runs_the_warm_beside_gio_and_waits_for_both() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = crate::backend::testdir::TestDir::new("launch-warm-both");
+        let target = dir.file("target.so", "x");
+        let list = dir.file("prefetch", &format!("flea-prefetch 2\n0 4096 {}\n", target.to_str().unwrap()));
+        let runtime = dir.path().join("runtime/flea");
+        std::fs::create_dir_all(&runtime).unwrap();
+        std::fs::set_permissions(&runtime, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let gio = dir.script("gio", "#!/bin/sh\nprintf 'smb://h/share/a.txt\\t3\\t(regular)\\ttime::modified=100\\n'\n").to_string_lossy().into_owned();
+        let dest = runtime.join("gvfs-1.list");
+        let share = "/run/user/1000/gvfs/smb-share:server=t,share=u/dir";
+        assert_eq!(run_warm_jobs(list.to_str().unwrap(), share, dest.to_str().unwrap(), &gio, Some(&runtime)), 0);
+        assert!(dest.is_file(), "both jobs are done when the helper returns");
     }
 
     #[test]

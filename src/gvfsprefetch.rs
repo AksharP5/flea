@@ -27,10 +27,9 @@ static CONSUMED: AtomicBool = AtomicBool::new(false);
 // Two prepares in one process still name different files.
 static NEXT: AtomicU64 = AtomicU64::new(0);
 
-// std already links libc, so these symbols are declared here rather than taking a crate.
+// std already links libc, so this symbol is declared here rather than taking a crate.
 extern "C" {
     fn geteuid() -> u32;
-    fn fork() -> i32;
 }
 
 // The one adoption the backend attempts: None unless the launcher named all three.
@@ -123,16 +122,7 @@ pub fn prepare(path: &str) -> Option<(PathBuf, u64)> {
     Some((dest, start_ms))
 }
 
-// flea --gvfs-prefetch <path> <dest>: same gio call the backend would make, hidden included.
-pub fn run(path: &str, dest: &Path, gio: &str) -> i32 {
-    // The helper forks so the launcher waits only for the fork; the grandchild outlives exec.
-    if unsafe { fork() } > 0 {
-        return 0;
-    }
-    run_in(path, dest, gio, runtime_dir().as_deref())
-}
-
-// Split so a test can name the runtime dir without touching this process's environment.
+// The gio half the combined launch helper shares: the same call the backend would make, hidden included.
 pub(crate) fn run_in(path: &str, dest: &Path, gio: &str, runtime: Option<&Path>) -> i32 {
     let Some(dir) = dest.parent() else {
         eprintln!("flea: gvfs prefetch destination has no parent directory");

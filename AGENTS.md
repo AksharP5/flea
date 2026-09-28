@@ -183,9 +183,11 @@ the same offset, since only symlink rows have one; `build_listing` shrinks both 
 The offset rides in the span through every sort, so a sorted listing looks its rows up by the same
 key. `stat_range()` answers those rows from the store with no lstat, a symlink row paying the one
 follow-stat `meta_one` pays so a linked folder draws as one, and past
-`SLOW_PASS_MS` (10 ms) the remainder of a window goes across 8 threads: a stat on FUSE, a
-network share or a cold vfat stick is a round trip of a millisecond or more against
-microseconds local, so kernel cifs/nfs/sshfs mounts that serve concurrently gain threads
+`SLOW_PASS_MS` (10 ms) the remainder of a window goes across 8 threads, unless the listing's
+device mounts as vfat or exfat, which stay serial: the gate decides lazily at the first slow
+pass from `/proc/self/mountinfo` by that device and caches the answer per listing, so a listing
+never pays a statfs. A stat on FUSE or a network share is a round trip of a millisecond or more
+against microseconds local, so kernel cifs/nfs/sshfs mounts that serve concurrently gain threads
 while a warm local window (0.4 ms for 321 rows) never triggers one. The gio call carries
 `-h` on every listing and `parse_line`'s dot filter stays the only hidden rule, so both
 routes list the same rows; `-h` adds one attribute to the same reply and the progress bound
@@ -742,8 +744,9 @@ say nothing at all.
 warm map was 261 to 267 ms rather than the five-launch set above, the build without the prefetch mapped
 at 436 to 484 with the page cache dropped, and reading every file the launch opens before starting it
 brought that back to 287 to 290: the whole difference is reading. So `src/gui.rs` starts
-`flea --prefetch` before its Vulkan probe, the first cold read a launch makes. The helper forks, so the
-launcher waits only for the fork and the shell it becomes never holds an unreaped child, then queues
+`flea --launch-warm` before its Vulkan probe, the first cold read a launch makes. The helper forks
+once for both jobs, gio first with the page-cache warm on a thread, so the launcher waits only
+for the fork and the shell it becomes never holds an unreaped child, then queues
 `posix_fadvise(WILLNEED)` on each range of `$XDG_CACHE_HOME/flea/prefetch`. The backend writes that
 list when it sends its first rows, from its parent shell's own `/proc/<pid>/maps` and `pagemap`: the
 pages the shell had in memory, not whole files. The moment matters: a second in, a media folder has
@@ -837,15 +840,15 @@ unlinking a caller-supplied path is not this function's job even when that path 
 from a broken caller. The exit status is the contract: a caller must check it before
 trusting whatever `dest` currently holds.
 
-The gvfs outcome file beside it is the same shape with a claim on top. `flea --gvfs-prefetch`
-writes either gio's listing bytes (hidden included, so either scan can adopt) or the one-line
+The gvfs outcome file beside it is the same shape with a claim on top. `flea --launch-warm`'s
+gio half writes either gio's listing bytes (hidden included, so either scan can adopt) or the one-line
 failure marker `flea-gvfs-fail`, both through its own exclusive `0600` temp plus rename, so a
 reader never sees a partial. The first backend claims with `rename(dest, dest.claimed)` and reads
 the claim, which it keeps; a reader finding the claim, or finding neither dest nor claim more than
 2 s after the launch start, returns None at once and the scan takes today's gio path. Staleness is
 judged against the launch: mtime older than `FLEA_GVFS_START` is refused, and freshness is age under
 10 s against a clock read after the wait, never before it. The sweep reaps dest and claim leftovers
-by the same 60 s age rule. The child double-forks like `src/prefetch.rs`, so the launcher waits only
+by the same 60 s age rule. The helper forks once for both jobs, so the launcher waits only
 for the fork and qs inherits no zombie; `gui.rs` exports `FLEA_GVFS_*` only when that spawn succeeded.
 A local or USB launch pays only the `is_gvfs` prefix check in `prepare` and arms nothing.
 
@@ -1628,8 +1631,8 @@ failure fails the check rather than passing it.
   `--youleftmeforstrata` is the undocumented second spelling of `--default off`, `--picker [off]`
   claims or releases the desktop's file chooser alone, `--pick <reply>` opens one chooser window
   for `tools/flea-portal`, `--ui-state [<patch>]` reads or merges the shared view state,
-  `--prefetch <list>` is the launcher's read-ahead helper, which `gui.rs` alone starts and which forks
-  and exits 0 whatever the list holds, see "The first window",
+  `--launch-warm <list> <gvfs-path> <gvfs-dest>` runs both launch jobs under one fork, "-" skipping
+  one, which `gui.rs` alone starts, see "The first window",
   `--version` prints the version, `--print-target` resolves `--select`'s pair for the tests, and
   anything else opens the window, on `--select`'s parent directory when one is given, unless
   explicit `--tui` requests the terminal interface, `--gui` being the explicit spelling of the
@@ -2632,6 +2635,16 @@ slow vfat/exfat pass stays on one thread while slow ext4/cifs still thread).
 `src/backend/listing.rs` stands at 214 inside the soft budget for the per-listing `fs_magic`
 with its `threaded_for` decision and test; `src/backend/scan.rs` stands at 163 inside the
 soft budget for the one statfs per local listing every window reuses.
+
+R5src takes the statfs back out of the listing: `src/backend/scan.rs` 163 to 168 for the
+no-statfs test, `src/backend/meta.rs` 433 to 436 for the seeded
+slow-pass test, `src/backend/listing.rs` 214 to 250 for the `OnceLock` per-listing answer (one stat
+and one mountinfo read at the first slow pass) with its fstype and cache tests, `src/backend/mountinfo.rs` 142 to 168 for the dev-to-fstype lookup,
+`src/gui.rs` 382 to 407 for the warm beside gio with its both-jobs test (recorded 407 over the
+hard cap, one subject, the launcher), `src/prefetch.rs` 311 to 300 and `src/gvfsprefetch.rs`
+306 to 296 for removing the two superseded subcommands, `src/main.rs` 376 to 360 for dropping
+their dispatch, and `src/backend/testdir.rs` 264 to 263 for the one-line script comment, each
+re-derived with `wc -l`.
 
 P036ramp takes `src/backend/copyfile.rs` 480 to 491 for the doubling slice ramp (FIRST_CONFIRM_BYTES
 with its one-line reason, the next_slice_len helper, and the offset-plus-len inflight pair) and
