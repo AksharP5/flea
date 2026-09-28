@@ -220,7 +220,8 @@ Item {
     }
 
     onParentPathChanged: root.refreshNeighbours()
-    onChildPathChanged: root.refreshNeighbours()
+    // The rows/cursor move can early-return on values this binding had not settled yet, so its own change re-moves with fresh ones.
+    onChildPathChanged: { root.refreshNeighbours(); root.moveThird() }
     Connections {
         target: root.pane
         function onCursorIndexChanged() { root.followCursor() }
