@@ -114,12 +114,12 @@ pub(crate) fn copy_then_remove(from: &Path, to: &Path) -> Result<(), FleaError> 
     drop(progress);
     // The copy landed but its folder is unconfirmed; the landed copy goes back so the tree is as before.
     if durability.flush_dirs().is_err() {
-        return Err(match take_back(to) {
-            Ok(()) => FleaError { where_: "rename".to_string(), path: to.to_string_lossy().to_string(), msg: RENAME_UNCONFIRMED.to_string() },
-            // The copy stays beside the whole source, which is the state rename-kept and its re-read exist for.
-            Err(cleanup) => kept_error(from, FleaError { where_: String::new(), path: String::new(),
-                msg: format!("{}; the landed copy could not be removed: {}", crate::backend::durable::DIR_UNCONFIRMED, cleanup.msg) }),
-        });
+        // corner: a take-back that fails leaves a whole or partial copy the rename wire cannot name, see AGENTS.md.
+        let msg = match take_back(to) {
+            Ok(()) => RENAME_UNCONFIRMED.to_string(),
+            Err(cleanup) => format!("{}; the landed copy could not be removed: {}", crate::backend::durable::DIR_UNCONFIRMED, cleanup.msg),
+        };
+        return Err(FleaError { where_: "rename".to_string(), path: to.to_string_lossy().to_string(), msg });
     }
     match remove_any(from) {
         Ok(()) => Ok(()),
@@ -135,13 +135,12 @@ fn after_failed_removal(from: &Path, to: &Path, error: FleaError) -> FleaError {
     }
 }
 
-// The source is not provably whole here, so the target may hold the only complete copy and stays under its own kind.
 #[cfg(test)]
 thread_local! {
     static FAIL_TAKE_BACK: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
-// The take-back of an unconfirmed copy; a test fails it on purpose to reach the kept state.
+// The take-back of an unconfirmed copy; a test fails it on purpose to reach that leftover state.
 fn take_back(to: &Path) -> Result<(), FleaError> {
     #[cfg(test)]
     if FAIL_TAKE_BACK.with(|fail| fail.get()) {
@@ -150,6 +149,7 @@ fn take_back(to: &Path) -> Result<(), FleaError> {
     remove_any(to)
 }
 
+// The source is not provably whole here, so the target may hold the only complete copy and stays under its own kind.
 fn kept_error(from: &Path, error: FleaError) -> FleaError {
     FleaError {
         where_: KEPT.to_string(),
@@ -403,7 +403,7 @@ mod tests {
         assert!(!target.exists(), "the landed copy goes back so the tree is as before");
     }
     #[test]
-    fn a_failed_take_back_keeps_the_copy_and_answers_rename_kept() {
+    fn a_failed_take_back_keeps_the_source_whole_and_answers_rename() {
         let d = TestDir::new("copyrenamekept");
         let source = d.dir("source");
         std::fs::write(source.join("inside.txt"), "body").unwrap();
@@ -418,9 +418,9 @@ mod tests {
         FAIL_TAKE_BACK.with(|fail| fail.set(false));
         crate::backend::durable::test_set_fail_dirs(false);
         crate::backend::durable::test_reset();
-        assert_eq!(error.where_, KEPT, "the copy stays beside the source, so the pane re-reads and shows both");
-        assert_eq!(error.path, source.to_string_lossy());
-        assert!(source.join("inside.txt").is_file() && target.join("inside.txt").is_file());
+        assert_eq!(error.where_, "rename", "the source is whole, so this is never rename-kept, whose sentence trusts the copy");
+        assert!(error.msg.starts_with(crate::backend::durable::DIR_UNCONFIRMED) && error.msg.contains("could not be removed"), "{}", error.msg);
+        assert!(source.join("inside.txt").is_file(), "the source was never touched");
     }
     // A removal answering ENOENT after it took effect leaves the copy as the only whole name.
     #[test]

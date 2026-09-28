@@ -2564,8 +2564,8 @@ worker reports a symlinked share's figures, and records `src/backend/jump_tests.
 zoxide keep guard and the reaped slot, and takes `src/backend/meta.rs` from 395 to 399 inside the hard cap for the
 sorted-store and device assertions, each re-derived with `wc -l`.
 
-Advloop round 5 takes `src/backend/renamecompat.rs` from its recorded 416 to 447 for the take-back seam and the test
-that a copy which will not go back answers `rename-kept`, re-derived with `wc -l`.
+Advloop round 5 and its second run take `src/backend/renamecompat.rs` from 412 lines (recorded 416) to 447 for the
+take-back seam and the test that a copy which will not go back answers `rename`, re-derived with `wc -l`.
 
 ## The key table is generated
 
@@ -4764,8 +4764,10 @@ through the existing exclusive copy primitives, removes the source only after th
 and uses the same path for undo. On a durable destination (a dav share classifies network) the copy's
 folder is confirmed before the source goes; a confirm that fails takes the landed copy back and answers
 `rename` with `RENAME_UNCONFIRMED`, the drive did not confirm the folder, so the rename was undone.
-When that take-back fails too, the copy stays under the new name beside the whole source and the error
-answers `rename-kept` naming the source, so the pane re-reads the listing and shows both names.
+**When that take-back fails too, a whole or partial copy stays under the new name beside the whole source,
+and nothing tells the operator that either.** The error answers `rename`, whose fixed sentences reproduce
+neither `path` nor `msg`, and it is never `rename-kept`, whose sentence trusts the copy and doubts the source,
+the inverse of this state; the distinct wire kind deferred for the two leftovers below would cover it too.
 A copy failure removes only the partial target this operation
 created. **When that removal itself fails, nothing tells the operator what was left behind.** The
 error answers `where` of `rename`, which `ui/js/Errors.js` words as one of its two ordinary rename
