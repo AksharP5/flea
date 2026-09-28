@@ -12,6 +12,8 @@ var RING = 2
 var DISABLED_OPACITY = 0.55
 var WASH_HOVER = 0.08
 var WASH_PRESS = 0.14
+// The shipped label size at base 14, the fallback when no body text stop is known.
+var LABEL_SIZE = 14
 
 // One label size for every button: the body Theme sizes from the text stop, so buttons grow with the rows beside them.
 function labelSizeFor(body) {
