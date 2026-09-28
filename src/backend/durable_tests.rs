@@ -548,13 +548,13 @@ fn a_durable_copy_confirms_slices_while_it_writes() {
 #[test]
 fn a_filesystem_without_range_writeback_is_not_a_failed_copy() {
     // EINVAL is what some FUSE mounts answer sync_file_range with; EIO is a drive refusing bytes.
-    let einval = std::io::Error::from_raw_os_error(22);
-    let eio = std::io::Error::from_raw_os_error(5);
+    let einval = std::io::Error::from_raw_os_error(crate::backend::durable::EINVAL);
+    let eio = std::io::Error::from_raw_os_error(crate::backend::durable::EIO);
     assert!(crate::backend::durable::range_unsupported(&einval));
     assert!(!crate::backend::durable::range_unsupported(&eio));
 }
 
-// A range seam answering EINVAL falls back to the final fsync: the copy still lands whole.
+// A write seam answering EINVAL falls back to the final fsync: the copy still lands whole.
 #[test]
 fn a_range_einval_still_copies_and_reports_only_the_final_count() {
     test_reset();
@@ -567,14 +567,14 @@ fn a_range_einval_still_copies_and_reports_only_the_final_count() {
     std::fs::write(&src, vec![b'a'; total]).expect("test sandbox file");
     let mut durability = Durability::begin(&out);
     assert!(durability.durable, "the marked target is durable");
-    crate::backend::durable::test_set_fail_range(true);
+    crate::backend::durable::test_set_fail_range_write(true);
     let flag = std::sync::atomic::AtomicBool::new(false);
     let mut seen: Vec<(u64, u64)> = Vec::new();
     let mut sink = |done: u64, against: u64| seen.push((done, against));
     let mut p = quiet(&flag, &mut sink, &mut durability);
     crate::backend::copyfile::copy_any(&src, &out.join("big.bin"), &mut p).expect("a range EINVAL is a fallback, not a failure");
     drop(p);
-    crate::backend::durable::test_set_fail_range(false);
+    crate::backend::durable::test_set_fail_range_write(false);
     assert_eq!(seen, vec![(total as u64, total as u64)], "only the final whole-file count, got {:?}", seen);
     assert_eq!(crate::backend::durable::test_range_waits(), 0, "no slice wait ran");
     assert_eq!(test_counts().0, 1, "the final fsync still ran, got {:?}", test_counts());
@@ -623,16 +623,102 @@ fn every_mid_file_report_follows_a_completed_wait() {
     let mut durability = Durability::begin(&out);
     assert!(durability.durable, "the marked target is durable");
     let flag = std::sync::atomic::AtomicBool::new(false);
-    let mut seen: Vec<(u64, u64)> = Vec::new();
-    let mut sink = |done: u64, against: u64| seen.push((done, against));
+    // The waits seen at each report, so a report moved above its wait reddens.
+    let mut seen: Vec<(u64, u64, usize)> = Vec::new();
+    let mut sink = |done: u64, against: u64| seen.push((done, against, crate::backend::durable::test_range_waits()));
     let mut p = quiet(&flag, &mut sink, &mut durability);
     crate::backend::copyfile::copy_any(&src, &out.join("big.bin"), &mut p).expect("copy");
     drop(p);
     let waits = crate::backend::durable::test_range_waits();
     assert_eq!(waits, 2, "two pipelined waits for three slices, got {}", waits);
     assert_eq!(seen.len(), waits + 1, "mids plus the final, got {:?}", seen);
-    assert_eq!(seen[0].0, confirm, "the first mid confirms one slice, got {:?}", seen);
-    assert_eq!(seen[1].0, confirm * 2, "the second mid confirms two, got {:?}", seen);
-    assert_eq!(seen.last().copied(), Some((total as u64, total as u64)));
+    assert_eq!((seen[0].0, seen[0].2), (confirm, 1), "the first mid follows one wait, got {:?}", seen);
+    assert_eq!((seen[1].0, seen[1].2), (confirm * 2, 2), "the second mid follows two waits, got {:?}", seen);
+    assert_eq!(seen[2].2, 2, "the final fsync adds no wait, got {:?}", seen);
+    assert_eq!(seen.last().map(|s| (s.0, s.1)), Some((total as u64, total as u64)));
+    test_reset();
+}
+
+// The wait leg answering EINVAL stops slicing and reports only the final count.
+#[test]
+fn a_wait_einval_stops_slicing_and_reports_only_the_final_count() {
+    test_reset();
+    let d = TestDir::new("durable-wait-einval");
+    let out = d.dir("out");
+    test_mark_durable(&out);
+    let confirm = crate::backend::copyfile::CONFIRM_BYTES as usize;
+    let total: usize = confirm * 2 + 1024 * 1024;
+    let src = d.join("big.bin");
+    std::fs::write(&src, vec![b'a'; total]).expect("test sandbox file");
+    let mut durability = Durability::begin(&out);
+    assert!(durability.durable, "the marked target is durable");
+    crate::backend::durable::test_set_fail_range_wait(crate::backend::durable::EINVAL);
+    let flag = std::sync::atomic::AtomicBool::new(false);
+    let mut seen: Vec<(u64, u64)> = Vec::new();
+    let mut sink = |done: u64, against: u64| seen.push((done, against));
+    let mut p = quiet(&flag, &mut sink, &mut durability);
+    crate::backend::copyfile::copy_any(&src, &out.join("big.bin"), &mut p).expect("a wait EINVAL is a fallback, not a failure");
+    drop(p);
+    crate::backend::durable::test_set_fail_range_wait(0);
+    assert_eq!(seen, vec![(total as u64, total as u64)], "only the final whole-file count, got {:?}", seen);
+    assert_eq!(crate::backend::durable::test_range_waits(), 0, "no wait completed");
+    assert_eq!(test_counts().0, 3, "two writes plus the final fsync, got {:?}", test_counts());
+    assert_eq!(std::fs::metadata(out.join("big.bin")).unwrap().len(), total as u64);
+    test_reset();
+}
+
+// The wait leg answering EIO fails the copy, notes the file and journals the partial.
+#[test]
+fn a_wait_eio_fails_the_copy_and_journals_the_partial() {
+    test_reset();
+    let d = TestDir::new("durable-wait-eio");
+    let out = d.dir("out");
+    test_mark_durable(&out);
+    let confirm = crate::backend::copyfile::CONFIRM_BYTES as usize;
+    let total: usize = confirm * 2;
+    let src = d.join("big.bin");
+    std::fs::write(&src, vec![b'a'; total]).expect("test sandbox file");
+    let mut durability = Durability::begin(&out);
+    assert!(durability.durable, "the marked target is durable");
+    crate::backend::durable::test_set_fail_range_wait(crate::backend::durable::EIO);
+    let flag = std::sync::atomic::AtomicBool::new(false);
+    let mut sink = |_: u64, _: u64| {};
+    let mut p = quiet(&flag, &mut sink, &mut durability);
+    let err = crate::backend::copyfile::copy_any(&src, &out.join("big.bin"), &mut p).expect_err("a failed wait is a failed copy");
+    assert_eq!(err.where_, "copy");
+    assert!(p.partial.is_some(), "the partial is journalled for undo: {:?}", p.partial);
+    drop(p);
+    crate::backend::durable::test_set_fail_range_wait(0);
+    assert!(durability.file_failed, "the file failure is noted for the verdict");
+    assert_eq!(crate::backend::durable::test_range_waits(), 0, "no wait completed");
+    test_reset();
+}
+
+// Slice k starts with WRITE alone before slice k-1 waits, so the next slice writes while it flies.
+#[test]
+fn slices_start_with_write_alone_before_the_previous_waits() {
+    test_reset();
+    let d = TestDir::new("durable-pipeline-order");
+    let out = d.dir("out");
+    test_mark_durable(&out);
+    let confirm = crate::backend::copyfile::CONFIRM_BYTES;
+    let total: usize = confirm as usize * 3 + 1024 * 1024;
+    let src = d.join("big.bin");
+    std::fs::write(&src, vec![b'a'; total]).expect("test sandbox file");
+    let mut durability = Durability::begin(&out);
+    assert!(durability.durable, "the marked target is durable");
+    let flag = std::sync::atomic::AtomicBool::new(false);
+    let mut sink = |_: u64, _: u64| {};
+    let mut p = quiet(&flag, &mut sink, &mut durability);
+    crate::backend::copyfile::copy_any(&src, &out.join("big.bin"), &mut p).expect("copy");
+    drop(p);
+    assert_eq!(crate::backend::durable::test_range_log(), vec![
+        format!("write 0"),
+        format!("write {confirm}"),
+        "wait 0".to_string(),
+        format!("write {}", confirm * 2),
+        format!("wait {confirm}"),
+        "fsync".to_string(),
+    ], "pipelined writes before waits, got {:?}", crate::backend::durable::test_range_log());
     test_reset();
 }

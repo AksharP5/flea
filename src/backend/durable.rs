@@ -12,11 +12,19 @@ thread_local! {
     static FAIL_DIR: Cell<bool> = const { Cell::new(false) };
     static FILE_FLUSHES: Cell<usize> = const { Cell::new(0) };
     static DIR_FLUSHES: Cell<usize> = const { Cell::new(0) };
-    // A range seam answering EINVAL, so the copy falls back to the final fsync.
-    static FAIL_RANGE: Cell<bool> = const { Cell::new(false) };
+    // The write leg answering EINVAL, so the copy falls back to the final fsync.
+    static FAIL_RANGE_WRITE: Cell<bool> = const { Cell::new(false) };
+    // The wait leg answering this errno, 0 for no failure.
+    static FAIL_RANGE_WAIT: Cell<i32> = const { Cell::new(0) };
     // Completed slice waits, so a test pins reports against waits.
     static RANGE_WAITS: Cell<usize> = const { Cell::new(0) };
+    // Range calls in order, so a test pins the pipelined sequence.
+    static RANGE_LOG: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
 }
+
+// errno 22 means no range writeback, not a lost byte; errno 5 is a drive refusing bytes.
+pub(crate) const EINVAL: i32 = 22;
+pub(crate) const EIO: i32 = 5;
 
 // Sample input: "fuse.rclone" trues, "fuse.sshfs" falses.
 pub fn fstype_is_rclone(fstype: &str) -> bool {
@@ -188,6 +196,8 @@ impl Durability {
 
 // Counted through this seam, never timed: tests assert the counts.
 pub fn fsync_file(f: &std::fs::File) -> std::io::Result<()> {
+    #[cfg(test)]
+    RANGE_LOG.with(|v| v.borrow_mut().push("fsync".to_string()));
     if seam_flush(false) {
         return Err(std::io::Error::new(std::io::ErrorKind::Other, "simulated fsync failure"));
     }
@@ -207,8 +217,10 @@ extern "C" {
 // One written slice starts its writeback without waiting, so the next slice writes while it flies.
 pub fn sync_range_write(f: &std::fs::File, offset: u64, len: u64) -> std::io::Result<()> {
     #[cfg(test)]
-    if FAIL_RANGE.with(|v| v.get()) {
-        return Err(std::io::Error::from_raw_os_error(22));
+    RANGE_LOG.with(|v| v.borrow_mut().push(format!("write {offset}")));
+    #[cfg(test)]
+    if FAIL_RANGE_WRITE.with(|v| v.get()) {
+        return Err(std::io::Error::from_raw_os_error(EINVAL));
     }
     if seam_flush(false) {
         return Err(std::io::Error::new(std::io::ErrorKind::Other, "simulated fsync failure"));
@@ -225,18 +237,23 @@ pub fn sync_range_write(f: &std::fs::File, offset: u64, len: u64) -> std::io::Re
 // One written slice is confirmed to the drive; a failure refuses the bytes the same way an fsync failure does.
 pub fn sync_range(f: &std::fs::File, offset: u64, len: u64) -> std::io::Result<()> {
     #[cfg(test)]
-    if FAIL_RANGE.with(|v| v.get()) {
-        return Err(std::io::Error::from_raw_os_error(22));
+    RANGE_LOG.with(|v| v.borrow_mut().push(format!("wait {offset}")));
+    #[cfg(test)]
+    {
+        let errno = FAIL_RANGE_WAIT.with(|v| v.get());
+        if errno != 0 {
+            return Err(std::io::Error::from_raw_os_error(errno));
+        }
     }
     if seam_flush(false) {
         return Err(std::io::Error::new(std::io::ErrorKind::Other, "simulated fsync failure"));
     }
-    #[cfg(test)]
-    RANGE_WAITS.with(|v| v.set(v.get() + 1));
     use std::os::unix::io::AsRawFd;
     let flags = SYNC_FILE_RANGE_WAIT_BEFORE | SYNC_FILE_RANGE_WRITE | SYNC_FILE_RANGE_WAIT_AFTER;
     let rc = unsafe { sync_file_range(f.as_raw_fd(), offset as i64, len as i64, flags) };
     if rc == 0 {
+        #[cfg(test)]
+        RANGE_WAITS.with(|v| v.set(v.get() + 1));
         Ok(())
     } else {
         Err(std::io::Error::last_os_error())
@@ -245,7 +262,6 @@ pub fn sync_range(f: &std::fs::File, offset: u64, len: u64) -> std::io::Result<(
 
 // EINVAL, ESPIPE, ENOSYS and EOPNOTSUPP say the filesystem has no range writeback, not that a byte was lost.
 pub fn range_unsupported(e: &std::io::Error) -> bool {
-    const EINVAL: i32 = 22;
     const ESPIPE: i32 = 29;
     const ENOSYS: i32 = 38;
     const EOPNOTSUPP: i32 = 95;
@@ -334,8 +350,10 @@ pub fn test_reset() {
     FAIL_DIR.with(|v| v.set(false));
     FILE_FLUSHES.with(|v| v.set(0));
     DIR_FLUSHES.with(|v| v.set(0));
-    FAIL_RANGE.with(|v| v.set(false));
+    FAIL_RANGE_WRITE.with(|v| v.set(false));
+    FAIL_RANGE_WAIT.with(|v| v.set(0));
     RANGE_WAITS.with(|v| v.set(0));
+    RANGE_LOG.with(|v| v.borrow_mut().clear());
 }
 
 #[cfg(test)]
@@ -344,8 +362,10 @@ pub fn test_reset_counts() {
     FAIL_DIR.with(|v| v.set(false));
     FILE_FLUSHES.with(|v| v.set(0));
     DIR_FLUSHES.with(|v| v.set(0));
-    FAIL_RANGE.with(|v| v.set(false));
+    FAIL_RANGE_WRITE.with(|v| v.set(false));
+    FAIL_RANGE_WAIT.with(|v| v.set(0));
     RANGE_WAITS.with(|v| v.set(0));
+    RANGE_LOG.with(|v| v.borrow_mut().clear());
 }
 
 #[cfg(test)]
@@ -359,8 +379,20 @@ pub fn test_range_waits() -> usize {
 }
 
 #[cfg(test)]
-pub fn test_set_fail_range(fail: bool) {
-    FAIL_RANGE.with(|v| v.set(fail));
+pub fn test_range_log() -> Vec<String> {
+    RANGE_LOG.with(|v| v.borrow().clone())
+}
+
+// The write leg answers EINVAL, so the copy falls back to the final fsync.
+#[cfg(test)]
+pub fn test_set_fail_range_write(fail: bool) {
+    FAIL_RANGE_WRITE.with(|v| v.set(fail));
+}
+
+// The wait leg answers this errno, 0 clears it.
+#[cfg(test)]
+pub fn test_set_fail_range_wait(errno: i32) {
+    FAIL_RANGE_WAIT.with(|v| v.set(errno));
 }
 
 #[cfg(test)]
