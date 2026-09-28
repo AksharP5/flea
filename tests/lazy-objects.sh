@@ -18,8 +18,10 @@ missing ui/NetworkMounts.qml '|| bridge.flow.waiter'
 # f036net: the host builds with the window again, so no gate orders it after rows.
 missing ui/WindowBody.qml 'NetworkHostGate'
 have ui/WindowBody.qml 'id: networkHost'
-# An inactive host builds nothing at creation, so the networkHost Loader must carry active: true.
-grep -A2 'id: networkHost' "$tree/ui/WindowBody.qml" | grep -q 'active: true' || fail 'ui/WindowBody.qml networkHost Loader misses active: true'
+# Sample input: "        id: networkHost", "        active: true", then the Loader's "    }"; it builds at creation, synchronously.
+host=$(sed -n '/id: networkHost/,/^    }/p' "$tree/ui/WindowBody.qml")
+printf '%s\n' "$host" | grep -q 'active: true' || fail 'ui/WindowBody.qml networkHost Loader misses active: true'
+printf '%s\n' "$host" | grep -q 'asynchronous' && fail 'ui/WindowBody.qml networkHost Loader must not build asynchronously'
 command -v qs >/dev/null 2>&1 || { printf 'lazy-objects: no qs here, live halves not run\n'; exit 0; }
 test_root="$FIXTURE_ROOT/flea-lazy-objects-$$"
 sandbox_make "$test_root"
