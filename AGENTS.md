@@ -2758,6 +2758,8 @@ reads the stored widths at 399 lines, one over its last note and still under the
 0.3.7 integration records `ui/Theme.qml` at 401, re-derived with `wc -l`, where the button system and the
 list columns each added their tokens.
 
+The 0.3.7 replay onto the 0.3.6 head moves 8 ceilings, each re-derived with `wc -l`: `ui/ContextMenu.qml` 578 to 579, `ui/Ipc.qml` 813 to 818, `ui/Pane.qml` 724 to 728, `ui/js/Settings.js` 431 to 432, `ui/js/Menu.js` 335 to 338, `ui/js/Focus.js` 359 to 365, `ui/ChromeBar.qml` 468 to 477, `ui/Theme.qml` 401 to 405.
+
 ## The key table is generated
 
 `keys.toml` at the repository root is the single source of truth for every binding.
