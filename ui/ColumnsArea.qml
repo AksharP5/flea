@@ -59,7 +59,7 @@ Item {
     readonly property int shownBefore: (root.showGreatGrandparent ? 1 : 0) + (root.showGrandparent ? 1 : 0) + (root.showParent ? 1 : 0) + 1
     readonly property int activeX: (root.shownBefore - 1) * root.columnWidth
 
-    // The key this view asks under, so a reply ordered another way never lands in this column.
+    // The key a column's rows are kept under: the path and the order that sorted them.
     function peekKey(path) {
         return Columns.peekKey(path, root.pane.showHidden, ViewState.state.hiddenLast === true)
     }
@@ -83,9 +83,9 @@ Item {
     }
 
     function ask(path) {
-        var key = root.peekKey(path)
-        if (path.length > 0 && !root.peeked[key] && !Columns.hasAsk(root.pending, key)) {
-            root.pending = Columns.trackAsk(root.pending, key)
+        var key = root.peekKey(path), sent = Columns.sentKey(key, root.pane.windowSize)
+        if (path.length > 0 && !root.peeked[key] && !Columns.hasAsk(root.pending, sent)) {
+            root.pending = Columns.trackAsk(root.pending, sent)
             root.pane.backend.peek(path, root.pane.windowSize, root.pane.showHidden)
         }
     }
@@ -273,11 +273,11 @@ Item {
     Connections {
         target: root.pane.backend
 
-        // hidden and hiddenLast are the request's own flags, echoed; this view asks with the listing's and keys every answer on them.
-        function onPeeked(path, hidden, total, rows, readFailed, mode, hiddenLast) {
-            var key = Columns.peekKey(path, hidden, hiddenLast)
-            if (!Columns.hasAsk(root.pending, key)) return
-            root.pending = Columns.dropAsk(root.pending, key)
+        // hidden, hiddenLast and first are the request's own, echoed; first keeps a 1 or 512 repair peek out of a column waiting on the window size.
+        function onPeeked(path, hidden, total, rows, readFailed, mode, hiddenLast, first) {
+            var key = Columns.peekKey(path, hidden, hiddenLast), sent = Columns.sentKey(key, first)
+            if (!Columns.hasAsk(root.pending, sent)) return
+            root.pending = Columns.dropAsk(root.pending, sent)
             var next = root.peeked
             next[key] = rows
             root.peeked = next

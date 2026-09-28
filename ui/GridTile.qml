@@ -107,7 +107,7 @@ Item {
 
     // corner: a filename is arbitrary text, so PlainText; the breaks are Flea's own, WrapAnywhere only catches wide glyphs.
     readonly property int captionLines: root.dropTarget ? 1 : 2
-    // Characters of one caption line at the bodySmall advance the label draws at; a floor for single-width glyphs only, wide ones paint past it.
+    // Cells of one caption line at the bodySmall advance the label draws at; a wide glyph counts two.
     readonly property int captionPerLine: Theme.bodySmallAdvance > 0 && nameLabel.width > 0 ? Math.floor(nameLabel.width / Theme.bodySmallAdvance) : -1
     Text {
         id: nameLabel
@@ -133,14 +133,14 @@ Item {
         elide: Text.ElideRight
     }
 
-    // Built only on a clipboard tile: a Glyph per tile costs a Shape, and centred text tracks the widest line's end.
+    // Built only on a clipboard tile: a Glyph per tile costs a Shape, and the mark follows the last line it sits beside.
     Loader {
         id: clipLoader
         active: root.clipMark.length > 0 && !root.renaming
         width: root.clipPx
         height: root.clipPx
-        // One gap past the centred text's own right end, capped at the strip the margin reserves.
-        x: Math.min(nameLabel.x + (nameLabel.width + nameLabel.contentWidth) / 2 + Theme.spacing.gap, nameLabel.x + nameLabel.width + Theme.spacing.gap)
+        // One gap past the centred last line's own right end, capped at the strip the margin reserves.
+        x: Math.min(nameLabel.x + (nameLabel.width + Names.lastLineCells(nameLabel.text) * Theme.bodySmallAdvance) / 2 + Theme.spacing.gap, nameLabel.x + nameLabel.width + Theme.spacing.gap)
         y: nameLabel.y + nameLabel.height - (Theme.grid.captionLineHeight + root.clipPx) / 2 - 1
         sourceComponent: Flea.Glyph {
             width: root.clipPx

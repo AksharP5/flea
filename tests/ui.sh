@@ -3498,6 +3498,16 @@ case_columns() {
     printf 'COLUMNS unsupported=%s state=%s\n' "$facts" "$(ipc previewColumnState)"
     shot columns-unsupported
 
+    # Toggling Hidden files re-asks the shown ancestors under the new key, or every column goes blank.
+    key . >/dev/null
+    settle
+    [[ "$(ipc showHidden)" == "true" ]] || fail "columns: . did not flip showHidden on"
+    [[ -n "$(ipc columnParentRowCentre 0)" ]] || fail "columns: toggling Hidden files left the parent column with no rows"
+    key . >/dev/null
+    settle
+    [[ "$(ipc showHidden)" == "false" ]] || fail "columns: a second . did not flip back off"
+    [[ -n "$(ipc columnParentRowCentre 0)" ]] || fail "columns: toggling Hidden files back left the parent column with no rows"
+
     click_chrome list
     settle
     [[ "$(ipc viewMode)" == "list" ]] || fail "columns: the list button did not switch back"
@@ -4476,7 +4486,23 @@ case_columnautofit() {
     [[ "$(ipc sortMark)" == "$before_mark" ]] \
         || fail "columnautofit: fitting size sorted, mark is $(ipc sortMark)"
 
-    # F4 fits every drawn column in one write: stored matches drawn, one unfitted column changes, a second F4 is a no-op.
+    # F4 fits every drawn column in one write: stored is seeded to the rail maximum no fit can produce, so every drawn column must change to what the header draws; a second F4 is a no-op.
+    "$flea_bin" --ui-state '{"columnWidths":{"mode":480,"size":480,"date":480,"kind":480}}' >/dev/null \
+        || fail "columnautofit: could not seed stored widths to the rail maximum"
+    settle
+    local _seed_ok=0
+    for _attempt in $(seq 1 60); do
+        _seed_ok=1
+        for _f4key in mode size date kind; do
+            IFS='|' read -r _x _drawn <<< "$(ipc headerCellRect "$_f4key")"
+            [[ "$_drawn" =~ ^[0-9]+$ && "$_drawn" != "0" ]] || continue
+            [[ "$_drawn" == "480" ]] || _seed_ok=0
+        done
+        (( _seed_ok == 1 )) && break
+        sleep 0.05
+    done
+    (( _seed_ok == 1 )) \
+        || fail "columnautofit: seeding stored widths to 480 did not draw, widths $(ipc columnWidths)"
     local widths_before widths_once widths_twice
     widths_before=$(ipc columnWidths)
     key -k F4 >/dev/null
@@ -4484,7 +4510,7 @@ case_columnautofit() {
     widths_once=$(ipc columnWidths)
     printf 'COLUMNAUTOFIT f4=%s\n' "$widths_once"
     shot columnautofit-f4
-    local _f4key _drawn _have _was _fitted_n=0 _changed_n=0
+    local _f4key _drawn _have _was _fitted_n=0
     for _f4key in mode size date kind; do
         IFS='|' read -r _x _drawn <<< "$(ipc headerCellRect "$_f4key")"
         [[ "$_drawn" =~ ^[0-9]+$ && "$_drawn" != "0" ]] || continue
@@ -4492,15 +4518,12 @@ case_columnautofit() {
         _was=$(jq -r --arg k "$_f4key" '.[$k] // empty' <<< "$widths_before")
         [[ "$_have" == "$_drawn" ]] \
             || fail "columnautofit: F4 left $_f4key stored as '$_have' while the header draws $_drawn"
-        [[ "$_have" != "$_was" ]] && _changed_n=$((_changed_n + 1))
-        [[ "$_was" == "$_drawn" || "$_have" != "$_was" ]] \
-            || fail "columnautofit: F4 left unfitted $_f4key at its pre-fit '$_was', so it fitted nothing there"
+        [[ "$_have" != "$_was" ]] \
+            || fail "columnautofit: F4 left $_f4key at its seeded '$_was', so it fitted nothing there"
         _fitted_n=$((_fitted_n + 1))
     done
     (( _fitted_n >= 1 )) \
         || fail "columnautofit: F4 fitted no drawn column, before $widths_before after $widths_once"
-    (( _changed_n >= 1 )) \
-        || fail "columnautofit: F4 changed no drawn column, before $widths_before after $widths_once"
     key -k F4 >/dev/null
     settle
     widths_twice=$(ipc columnWidths)

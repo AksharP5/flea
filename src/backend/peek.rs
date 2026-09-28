@@ -18,7 +18,7 @@ pub fn peek_line(path: &str, first: usize, hidden: bool, hidden_last: bool, focu
         Ok(v) => v,
         // An unreadable ancestor is still not an error for the pane it belongs to, but it is not an
         // empty directory either, and the column drew those two the same way until this line.
-        Err(_) => return failed_peek(path, hidden, hidden_last),
+        Err(_) => return failed_peek(path, first, hidden, hidden_last),
     };
     sort_by_name(&mut listing, false, hidden_last);
     let total = listing.len();
@@ -28,10 +28,10 @@ pub fn peek_line(path: &str, first: usize, hidden: bool, hidden_last: bool, focu
             .map(|i| i.saturating_sub(count / 2).min(total - count)).unwrap_or(0)
     };
     let mut out = String::with_capacity(count * 64);
-    // Echoed so the two peek clients tell replies apart: both ask with pane.windowSize, so the key is path plus hidden plus hiddenLast.
+    // Echoed so peek clients tell replies apart: NetworkMounts asks with 1 and 512 while the columns view asks with the pane's window size.
     out.push_str(&format!(
-        r#"{{"t":"peeked","path":"{}","hidden":{},"hiddenLast":{},"n":{},"rows":["#,
-        escape(path), hidden, hidden_last, total
+        r#"{{"t":"peeked","path":"{}","hidden":{},"hiddenLast":{},"first":{},"n":{},"rows":["#,
+        escape(path), hidden, hidden_last, first, total
     ));
     for i in start..start + count {
         if i > start {
@@ -54,12 +54,12 @@ pub fn peek_line(path: &str, first: usize, hidden: bool, hidden_last: bool, focu
 // A scan that failed answers zero rows, which is the exact count an empty directory answers, so the
 // line says which of the two it is. mode carries the directory's own permissions when the stat
 // outlived the refused read, and is left out when it did not, the same rule the error line follows.
-fn failed_peek(path: &str, hidden: bool, hidden_last: bool) -> String {
+fn failed_peek(path: &str, first: usize, hidden: bool, hidden_last: bool) -> String {
     let mode = mode_of(path);
     let mode_field = if mode == 0 { String::new() } else { format!(r#","mode":{}"#, mode) };
     format!(
-        r#"{{"t":"peeked","path":"{}","hidden":{},"hiddenLast":{},"n":0,"failed":true{},"rows":[]}}"#,
-        escape(path), hidden, hidden_last, mode_field
+        r#"{{"t":"peeked","path":"{}","hidden":{},"hiddenLast":{},"first":{},"n":0,"failed":true{},"rows":[]}}"#,
+        escape(path), hidden, hidden_last, first, mode_field
     )
 }
 
@@ -213,5 +213,18 @@ mod tests {
         let (mime, icons) = tables();
         let line = peek_line(&d.path().to_string_lossy(), 10, false, false, "", &mime, &icons);
         assert!(line.contains(r#"say \"hi\".txt"#), "got {}", line);
+    }
+
+    #[test]
+    fn a_peeked_line_echoes_first_so_a_repair_reply_cannot_land_in_a_column() {
+        let d = TestDir::new("peekfirst");
+        d.file("a.txt", "");
+        let (mime, icons) = tables();
+        let one = peek_line(&d.path().to_string_lossy(), 1, false, false, "", &mime, &icons);
+        assert!(one.contains(r#""first":1"#), "the column tells its own reply from a repair peek: {}", one);
+        let wide = peek_line(&d.path().to_string_lossy(), 512, false, false, "", &mime, &icons);
+        assert!(wide.contains(r#""first":512"#), "got {}", wide);
+        let missing = peek_line(&d.join("never-existed").to_string_lossy(), 1, true, true, "", &mime, &icons);
+        assert!(missing.contains(r#""first":1"#), "a refusal is still a reply to a request: {}", missing);
     }
 }

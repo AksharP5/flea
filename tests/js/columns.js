@@ -189,11 +189,16 @@ function runPeekKey(check) {
     check("hidden-last keys apart too", Columns.peekKey("/a", false, true), "/a\n01")
     check("both keys apart together", Columns.peekKey("/a", true, true), "/a\n11")
     check("an absent flag reads as off", Columns.peekKey("/a"), "/a\n00")
+    check("a repair count asks apart from the pane's own",
+        Columns.sentKey(Columns.peekKey("/a", false, false), 1) !== Columns.sentKey(Columns.peekKey("/a", false, false), 35), true)
+    check("the same count asks the same", Columns.sentKey("/a\n00", 35), "/a\n00\n35")
     var area = source("ui/ColumnsArea.qml")
-    check("the columns view answers replies under that key",
-        area.indexOf("Columns.peekKey(path, hidden, hiddenLast)") >= 0, true)
-    check("and asks under the order it shows",
-        area.indexOf("Columns.peekKey(path, root.pane.showHidden, ViewState.state.hiddenLast === true)") >= 0, true)
+    check("the columns view matches a reply on its sent count",
+        area.indexOf("Columns.peekKey(path, hidden, hiddenLast), sent = Columns.sentKey(key, first)") >= 0, true)
+    check("and asks with the pane's window size",
+        area.indexOf("sent = Columns.sentKey(key, root.pane.windowSize)") >= 0, true)
+    check("while stored rows keep no count, so a resize orphans no column",
+        area.indexOf("ViewState.state.hiddenLast === true, root.pane.windowSize)") < 0, true)
 }
 
 // Live cover: tests/ui.sh columns. Only a reply this view asked for lands in it, so a repair peek or a path-bar Tab never fills a column with wrong rows.
@@ -203,12 +208,26 @@ function runPeekPending(check) {
     check("anything else is another client's", Columns.hasAsk({}, key), false)
     check("a stored reply drops its own ask", Columns.hasAsk(Columns.dropAsk(Columns.trackAsk({}, key), key), key), false)
     check("a stored reply keeps a sibling ask", Columns.hasAsk(Columns.dropAsk(Columns.trackAsk(Columns.trackAsk({}, key), other), key), other), true)
+    // A repair peek for the same path and flags is another client's when the count differs.
+    var own = Columns.sentKey(Columns.peekKey("/a", false, false), 35), repair = Columns.sentKey(Columns.peekKey("/a", false, false), 1)
+    var held = Columns.trackAsk({}, own)
+    check("a first-1 reply for the same path and flags is refused while the pane's own ask stands",
+        Columns.hasAsk(held, repair), false)
+    check("while the pane's own reply is kept", Columns.hasAsk(held, own), true)
+    check("and the repair reply drops no ask of its own",
+        Columns.hasAsk(Columns.dropAsk(held, repair), own), true)
     var area = source("ui/ColumnsArea.qml")
-    check("the columns view tracks its own asks", area.indexOf("Columns.trackAsk(root.pending, key)") >= 0, true)
-    check("and stores only a reply it asked for", area.indexOf("if (!Columns.hasAsk(root.pending, key)) return") >= 0, true)
-    check("and drops the ask it stored", area.indexOf("Columns.dropAsk(root.pending, key)") >= 0, true)
+    check("the columns view tracks its own asks", area.indexOf("Columns.trackAsk(root.pending, sent)") >= 0, true)
+    check("and stores only a reply it asked for", area.indexOf("if (!Columns.hasAsk(root.pending, sent)) return") >= 0, true)
+    check("and drops the ask it stored", area.indexOf("Columns.dropAsk(root.pending, sent)") >= 0, true)
     check("and forgets every ask with the listing", area.indexOf("root.pending = ({})") >= 0, true)
-    check("and re-asks the shown ancestors under the new key", area.indexOf("onPeekOrderChanged") >= 0, true)
+    var orderAt = area.indexOf("onPeekOrderChanged")
+    var orderBody = orderAt >= 0 ? area.substring(orderAt, orderAt + 200) : ""
+    check("and re-asks the shown ancestors under the new key", orderBody.indexOf("refreshNeighbours") >= 0, true)
+    var peekAt = area.indexOf("readonly property string peekOrder")
+    var peekBody = peekAt >= 0 ? area.substring(peekAt, peekAt + 300) : ""
+    check("and the order it watches carries both flags",
+        peekBody.indexOf("showHidden") >= 0 && peekBody.indexOf("hiddenLast") >= 0, true)
 }
 
 // The header drag writes once on release after a real move, so a click pins nothing and a fit survives its own release.

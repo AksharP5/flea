@@ -47,11 +47,11 @@ function runGridCaption(check) {
     function linesOf(caption) {
         return String(caption).split("\n")
     }
-    // Each line holds at most perLine code points; a surrogate pair is one, never two.
+    // Each line holds at most perLine display cells; a wide glyph counts two, a surrogate pair is one char.
     function fits(caption, per) {
         var out = linesOf(caption)
         for (var i = 0; i < out.length; i++)
-            if (Names.charsOf(out[i]).length > per)
+            if (Names.cellsOf(Names.charsOf(out[i])) > per)
                 return false
         return true
     }
@@ -80,6 +80,19 @@ function runGridCaption(check) {
     check("one line takes no break", single.indexOf("\n") >= 0, false)
     check("one line fits and keeps the extension",
           fits(single, 16) && single.slice(-4) === ".png", true)
+    var party = Names.gridCaption("🎉birthdaypartyphotos.jpg", 16, 2)
+    check("an emoji stem keeps its extension on the last line",
+          linesOf(party)[linesOf(party).length - 1].slice(-4), ".jpg")
+    check("no emoji line exceeds its cells", fits(party, 16), true)
+    var cjkStem = "中中中中中中中中中中中中中中中中中中中中"
+    var cjk = Names.gridCaption(cjkStem + ".pdf", 16, 2)
+    check("a CJK stem keeps its extension on the last line",
+          linesOf(cjk)[linesOf(cjk).length - 1].slice(-4), ".pdf")
+    check("no CJK line exceeds its cells", fits(cjk, 16), true)
+    check("a wide glyph counts two cells", Names.cellWidthOf("🎉"), 2)
+    check("a narrow glyph counts one cell", Names.cellWidthOf("a"), 1)
+    check("the last line counts its cells, not its chars",
+          Names.lastLineCells("ab\nc🎉"), 3)
     check("a dead width hands the whole name back",
           Names.gridCaption(full, 0, 2), full)
     check("a dead line count hands the whole name back",
@@ -101,6 +114,8 @@ function runGridCaption(check) {
     var wrapAt = tile.indexOf("Text.WrapAnywhere", labelAt)
     check("WrapAnywhere sits on the caption label, ahead of the tooltip",
           labelAt >= 0 && tipAt > labelAt && wrapAt >= labelAt && wrapAt < tipAt, true)
-    check("the mark sits in the reserved strip past the last glyph",
-          tile.indexOf("nameLabel.x + nameLabel.width + Theme.spacing.gap") >= 0, true)
+    check("the mark sits past the last line rather than the widest one",
+          tile.indexOf("Names.lastLineCells(nameLabel.text)") >= 0, true)
+    check("the widest-line guess is gone",
+          tile.indexOf("nameLabel.contentWidth") < 0, true)
 }

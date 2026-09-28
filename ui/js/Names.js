@@ -37,8 +37,68 @@ function middleElide(name, maxChars) {
 // A caption break stays behind a separator, so a word is never split when a break fits.
 var CAPTION_BREAKS = " -_."
 
+// Display cells: East Asian Wide and Fullwidth paint two columns, emoji paint two, all else one.
+// Sample input: cellWidth(0x1F389) is 2, cellWidth(0x41) is 1.
+var WIDE_RANGES = [[0x1100, 0x115F], [0x2E80, 0x303E], [0x3041, 0x33FF], [0x3400, 0x4DBF], [0x4E00, 0xA4CF], [0xAC00, 0xD7A3], [0xF900, 0xFAFF], [0xFE10, 0xFE19], [0xFE30, 0xFE4F], [0xFF00, 0xFF60], [0xFFE0, 0xFFE6], [0x20000, 0x3FFFD]]
+var EMOJI_RANGES = [[0x2600, 0x26FF], [0x2700, 0x27BF], [0x2B00, 0x2BFF], [0x1F000, 0x1FAFF]]
+
 function isBreakAfter(ch) {
     return CAPTION_BREAKS.indexOf(ch) >= 0
+}
+
+// True when a code point paints two columns rather than one.
+function isWideCode(cp) {
+    for (var i = 0; i < WIDE_RANGES.length; i++)
+        if (cp >= WIDE_RANGES[i][0] && cp <= WIDE_RANGES[i][1]) return true
+    for (var j = 0; j < EMOJI_RANGES.length; j++)
+        if (cp >= EMOJI_RANGES[j][0] && cp <= EMOJI_RANGES[j][1]) return true
+    return false
+}
+
+// Cells one char paints: 2 for a wide code point, 1 for all else.
+function cellWidthOf(ch) {
+    var cp = String(ch).codePointAt(0)
+    return isWideCode(cp) ? 2 : 1
+}
+
+// Cells a char array paints.
+function cellsOf(chars) {
+    var n = 0
+    for (var i = 0; i < chars.length; i++) n += cellWidthOf(chars[i])
+    return n
+}
+
+// A head that fits in this many cells, never splitting a code point.
+function headByCells(chars, budget) {
+    var out = []
+    var used = 0
+    for (var i = 0; i < chars.length; i++) {
+        var w = cellWidthOf(chars[i])
+        if (used + w > budget) break
+        out.push(chars[i])
+        used += w
+    }
+    return out
+}
+
+// A tail that fits in this many cells, never splitting a code point.
+function tailByCells(chars, budget) {
+    var out = []
+    var used = 0
+    for (var i = chars.length - 1; i >= 0; i--) {
+        var w = cellWidthOf(chars[i])
+        if (used + w > budget) break
+        out.unshift(chars[i])
+        used += w
+    }
+    return out
+}
+
+// Cells of the caption's last line, so a mark sits past the glyphs it follows.
+// Sample input: lastLineCells("ab\nc🎉") is 3.
+function lastLineCells(text) {
+    var parts = String(text).split("\n")
+    return cellsOf(charsOf(parts[parts.length - 1]))
 }
 
 // The extension is the last dot's tail, so the last line can keep it whole; a leading dot names a dotfile, not an extension.
@@ -55,42 +115,54 @@ function extensionLength(chars) {
     return chars.length - dot
 }
 
-// Elides a char array down to capacity, keeping a one-line extension whole on the tail.
+// Elides a char array down to this many cells, keeping a one-line extension whole on the tail.
 function elideChars(chars, capacity, perLine) {
     if (capacity <= 1)
         return ["…"]
+    if (cellsOf(chars) <= capacity)
+        return chars.slice(0)
     var ext = extensionLength(chars)
+    var extCells = ext > 0 ? cellsOf(chars.slice(chars.length - ext)) : 0
     var head = Math.ceil((capacity - 1) / 2)
     var tail = Math.floor((capacity - 1) / 2)
     // An extension longer than one line, or with no room for the mark beside it, cannot stay whole.
-    if (ext > 0 && ext <= perLine && ext + 1 <= capacity) {
-        tail = Math.max(ext, tail)
+    if (ext > 0 && extCells <= perLine && extCells + 1 <= capacity) {
+        tail = Math.max(extCells, tail)
         head = capacity - 1 - tail
     }
-    return chars.slice(0, head).concat(["…"], chars.slice(chars.length - tail))
+    return headByCells(chars, head).concat(["…"], tailByCells(chars, tail))
 }
 
-// Wraps a char array into at most count lines of perLine chars, breaking after the last separator that still leaves the rest fitting.
+// Wraps a char array into at most count lines of perLine cells, breaking after the last separator that still leaves the rest fitting.
 function wrapChars(chars, perLine, count) {
     var out = []
     var pos = 0
     // The extension's own dot, so a break there never wins while an earlier separator fits.
     var extDot = chars.length - extensionLength(chars)
     for (var ln = 0; ln < count && pos < chars.length; ln++) {
-        var rest = chars.length - pos
+        var restCells = cellsOf(chars.slice(pos))
         var left = count - ln
-        if (rest <= perLine) {
+        if (restCells <= perLine) {
             out.push(chars.slice(pos).join(""))
             break
         }
         if (ln === count - 1) {
-            out.push(chars.slice(pos, pos + perLine).join(""))
+            out.push(headByCells(chars.slice(pos), perLine).join(""))
             break
         }
+        // The farthest char index fitting in this line's cells.
+        var far = pos
+        var used = 0
+        while (far < chars.length && used + cellWidthOf(chars[far]) <= perLine) {
+            used += cellWidthOf(chars[far])
+            far += 1
+        }
+        if (far <= pos)
+            far = pos + 1
         var cut = -1
         var extCut = -1
-        for (var i = pos + perLine - 1; i > pos; i--) {
-            if (!isBreakAfter(chars[i]) || chars.length - (i + 1) > (left - 1) * perLine)
+        for (var i = far - 1; i > pos; i--) {
+            if (!isBreakAfter(chars[i]) || cellsOf(chars.slice(i + 1)) > (left - 1) * perLine)
                 continue
             if (i === extDot) {
                 extCut = i + 1
@@ -100,7 +172,7 @@ function wrapChars(chars, perLine, count) {
             break
         }
         if (cut < 0)
-            cut = extCut >= 0 ? extCut : pos + perLine
+            cut = extCut >= 0 ? extCut : far
         out.push(chars.slice(pos, cut).join(""))
         pos = cut
     }
@@ -119,7 +191,7 @@ function gridCaption(name, perLine, lines) {
     var chars = charsOf(text)
     if (chars.length === 0)
         return text
-    if (chars.length > per * count)
+    if (cellsOf(chars) > per * count)
         chars = elideChars(chars, per * count, per)
     return wrapChars(chars, per, count).join("\n")
 }

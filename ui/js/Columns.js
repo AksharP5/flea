@@ -59,6 +59,12 @@ function peekKey(path, hidden, hiddenLast) {
     return String(path) + "\n" + (hidden === true ? "1" : "0") + (hiddenLast === true ? "1" : "0")
 }
 
+// The row count joins the key only for an outstanding ask, so a resize never orphans a stored column.
+// Sample input: sentKey("/a\n00", 35) is "/a\n00\n35".
+function sentKey(key, first) {
+    return String(key) + "\n" + Math.floor(Number(first))
+}
+
 // An ask this view made and still awaits, keyed by peekKey, so a reply another client asked for never lands in its column.
 // Sample input: trackAsk({}, "/a\n10") holds that key.
 function trackAsk(pending, key) {
