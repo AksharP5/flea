@@ -2598,6 +2598,17 @@ rows paint beside the 2000 ms fallback. `ui/Preview.qml` falls 463 to 461 for th
 swap comment and the `Qt.binding` groundInset, and `ui/Sidebar.qml` falls 576 to 572 now that
 the rail never builds the host, both inside their recorded ceilings.
 
+f036net moves one recorded ceiling down and deletes two files, each count re-derived with `wc -l`:
+`ui/WindowBody.qml` 585 to 557 for building the network host with the window again (the `networkHost`
+Loader active at creation, synchronous) and deleting `ui/NetworkHostGate.qml` with its qmldir line,
+`tests/lazy-host-live.qml` and the host half of `tests/lazy-objects.sh`; the rail's arrival keeps
+working because the host exists before it. `ui/Sidebar.qml` stands at 572 inside its recorded 576 and
+`ui/Pane.qml` at 741 inside its recorded 741 for the two comments that no longer promise a lazy build.
+`ui/NetworkMounts.qml` keeps 867 lines with its bridge `Connections` rewritten to one handler style,
+because Qt connects only one style per Connections object and the mixed block left `onReady` unwired;
+`tests/connections-style.sh` sweeps every Connections block under `ui/` for that mix and is wired into
+`tests/run-all.sh`.
+
 Railmenus2 records one ceiling, re-derived with `wc -l`: `ui/js/Menu.js` 297 to 335 for the rail
 rows living in INVENTORY with kinds R (Mount, Open, Unmount, Eject, Rename, Edit address, Remove
 from Network, Remove from Favorites), the rail availability and the hidden-check skip, plus the New

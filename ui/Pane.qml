@@ -89,8 +89,8 @@ FocusScope {
     // shared by the second pane): mounts, bridge waits and dialog answers outlive the rail.
     property var sharedNetworkService: null
     property var networkService: null
-    // Builds the host on the first need and answers it; the rail calls this when it arrives,
-    // and the typed path and the dialog call it when the rail is hidden.
+    // Answers the window-long host ui/WindowBody.qml builds with the window; the rail
+    // calls this when it arrives, and the typed path and the dialog call it the same way.
     function ensureNetworkService() {
         if (root.networkService) return root.networkService
         if (root.sharedNetworkService) { root.networkService = root.sharedNetworkService; return root.networkService }

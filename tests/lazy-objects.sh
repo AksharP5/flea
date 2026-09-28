@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# p036lazy live gate: bridge, wrapper and host arrive off launch and whole on first use.
+# p036lazy live gate: bridge and wrapper arrive off launch and whole on first use;
+# the network host builds with the window again (f036net), so it has no live half.
 set -u
 . "$(dirname "$0")/../tools/flea-sandbox-guard"
 cd "$(dirname "$0")/.." || exit 1
 tree=${1:-$PWD}
-for f in ui/NetworkMounts.qml ui/NetworkHostGate.qml ui/Preview.qml ui/WindowBody.qml ui/js/Mounts.js tests/lazy-live.qml tests/lazy-swap-live.qml tests/lazy-host-live.qml; do [ -f "$tree/$f" ] || { printf 'FAIL missing %s\n' "$f"; exit 1; }; done
+for f in ui/NetworkMounts.qml ui/Preview.qml ui/WindowBody.qml ui/js/Mounts.js tests/lazy-live.qml tests/lazy-swap-live.qml; do [ -f "$tree/$f" ] || { printf 'FAIL missing %s\n' "$f"; exit 1; }; done
 # Upper-case property names never load, so every .qml under ui/ is swept, boot included.
 upper=$(grep -rnE 'property[[:space:]]+[^[:space:]]+[[:space:]]+[A-Z][A-Za-z0-9_]*' "$tree/ui" --include='*.qml' || true)
 [ -z "$upper" ] || { printf 'FAIL upper-case QML property name (must start lower-case):\n%s\n' "$upper"; exit 1; }
@@ -15,17 +16,15 @@ missing() { grep -qF "$2" "$tree/$1" && fail "$1 still carries $2"; }
 missing ui/NetworkMounts.qml 'cloudFile.waitForJob()'
 have ui/Sidebar.qml 'onServiceChanged: { root.arrive(); root.pushBookmarks() }'
 missing ui/NetworkMounts.qml '|| bridge.flow.waiter'
+# f036net: the host builds with the window again, so no gate orders it after rows.
+missing ui/WindowBody.qml 'NetworkHostGate'
+have ui/WindowBody.qml 'id: networkHost'
 command -v qs >/dev/null 2>&1 || { printf 'lazy-objects: no qs here, live halves not run\n'; exit 0; }
 test_root="$FIXTURE_ROOT/flea-lazy-objects-$$"
 sandbox_make "$test_root"
 cleanup() { sandbox_remove "$test_root"; }
 trap cleanup EXIT
-mkdir -p "$test_root/home" "$test_root/host-config" "$test_root/bridge-config" "$test_root/swap-config"
-ln -s "$tree/tests/lazy-host-live.qml" "$test_root/host-config/shell.qml"
-host_out=$(env HOME="$test_root/home" PATH="/usr/bin:/bin" QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1 LAZY_HOST_UI="$tree/ui" timeout 20 qs -p "$test_root/host-config" 2>&1)
-printf '%s\n' "$host_out" | grep -q 'LAZY_HOST ordered-after-rows fallback-when-never-lands' || { printf 'FAIL host not ordered after rows with fallback\n%s\n' "$host_out"; exit 1; }
-printf '%s\n' "$host_out" | grep -q 'LAZY_HOST FAIL' && { printf 'FAIL host live refused\n%s\n' "$host_out"; exit 1; }
-printf 'lazy-objects: host ordered after rows, fallback when never lands\n'
+mkdir -p "$test_root/home" "$test_root/bridge-config" "$test_root/swap-config"
 ln -s "$tree/ui/NetworkMounts.qml" "$test_root/bridge-config/NetworkMounts.qml"
 ln -s "$tree/ui/MountListing.qml" "$test_root/bridge-config/MountListing.qml"
 ln -s "$tree/ui/NetworkPlaces.qml" "$test_root/bridge-config/NetworkPlaces.qml"

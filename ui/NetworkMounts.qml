@@ -327,8 +327,8 @@ Item {
             }
             root.opened(path, origin)
         }
-        onStarting: function (text, origin) { root.sticky(text, origin) }
-        onFailed: function (text, origin) {
+        function onStarting(text, origin) { root.sticky(text, origin) }
+        function onFailed(text, origin) {
             if (root._repairWaiting) {
                 root._repairWaiting = false
                 root.sticky("", origin)
@@ -342,7 +342,7 @@ Item {
         }
         // The bridge's busy refusal reaches a repair the same way: a second bridge is never
         // started, so the repair ends instead of waiting on a wait it did not start.
-        onNotice: function (text, origin) {
+        function onNotice(text, origin) {
             if (root._repairWaiting) {
                 root._repairWaiting = false
                 root.sticky("", origin)

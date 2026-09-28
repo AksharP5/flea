@@ -241,8 +241,8 @@ Item {
         function onRailChosen(action, key) { root.releaseChosen(action, key) }
     }
 
-    // Built on demand outside the launch path: a favourite or phone row pressed before the
-    // window-long host exists builds it on that press rather than refusing.
+    // The window-long host exists from creation, so a favourite or phone row pressed
+    // before the rail arrived still answers it on that press rather than refusing.
     function networkHost() {
         if (root.service) return root.service
         if (root.navigationPane) return root.navigationPane.ensureNetworkService()
