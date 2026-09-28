@@ -6,6 +6,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 // Big enough that the syscall count stops mattering, small enough that a cancel is noticed promptly.
 const CHUNK: usize = 256 * 1024;
+// 8 MiB is 32 chunks, so one range sync per 32 writes keeps the card live without a syscall per chunk.
+pub(crate) const CONFIRM_BYTES: u64 = 8 * 1024 * 1024;
 // rename(2) sets EXDEV when the two paths are on different filesystems, which is the one failure that means "copy instead".
 const EXDEV: i32 = 18;
 use crate::oflags::{O_DIRECTORY, O_NOFOLLOW};
@@ -77,6 +79,9 @@ fn copy_file_at(src: At, dst: At, total: u64, p: &mut Progress) -> Result<(), Fl
     let durable = p.durability.as_ref().is_some_and(|c| c.durable);
     let mut buf = vec![0u8; CHUNK];
     let mut done: u64 = 0;
+    let mut confirmed: u64 = 0;
+    // A filesystem without range writeback (some FUSE mounts answer EINVAL) leaves the verdict to the final fsync.
+    let mut slicing = durable;
     loop {
         if cancelled(p) {
             // The partial file goes with the cancel: a half-written destination is not a result anyone asked for.
@@ -101,6 +106,26 @@ fn copy_file_at(src: At, dst: At, total: u64, p: &mut Progress) -> Result<(), Fl
                 None => (done, total),
             };
             (p.on_bytes)(reported, against);
+        } else {
+            // Each confirmed slice reports what the drive holds, so the card moves mid-file.
+            while slicing && done - confirmed >= CONFIRM_BYTES {
+                if let Err(e) = crate::backend::durable::sync_range(&w, confirmed, CONFIRM_BYTES) {
+                    if crate::backend::durable::range_unsupported(&e) {
+                        slicing = false;
+                        break;
+                    }
+                    if let Some(durability) = p.durability.as_mut() {
+                        durability.note_file_failed();
+                    }
+                    return Err(left_half_written(p, dst, &w, from_io("copy", &dst.named.to_string_lossy(), &e)));
+                }
+                confirmed += CONFIRM_BYTES;
+                let (reported, against) = match p.tree {
+                    Some(carried) => (carried + confirmed, 0),
+                    None => (confirmed, total),
+                };
+                (p.on_bytes)(reported, against);
+            }
         }
     }
     if let Err(e) = w.flush() {

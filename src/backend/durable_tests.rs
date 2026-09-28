@@ -518,3 +518,38 @@ fn duplicate_classifies_the_existing_parent_not_the_missing_name() {
     test_reset();
     assert_eq!(outcome.map_err(|e| e.msg), Ok(d.join("a copy.txt")), "the marked name is the copy's, and the parent was classified, so no folder flush ran to fail");
 }
+
+// A durable copy confirms slices while it writes, so the card counts confirmed bytes mid-file.
+#[test]
+fn a_durable_copy_confirms_slices_while_it_writes() {
+    test_reset();
+    let d = TestDir::new("durable-slices");
+    let out = d.dir("out");
+    test_mark_durable(&out);
+    // Two confirm slices plus a tail, so progress cannot wait for the final fsync.
+    let confirm = crate::backend::copyfile::CONFIRM_BYTES as usize;
+    let total: usize = confirm * 2 + 1024 * 1024;
+    let src = d.join("big.bin");
+    std::fs::write(&src, vec![b'a'; total]).expect("test sandbox file");
+    let mut durability = Durability::begin(&out);
+    assert!(durability.durable, "the marked target is durable");
+    let flag = std::sync::atomic::AtomicBool::new(false);
+    let mut seen: Vec<(u64, u64)> = Vec::new();
+    let mut sink = |done: u64, against: u64| seen.push((done, against));
+    let mut p = quiet(&flag, &mut sink, &mut durability);
+    crate::backend::copyfile::copy_any(&src, &out.join("big.bin"), &mut p).expect("copy");
+    drop(p);
+    assert!(seen.len() >= 3, "slices report while writing, got {:?}", seen.len());
+    assert!(seen.windows(2).all(|w| w[1].0 > w[0].0), "confirmed counts only ever rise, got {:?}", seen);
+    assert_eq!(seen.last().copied(), Some((total as u64, total as u64)), "the last report is the whole file, got {:?}", seen.last());
+    test_reset();
+}
+
+#[test]
+fn a_filesystem_without_range_writeback_is_not_a_failed_copy() {
+    // EINVAL is what some FUSE mounts answer sync_file_range with; EIO is a drive refusing bytes.
+    let einval = std::io::Error::from_raw_os_error(22);
+    let eio = std::io::Error::from_raw_os_error(5);
+    assert!(crate::backend::durable::range_unsupported(&einval));
+    assert!(!crate::backend::durable::range_unsupported(&eio));
+}

@@ -190,6 +190,40 @@ pub fn fsync_file(f: &std::fs::File) -> std::io::Result<()> {
     f.sync_all()
 }
 
+// sync_file_range(2) writes one slice back without the whole-file wait, so the card counts confirmed bytes mid-file.
+const SYNC_FILE_RANGE_WAIT_BEFORE: u32 = 1;
+const SYNC_FILE_RANGE_WRITE: u32 = 2;
+const SYNC_FILE_RANGE_WAIT_AFTER: u32 = 4;
+
+// std already links the system libc, so the one symbol is declared here rather than taking a crate.
+extern "C" {
+    fn sync_file_range(fd: i32, offset: i64, nbytes: i64, flags: u32) -> i32;
+}
+
+// One written slice is confirmed to the drive; a failure refuses the bytes the same way an fsync failure does.
+pub fn sync_range(f: &std::fs::File, offset: u64, len: u64) -> std::io::Result<()> {
+    if seam_flush(false) {
+        return Err(std::io::Error::new(std::io::ErrorKind::Other, "simulated fsync failure"));
+    }
+    use std::os::unix::io::AsRawFd;
+    let flags = SYNC_FILE_RANGE_WAIT_BEFORE | SYNC_FILE_RANGE_WRITE | SYNC_FILE_RANGE_WAIT_AFTER;
+    let rc = unsafe { sync_file_range(f.as_raw_fd(), offset as i64, len as i64, flags) };
+    if rc == 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error())
+    }
+}
+
+// EINVAL, ESPIPE, ENOSYS and EOPNOTSUPP say the filesystem has no range writeback, not that a byte was lost.
+pub fn range_unsupported(e: &std::io::Error) -> bool {
+    const EINVAL: i32 = 22;
+    const ESPIPE: i32 = 29;
+    const ENOSYS: i32 = 38;
+    const EOPNOTSUPP: i32 = 95;
+    matches!(e.raw_os_error(), Some(EINVAL) | Some(ESPIPE) | Some(ENOSYS) | Some(EOPNOTSUPP))
+}
+
 pub fn fsync_dir(path: &Path) -> std::io::Result<()> {
     if seam_flush(true) {
         return Err(std::io::Error::new(std::io::ErrorKind::Other, "simulated fsync failure"));

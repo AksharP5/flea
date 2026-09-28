@@ -2583,6 +2583,13 @@ hard cap for the compact removal; `ui/ContextMenu.qml` stands at 577 inside its 
 Fixr3r3 records one ceiling, re-derived with `wc -l`: `tests/js/network.js` 300 to 305 for the
 volume shape offering both Unmount and Eject and the eject-first release check.
 
+Durprog moves two recorded ceilings, each re-derived with `wc -l`: `src/backend/copyfile.rs` 434 to
+459 for the slice confirms (CONFIRM_BYTES with its one-line justification, the sync_file_range loop,
+its progress reports and the fallback when a filesystem has no range writeback), and
+`src/backend/durable_tests.rs` 520 to 555 for the tests that a durable copy confirms slices while it
+writes and that EINVAL from a range flush is not a failed copy; `src/backend/durable.rs` stands at 347
+for the sync_range wrapper, its syscall declaration and range_unsupported.
+
 ## The key table is generated
 
 `keys.toml` at the repository root is the single source of truth for every binding.
