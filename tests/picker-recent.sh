@@ -37,7 +37,7 @@ for _ in $(seq 1 $((limit_seconds * 10))); do
     sleep 0.1
 done
 grep -E ' (ok  |FAIL) |picker-recent:|ERROR|is not a type|Cannot assign|TypeError' "$log" | sed 's/^.*scene[^:]*: //' | uniq
-# Sample input, the last line: 'picker-recent: 3 checks, 0 failed'
+# Sample input, the last line: 'picker-recent: 4 checks, 0 failed'
 tally=$(grep -o 'picker-recent: [0-9]* checks, [0-9]* failed' "$log" | tail -1)
 [ -n "$tally" ] || { echo "FAIL the harness reported no tally, so it did not run to the end; its log ends:"; tail -20 "$log"; exit 1; }
 # The warning this unit removes: Qt opening the absent file itself, once per read.

@@ -1,5 +1,6 @@
 .import "../../ui/js/Mounts.js" as Mounts
 .import "../../ui/js/RailMenu.js" as RailMenu
+.import "../../ui/js/Eject.js" as Eject
 .import "../../ui/js/Protocols.js" as Protocols
 
 // Issue #36 (@janoguerra): every network decision resolves from the mount's own URI, or from gio
@@ -159,18 +160,17 @@ function run(check) {
     var mounted = { path: "", label: "isos", group: "network", kind: "share", uri: "smb://nas/isos/", mounted: true }
     var saved = { path: "", label: "NAS", group: "network", kind: "share", uri: "smb://nas/", mounted: false }
     var volume = { path: "/run/media/gm/128GB", label: "128GB", group: "device", kind: "volume", device: "/dev/sda1", mounted: true, removable: true }
-    var favourite = { path: "/home/gm", label: "Home", group: "favorite", kind: "favorite", mounted: false }
+    var favourite = { path: "/home/gm", label: "Home", group: "favourite", kind: "favourite", mounted: false }
     function labels(rows) { return rows.filter(function (r) { return !r.separator }).map(function (r) { return r.label }).join("|") }
-    check("a mounted share releases first, then offers the three the place itself owns",
-          labels(Mounts.rowMenu(mounted)), "Open|Unmount|Rename|Edit address|Remove from Network")
-    check("and Ctrl+E still reads the release row alone",
-          Mounts.railMenu(mounted).filter(function (r) { return !r.separator && (r.action === "unmount" || r.action === "eject") }).length + "|" + Mounts.railMenu(mounted).filter(function (r) { return !r.separator && r.action === "unmount" })[0].action, "1|unmount")
+    check("a mounted share releases first, then offers the three the place itself owns", labels(Mounts.rowMenu(mounted)), "Open|Unmount|Rename|Edit address|Remove from Network")
+    check("and Ctrl+E picks the release out of those rows, never the first one", Eject.releaseFromRows(Mounts.railMenu(mounted)), "unmount")
     check("a bookmark nothing has mounted offers the three that need no mount",
           labels(Mounts.rowMenu(saved)), "Rename|Edit address|Remove from Network")
     check("so it opens a menu where it used to open an empty one", Mounts.rowMenu(saved).filter(function (r) { return !r.separator }).length, 3)
-    check("but it has nothing to release, so Ctrl+E still says so", Mounts.railMenu(saved).filter(function (r) { return !r.separator && (r.action === "unmount" || r.action === "eject") }).length, 0)
+    check("but it has nothing to release, so Ctrl+E still says so", Eject.releaseFromRows(Mounts.railMenu(saved)), "")
     check("a removable volume's menu is untouched", labels(Mounts.rowMenu(volume)), "Open|Eject")
-    check("a favourite still opens no menu at all", Mounts.rowMenu(favourite).length, 0)
+    check("and Ctrl+E picks Eject out of it", Eject.releaseFromRows(Mounts.railMenu(volume)), "eject")
+    check("a favourite offers INVENTORY's own Remove from Favorites", labels(Mounts.rowMenu(favourite)), "Remove from Favorites")
     check("no entry at all offers nothing rather than throwing", Mounts.rowMenu(null).length, 0)
     check("Remove from Network draws the minus mark, because forgetting a place trashes nothing",
           Mounts.rowMenu(saved).filter(function (r) { return !r.separator })[2].glyph, "minus")

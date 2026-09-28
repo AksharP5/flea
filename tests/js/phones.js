@@ -124,8 +124,20 @@ function run(check) {
     check("unmountPhone hands the key to the sidebar", releasedKey, "mtp://SAMSUNG_SAMSUNG_Android_RQGL705T0NR/")
     RailMenu.release("mountPhone", "mtp://Google_Pixel_7_1A2B/", null, null, sidebar)
     check("mountPhone hands its own key to the same row's activation", openedKey, "mtp://Google_Pixel_7_1A2B/")
+    openedKey = ""
     RailMenu.release("open", "mtp://Google_Pixel_7_1A2B/", null, null, sidebar)
     check("Open runs the row's own activation too", openedKey, "mtp://Google_Pixel_7_1A2B/")
+    // Open on other kinds reaches the Services, not the phone row: a volume through devices, a share through mounts.
+    var activated = []
+    var mixed = { deviceEntries: [{ group: "device", kind: "volume", device: "/dev/sda1" }],
+                  networkEntries: [{ group: "network", kind: "share", uri: "smb://nas/isos/" }],
+                  navigationPane: "pane", openPhone: function (key) { activated.push("phone " + key) } }
+    var devices = { activate: function (i) { activated.push("devices " + i) } }
+    var mounts = { activate: function (i, pane) { activated.push("mounts " + i + " " + pane) } }
+    RailMenu.release("open", "/dev/sda1", devices, mounts, mixed)
+    check("Open on a volume reaches devices.activate", activated.join(","), "devices 0")
+    RailMenu.release("open", "smb://nas/isos/", devices, mounts, mixed)
+    check("Open on a share reaches mounts.activate with the navigation pane", activated.join(","), "devices 0,mounts 0 pane")
 
     // An unchanged poll must not assign, and a mount-state flip must: the two sides of sameEntries.
     check("an unchanged poll compares equal", Mounts.sameEntries(rows, Phones.parsePhones(idle)), true)

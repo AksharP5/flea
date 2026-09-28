@@ -401,8 +401,7 @@ Item {
                 id: trashRepeater
                 model: root.trashEntries
                 delegate: SidebarRow {
-                    // The menu sets cursorIndex on open, so the Trash row takes the cursor rung under
-                    // its menu exactly like every other rail row; trashActive keeps it lit while open.
+                    // The menu sets cursorIndex on open, so the Trash row takes the cursor rung; trashActive keeps it lit.
                     cursor: root.trashActive || (index + root.homeEntries.length === root.cursorIndex)
                     focused: root.focused || root.trashActive
                     onActivated: function (idx) { root.activate(idx + root.homeEntries.length) }

@@ -25,11 +25,16 @@ QtObject {
         else historyFile.path = root.file
     }
 
-    // A silent read first: XmlListModel prints a warning for an absent file, and a fresh account has none.
+    // Read first so only an absent file is quiet: XmlListModel warns on one, and a fresh account has none.
     property FileView historyFile: FileView {
         printErrors: false
         onLoaded: root.parse()
-        onLoadFailed: { root.paths = []; root.refreshed() }
+        onLoadFailed: function (error) {
+            if (error !== FileViewError.FileNotFound)
+                console.warn("PickerRecent: could not read " + root.file + ": " + error)
+            root.paths = []
+            root.refreshed()
+        }
     }
 
     // The model re-reads what the check just read, so a present history is a second read from the page cache.

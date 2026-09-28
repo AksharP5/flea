@@ -6108,7 +6108,7 @@ EOS
     [[ ! -s "$helper_log" ]] || fail "networkauth: already-mounted descendant launched helper"
     click_rail_row "$network_index" right
     settle
-    [[ "$(ipc contextMenuEntries)" == "Open|Unmount|-|Rename|Edit address|-|Remove from Network" ]] \
+    [[ "$(ipc contextMenuEntries)" == "Open|-|Unmount|-|Rename|Edit address|-|Remove from Network" ]] \
         || fail "networkauth: the projected mounted row offers $(ipc contextMenuEntries), not Open first"
     menu_seek Unmount
     key -k Return >/dev/null
@@ -6592,7 +6592,7 @@ case_networklive() {
     wait_listing_wall 0 25
     click_rail_row "$network_index" right
     settle
-    [[ "$(ipc contextMenuEntries)" == "Open|Unmount|-|Rename|Edit address|-|Remove from Network" ]] \
+    [[ "$(ipc contextMenuEntries)" == "Open|-|Unmount|-|Rename|Edit address|-|Remove from Network" ]] \
         || fail "networklive: mounted share menu is $(ipc contextMenuEntries), not Open first"
     menu_seek Unmount
     key -k Return >/dev/null
@@ -6673,7 +6673,7 @@ case_gvfs() {
 
     click_rail_row "$(rail_row_of share.zip)" right
     settle
-    [[ "$(ipc contextMenuEntries)" == "Open|Unmount|-|Rename|Edit address|-|Remove from Network" ]] \
+    [[ "$(ipc contextMenuEntries)" == "Open|-|Unmount|-|Rename|Edit address|-|Remove from Network" ]] \
         || fail "gvfs: mounted share menu is $(ipc contextMenuEntries)"
     menu_seek Unmount
     key -k Return >/dev/null
@@ -7134,9 +7134,9 @@ EOS
         "$(ipc contextMenuVisible)" "$(ipc contextMenuEntries)" "$(ipc contextMenuGlyphs)"
     shot unmount-menu
     [[ "$(ipc contextMenuVisible)" == "true" ]] || fail "unmount: right click opened no menu on the share"
-    [[ "$(ipc contextMenuEntries)" == "Open|Unmount|-|Rename|Edit address|-|Remove from Network" ]] \
+    [[ "$(ipc contextMenuEntries)" == "Open|-|Unmount|-|Rename|Edit address|-|Remove from Network" ]] \
         || fail "unmount: the share's menu is $(ipc contextMenuEntries), not Open, Unmount, Rename, Edit address then Remove from Network"
-    [[ "$(ipc contextMenuGlyphs)" == "folder-open|drive|-|rename|sliders|-|minus" ]] \
+    [[ "$(ipc contextMenuGlyphs)" == "folder-open|-|drive|-|rename|sliders|-|minus" ]] \
         || fail "unmount: the share's rows draw $(ipc contextMenuGlyphs), not folder-open, drive, rename, sliders and minus"
     [[ -z "$(cat "$unmount_log")" ]] || fail "unmount: opening the menu already unmounted: $(cat "$unmount_log")"
 
@@ -7179,7 +7179,7 @@ EOS
     # for, each with its own sentence. This home has no bookmarks file, so the live share is unsaved.
     click_rail_row "$(rail_row_of stubshare)" right
     settle
-    [[ "$(ipc contextMenuEntries)" == "Open|Unmount|-|Rename|Edit address|-|Remove from Network" ]] \
+    [[ "$(ipc contextMenuEntries)" == "Open|-|Unmount|-|Rename|Edit address|-|Remove from Network" ]] \
         || fail "unmount: the share's menu is $(ipc contextMenuEntries) before Remove"
     menu_seek "Remove from Network"
     key -k Return >/dev/null
@@ -7657,8 +7657,8 @@ EOS
     [[ "$(ipc contextMenuVisible)" == "true" ]] || fail "eject: right click opened no menu on the volume"
     [[ "$(ipc contextMenuEntries)" == "Open|-|Unmount|Eject" ]] \
         || fail "eject: the volume's menu is $(ipc contextMenuEntries), not Open|Unmount|Eject"
-    [[ "$(ipc contextMenuGlyphs)" == "folder-open|drive|eject" ]] \
-        || fail "eject: the volume's menu draws $(ipc contextMenuGlyphs), not folder-open|drive|eject"
+    [[ "$(ipc contextMenuGlyphs)" == "folder-open|-|drive|eject" ]] \
+        || fail "eject: the volume's menu draws $(ipc contextMenuGlyphs), not folder-open|-|drive|eject"
     if grep -q '^mount -e' "$gio_log"; then
         fail "eject: opening the menu already ejected: $(cat "$gio_log")"
     fi

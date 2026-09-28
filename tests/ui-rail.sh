@@ -156,9 +156,9 @@ case_unmounted() (
     index=$(rail_row_of Archive)
     click_rail_row "$index" right
     settle
-    [[ "$(ipc contextMenuEntries)" == "Open|Unmount" ]] \
+    [[ "$(ipc contextMenuEntries)" == "Open|-|Unmount" ]] \
         || fail "rail: the mounted volume offers $(ipc contextMenuEntries), not Open then Unmount"
-    [[ "$(ipc contextMenuGlyphs)" == "folder|eject" ]] \
+    [[ "$(ipc contextMenuGlyphs)" == "folder-open|-|drive" ]] \
         || fail "rail: the mounted volume draws $(ipc contextMenuGlyphs)"
     menu_seek Unmount
     key -k Return >/dev/null

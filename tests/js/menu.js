@@ -58,8 +58,7 @@ function run(check) {
     check("empty Trash disables empty", entry(Menu.trashEntries(0, false), "emptyTrash").disabled, true)
     check("busy Trash disables destructive reactivation", entry(Menu.trashEntries(4, true), "emptyTrash").disabled, true)
     check("full idle Trash enables restore", entry(Menu.trashEntries(4, false), "restoreAll").disabled, false)
-    // Railmenus2: one size, one table. Rail rows live in INVENTORY with kinds R and draw the same
-    // 10 px separator on a group change; shared actions reuse this table's own label and glyph.
+    // Railmenus2: rail rows live in INVENTORY with kinds R and draw the listing menu's own separator on a group change.
     function railLabels(rows) { return rows.filter(function (r) { return !r.separator }).map(function (r) { return r.label }).join("|") }
     function railGlyphs(rows) { return rows.filter(function (r) { return !r.separator }).map(function (r) { return r.glyph }).join("|") }
     var mountedShare = { group: "network", kind: "share", uri: "smb://h/data/", mounted: true }
@@ -79,10 +78,10 @@ function run(check) {
     var legacyFav = { group: "favourite", kind: "favourite" }
     check("a favourite with the Places menu off is INVENTORY's own row, never a bare Remove",
           railLabels(Menu.railEntries(legacyFav)), "Remove from Favorites")
-    check("New tab takes the tab strip's own name and mark",
-          Menu.INVENTORY.filter(function (r) { return r[0] === "openTab" })[0].slice(1, 3).join("|"), "New tab|plus")
-    check("Add to shelf draws the shelf's own cut glyph",
-          Menu.INVENTORY.filter(function (r) { return r[0] === "shelf" })[0][2], "shelf")
+    check("New tab's mark is real, not the silent file fallback",
+          Icons.pathFor("plus") === Icons.pathFor("file"), false)
+    check("Add to shelf draws the shelf's own cut glyph, not the file fallback",
+          Icons.pathFor("shelf") === Icons.pathFor("file"), false)
     var all = Menu.listingEntries(state({ hiddenActions: [] }))
     check("stored delete id reaches permanent deletion action", entry(all, "deletePermanently").id, "delete")
     check("all optional file controls exist", ["openWith", "moveTo", "copyTo", "properties", "permissions", "copypath", "openTerminal"].every(function (a) { return !!entry(all, a).action }), true)

@@ -2572,11 +2572,11 @@ take-back seam and the test that a copy which will not go back answers `rename`,
 
 The rail's network host fixes take `ui/NetworkMounts.qml` 802 to 803 (one arrival poll) and `ui/WindowBody.qml` 556 to 557 (the RailKeys import), each re-derived with `wc -l`.
 
-Railmenus2 records one ceiling, re-derived with `wc -l`: `ui/js/Menu.js` 297 to 344 for the rail
+Railmenus2 records one ceiling, re-derived with `wc -l`: `ui/js/Menu.js` 297 to 335 for the rail
 rows living in INVENTORY with kinds R (Mount, Open, Unmount, Eject, Rename, Edit address, Remove
 from Network, Remove from Favorites), the rail availability and the hidden-check skip, plus the New
-tab and shelf glyph rows. `ui/js/Mounts.js` falls 289 to 255 inside the soft budget for the
-table-driven railMenu/rowMenu; `ui/js/RailMenu.js` stands at 127 inside both budgets for the
+tab and shelf glyph rows. `ui/js/Mounts.js` falls 289 to 250, over the 200 soft budget and under
+the 300 hard cap, for the table-driven railMenu/rowMenu; `ui/js/RailMenu.js` stands at 127 inside both budgets for the
 INVENTORY favourite row and the generic Open release; `ui/MenuRow.qml` stands at 307 inside the
 hard cap for the compact removal; `ui/ContextMenu.qml` stands at 577 inside its recorded 578.
 
@@ -5652,10 +5652,10 @@ operator reported the eject as missing. It was never an accelerator either, beca
 same two deliberate acts a menu costs and named neither of them.
 
 So `ui/Sidebar.qml` `openRailMenu` now hands `ui/Pane.qml`'s single `ContextMenu` the rows to draw,
-through `openForRail(key, entries, scenePoint)`, and `ui/js/Mounts.js` `railMenu` decides what a row
-offers: Eject on a mounted removable volume, Unmount on a mounted network share, nothing anywhere
-else, and a row that offers nothing opens no menu at all. Both rows draw the `eject` mark, which is
-what the icon language's shelf lists it for. A chosen row comes back as `railChosen(action, key)`
+through `openForRail(key, entries, scenePoint)`, and `ui/js/Mounts.js` `rowMenu` decides what a row
+offers by returning `railMenu`: `Open` first on a mounted row, then the release, then the place's
+own rows, and a row that offers nothing opens no menu at all. Unmount draws the `drive` mark and
+Eject keeps its own. A chosen row comes back as `railChosen(action, key)`
 and the key, not the index, is what resolves it: the rail rebuilds on a five second poll, so the
 position the menu opened over can name a different row by the time a row inside it is chosen (see
 `ui/js/Mounts.js` `rowByKey`). Right click never activates a rail row any more, so it cannot mount
@@ -5664,7 +5664,7 @@ and open a stick somebody only meant to ask about.
 ### m raises the listing's menu too, under the cursor row
 
 `m` is one action, `menu`, and `ui/js/Focus.js` routes it by focus view. In the rail
-`ui/js/RailKeys.js` `act` calls `raiseMenu`, which asks `Mounts.railMenu` and says
+`ui/js/RailKeys.js` `act` calls `raiseMenu`, which asks `Mounts.rowMenu` and says
 `<label> has nothing to eject or unmount.` over a row with no
 release. In the listing `act`'s `menu` case calls `ui/Pane.qml` `openCursorMenu`, whose body is
 `ui/js/Menu.js` `openAtCursor`: it scrolls
@@ -6235,8 +6235,9 @@ rows, through `ui/Sidebar.qml`'s `railItemFor(index)` (the rail has no `ListView
 Repeater keeps every row instantiated, so this just indexes into whichever group carries it).
 
 `case_unmount` stubs `gio mount -l` to report one fake share as mounted and `gio mount -u` to log
-its own call, and proves that a right click opens `Unmount|Rename|Remove` drawing `eject|rename|minus`
-without unmounting anything, that Escape closes it with nothing run, that choosing the first row
+its own call, and proves that a right click opens `Open|-|Unmount|-|Rename|Edit address|-|Remove
+from Network` drawing `folder-open|-|drive|-|rename|sliders|-|minus`
+without unmounting anything, that Escape closes it with nothing run, that choosing the Unmount row
 unmounts and messages "Unmounted \<label\>.", that a favourite opens no menu at all, and that the
 list still takes keys afterwards, which is the focus regression the second-instance bisection found.
 
@@ -6279,10 +6280,11 @@ base reopens the form on a saved URI, and `NetworkForm.load()` set the port and 
 `root.tls` before the port now, so the tick's prefill is the fallback and the saved number wins.
 `tests/ui.sh case_networkauth` reparses both spellings and prints `dav-default=80 dav-explicit=443`.
 
-**The two rows.** `ui/js/Mounts.js rowMenu(entry)` is what the rail's right click opens: the release
-row, then `Rename` and `Remove` for any network share, mounted or not. It is deliberately not
-`railMenu()`, which stays the release verdict alone, because `ui/js/Eject.js` reads `railMenu()[0]`
-and Ctrl+E must keep refusing a row with nothing mounted instead of starting an editor on it.
+**The two rows.** `ui/js/Mounts.js rowMenu(entry)` is what the rail's right click opens, and it
+returns `railMenu(entry)`: `Open` first on a mounted row, then the release, then `Rename`,
+`Edit address` and `Remove from Network`. `ui/js/Eject.js releaseFromRows` picks the eject or
+unmount action out of those same rows, so Ctrl+E refuses a row with nothing mounted rather than
+starting an editor on it.
 `Mounts.release()` dispatches all four actions and takes the rail itself, so `Rename` reaches
 `Sidebar.startRename()` (the same editor `r` already opened) and `Remove` reaches
 `NetworkMounts.forget()`, which hands `ui/NetworkPlaces.qml` the uri; it drops the line through

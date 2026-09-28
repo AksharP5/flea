@@ -58,10 +58,7 @@ function run(check) {
     check("a bare server root typed with no slash still canonicalizes to one", Mounts.normalize("smb://h"), "smb://h/")
     check("two different shares stay distinct after normalizing", Mounts.normalize("smb://h/data/") === Mounts.normalize("smb://h/other/"), false)
 
-    // The rail's own context menu, built from ui/js/Menu.js INVENTORY with kinds R and the same
-    // separator rule as the listing menu. Which rows a rail entry offers is decided from what the
-    // rail already tagged: parseDevices tags every volume "volume" and marks the removable ones with
-    // lsblk's RM flag, tags the box's own disk "disk", and ui/NetworkMounts.qml tags a gvfs share "share".
+    // The rail's own menu, from ui/js/Menu.js INVENTORY kind R: what the rail already tagged decides the rows.
     var volume = { label: "128GB", group: "device", kind: "volume", device: "/dev/sda1", mounted: true, removable: true }
     var idle = { label: "128GB", group: "device", kind: "volume", device: "/dev/sda1", mounted: false, removable: true }
     var internal = { label: "nvme0n1", group: "device", kind: "disk", device: "/dev/nvme0n1", mounted: true, removable: false }
@@ -69,7 +66,7 @@ function run(check) {
     var share = { label: "isos", group: "network", kind: "share", uri: "smb://example.com/isos/", mounted: true }
     var bookmark = { label: "NAS", group: "network", kind: "share", uri: "smb://example.com/", mounted: false }
     var dropbox = { label: "Dropbox", group: "network", kind: "dropbox", uri: "", mounted: true }
-    var favourite = { label: "Home", group: "favorite", kind: "favorite", path: "/home/user" }
+    var favourite = { label: "Home", group: "favourite", kind: "favourite", path: "/home/user" }
     function solid(rows) { return rows.filter(function (r) { return r.separator !== true }) }
     function labelsOf(rows) { return solid(rows).map(function (r) { return r.label }).join(",") }
     function actionsOf(rows) { return solid(rows).map(function (r) { return r.action }).join(",") }
@@ -85,12 +82,11 @@ function run(check) {
     check("its Open is the listing menu's own row too", actionsOf(Mounts.railMenu(share)), "open,unmount,rename,editPlace,remove")
     check("Mount and Unmount share the drive mark, Eject keeps its own", glyphsOf(Mounts.railMenu(share)), "folder-open,drive,rename,sliders,minus")
 
-    // Every rail row that must never be offered a release, each for its own reason. An unmounted
-    // saved place still offers its own Rename, Edit address and Remove from Network rows.
+    // Rows never offered a release, each for its own reason; an unmounted place keeps its own three rows.
     check("the internal disk offers nothing, it is the box's own system disk", Mounts.railMenu(internal).length, 0)
     check("a fixed internal volume offers nothing, a disk bolted in is not ejected", Mounts.railMenu(fixed).length, 0)
     check("the Dropbox row offers nothing, it is a local folder the stock service owns", Mounts.railMenu(dropbox).length, 0)
-    check("a favourite offers nothing, it is not a mount at all", Mounts.railMenu(favourite).length, 0)
+    check("a favourite offers INVENTORY's own Remove from Favorites", labelsOf(Mounts.railMenu(favourite)), "Remove from Favorites")
     check("an unmounted volume offers nothing, there is nothing to release", Mounts.railMenu(idle).length, 0)
     check("a bookmark nothing has mounted offers no release, only its own rows",
           actionsOf(Mounts.railMenu(bookmark)), "rename,editPlace,remove")

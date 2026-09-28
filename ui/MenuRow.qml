@@ -61,8 +61,7 @@ Item {
     readonly property int separatorHeight: Theme.spacing.gap + Theme.spacing.hairline
     readonly property real separatorOpacity: 0.4
 
-    // Every menu row uses the listing's own mark slot and row height, so a rail menu
-    // reads as the main menu parked against the rail and never as a second, smaller one.
+    // Every menu row uses the listing's own mark slot and row height, so a rail menu reads as the main menu.
     readonly property int slotSize: Theme.markSize
     // OpenWith.html: an application's own Icon= rides in the mark slot, full colour and no plate.
     // The ladder is AppLibrary.qml's iconSource: the backend's app and device index has already

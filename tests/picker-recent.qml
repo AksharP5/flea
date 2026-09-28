@@ -3,8 +3,7 @@ import Quickshell
 import Quickshell.Io
 import "flea" as Flea
 
-// An absent history answers no rows with no warning, a present one still lists its bookmarks.
-// The log check lives in tests/picker-recent.sh, which fails on any xbel warning.
+// An absent history answers no rows with no warning on either read; the log check is tests/picker-recent.sh.
 ShellRoot {
     id: root
     readonly property string home: Quickshell.env("HOME")
@@ -45,6 +44,13 @@ ShellRoot {
         function () { return root.refreshed === root.before + 1 },
         function () {
             root.check("an absent history answers no rows", recents.paths, [])
+            root.before = root.refreshed
+            recents.refresh()
+            return true
+        },
+        function () { return root.refreshed === root.before + 1 },
+        function () {
+            root.check("a second read of the still-absent file answers no rows either", recents.paths, [])
             writer.command = ["sh", "-c", "printf '%s' \"$1\" > \"$2\"", "sh", root.presentBody, root.xbel]
             writer.running = true
             return true
