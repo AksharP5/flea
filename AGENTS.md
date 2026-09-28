@@ -2564,6 +2564,9 @@ worker reports a symlinked share's figures, and records `src/backend/jump_tests.
 zoxide keep guard and the reaped slot, and takes `src/backend/meta.rs` from 395 to 399 inside the hard cap for the
 sorted-store and device assertions, each re-derived with `wc -l`.
 
+Advloop round 5 takes `src/backend/renamecompat.rs` from its recorded 416 to 447 for the take-back seam and the test
+that a copy which will not go back answers `rename-kept`, re-derived with `wc -l`.
+
 ## The key table is generated
 
 `keys.toml` at the repository root is the single source of truth for every binding.
@@ -4751,7 +4754,7 @@ the loop stays the only writer of stdout.
 **Every write creates its target exclusively, and this is the module's whole safety story.** A file copy
 opens with `create_new`, a directory copy and a `mkdir` use `create_dir`, a symlink copy uses `symlink`, and a rename
 or a move uses `renameat2` with `RENAME_NOREPLACE`. None of them can destroy a file that is already
-there. Two compatibility paths belong only to `rename` and its undo, and both copy rather than replace.
+there. Four triggers send only `rename` and its undo down one compatibility path that copies rather than replaces.
 rclone 1.75 returns `EINVAL` for `RENAME_NOREPLACE` on a directory under a mount identified exactly
 as `fuse.rclone` in `/proc/self/mountinfo`, and GVFS returns `EIO` for a rename under a
 `/run/user/*/gvfs/dav:` WebDAV mount; `fuse.megafs` answers `EINVAL` the same way, and a rename or
@@ -4761,8 +4764,8 @@ through the existing exclusive copy primitives, removes the source only after th
 and uses the same path for undo. On a durable destination (a dav share classifies network) the copy's
 folder is confirmed before the source goes; a confirm that fails takes the landed copy back and answers
 `rename` with `RENAME_UNCONFIRMED`, the drive did not confirm the folder, so the rename was undone.
-When that take-back fails too, the copy stays under the new name beside the source and the error
-answers `rename` naming both the unconfirmed folder and the removal's own message.
+When that take-back fails too, the copy stays under the new name beside the whole source and the error
+answers `rename-kept` naming the source, so the pane re-reads the listing and shows both names.
 A copy failure removes only the partial target this operation
 created. **When that removal itself fails, nothing tells the operator what was left behind.** The
 error answers `where` of `rename`, which `ui/js/Errors.js` words as one of its two ordinary rename
