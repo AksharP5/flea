@@ -36,6 +36,8 @@ pub struct FsInfo {
     waiting: HashSet<PathBuf>,
     // The number of the last statfs started; the next one takes one more.
     seq: u64,
+    // Set by the first fsinfo ask; the TUI never asks, so its listings start no statfs, as in 0.3.5.
+    asked: bool,
 }
 
 impl FsInfo {
@@ -44,11 +46,14 @@ impl FsInfo {
     }
 
     pub fn with_reader(events: Sender<Event>, reader: Reader) -> Self {
-        FsInfo { events, reader, known: HashMap::new(), inflight: HashMap::new(), waiting: HashSet::new(), seq: 0 }
+        FsInfo { events, reader, known: HashMap::new(), inflight: HashMap::new(), waiting: HashSet::new(), seq: 0, asked: false }
     }
 
     // After a share's rows are out, so the statfs never competes with its gio listing; a kernel mount waits for fsinfo.
     pub fn list_arrived(&mut self, path: &Path) {
+        if !self.asked {
+            return;
+        }
         if let Some(root) = gvfs_root(path) {
             self.refresh(root, path.to_path_buf());
         }
@@ -62,6 +67,7 @@ impl FsInfo {
 
     // The test seam: body is one /proc/self/mountinfo read, ignored for a gvfs path.
     fn answer_in(&mut self, path: &Path, body: &str) -> (Option<Info>, &'static str) {
+        self.asked = true;
         if let Some(root) = gvfs_root(path) {
             return self.slow_answer(root, path, slow_class(path));
         }
@@ -136,6 +142,12 @@ mod tests {
         Some(Info { name: "fuse".to_string(), free })
     }
 
+    // The GUI, which asks for figures on every listing, so its listings start the share's statfs.
+    fn gui(mut fs: FsInfo) -> FsInfo {
+        fs.asked = true;
+        fs
+    }
+
     // A fake statfs that takes delay_ms and counts its calls.
     fn counted(delay_ms: u64, free: u64) -> (FsInfo, Receiver<Event>, Arc<AtomicUsize>) {
         let (events, rx) = std::sync::mpsc::channel();
@@ -146,7 +158,7 @@ mod tests {
             std::thread::sleep(Duration::from_millis(delay_ms));
             figures(free)
         });
-        (FsInfo::with_reader(events, reader), rx, calls)
+        (gui(FsInfo::with_reader(events, reader)), rx, calls)
     }
 
     fn next_done(rx: &Receiver<Event>) -> Done {
@@ -154,6 +166,18 @@ mod tests {
             Event::FsInfo(done) => done,
             _ => panic!("the worker reports its figures as an fsinfo event"),
         }
+    }
+
+    #[test]
+    fn a_client_that_never_asks_for_figures_starts_no_statfs() {
+        let (events, _rx) = std::sync::mpsc::channel();
+        let mut fs = FsInfo::with_reader(events, Arc::new(|_: PathBuf| figures(7)));
+        fs.list_arrived(&share_dir("a"));
+        assert!(fs.inflight.is_empty(), "the TUI lists a share and never asks for its figures, so no statfs starts");
+        let _ = fs.answer(&share_dir("a"));
+        assert_eq!(fs.inflight.len(), 1, "the first ask starts the share's statfs");
+        fs.list_arrived(&share_dir("b"));
+        assert!(fs.waiting.contains(&gvfs_root(&share_dir("b")).unwrap()), "once asked, a listing asks for its share again");
     }
 
     #[test]
@@ -219,7 +243,7 @@ mod tests {
             seen.lock().unwrap().push(path.clone());
             if path.ends_with("gone") { None } else { figures(7) }
         });
-        (FsInfo::with_reader(events, reader), rx, asked)
+        (gui(FsInfo::with_reader(events, reader)), rx, asked)
     }
 
     #[test]
