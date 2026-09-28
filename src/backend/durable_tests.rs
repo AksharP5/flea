@@ -516,5 +516,5 @@ fn duplicate_classifies_the_existing_parent_not_the_missing_name() {
     let (outcome, _) = crate::backend::ops::duplicate(&src);
     test_set_fail_dirs(false);
     test_reset();
-    assert!(outcome.is_ok(), "the parent was classified, so no folder flush ran to fail: {:?}", outcome.err().map(|e| e.msg));
+    assert_eq!(outcome.map_err(|e| e.msg), Ok(d.join("a copy.txt")), "the marked name is the copy's, and the parent was classified, so no folder flush ran to fail");
 }

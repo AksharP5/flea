@@ -2560,8 +2560,9 @@ check with its tests, and the one-statfs reader seam, each count re-derived with
 `src/backend/extclass.rs` stands at 291 with `resolved` and `classify_in`.
 
 Advloop round 3 on the 0.3.6 fixes moves `src/backend/fsinforeq.rs` 406 to 407 for the assertion that the
-worker reports a symlinked share's figures, and records `src/backend/jump_tests.rs` at 402 for the tests that pin the
-zoxide keep guard and the reaped slot, each re-derived with `wc -l`.
+worker reports a symlinked share's figures, and records `src/backend/jump_tests.rs` at 403 for the tests that pin the
+zoxide keep guard and the reaped slot, and takes `src/backend/meta.rs` from 395 to 399 inside the hard cap for the
+sorted-store and device assertions, each re-derived with `wc -l`.
 
 ## The key table is generated
 
@@ -4753,10 +4754,16 @@ or a move uses `renameat2` with `RENAME_NOREPLACE`. None of them can destroy a f
 there. Two compatibility paths belong only to `rename` and its undo, and both copy rather than replace.
 rclone 1.75 returns `EINVAL` for `RENAME_NOREPLACE` on a directory under a mount identified exactly
 as `fuse.rclone` in `/proc/self/mountinfo`, and GVFS returns `EIO` for a rename under a
-`/run/user/*/gvfs/dav:` WebDAV mount. Ordinary rclone directory rename is never used because it was
+`/run/user/*/gvfs/dav:` WebDAV mount; `fuse.megafs` answers `EINVAL` the same way, and a rename or
+its undo that crosses filesystems answers `EXDEV`. Ordinary rclone directory rename is never used because it was
 proven to replace even a non-empty target. `renamecompat::rename_path` instead builds the target
 through the existing exclusive copy primitives, removes the source only after the copy completes,
-and uses the same path for undo. A copy failure removes only the partial target this operation
+and uses the same path for undo. On a durable destination (a dav share classifies network) the copy's
+folder is confirmed before the source goes; a confirm that fails takes the landed copy back and answers
+`rename` with `RENAME_UNCONFIRMED`, the drive did not confirm the folder, so the rename was undone.
+When that take-back fails too, the copy stays under the new name beside the source and the error
+answers `rename` naming both the unconfirmed folder and the removal's own message.
+A copy failure removes only the partial target this operation
 created. **When that removal itself fails, nothing tells the operator what was left behind.** The
 error answers `where` of `rename`, which `ui/js/Errors.js` words as one of its two ordinary rename
 sentences, neither of which mentions a leftover, and which `ui/PaneWire.qml` does not re-read the

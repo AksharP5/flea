@@ -231,6 +231,7 @@ fn stuck_check(candidate: &Candidate) -> Option<String> {
 static STUCK_RECENT_CALLS: AtomicUsize = AtomicUsize::new(0);
 
 fn stuck_recent_check(candidate: &Candidate) -> Option<String> {
+    // Only the wedged path counts, so the kept file's own check never moves the counter.
     if candidate.path.ends_with("/stuck") {
         STUCK_RECENT_CALLS.fetch_add(1, Ordering::SeqCst);
         std::thread::sleep(STUCK_FOR);
