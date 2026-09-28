@@ -612,7 +612,7 @@ click_row() {
 # Steps the menu cursor onto a row by its label rather than by a hardcoded number of Downs, so a
 # case survives the operations design's own rows landing between the ones it cares about.
 menu_seek() {
-    local want="$1" entries target i cursor steps step
+    local want="$1" entries target i cursor steps step label
     entries=$(ipc contextMenuEntries)
     target=-1
     i=0
@@ -636,7 +636,7 @@ menu_seek() {
 # The same for an open flyout, whose rows are whatever the backend or the scripts directory offered,
 # so no case counts Downs: Sort by is four orders and Run script is however many scripts are there.
 menu_seek_submenu() {
-    local want="$1" entries target i cursor step
+    local want="$1" entries target i cursor step label
     entries=$(ipc contextMenuSubmenuEntries)
     target=-1
     i=0
