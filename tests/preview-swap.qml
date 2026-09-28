@@ -68,9 +68,17 @@ ShellRoot {
                     if (shell.surfaceKind === "quicklook") {
                         item.groundInset = 1
                         item.groundRadius = 8
+                        item.captureSource = qlPanes
                     }
                 }
                 onStatusChanged: if (status === Loader.Error) { shell.log("FAIL the swap did not load"); shell.quit() }
+            }
+
+            // Quick Look production shape: panes stay eager outside the wrapper, which captures that outer item.
+            Item {
+                id: qlPanes
+                anchors.fill: parent
+                visible: shell.surfaceKind === "quicklook"
             }
         }
     }
@@ -150,9 +158,14 @@ ShellRoot {
                 shell.quit()
                 return
             }
-            // The content lives inside the swap once, so every move is a hold over it.
+            if (shell.surfaceKind === "quicklook" && shell.swap.captureSource === null) {
+                shell.log("FAIL quicklook captures nothing without its panes source")
+                shell.quit()
+                return
+            }
+            // Column mutates inside the swap; Quick Look mutates its outer panes under the wrapper's picture.
             previewBody.visible = true
-            previewBody.parent = shell.swap.contentItem()
+            previewBody.parent = shell.surfaceKind === "quicklook" ? qlPanes : shell.swap.contentItem()
             shell.next()
         }
     }

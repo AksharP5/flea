@@ -231,6 +231,13 @@ function raiseMenu(pane, sidebar) {
         pane.message(entry.label + " has nothing to eject or unmount.", false)
 }
 
+// Sample input: (true, "a", "a", "b", "b") answers "skip", while (true, "a", "x", "b", "b") answers "rebuild".
+function pollDecision(listedOnce, polledListing, lastListing, mountinfoText, lastMountinfo) {
+    if (!listedOnce) return "none"
+    if (polledListing === lastListing && mountinfoText === lastMountinfo) return "skip"
+    return "rebuild"
+}
+
 // Sample input: the operator's own bookmarks file, favourites and network places in one list.
 // smb://192.168.1.10/isos NAS isos
 // Read off the trimmed line the way nonFileBookmarks reads it, or an indented line is a rail row

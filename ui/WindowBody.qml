@@ -108,11 +108,9 @@ Rectangle {
         if (!networkHost.active) networkHost.active = true
         return networkHost.item
     }
-    // The host's arrival spawns gio and reads mountinfo, which can land in the same event-loop
-    // turn as the primary pane's first listing reply. It waits for those first rows instead:
-    // rowsLanded clears listInFlight, and a failed listing clears it too. The fallback covers a
-    // listing that never answers at all, so its window still gets NETWORK rows and eject marks.
+    // The host waits for the first rows to paint, so its gio spawn misses the listing turn; the fallback covers a listing that never lands.
     property bool networkHostOrdered: false
+    readonly property int NETWORK_HOST_AFTER_ROWS_MS: 100
     readonly property int networkHostFallbackMs: 2000
     function orderNetworkHost() {
         if (view.networkHostOrdered) return
@@ -121,7 +119,14 @@ Rectangle {
     }
     Connections {
         target: primaryPane
-        function onListInFlightChanged() { if (!primaryPane.listInFlight) view.orderNetworkHost() }
+        function onListInFlightChanged() { if (!primaryPane.listInFlight && !view.networkHostOrdered) networkHostAfterRows.restart() }
+    }
+    // The host build runs after the rows paint, so its rail arrival and gio spawn miss the first listing turn.
+    Timer {
+        id: networkHostAfterRows
+        interval: view.NETWORK_HOST_AFTER_ROWS_MS
+        repeat: false
+        onTriggered: view.orderNetworkHost()
     }
     Timer {
         id: networkHostFallback

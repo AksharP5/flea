@@ -230,17 +230,14 @@ Item {
         onListed: { root._polledListing = listing.text; root._listedOnce = true; cloudFile.reload() }
     }
 
-    // The last texts a rebuild parsed: the five second poll rebuilds only when either moved,
-    // so an unchanged tick parses nothing. Nothing rebuilds before the first listing lands.
+    // The last texts a rebuild parsed; see ui/js/Mounts.js pollDecision for the change gate.
     property string _polledListing: ""
     property bool _listedOnce: false
     property string _lastMountListing: ""
     property string _lastMountinfo: ""
     function pollAnswered() {
-        if (!root._listedOnce)
-            return
         var infoText = cloudFile.text()
-        if (root._polledListing === root._lastMountListing && infoText === root._lastMountinfo)
+        if (Mounts.pollDecision(root._listedOnce, root._polledListing, root._lastMountListing, infoText, root._lastMountinfo) !== "rebuild")
             return
         root._lastMountListing = root._polledListing
         root._lastMountinfo = infoText
@@ -269,12 +266,10 @@ Item {
     // Phones and shares open through the GVFS FUSE bridge, hosted window-long rather than
     // in the rail: hiding the rail mid-wait kills no wait, and the ready, the failure and the
     // Starting line it showed all still land. Files land on openFileRequested, so a typed
-    // network URL naming a file is never listed as a folder. Built on the first ensure() below
-    // rather than at launch: three Timers, a Process and GvfsBridge.qml's own compile move off
-    // the first frame, and a phone or share that needs it still gets it on the same call.
+    // network URL naming a file is never listed as a folder.
     Loader {
         id: bridgeLoader
-        active: false
+        active: false // built on first ensure, so launch pays no Timers, Process or compile
         source: "GvfsBridge.qml"
     }
     // Null until the first ensure; every reader below guards it.
@@ -287,6 +282,26 @@ Item {
         if (!bridgeLoader.active)
             bridgeLoader.active = true
         return bridgeLoader.item
+    }
+    // A null bridge is a missing component, not a refused mount, so it names the file it failed to build.
+    function bridgeMissingReason() {
+        return "Could not open " + (root._pendingLabel || root._pendingUri) + ": GvfsBridge.qml did not load"
+    }
+    // The Loader status is the cause, so it is warned with the file named and the wait ends with no retry.
+    function failBridgeMissing() {
+        console.warn("GvfsBridge.qml did not load: Loader status " + bridgeLoader.status)
+        if (root._requestPassword.length > 0) root.remember(root._pendingUri, root._requestPassword)
+        mountTimeout.stop()
+        root._repairActive = false
+        root._repairWaiting = false
+        root._repairBridged = false
+        root._repairRoot = ""
+        root._repairPath = ""
+        root._photosPending = false
+        root.result = "failed"
+        var reason = root.bridgeMissingReason()
+        root.message(reason, true)
+        root.finishRequest(false, reason)
     }
     Connections {
         target: root.bridge
@@ -577,7 +592,7 @@ Item {
             if (repairBridge)
                 repairBridge.ensure(root._repairRoot, root._pendingLabel, root._pendingOrigin)
             else
-                root.repairFailed()
+                root.failBridgeMissing()
             return
         }
         mountTimeout.stop()
@@ -784,13 +799,14 @@ Item {
                 return
             }
             if (exitCode === 0 && path.length > 0) {
+                var openBridge = root.ensureBridge()
+                if (!openBridge) {
+                    root.failBridgeMissing()
+                    return
+                }
                 root.result = "mounted"
                 root.finishRequest(true, "")
-                var openBridge = root.ensureBridge()
-                if (openBridge)
-                    openBridge.ensure(path, root._pendingLabel, root._pendingOrigin)
-                else
-                    root.failMount("Connect failed: location has no browsable folder", root.passwordFor(root._pendingUri))
+                openBridge.ensure(path, root._pendingLabel, root._pendingOrigin)
                 return
             }
             // A refused keyless sftp attempt is a missing credential and not a refused location, sftp only.

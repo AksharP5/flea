@@ -442,9 +442,7 @@ Item {
             }
         }
 
-        // The 0.3.6 swap additions, built on the first open and never at launch: the Loader, the
-        // MouseArea, the two Timers, the two Connections and QuickLookSwap.qml's own compile.
-        // The picture captures the eager panes above, so the first Space pays no build for them.
+        // The swap wrapper waits for the first open, so launch pays no Loader, compile or picture.
         Loader {
             id: swapLoader
             anchors.fill: parent
@@ -455,7 +453,7 @@ Item {
                 item.panesSource = panes
                 item.ready = Qt.binding(function () { return root.lookReady })
                 item.ground = Qt.binding(function () { return surface.color })
-                item.groundInset = surface.border.width
+                item.groundInset = Qt.binding(function () { return surface.border.width })
                 item.groundRadius = Qt.binding(function () { return Math.max(0, surface.radius - surface.border.width) })
             }
         }

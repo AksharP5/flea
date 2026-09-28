@@ -220,4 +220,11 @@ function run(check) {
     check("the mark on a share is Unmount", Eject.releaseAction(smb), "unmount")
     check("a row with no mark has no click action", Eject.releaseAction(nfs), "")
     check("and neither does a phone", Eject.releaseAction(phone), "")
+
+    // The five second poll rebuilds only on changed text; see ui/js/Mounts.js pollDecision.
+    check("before the first listing nothing rebuilds", Mounts.pollDecision(false, "a", "", "b", ""), "none")
+    check("unchanged texts rebuild nothing", Mounts.pollDecision(true, "a", "a", "b", "b"), "skip")
+    check("a changed listing rebuilds", Mounts.pollDecision(true, "a", "x", "b", "b"), "rebuild")
+    check("a changed mountinfo rebuilds", Mounts.pollDecision(true, "a", "a", "b", "y"), "rebuild")
+    check("both changed still rebuilds once", Mounts.pollDecision(true, "a", "x", "b", "y"), "rebuild")
 }

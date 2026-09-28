@@ -130,18 +130,14 @@ Item {
     // The host keeps its own copy of this text: it outlives this rail, so a rail unload
     // mid-mount leaves the mount's labels and dedup exactly where they were. Pushed only
     // after the FileView loaded, so a reveal never blanks the host with an unread "".
-    // Never builds the host: the window orders it after the first rows, and a press below
-    // builds it on demand. Pushed again on arrival, so a host built after this read still gets it.
     function pushBookmarks() {
         if (!root.bookmarksReady || !root.service) return
         root.service.bookmarksText = bookmarksFile.text()
     }
 
     // The window-long poll runs while a rail is loaded; arrival waits until the pane's overlay parent is bound.
-    // The arrival never builds the host: ui/WindowBody.qml orders it after the primary pane's
-    // first rows, so the gio spawn and mountinfo read land off the first listing's turn.
     Component.onCompleted: Qt.callLater(root.meetHost)
-    function meetHost() { root.arrive() }
+    function meetHost() { root.arrive() } // never builds the host: ui/WindowBody.qml orders it after the first rows
     // Arrival counts whenever the service appears, so a host built after this rail still starts the poll.
     property bool arrived: false
     function arrive() { if (root.arrived || !root.service) return; root.arrived = true; root.service.railArrived() }

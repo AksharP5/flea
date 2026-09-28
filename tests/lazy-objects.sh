@@ -1,80 +1,36 @@
 #!/usr/bin/env bash
-# p036lazy: the launch builds neither the GVFS bridge nor Quick Look's swap wrapper, and both
-# arrive whole on first use. Static wiring checks run everywhere; the offscreen live probe of
-# the bridge Loader needs qs and runs wherever one is installed.
+# p036lazy live gate: bridge, wrapper and host arrive off launch and whole on first use.
 set -u
 . "$(dirname "$0")/../tools/flea-sandbox-guard"
 cd "$(dirname "$0")/.." || exit 1
-# Optional $1 checks another tree, so the red half runs against an export of the base commit.
 tree=${1:-$PWD}
-
-failures=0
-static=0
-fail() { printf 'FAIL %s\n' "$*"; failures=1; }
-have() { static=$((static + 1)); grep -qF "$2" "$tree/$1" || fail "$1 misses $2"; }
-missing() { static=$((static + 1)); grep -qF "$2" "$tree/$1" && fail "$1 still carries $2"; }
-
-# 1. The bridge arrives through a Loader with a source: URL on the first ensure, never at launch.
-have ui/NetworkMounts.qml 'source: "GvfsBridge.qml"'
-have ui/NetworkMounts.qml 'function ensureBridge()'
-have ui/NetworkMounts.qml 'readonly property bool bridgeBuilt'
-missing ui/NetworkMounts.qml '    GvfsBridge {'
-# 1b. Every reader null-guards it, including the poll-hold line the brief names.
-have ui/NetworkMounts.qml 'root.bridgeWaiting'
-missing ui/NetworkMounts.qml '|| bridge.flow.waiter'
-# 3. The five second poll answers unchanged text with no reparse.
-have ui/NetworkMounts.qml 'function pollAnswered()'
-have ui/NetworkMounts.qml '_lastMountinfo'
-# 2. The host waits for the primary pane's first rows, with a fallback for a listing that never lands.
-have ui/WindowBody.qml 'function orderNetworkHost()'
-have ui/WindowBody.qml 'networkHostFallback'
-missing ui/Sidebar.qml 'meetHost() { if (root.navigationPane)'
-have ui/Sidebar.qml 'onServiceChanged: { root.arrive(); root.pushBookmarks() }'
-# 3b. The poll's mountinfo read never blocks the GUI thread.
-missing ui/NetworkMounts.qml 'cloudFile.waitForJob()'
-# 5. Quick Look's panes stay eager while only the swap wrapper waits for the first open.
-have ui/Preview.qml 'source: "QuickLookSwap.qml"'
-have ui/Preview.qml 'function ensureSwap()'
-have ui/Preview.qml 'readonly property bool swapBuilt'
-missing ui/Preview.qml 'Flea.PreviewSwap {'
-have ui/QuickLookSwap.qml 'captureSource: panesSource'
-have ui/PreviewSwap.qml 'property Item captureSource'
-have ui/qmldir 'QuickLookSwap 1.0 QuickLookSwap.qml'
-
-if [ "$failures" -ne 0 ]; then
-    exit 1
-fi
-printf 'lazy-objects: %d static wiring checks hold\n' "$static"
-
-# Live half: the Loader answers item on the same call that sets active, and a local path is
-# ready on that same ensure with no bridge start. Needs qs; anywhere without one keeps the static verdict.
-command -v qs >/dev/null 2>&1 || { printf 'lazy-objects: no qs here, live probe not run\n'; exit 0; }
-
+for f in ui/NetworkMounts.qml ui/Preview.qml ui/WindowBody.qml ui/js/Mounts.js tests/lazy-live.qml tests/lazy-swap-live.qml tests/lazy-host-live.qml; do [ -f "$tree/$f" ] || { printf 'FAIL missing %s\n' "$f"; exit 1; }; done
+command -v qml6 >/dev/null 2>&1 || { printf 'lazy-objects: qml6 is not installed\n'; exit 1; }
+host_out=$(QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1 timeout 20 qml6 "$tree/tests/lazy-host-live.qml" 2>&1)
+host_rc=$?
+printf '%s\n' "$host_out" | grep -q 'LAZY_HOST ordered-after-rows fallback-when-never-lands' || { printf 'FAIL host not ordered after rows with fallback\n%s\n' "$host_out"; exit 1; }
+[ "$host_rc" -eq 0 ] || { printf 'FAIL host live exited %s\n%s\n' "$host_rc" "$host_out"; exit 1; }
+printf 'lazy-objects: host ordered after rows, fallback when never lands\n'
+command -v qs >/dev/null 2>&1 || { printf 'lazy-objects: no qs here, bridge and swap live not run\n'; exit 0; }
 test_root="$FIXTURE_ROOT/flea-lazy-objects-$$"
 sandbox_make "$test_root"
 cleanup() { sandbox_remove "$test_root"; }
 trap cleanup EXIT
-
-mkdir -p "$test_root/home" "$test_root/config"
-ln -s "$PWD/ui/NetworkMounts.qml" "$test_root/config/NetworkMounts.qml"
-ln -s "$PWD/ui/MountListing.qml" "$test_root/config/MountListing.qml"
-ln -s "$PWD/ui/NetworkPlaces.qml" "$test_root/config/NetworkPlaces.qml"
-ln -s "$PWD/ui/GvfsBridge.qml" "$test_root/config/GvfsBridge.qml"
-ln -s "$PWD/ui/js" "$test_root/config/js"
-ln -s "$PWD/tests/lazy-live.qml" "$test_root/config/shell.qml"
-
-output=$(env \
-    HOME="$test_root/home" \
-    PATH="/usr/bin:/bin" \
-    QT_QPA_PLATFORM=offscreen \
-    QT_FORCE_STDERR_LOGGING=1 \
-    timeout 20 qs -p "$test_root/config" 2>&1)
-
-pass_count=$(printf '%s\n' "$output" | grep -c 'LAZY_OBJECTS bridge=absent-then-built served-on-same-call')
-fail_count=$(printf '%s\n' "$output" | grep -c 'LAZY_OBJECTS FAIL')
-if [ "$pass_count" -ne 1 ] || [ "$fail_count" -ne 0 ]; then
-    printf 'FAIL the lazy bridge did not arrive whole on first use\n%s\n' "$output"
-    exit 1
-fi
-
+mkdir -p "$test_root/home" "$test_root/bridge-config" "$test_root/swap-config"
+ln -s "$tree/ui/NetworkMounts.qml" "$test_root/bridge-config/NetworkMounts.qml"
+ln -s "$tree/ui/MountListing.qml" "$test_root/bridge-config/MountListing.qml"
+ln -s "$tree/ui/NetworkPlaces.qml" "$test_root/bridge-config/NetworkPlaces.qml"
+ln -s "$tree/ui/GvfsBridge.qml" "$test_root/bridge-config/GvfsBridge.qml"
+ln -s "$tree/ui/js" "$test_root/bridge-config/js"
+ln -s "$tree/tests/lazy-live.qml" "$test_root/bridge-config/shell.qml"
+bridge_out=$(env HOME="$test_root/home" PATH="/usr/bin:/bin" QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1 timeout 20 qs -p "$test_root/bridge-config" 2>&1)
+printf '%s\n' "$bridge_out" | grep -q 'LAZY_OBJECTS bridge=absent-then-built served-on-same-call' || { printf 'FAIL bridge did not arrive whole on first use\n%s\n' "$bridge_out"; exit 1; }
+printf '%s\n' "$bridge_out" | grep -q 'LAZY_OBJECTS FAIL' && { printf 'FAIL bridge live refused\n%s\n' "$bridge_out"; exit 1; }
 printf 'lazy-objects: live bridge absent before first use, built and serving after\n'
+ln -s /usr/share/omarchy/shell/Commons "$test_root/swap-config/Commons"
+ln -s /usr/share/omarchy/shell/Ui "$test_root/swap-config/Ui"
+ln -s "$tree/tests/lazy-swap-live.qml" "$test_root/swap-config/shell.qml"
+swap_out=$(env HOME="$test_root/home" PATH="/usr/bin:/bin" QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1 LAZY_SWAP_UI="$tree/ui" timeout 20 qs -p "$test_root/swap-config" 2>&1)
+printf '%s\n' "$swap_out" | grep -q 'LAZY_SWAP wrapper=absent-then-built' || { printf 'FAIL wrapper did not arrive whole on first open\n%s\n' "$swap_out"; exit 1; }
+printf '%s\n' "$swap_out" | grep -q 'LAZY_SWAP FAIL' && { printf 'FAIL swap live refused\n%s\n' "$swap_out"; exit 1; }
+printf 'lazy-objects: live wrapper absent before first open, whole after\n'

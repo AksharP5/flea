@@ -2590,6 +2590,14 @@ Loader and its guards. The wrapper itself is the new `ui/QuickLookSwap.qml`, 13 
 budgets, and `ui/PreviewSwap.qml` stands at 242 inside the soft budget for the `captureSource` seam;
 `ui/GvfsBridge.qml` keeps 164 lines with no added line.
 
+r5ui moves two ceilings, each re-derived with `wc -l`: `ui/NetworkMounts.qml` 851 to 867 for
+building the bridge before reporting success, the `bridgeMissingReason` and `failBridgeMissing`
+helpers with no password retry, and the `Mounts.pollDecision` change gate; `ui/WindowBody.qml`
+580 to 585 for the `NETWORK_HOST_AFTER_ROWS_MS` 100 ms timer that orders the host after the
+rows paint beside the 2000 ms fallback. `ui/Preview.qml` falls 463 to 461 for the one-line
+swap comment and the `Qt.binding` groundInset, and `ui/Sidebar.qml` falls 576 to 572 now that
+the rail never builds the host, both inside their recorded ceilings.
+
 Railmenus2 records one ceiling, re-derived with `wc -l`: `ui/js/Menu.js` 297 to 335 for the rail
 rows living in INVENTORY with kinds R (Mount, Open, Unmount, Eject, Rename, Edit address, Remove
 from Network, Remove from Favorites), the rail availability and the hidden-check skip, plus the New
