@@ -16,8 +16,7 @@ use std::time::{Duration, Instant};
 // One progress line per item at most this often, so a fast copy of a small file may emit none at all.
 pub(crate) const PROGRESS_EVERY: Duration = Duration::from_millis(150);
 
-// Test builds only: set the cancel flag when the loop reaches this item, after the loop-top
-// check, so a cancel landing mid-item is deterministic rather than a racing watcher thread.
+// Test builds only: set the cancel flag at this item, past the loop-top check, so a mid-item cancel is deterministic.
 #[cfg(test)]
 thread_local! {
     static CANCEL_AT: std::cell::Cell<Option<usize>> = const { std::cell::Cell::new(None) };

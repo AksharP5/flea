@@ -74,13 +74,21 @@ impl Drop for InspectFailGuard {
     }
 }
 
+// ESTALE means the server dropped the handle, so the source is gone the same way ENOENT is.
+const ESTALE: i32 = 116;
+
 // A transient lstat error answers EIO-shaped, the shape a sick NFS or SMB mount gives back.
-fn inspect_source(path: &Path) -> Result<ItemIdentity, FleaError> {
+fn inspect_source(path: &Path) -> Result<ItemIdentity, std::io::Error> {
     #[cfg(test)]
     if INSPECT_FAIL.with(|v| v.get()) {
-        return Err(from_io("journal", &path.to_string_lossy(), &std::io::Error::from_raw_os_error(5)));
+        return Err(std::io::Error::from_raw_os_error(5));
     }
-    ItemIdentity::inspect(path)
+    path.symlink_metadata().map(|meta| ItemIdentity::record(&meta))
+}
+
+// ENOENT or ESTALE means the bytes at the source name are already gone.
+fn source_gone(e: &std::io::Error) -> bool {
+    e.kind() == std::io::ErrorKind::NotFound || e.raw_os_error() == Some(ESTALE)
 }
 
 // One landed copy waiting on its batch's folder confirm; the source is still whole.
@@ -331,27 +339,47 @@ fn finish_item(
     counts: &mut CloseCounts,
     retry: &mut Vec<(PathBuf, ItemIdentity)>,
 ) {
-    // An unverifiable source keeps both names, changed or not: a transient lstat error proves nothing.
-    let unverified = match inspect_source(&item.src) {
+    // An unverifiable source keeps both names; a gone one journals nothing, so undo keeps the only bytes left.
+    match inspect_source(&item.src) {
         // The source still holds the bytes its copy took, so the move can finish.
-        Ok(current) if item.source.unchanged_for_move(&current) => None,
+        Ok(current) if item.source.unchanged_for_move(&current) => {}
         // A source that changed under its copy keeps both names; undo then only ever removes the copy.
-        Ok(_) => Some(BOTH_KEPT.to_string()),
-        // A source that cannot be re-checked keeps both names the same way, with the error as its reason.
-        Err(e) => Some(format!("could not verify {}: {}; both kept", item.name, e.msg)),
-    };
-    if let Some(reason) = unverified {
-        match undo::copied(&item.src, &item.dst, item.source.clone()) {
-            Ok(step) => {
-                steps.push(step);
-                send_item(tx, id, item.index, &item.name, false, &reason);
+        Ok(_) => {
+            let reason = BOTH_KEPT.to_string();
+            match undo::copied(&item.src, &item.dst, item.source.clone()) {
+                Ok(step) => {
+                    steps.push(step);
+                    send_item(tx, id, item.index, &item.name, false, &reason);
+                }
+                Err(e) => send_item(tx, id, item.index, &item.name, false, &e.msg),
             }
-            Err(e) => send_item(tx, id, item.index, &item.name, false, &e.msg),
+            counts.failed += 1;
+            retry.push((item.src.clone(), item.source.clone()));
+            return;
         }
-        counts.failed += 1;
-        retry.push((item.src.clone(), item.source.clone()));
-        return;
-    }
+        // A source already gone leaves its staged copy in place with no journal step behind it.
+        Err(e) if source_gone(&e) => {
+            let reason = format!("{} was gone before the move finished; the copy stays", item.name);
+            send_item(tx, id, item.index, &item.name, false, &reason);
+            counts.failed += 1;
+            retry.push((item.src.clone(), item.source.clone()));
+            return;
+        }
+        // A source that cannot be re-checked keeps both names the same way, with the error as its reason.
+        Err(e) => {
+            let reason = format!("could not verify {}: {}; both kept", item.name, crate::error::io_message(&e));
+            match undo::copied(&item.src, &item.dst, item.source.clone()) {
+                Ok(step) => {
+                    steps.push(step);
+                    send_item(tx, id, item.index, &item.name, false, &reason);
+                }
+                Err(e) => send_item(tx, id, item.index, &item.name, false, &e.msg),
+            }
+            counts.failed += 1;
+            retry.push((item.src.clone(), item.source.clone()));
+            return;
+        }
+    };
     match remove_any(&item.src) {
         Ok(()) => {
             if let Some(parent) = item.src.parent() {

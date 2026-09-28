@@ -2682,8 +2682,12 @@ R6src round 2 moves five recorded ceilings, each re-derived with `wc -l`:
 inspect-failure seam, `src/backend/movebatch_tests.rs` 393 to 466 for the unverifiable-source and
 in-place-edit cases and the deterministic cancel transfer, `src/backend/opsreq.rs` 477 to 513 for
 the test-only cancel-at seam that lands a cancel past the loop-top check,
-`src/backend/opsreq/tests.rs` 424 to 460 for the cancel-on-the-last-item case, and `src/gui.rs`
+`src/backend/opsreq/tests.rs` 422 to 460 for the cancel-on-the-last-item case, and `src/gui.rs`
 407 to 432 for the injected warm job with its rendezvous test.
+
+R7src moves two recorded ceilings, each re-derived with `wc -l`:
+`src/backend/movebatch.rs` 428 to 456 for the gone-source arm that journals no step,
+and `src/backend/movebatch_tests.rs` 466 to 501 for the vanished-source undo test.
 
 ## The key table is generated
 
@@ -4947,7 +4951,7 @@ or each filled parent once with no durability context). A batch closes after `BA
 bounds one unconfirmed batch to one folder fsync while keeping a cancel's cleanup cheap), when the
 destination folder changes, on cancel, on the first failure, and at the end. A failed confirm keeps
 every source of that batch whole and journals each copy as a partial exactly as the single-item failure
-does; a cancel removes the batch's copies and keeps every source whole; a same-filesystem rename and a
+does; a cancel completes the landed items as moves and abandons only the in-flight one; a same-filesystem rename and a
 replace never stage and run exactly as before, and `move_any` keeps its single-item contract for redo.
 A batch's item lines go out when the batch closes rather than when each copy landed, so an early item's
 `ok` waits for the batch behind it; progress lines still stream per item while it copies.

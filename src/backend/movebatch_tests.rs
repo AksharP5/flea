@@ -266,6 +266,41 @@ fn an_unverifiable_batch_source_keeps_both_names() {
     durable::test_reset();
 }
 
+// A source gone before its batch closes keeps its copy: undo journals nothing and removes nothing.
+#[test]
+fn a_vanished_batch_source_keeps_its_copy_through_undo() {
+    use crate::backend::{durable, undo::Journal};
+    durable::test_reset();
+    let d = TestDir::new("movebatch-vanished-source");
+    let srcdir = d.dir("src");
+    let out = d.dir("out");
+    durable::test_mark_durable(&out);
+    let mut durability = durable::Durability::begin(&out);
+    let flag = AtomicBool::new(false);
+    let settled = AtomicU64::new(0);
+    let mut batch = MoveBatch::new();
+    let (tx, rx) = channel();
+    let mut steps = Vec::new();
+    let src = srcdir.join("f0.txt");
+    std::fs::write(&src, "body").unwrap();
+    staged(1, &mut batch, &mut durability, &flag, &tx, &settled, &mut steps, 0, &src, &out.join("f0.txt"));
+    std::fs::remove_file(&src).unwrap();
+    let (counts, _) = close_normal(&mut batch, 1, &tx, &mut steps, &mut durability);
+    assert_eq!((counts.ok, counts.failed, counts.skipped), (0, 1, 0));
+    drop(tx);
+    let lines = items(rx);
+    assert_eq!(lines.len(), 1);
+    assert!(!lines[0].1, "a vanished source is never removed");
+    assert!(lines[0].2.contains("f0.txt was gone before the move finished; the copy stays"), "one line names the file: {}", lines[0].2);
+    assert!(steps.is_empty(), "no step journals a copy whose source is gone: {:?}", steps.len());
+    assert_eq!(std::fs::read_to_string(out.join("f0.txt")).unwrap(), "body", "the staged copy stays");
+    let mut journal = Journal::new();
+    journal.push(crate::backend::undo::Entry { op: "move".to_string(), steps });
+    assert!(journal.is_empty(), "nothing journalled, so nothing to undo");
+    assert_eq!(std::fs::read_to_string(out.join("f0.txt")).unwrap(), "body", "undo never removes the only bytes left");
+    durable::test_reset();
+}
+
 // A source rewritten in place keeps its inode, so only the size and time re-check catches it.
 #[test]
 fn a_batch_source_edited_in_place_survives_close_with_both_copies_kept() {
