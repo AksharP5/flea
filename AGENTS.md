@@ -2645,6 +2645,10 @@ budget, kill and reap on timeout with no join) and its overshoot-drift test copi
 stays under the hard cap; `src/prefetch.rs` 325 to 311 and `src/gvfsprefetch.rs` 328 to 306
 for removing the two superseded spawners.
 
+The 0.3.6 performance fixes, integrated, take `src/backend/gvfslist.rs` 538 to 549 (the post-EOF exit
+deadline and the one-script-per-lifetime exact-wait test) and `src/backend/durable.rs` 422 to 439 (the
+batched folder confirm the cross-device move uses), each re-derived with `wc -l`.
+
 ## The key table is generated
 
 `keys.toml` at the repository root is the single source of truth for every binding.
