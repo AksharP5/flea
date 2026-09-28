@@ -2569,6 +2569,14 @@ take-back seam and the test that a copy which will not go back answers `rename`,
 
 The rail's network host fixes take `ui/NetworkMounts.qml` 802 to 803 (one arrival poll) and `ui/WindowBody.qml` 556 to 557 (the RailKeys import), each re-derived with `wc -l`.
 
+Railmenus2 records one ceiling, re-derived with `wc -l`: `ui/js/Menu.js` 297 to 344 for the rail
+rows living in INVENTORY with kinds R (Mount, Open, Unmount, Eject, Rename, Edit address, Remove
+from Network, Remove from Favorites), the rail availability and the hidden-check skip, plus the New
+tab and shelf glyph rows. `ui/js/Mounts.js` falls 289 to 255 inside the soft budget for the
+table-driven railMenu/rowMenu; `ui/js/RailMenu.js` stands at 127 inside both budgets for the
+INVENTORY favourite row and the generic Open release; `ui/MenuRow.qml` stands at 307 inside the
+hard cap for the compact removal; `ui/ContextMenu.qml` stands at 577 inside its recorded 578.
+
 ## The key table is generated
 
 `keys.toml` at the repository root is the single source of truth for every binding.

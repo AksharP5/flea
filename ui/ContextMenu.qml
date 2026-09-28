@@ -433,7 +433,6 @@ Item {
                     required property int index
                     width: rows.width
                     entry: row.modelData
-                    compact: root.forRail && root.railKey !== "trash" && root.railKey !== "trashSelection"
                     current: !root.submenuOpen && root.cursor === row.index
                     lastPointerGlobal: root.pointerGlobal
                     onPointerSeen: function (at) { root.pointerGlobal = at }

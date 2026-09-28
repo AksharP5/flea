@@ -34,10 +34,10 @@ function run(check) {
 
     check("a Places row offers the path rows and nothing that cuts, sends or destroys",
           labels(PlaceMenu.entries(placeRow, -1, [])),
-          "Open|Open in new tab|Open in terminal|Copy path|Add to Favorites")
+          "Open|New tab|Open in terminal|Copy path|Add to Favorites")
     check("and a Favorites row ends on Remove rather than Add, so issue 138's duplicate is impossible",
           labels(PlaceMenu.entries(favouriteRow, 2, [])),
-          "Open|Open in new tab|Open in terminal|Copy path|Remove from Favorites")
+          "Open|New tab|Open in terminal|Copy path|Remove from Favorites")
     check("the key carries the path, because the rail rebuilds under an open menu",
           PlaceMenu.key(favouriteRow, 2), "place:2:/home/gm/Work")
     check("and a Places row carries no favourite index", PlaceMenu.key(placeRow, -1), "place:-1:/home/gm/Downloads")

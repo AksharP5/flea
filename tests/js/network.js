@@ -160,23 +160,23 @@ function run(check) {
     var saved = { path: "", label: "NAS", group: "network", kind: "share", uri: "smb://nas/", mounted: false }
     var volume = { path: "/run/media/gm/128GB", label: "128GB", group: "device", kind: "volume", device: "/dev/sda1", mounted: true, removable: true }
     var favourite = { path: "/home/gm", label: "Home", group: "favorite", kind: "favorite", mounted: false }
-    function labels(rows) { return rows.map(function (r) { return r.label }).join("|") }
+    function labels(rows) { return rows.filter(function (r) { return !r.separator }).map(function (r) { return r.label }).join("|") }
     check("a mounted share releases first, then offers the three the place itself owns",
-          labels(Mounts.rowMenu(mounted)), "Unmount|Edit|Rename|Remove")
+          labels(Mounts.rowMenu(mounted)), "Open|Unmount|Rename|Edit address|Remove from Network")
     check("and Ctrl+E still reads the release row alone",
-          Mounts.railMenu(mounted).length + "|" + Mounts.railMenu(mounted)[0].action, "1|unmount")
+          Mounts.railMenu(mounted).filter(function (r) { return !r.separator && (r.action === "unmount" || r.action === "eject") }).length + "|" + Mounts.railMenu(mounted).filter(function (r) { return !r.separator && r.action === "unmount" })[0].action, "1|unmount")
     check("a bookmark nothing has mounted offers the three that need no mount",
-          labels(Mounts.rowMenu(saved)), "Edit|Rename|Remove")
-    check("so it opens a menu where it used to open an empty one", Mounts.rowMenu(saved).length, 3)
-    check("but it has nothing to release, so Ctrl+E still says so", Mounts.railMenu(saved).length, 0)
-    check("a removable volume's menu is untouched", labels(Mounts.rowMenu(volume)), "Eject")
+          labels(Mounts.rowMenu(saved)), "Rename|Edit address|Remove from Network")
+    check("so it opens a menu where it used to open an empty one", Mounts.rowMenu(saved).filter(function (r) { return !r.separator }).length, 3)
+    check("but it has nothing to release, so Ctrl+E still says so", Mounts.railMenu(saved).filter(function (r) { return !r.separator && (r.action === "unmount" || r.action === "eject") }).length, 0)
+    check("a removable volume's menu is untouched", labels(Mounts.rowMenu(volume)), "Open|Eject")
     check("a favourite still opens no menu at all", Mounts.rowMenu(favourite).length, 0)
     check("no entry at all offers nothing rather than throwing", Mounts.rowMenu(null).length, 0)
-    check("Remove draws the minus mark, because forgetting a place trashes nothing",
-          Mounts.rowMenu(saved)[2].glyph, "minus")
-    // Issue 21, TomFaulkner: Edit is the address and Rename is the label, so they are two rows.
-    check("Edit is offered before Rename, and the address is what it changes",
-          Mounts.rowMenu(saved)[0].action + "|" + Mounts.rowMenu(saved)[1].action, "editPlace|rename")
+    check("Remove from Network draws the minus mark, because forgetting a place trashes nothing",
+          Mounts.rowMenu(saved).filter(function (r) { return !r.separator })[2].glyph, "minus")
+    // Issue 21, TomFaulkner: Rename is the label and Edit address is the address, so they are two rows.
+    check("Rename is offered before Edit address, and the address is what it changes",
+          Mounts.rowMenu(saved).filter(function (r) { return !r.separator })[0].action + "|" + Mounts.rowMenu(saved).filter(function (r) { return !r.separator })[1].action, "rename|editPlace")
 
     // A chosen row arrives as its key, never its position: the rail rebuilds on a five second poll.
     function chose(action, key, entries) {

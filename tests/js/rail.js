@@ -48,19 +48,20 @@ function run(check) {
     check("a locked LUKS container mounts through its crypt child, never itself", labels(on).indexOf("sdb5"), -1)
 
     // Rule 2's rows, which only a row from rule 1 carries.
+    function solid(rows) { return rows.filter(function (r) { return r.separator !== true }) }
     var unmounted = { group: "device", kind: "volume", mounted: false, removable: false, volumeMenu: true }
     check("an unmounted volume offers the mount its own activation does",
-          Mounts.railMenu(unmounted).map(function (r) { return r.label + ":" + r.action }).join(","), "Mount:mountVolume")
+          solid(Mounts.railMenu(unmounted)).map(function (r) { return r.label + ":" + r.action }).join(","), "Mount:mountVolume")
     var mounted = { group: "device", kind: "volume", mounted: true, removable: false, volumeMenu: true }
     check("a mounted one offers the open beside the release",
-          Mounts.railMenu(mounted).map(function (r) { return r.label + ":" + r.action }).join(","),
-          "Open:openVolume,Unmount:unmountVolume")
+          solid(Mounts.railMenu(mounted)).map(function (r) { return r.label + ":" + r.action }).join(","),
+          "Open:open,Unmount:unmountVolume")
     var stick = { group: "device", kind: "volume", mounted: true, removable: true, volumeMenu: true }
     check("and Eject stays where it stands today, on a volume somebody can pull out",
-          Mounts.railMenu(stick).map(function (r) { return r.label }).join(","), "Open,Unmount,Eject")
-    check("with the switch off a mounted stick offers exactly what it offered in 0.2.1",
-          Mounts.railMenu({ group: "device", kind: "volume", mounted: true, removable: true }).map(function (r) { return r.label }).join(","),
-          "Eject")
+          solid(Mounts.railMenu(stick)).map(function (r) { return r.label }).join(","), "Open,Unmount,Eject")
+    check("with the switch off a mounted stick opens beside its eject",
+          solid(Mounts.railMenu({ group: "device", kind: "volume", mounted: true, removable: true })).map(function (r) { return r.label }).join(","),
+          "Open,Eject")
     check("and an unmounted one opens no menu at all",
           Mounts.railMenu({ group: "device", kind: "volume", mounted: false, removable: true }).length, 0)
 

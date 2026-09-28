@@ -26,8 +26,9 @@ function railMenuFor(sidebar, entry, scenePosition, hidden) {
         }
         if (entry.kind !== "favourite")
             return
+        // The Places menu is off: the one row is INVENTORY's own Remove from Favorites, never a bare Remove.
         sidebar.menu.openForRail("favourite:" + entry.favouriteIndex + ":" + JSON.stringify(entry.original),
-            [{ label: "Remove", action: "removeFavourite", glyph: "minus" }], scenePosition)
+            Menu.railEntries({ group: "favourite", kind: "favourite" }), scenePosition)
         return
     }
     sidebar.menu.openForRail(Mounts.railKey(entry), Mounts.rowMenu(entry), scenePosition)
@@ -77,12 +78,28 @@ function release(action, key, devices, mounts, sidebar) {
     }
     // RailAdditions rule 2: Mount and Open are the row's own activation, which mounts when it has to
     // and opens either way, so the menu row and Enter cannot drift apart.
-    if (action === "mountVolume" || action === "openVolume" || action === "unmountVolume") {
+    if (action === "mountVolume" || action === "unmountVolume") {
         var row = Mounts.rowByKey(sidebar.deviceEntries, key)
         if (row < 0)
             return
         if (action === "unmountVolume") devices.unmount(row)
         else devices.activate(row)
+        return
+    }
+    // Open runs the row's own activation: a volume mounts and opens, a share resolves and opens,
+    // a phone mounts and opens, exactly what the row's click does.
+    if (action === "open") {
+        var volume = Mounts.rowByKey(sidebar.deviceEntries, key)
+        if (volume >= 0) {
+            devices.activate(volume)
+            return
+        }
+        var at = Mounts.rowByKey(sidebar.networkEntries, key)
+        if (at >= 0) {
+            mounts.activate(at, sidebar.navigationPane)
+            return
+        }
+        sidebar.openPhone(key)
         return
     }
     // The phone Service is the sidebar's own child, so the sidebar resolves the key against it; a
@@ -91,8 +108,8 @@ function release(action, key, devices, mounts, sidebar) {
         sidebar.releasePhone(key)
         return
     }
-    // Mount and Open are the row's own activation, which mounts when it has to and opens either way.
-    if (action === "mountPhone" || action === "openPhone") {
+    // Mount is the row's own activation, which mounts when it has to and opens either way.
+    if (action === "mountPhone") {
         sidebar.openPhone(key)
         return
     }

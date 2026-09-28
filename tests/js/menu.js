@@ -22,10 +22,10 @@ function separated(rows) {
 }
 function run(check) {
     var file = Menu.listingEntries(state({}))
-    check("Menus and Places inventory has 37 actions", Menu.INVENTORY.length, 37)
+    check("Menus and Places inventory has 45 actions", Menu.INVENTORY.length, 45)
     check("Open with uses the authoritative cut geometry", Icons.pathFor("app-window"), "M3 4h18v16H3z M3 9h18 M6 6.5h.01 M9 6.5h.01")
     check("Restore all uses the authoritative undo geometry", Icons.pathFor("undo"), "M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8 M3 3v5h5")
-    check("inventory storage ids are unique", Object.keys(Menu.INVENTORY.reduce(function (out, row) { out[row[0]] = true; return out }, {})).length, 37)
+    check("inventory storage ids are unique", Object.keys(Menu.INVENTORY.reduce(function (out, row) { out[row[0]] = true; return out }, {})).length, 45)
     check("default image menu matches Menus specimen", actions(file),
           "open,openWith,cut,copy,paste,duplicate,rename,compress,convert,addToShelf,taildrop,dropbox,trash,addFavourite,toggleHidden")
     check("empty clipboard leaves Paste visible and disabled", entry(file, "paste").disabled, true)
@@ -58,6 +58,31 @@ function run(check) {
     check("empty Trash disables empty", entry(Menu.trashEntries(0, false), "emptyTrash").disabled, true)
     check("busy Trash disables destructive reactivation", entry(Menu.trashEntries(4, true), "emptyTrash").disabled, true)
     check("full idle Trash enables restore", entry(Menu.trashEntries(4, false), "restoreAll").disabled, false)
+    // Railmenus2: one size, one table. Rail rows live in INVENTORY with kinds R and draw the same
+    // 10 px separator on a group change; shared actions reuse this table's own label and glyph.
+    function railLabels(rows) { return rows.filter(function (r) { return !r.separator }).map(function (r) { return r.label }).join("|") }
+    function railGlyphs(rows) { return rows.filter(function (r) { return !r.separator }).map(function (r) { return r.glyph }).join("|") }
+    var mountedShare = { group: "network", kind: "share", uri: "smb://h/data/", mounted: true }
+    check("a mounted saved place opens like every other Flea menu",
+          railLabels(Menu.railEntries(mountedShare)), "Open|Unmount|Rename|Edit address|Remove from Network")
+    check("and its marks are the main menu's own",
+          railGlyphs(Menu.railEntries(mountedShare)), "folder-open|drive|rename|sliders|minus")
+    check("a group change draws a separator", Menu.railEntries(mountedShare).filter(function (r) { return r.separator === true }).length, 3)
+    var stick = { group: "device", kind: "volume", device: "/dev/sda1", mounted: true, removable: true, volumeMenu: true }
+    check("a mounted volume offers Open, Unmount and Eject", railLabels(Menu.railEntries(stick)), "Open|Unmount|Eject")
+    check("Mount and Unmount share the drive mark", railGlyphs(Menu.railEntries(stick)), "folder-open|drive|eject")
+    var idleVolume = { group: "device", kind: "volume", device: "/dev/sda1", mounted: false, removable: false, volumeMenu: true }
+    check("an unmounted volume offers the mount its activation does", railLabels(Menu.railEntries(idleVolume)), "Mount")
+    var savedOnly = { group: "network", kind: "share", uri: "smb://h/data/", mounted: false }
+    check("an unmounted saved place keeps Rename, Edit address and Remove from Network",
+          railLabels(Menu.railEntries(savedOnly)), "Rename|Edit address|Remove from Network")
+    var legacyFav = { group: "favourite", kind: "favourite" }
+    check("a favourite with the Places menu off is INVENTORY's own row, never a bare Remove",
+          railLabels(Menu.railEntries(legacyFav)), "Remove from Favorites")
+    check("New tab takes the tab strip's own name and mark",
+          Menu.INVENTORY.filter(function (r) { return r[0] === "openTab" })[0].slice(1, 3).join("|"), "New tab|plus")
+    check("Add to shelf draws the shelf's own cut glyph",
+          Menu.INVENTORY.filter(function (r) { return r[0] === "shelf" })[0][2], "shelf")
     var all = Menu.listingEntries(state({ hiddenActions: [] }))
     check("stored delete id reaches permanent deletion action", entry(all, "deletePermanently").id, "delete")
     check("all optional file controls exist", ["openWith", "moveTo", "copyTo", "properties", "permissions", "copypath", "openTerminal"].every(function (a) { return !!entry(all, a).action }), true)

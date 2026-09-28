@@ -63,11 +63,11 @@ var GLYPHS = {
     delete: "trash", openwith: "app-window", moveto: "folder-plus", copyto: "copy", properties: "info",
     extract: "archive-out",
     convert: "sliders", sharelink: "network", open: "folder-open", toggleHidden: "eye", placeMenu: "folder-open", runScript: "terminal",
-    updateFlea: "download", extThumbs: "image"
+    updateFlea: "download", extThumbs: "image", shelf: "shelf"
 }
 
-// Taildrop, LocalSend and Dropbox are brand reproductions rather than cut glyphs, so they name a component the way a menu entry does; ui/SettingsRow.qml draws them exactly as ui/MenuRow.qml does.
-var MARKS = { taildrop: "tailscale", localsend: "localsend", dropbox: "dropbox", shelf: "flea", "display.hyprlandIcons": "hyprland" }
+// The shelf switch wears the cut glyph the menu row draws, never the animated brand mark.
+var MARKS = { taildrop: "tailscale", localsend: "localsend", dropbox: "dropbox", "display.hyprlandIcons": "hyprland" }
 
 function label(id) {
     return LABELS[id] || id

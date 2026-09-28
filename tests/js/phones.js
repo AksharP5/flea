@@ -52,8 +52,8 @@ function run(check) {
     var live0 = Phones.parsePhones(mountedNoRemount)
     check("a mounted volume that can no longer be mounted is still a row", live0.length, 1)
     check("and it reads as mounted, so the rail offers its Unmount",
-          live0.length === 1 ? live0[0].mounted + "|" + Mounts.railMenu(live0[0]).map(function (r) { return r.action }).join(",")
-                             : "no row", "true|openPhone,unmountPhone")
+          live0.length === 1 ? live0[0].mounted + "|" + Mounts.railMenu(live0[0]).filter(function (r) { return !r.separator }).map(function (r) { return r.action }).join(",")
+                             : "no row", "true|open,unmountPhone")
     check("the indented Mount() flips it to mounted", mounted[0].mounted, true)
     check("the shadow mount is not a network row either", Mounts.parseMounts(live).length, 0)
 
@@ -106,13 +106,14 @@ function run(check) {
     check("the second's mount is its own", pair[1].mounted + "|" + pair[1].uri, "true|mtp://Google_Pixel_7_1A2B/")
 
     // The rail's shared plumbing: menu, key and release, the same contract volumes and shares hold.
+    function solidActions(rows) { return rows.filter(function (r) { return !r.separator }).map(function (r) { return r.action }).join(",") }
     check("a mounted phone offers its open and its release, never an eject",
-          Mounts.railMenu(mounted[0]).map(function (r) { return r.action }).join(","), "openPhone,unmountPhone")
+          solidActions(Mounts.railMenu(mounted[0])), "open,unmountPhone")
     check("an unmounted phone offers the mount its own row does",
-          Mounts.railMenu(rows[0]).map(function (r) { return r.action }).join(","), "mountPhone")
+          solidActions(Mounts.railMenu(rows[0])), "mountPhone")
     check("a phone's key is its uri", Mounts.railKey(mounted[0]), "mtp://SAMSUNG_SAMSUNG_Android_RQGL705T0NR/")
     check("rowMenu adds no share rows to a phone",
-          Mounts.rowMenu(mounted[0]).map(function (r) { return r.action }).join(","), "openPhone,unmountPhone")
+          solidActions(Mounts.rowMenu(mounted[0])), "open,unmountPhone")
 
     // Release resolves through the sidebar, which owns the phone Service; a stale key does nothing.
     var releasedKey = ""
@@ -123,6 +124,8 @@ function run(check) {
     check("unmountPhone hands the key to the sidebar", releasedKey, "mtp://SAMSUNG_SAMSUNG_Android_RQGL705T0NR/")
     RailMenu.release("mountPhone", "mtp://Google_Pixel_7_1A2B/", null, null, sidebar)
     check("mountPhone hands its own key to the same row's activation", openedKey, "mtp://Google_Pixel_7_1A2B/")
+    RailMenu.release("open", "mtp://Google_Pixel_7_1A2B/", null, null, sidebar)
+    check("Open runs the row's own activation too", openedKey, "mtp://Google_Pixel_7_1A2B/")
 
     // An unchanged poll must not assign, and a mount-state flip must: the two sides of sameEntries.
     check("an unchanged poll compares equal", Mounts.sameEntries(rows, Phones.parsePhones(idle)), true)

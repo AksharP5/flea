@@ -68,6 +68,7 @@ ui/WindowBody.qml 557
 ui/js/Filter.js 253
 ui/js/Focus.js 366
 ui/js/Keymap.js 313
+ui/js/Menu.js 344
 ui/js/Ops.js 371
 ui/js/Settings.js 427"
 

@@ -25,27 +25,42 @@ function clamp(point, size, bounds) {
 // The flyout's tail row, which is the only way into the dialog; ui/PaneMenuActions.qml reads it.
 var OPEN_WITH_OTHER = "__another__"
 
-// SettingsMenus and SettingsPlaces share one order; F=file/folder, B=background, T=Trash rail.
+// SettingsMenus and SettingsPlaces share one order; F=file/folder, B=background, T=Trash rail,
+// P=Places rail, R=rail (volumes, phones, shares, favourites). R rows are never user-hideable
+// and never reach Settings > Menus: buildEntries skips the hidden check for kind R, and the
+// settings suites build only from F/B, so rail-only ids stay out of that inventory.
 var INVENTORY = [
-    ["open", "Open", "folder-open", "FTP", "open"],
+    ["open", "Open", "folder-open", "FTPR", "open"],
     // MenuAdditions rule 3: a Places or Favorites row opens this menu for its own path, so the rows
     // it carries are the ones that take a path and not the clipboard, archive, send or destroy ones.
-    ["openTab", "Open in new tab", "app-window", "P", "open"],
+    ["openTab", "New tab", "plus", "P", "open"],
     ["openwith", "Open with", "app-window", "F", "open", "openWith"],
+    // RailMount rows: Mount and Unmount are one toggle sharing the drive mark, as Show and Hide
+    // share the eye; Eject keeps the eject mark alone. Open takes this table's own label and glyph.
+    ["mountVolume", "Mount", "drive", "R", "open"],
+    ["mountPhone", "Mount", "drive", "R", "open"],
+    ["unmountVolume", "Unmount", "drive", "R", "rrelease"],
+    ["unmountPhone", "Unmount", "drive", "R", "rrelease"],
+    ["unmount", "Unmount", "drive", "R", "rrelease"],
+    ["eject", "Eject", "eject", "R", "rrelease"],
     ["newFolder", "New Folder", "folder-plus", "B", "open"],
     ["newFile", "New File", "file-plus", "B", "open"],
     ["cut", "Cut", "scissors", "F", "basic"],
     ["copy", "Copy", "copy", "F", "basic"],
     ["paste", "Paste", "clipboard", "FB", "basic"],
     ["duplicate", "Duplicate", "file-plus", "F", "basic"],
-    ["rename", "Rename", "rename", "F", "basic"],
+    ["rename", "Rename", "rename", "FR", "basic"],
+    // RailEdit rows: a saved place's label and address. Rename takes this table's own row above;
+    // Edit address and Remove from Network are rail-only and never reach Settings > Menus.
+    ["editPlace", "Edit address", "sliders", "R", "basic"],
+    ["remove", "Remove from Network", "minus", "R", "rremove"],
     ["selectAll", "Select all", "check", "B", "basic"],
     ["compress", "Compress", "archive", "F", "archive"],
     ["extract", "Extract", "archive-out", "F", "archive"],
     ["convert", "Convert", "sliders", "F", "archive"],
-    // The shelf leads the send group: it is Flea's own destination and the other two are somebody
-    // else's. Governed by the Enable shelf switch in Settings, Menus, so off is absent and not grey.
-    ["shelf", "Add to shelf", "file", "F", "share", "addToShelf"],
+    // The shelf is Flea's own destination and draws its own cut glyph, the static mark the
+    // shelf itself draws, never the animated brand mark: that one paints in over two seconds.
+    ["shelf", "Add to shelf", "shelf", "F", "share", "addToShelf"],
     ["taildrop", "Send with Taildrop", "tailscale", "F", "share"],
     // MenuAdditions rule 1: between Taildrop and Dropbox, present only while a localsend binary is
     // on PATH, and carrying its own reproduced mark rather than a cut glyph.
@@ -64,7 +79,7 @@ var INVENTORY = [
     // absent rather than greyed when that directory is missing or holds none.
     ["runScript", "Run script", "terminal", "F", "inspect"],
     ["addFavourite", "Add to Favorites", "star", "FBP", "inspect"],
-    ["removeFavourite", "Remove from Favorites", "minus", "P", "inspect"],
+    ["removeFavourite", "Remove from Favorites", "minus", "PR", "inspect"],
     ["sort", "Sort by", "sort", "B", "view"],
     ["toggleHidden", "Show hidden files", "eye", "FB", "view"],
     ["extThumbs", "Show thumbnails", "image", "B", "view"],
@@ -84,7 +99,8 @@ function buildEntries(kind, p) {
     var out = [], group = ""
     for (var i = 0; i < INVENTORY.length; i++) {
         var spec = INVENTORY[i]
-        if (spec[3].indexOf(kind) < 0 || isHidden(p.hiddenActions, spec[0])) continue
+        // Rail rows are never user-hideable: no switch governs them, so the stored set is not read here.
+        if (spec[3].indexOf(kind) < 0 || (kind !== "R" && isHidden(p.hiddenActions, spec[0]))) continue
         var entry = { id: spec[0], action: spec[5] || spec[0], label: spec[1], glyph: spec[2] }
         if (!availableEntry(entry, p, kind)) continue
         if (out.length && group !== spec[4]) out.push({ separator: true })
@@ -94,7 +110,13 @@ function buildEntries(kind, p) {
     return out
 }
 
+// The rail menu's own build: every rail row lives in INVENTORY above with kinds R, so one table
+// and one separator rule serve both menus. Choosing Open runs the row's own activation.
+function railEntries(entry) { return buildEntries("R", { entry: entry }) }
+
 function availableEntry(e, p, kind) {
+    // Rail availability reads the rail entry alone; nothing here is disabled, red or hideable.
+    if (kind === "R") return availableRail(e, p.entry)
     var count = p.selectionCount === undefined ? 1 : p.selectionCount
     // Rule 3: the last row adds the favourite or removes it, and the duplicate case is absent rather
     // than grey, which is what keeps issue 138's second row impossible from the rail as well.
@@ -148,7 +170,6 @@ function availableEntry(e, p, kind) {
         // widened the menu past its own frame while the providers were still being read.
         if (e.disabled && p.taildropRefreshing !== true) e.errored = true
     }
-    if (e.action === "addToShelf") { e.mark = "flea"; delete e.glyph }
     // Absent rather than greyed when nothing is installed, the Menu board's rule for a row whose
     // whole destination is missing; the row is a plain send, so it has no submenu and no reason.
     // Directive 71: the row is Taildrop's twin, so it opens the same flyout and reads the same way.
@@ -184,6 +205,32 @@ function availableEntry(e, p, kind) {
     if (e.action === "restoreAll" || e.action === "emptyTrash") e.disabled = !(p.trashTotal > 0) || p.busy === true
     if (["trash", "deletePermanently", "emptyTrash"].indexOf(e.action) >= 0) e.danger = true
     return true
+}
+
+// Rail availability: the entry's own shape decides, never the listing. Mount and Unmount never meet:
+// one needs the mount the other releases. Open runs the row's own activation. Shared actions reuse
+// this table's own label and glyph by construction, since these rows are this table's rows.
+function availableRail(e, entry) {
+    if (!entry) return false
+    var device = entry.group === "device", network = entry.group === "network"
+    var volume = device && entry.kind === "volume", phone = device && entry.kind === "phone"
+    var share = network && entry.kind === "share"
+    var mounted = entry.mounted === true
+    switch (e.id) {
+    case "mountVolume": return volume && !mounted && entry.volumeMenu === true
+    case "mountPhone": return phone && !mounted
+    case "open": return (volume && mounted && (entry.volumeMenu === true || entry.removable === true))
+        || (phone && mounted) || (share && mounted)
+    case "unmountVolume": return volume && mounted && entry.volumeMenu === true
+    case "unmountPhone": return phone && mounted
+    case "unmount": return share && mounted
+    case "eject": return volume && mounted && entry.removable === true
+    case "rename": return share && entry.editable !== false
+    case "editPlace": return share && entry.editable !== false
+    case "remove": return share && entry.editable !== false
+    case "removeFavourite": return entry.kind === "favourite"
+    default: return false
+    }
 }
 
 // The mode describes the selected object itself, so a symlink never grants access to its unseen target.

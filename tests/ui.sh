@@ -2218,7 +2218,7 @@ case_placemenu() {
     click_rail_row "$favourite_index" right
     settle
     [[ "$(ipc contextMenuVisible)" == "true" ]] || fail "placemenu: the favourite's right click opened no menu"
-    [[ "$(ipc contextMenuEntries)" == "Open|Open in new tab|-|Open in terminal|Copy path|Remove from Favorites" ]] \
+    [[ "$(ipc contextMenuEntries)" == "Open|New tab|-|Open in terminal|Copy path|Remove from Favorites" ]] \
         || fail "placemenu: the favourite offers $(ipc contextMenuEntries)"
     key -k Escape >/dev/null
     for _attempt in $(seq 1 20); do
@@ -2235,20 +2235,20 @@ case_placemenu() {
     # Read visible before entries: the menu keeps its last rows, so a row that opens nothing would
     # otherwise answer with the menu before it, which is exactly how this case first read green.
     [[ "$(ipc contextMenuVisible)" == "true" ]] || fail "placemenu: the Home row's right click opened no menu"
-    [[ "$(ipc contextMenuEntries)" == "Open|Open in new tab|-|Open in terminal|Copy path|Add to Favorites" ]] \
+    [[ "$(ipc contextMenuEntries)" == "Open|New tab|-|Open in terminal|Copy path|Add to Favorites" ]] \
         || fail "placemenu: the Home row offers $(ipc contextMenuEntries)"
 
     echo "-- and a row acts on its own path, not on the listing's cursor --"
     local tabs_before
     tabs_before=$(ipc tabCount)
-    menu_seek "Open in new tab"
+    menu_seek "New tab"
     key -k Return >/dev/null
     for _attempt in $(seq 1 40); do
         [[ "$(ipc tabCount)" == "$((tabs_before + 1))" ]] && break
         sleep 0.25
     done
     [[ "$(ipc tabCount)" == "$((tabs_before + 1))" ]] \
-        || fail "placemenu: Open in new tab left $(ipc tabCount) tabs"
+        || fail "placemenu: New tab left $(ipc tabCount) tabs"
     wait_path "$HOME"
     printf 'PLACEMENU tabs=%s path=%s labels=%s\n' "$(ipc tabCount)" "$(ipc path)" "$(ipc tabLabels)"
 
@@ -2261,7 +2261,7 @@ case_placemenu() {
     click_rail_row "$favourite_index" right
     settle
     [[ "$(ipc contextMenuVisible)" == "true" ]] || fail "placemenu: with the switch off the favourite opened no menu"
-    [[ "$(ipc contextMenuEntries)" == "Remove" ]] \
+    [[ "$(ipc contextMenuEntries)" == "Remove from Favorites" ]] \
         || fail "placemenu: with the switch off the favourite offers $(ipc contextMenuEntries)"
     key -k Escape >/dev/null
     settle
@@ -4983,9 +4983,9 @@ EOS
 
     click_rail_row "$legacy_index" right
     settle
-    [[ "$(ipc contextMenuEntries)" == "Edit|Rename|Remove" ]] \
-        || fail "editplace: the saved place offers $(ipc contextMenuEntries), not Edit, Rename and Remove"
-    menu_seek "Edit"
+    [[ "$(ipc contextMenuEntries)" == "Rename|Edit address|-|Remove from Network" ]] \
+        || fail "editplace: the saved place offers $(ipc contextMenuEntries), not Rename, Edit address and Remove from Network"
+    menu_seek "Edit address"
     key -k Return >/dev/null
     settle
     [[ "$(ipc dialogOpen)" == "true" ]] || fail "editplace: Edit opened no dialog"
@@ -5032,7 +5032,7 @@ file:///missing/legacy Local legacy' ]] \
         || fail "editplace: the edited place left the rail, which carries $(ipc railEntries)"
     click_rail_row "$legacy_index" right
     settle
-    menu_seek "Edit"
+    menu_seek "Edit address"
     key -k Return >/dev/null
     settle
     [[ "$(ipc dialogOpen)" == "true" ]] || fail "editplace: the second Edit opened no dialog"
@@ -5507,8 +5507,8 @@ EOS
         || fail "network: the added favorite is not present in the rail"
     click_rail_row "$added_favourite_index" right
     settle
-    [[ "$(ipc contextMenuEntries)" == "Remove" ]] \
-        || fail "network: the added favourite offers $(ipc contextMenuEntries), not Remove"
+    [[ "$(ipc contextMenuEntries)" == "Remove from Favorites" ]] \
+        || fail "network: the added favourite offers $(ipc contextMenuEntries), not Remove from Favorites"
     key -k Return >/dev/null
     network_wait_favourites '.places.favourites == []'
     [[ ! -e "$bookmarks" ]] || fail "network: Remove created shared GTK bookmarks"
@@ -6108,8 +6108,9 @@ EOS
     [[ ! -s "$helper_log" ]] || fail "networkauth: already-mounted descendant launched helper"
     click_rail_row "$network_index" right
     settle
-    [[ "$(ipc contextMenuEntries)" == "Unmount|Edit|Rename|Remove" ]] \
-        || fail "networkauth: the projected mounted row offers $(ipc contextMenuEntries), not Unmount first"
+    [[ "$(ipc contextMenuEntries)" == "Open|Unmount|-|Rename|Edit address|-|Remove from Network" ]] \
+        || fail "networkauth: the projected mounted row offers $(ipc contextMenuEntries), not Open first"
+    menu_seek Unmount
     key -k Return >/dev/null
     wait_network_result unmounted 5
     [[ "$(cat "$state/unmount-uri")" == 'sftp://tester@slot.test/' ]] \
@@ -6591,8 +6592,9 @@ case_networklive() {
     wait_listing_wall 0 25
     click_rail_row "$network_index" right
     settle
-    [[ "$(ipc contextMenuEntries)" == "Unmount|Edit|Rename|Remove" ]] \
-        || fail "networklive: mounted share menu is $(ipc contextMenuEntries), not Unmount first"
+    [[ "$(ipc contextMenuEntries)" == "Open|Unmount|-|Rename|Edit address|-|Remove from Network" ]] \
+        || fail "networklive: mounted share menu is $(ipc contextMenuEntries), not Open first"
+    menu_seek Unmount
     key -k Return >/dev/null
     wait_message "Unmounted $label."
     wait_network_result unmounted 25
@@ -6671,8 +6673,9 @@ case_gvfs() {
 
     click_rail_row "$(rail_row_of share.zip)" right
     settle
-    [[ "$(ipc contextMenuEntries)" == "Unmount|Edit|Rename|Remove" ]] \
+    [[ "$(ipc contextMenuEntries)" == "Open|Unmount|-|Rename|Edit address|-|Remove from Network" ]] \
         || fail "gvfs: mounted share menu is $(ipc contextMenuEntries)"
+    menu_seek Unmount
     key -k Return >/dev/null
     wait_message "Unmounted share.zip."
     for _attempt in $(seq 1 100); do
@@ -7131,10 +7134,10 @@ EOS
         "$(ipc contextMenuVisible)" "$(ipc contextMenuEntries)" "$(ipc contextMenuGlyphs)"
     shot unmount-menu
     [[ "$(ipc contextMenuVisible)" == "true" ]] || fail "unmount: right click opened no menu on the share"
-    [[ "$(ipc contextMenuEntries)" == "Unmount|Edit|Rename|Remove" ]] \
-        || fail "unmount: the share's menu is $(ipc contextMenuEntries), not Unmount, Edit, Rename then Remove"
-    [[ "$(ipc contextMenuGlyphs)" == "eject|sliders|rename|minus" ]] \
-        || fail "unmount: the share's rows draw $(ipc contextMenuGlyphs), not eject, sliders, rename and minus"
+    [[ "$(ipc contextMenuEntries)" == "Open|Unmount|-|Rename|Edit address|-|Remove from Network" ]] \
+        || fail "unmount: the share's menu is $(ipc contextMenuEntries), not Open, Unmount, Rename, Edit address then Remove from Network"
+    [[ "$(ipc contextMenuGlyphs)" == "folder-open|drive|-|rename|sliders|-|minus" ]] \
+        || fail "unmount: the share's rows draw $(ipc contextMenuGlyphs), not folder-open, drive, rename, sliders and minus"
     [[ -z "$(cat "$unmount_log")" ]] || fail "unmount: opening the menu already unmounted: $(cat "$unmount_log")"
 
     # Escape closes it and still nothing has run, which is what makes the menu the confirmation.
@@ -7146,6 +7149,7 @@ EOS
     # Choosing the row is what unmounts, and the row's key is what says which share, not its index.
     click_rail_row "$(rail_row_of stubshare)" right
     settle
+    menu_seek Unmount
     key -k Return >/dev/null
     wait_message "Unmounted stubshare."
     [[ "$(cat "$unmount_log")" == "UNMOUNT $share_uri" ]] \
@@ -7175,9 +7179,9 @@ EOS
     # for, each with its own sentence. This home has no bookmarks file, so the live share is unsaved.
     click_rail_row "$(rail_row_of stubshare)" right
     settle
-    [[ "$(ipc contextMenuEntries)" == "Unmount|Edit|Rename|Remove" ]] \
+    [[ "$(ipc contextMenuEntries)" == "Open|Unmount|-|Rename|Edit address|-|Remove from Network" ]] \
         || fail "unmount: the share's menu is $(ipc contextMenuEntries) before Remove"
-    menu_seek Remove
+    menu_seek "Remove from Network"
     key -k Return >/dev/null
     wait_message "stubshare is not a saved place, and stays on the rail until it is unmounted."
     [[ ! -e "$fixture_home/.config/gtk-3.0/bookmarks" ]] \
@@ -7215,7 +7219,7 @@ EOS
     unmount_log_before=$(cat "$unmount_log")
     click_rail_row "$(rail_row_of 'Saved Share')" right
     settle
-    menu_seek Remove
+    menu_seek "Remove from Network"
     key -k Return >/dev/null
     wait_message "Saved Share is forgotten, and stays on the rail until it is unmounted."
     [[ "$(cat "$bookmarks")" == "smb://stubhost/ghost Ghost Place" ]] \
@@ -7232,9 +7236,9 @@ EOS
     # Saved and nothing mounted: the line and the row both go, and no unmount clause is offered.
     click_rail_row "$(rail_row_of 'Ghost Place')" right
     settle
-    [[ "$(ipc contextMenuEntries)" == "Edit|Rename|Remove" ]] \
-        || fail "unmount: an unmounted place offers $(ipc contextMenuEntries), not Edit, Rename then Remove"
-    menu_seek Remove
+    [[ "$(ipc contextMenuEntries)" == "Rename|Edit address|-|Remove from Network" ]] \
+        || fail "unmount: an unmounted place offers $(ipc contextMenuEntries), not Rename, Edit address then Remove from Network"
+    menu_seek "Remove from Network"
     key -k Return >/dev/null
     wait_message "Ghost Place is forgotten."
     [[ -f "$bookmarks" ]] || fail "unmount: Remove unlinked the bookmarks file instead of emptying it"
@@ -7253,7 +7257,7 @@ EOS
     # on a file nobody had read: the file has been read, and this share is simply not in it.
     click_rail_row "$(rail_row_of stubshare)" right
     settle
-    menu_seek Remove
+    menu_seek "Remove from Network"
     key -k Return >/dev/null
     wait_message "stubshare is not a saved place, and stays on the rail until it is unmounted."
     # Both stat and cat print nothing for a path that is gone, so neither assertion below means
@@ -7472,7 +7476,7 @@ EOS
     # Unmount is the release a phone offers, never Eject, and the key that carries it is its uri.
     click_rail_row "$(rail_row_of 'SAMSUNG Android')" right
     settle
-    [[ "$(ipc contextMenuEntries)" == "Open|Unmount" ]] \
+    [[ "$(ipc contextMenuEntries)" == "Open|-|Unmount" ]] \
         || fail "phones: the mounted phone's menu is $(ipc contextMenuEntries), not Open then Unmount"
     menu_seek Unmount
     key -k Return >/dev/null
@@ -7651,10 +7655,10 @@ EOS
         "$(ipc contextMenuVisible)" "$(ipc contextMenuEntries)" "$(ipc contextMenuGlyphs)"
     shot eject-menu
     [[ "$(ipc contextMenuVisible)" == "true" ]] || fail "eject: right click opened no menu on the volume"
-    [[ "$(ipc contextMenuEntries)" == "Open|Unmount|Eject" ]] \
+    [[ "$(ipc contextMenuEntries)" == "Open|-|Unmount|Eject" ]] \
         || fail "eject: the volume's menu is $(ipc contextMenuEntries), not Open|Unmount|Eject"
-    [[ "$(ipc contextMenuGlyphs)" == "folder|eject|eject" ]] \
-        || fail "eject: the volume's menu draws $(ipc contextMenuGlyphs), not folder|eject|eject"
+    [[ "$(ipc contextMenuGlyphs)" == "folder-open|drive|eject" ]] \
+        || fail "eject: the volume's menu draws $(ipc contextMenuGlyphs), not folder-open|drive|eject"
     if grep -q '^mount -e' "$gio_log"; then
         fail "eject: opening the menu already ejected: $(cat "$gio_log")"
     fi

@@ -18,10 +18,6 @@ Item {
     // A pick list's chosen row, drawn as the canvas draws the convert popup and the share list:
     // accent ink over an accent tint, where a plain menu row only takes the foreground lift below.
     property bool picked: false
-    // A menu the rail raised takes the rail's own row height and mark slot, so it reads as part of the
-    // rail instead of the listing's menu parked against it. ui/js/Mounts.js gives a rail row at most
-    // one entry and never gives it a listing row's, so nobody can see one menu at two sizes.
-    property bool compact: false
 
     signal activated()
     // The parent owns the cursor, so a pointer that moves onto the row asks for it; a menu opened under a resting pointer asks nothing, or Enter would fire the pointer's row (0d626ed).
@@ -65,8 +61,9 @@ Item {
     readonly property int separatorHeight: Theme.spacing.gap + Theme.spacing.hairline
     readonly property real separatorOpacity: 0.4
 
-    // The rail's mark slot is its icon size, exactly as ui/SidebarRow.qml sizes its own.
-    readonly property int slotSize: root.compact ? Theme.railIconSize : Theme.markSize
+    // Every menu row uses the listing's own mark slot and row height, so a rail menu
+    // reads as the main menu parked against the rail and never as a second, smaller one.
+    readonly property int slotSize: Theme.markSize
     // OpenWith.html: an application's own Icon= rides in the mark slot, full colour and no plate.
     // The ladder is AppLibrary.qml's iconSource: the backend's app and device index has already
     // answered with a path where it could, and only a name it could not place reaches the themed
@@ -80,8 +77,7 @@ Item {
     // That board draws the mark at 16 of the slot's 19 units, where a stroked glyph takes the slot whole.
     readonly property int appIconSize: Math.round(root.slotSize * 16 / 19)
 
-    height: root.isSeparator ? root.separatorHeight
-          : (root.compact ? Theme.railRowHeight : Theme.rowHeight)
+    height: root.isSeparator ? root.separatorHeight : Theme.rowHeight
 
     Rectangle {
         anchors.fill: parent

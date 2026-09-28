@@ -58,9 +58,10 @@ function run(check) {
     check("a bare server root typed with no slash still canonicalizes to one", Mounts.normalize("smb://h"), "smb://h/")
     check("two different shares stay distinct after normalizing", Mounts.normalize("smb://h/data/") === Mounts.normalize("smb://h/other/"), false)
 
-    // The rail's own context menu. Which release a row offers is decided from what the rail already
-    // tagged: parseDevices above tags every volume "volume" and marks the removable ones with lsblk's
-    // RM flag, tags the box's own disk "disk", and ui/NetworkMounts.qml tags a gvfs share "share".
+    // The rail's own context menu, built from ui/js/Menu.js INVENTORY with kinds R and the same
+    // separator rule as the listing menu. Which rows a rail entry offers is decided from what the
+    // rail already tagged: parseDevices tags every volume "volume" and marks the removable ones with
+    // lsblk's RM flag, tags the box's own disk "disk", and ui/NetworkMounts.qml tags a gvfs share "share".
     var volume = { label: "128GB", group: "device", kind: "volume", device: "/dev/sda1", mounted: true, removable: true }
     var idle = { label: "128GB", group: "device", kind: "volume", device: "/dev/sda1", mounted: false, removable: true }
     var internal = { label: "nvme0n1", group: "device", kind: "disk", device: "/dev/nvme0n1", mounted: true, removable: false }
@@ -69,23 +70,30 @@ function run(check) {
     var bookmark = { label: "NAS", group: "network", kind: "share", uri: "smb://example.com/", mounted: false }
     var dropbox = { label: "Dropbox", group: "network", kind: "dropbox", uri: "", mounted: true }
     var favourite = { label: "Home", group: "favorite", kind: "favorite", path: "/home/user" }
+    function solid(rows) { return rows.filter(function (r) { return r.separator !== true }) }
+    function labelsOf(rows) { return solid(rows).map(function (r) { return r.label }).join(",") }
+    function actionsOf(rows) { return solid(rows).map(function (r) { return r.action }).join(",") }
+    function glyphsOf(rows) { return solid(rows).map(function (r) { return r.glyph }).join(",") }
 
-    check("a mounted removable volume offers one row", Mounts.railMenu(volume).length, 1)
-    check("and that row is Eject", Mounts.railMenu(volume)[0].label, "Eject")
-    check("the Eject row carries the eject action", Mounts.railMenu(volume)[0].action, "eject")
-    check("the Eject row draws the eject mark", Mounts.railMenu(volume)[0].glyph, "eject")
-    check("a mounted network share offers one row", Mounts.railMenu(share).length, 1)
-    check("and that row is Unmount", Mounts.railMenu(share)[0].label, "Unmount")
-    check("the Unmount row carries the unmount action", Mounts.railMenu(share)[0].action, "unmount")
-    check("the shelf lists eject for unmount too, so Unmount draws it", Mounts.railMenu(share)[0].glyph, "eject")
+    check("a mounted removable volume opens beside its release", labelsOf(Mounts.railMenu(volume)), "Open,Eject")
+    check("Open runs the row's own activation", solid(Mounts.railMenu(volume))[0].action, "open")
+    check("Open takes the listing menu's own mark", solid(Mounts.railMenu(volume))[0].glyph, "folder-open")
+    check("the Eject row carries the eject action", solid(Mounts.railMenu(volume))[1].action, "eject")
+    check("the Eject row draws the eject mark", solid(Mounts.railMenu(volume))[1].glyph, "eject")
+    check("a group change draws the listing menu's own separator", Mounts.railMenu(volume).length, 3)
+    check("a mounted network share opens beside its release", labelsOf(Mounts.railMenu(share)), "Open,Unmount,Rename,Edit address,Remove from Network")
+    check("its Open is the listing menu's own row too", actionsOf(Mounts.railMenu(share)), "open,unmount,rename,editPlace,remove")
+    check("Mount and Unmount share the drive mark, Eject keeps its own", glyphsOf(Mounts.railMenu(share)), "folder-open,drive,rename,sliders,minus")
 
-    // Every rail row that must never be offered a release, each for its own reason.
+    // Every rail row that must never be offered a release, each for its own reason. An unmounted
+    // saved place still offers its own Rename, Edit address and Remove from Network rows.
     check("the internal disk offers nothing, it is the box's own system disk", Mounts.railMenu(internal).length, 0)
     check("a fixed internal volume offers nothing, a disk bolted in is not ejected", Mounts.railMenu(fixed).length, 0)
     check("the Dropbox row offers nothing, it is a local folder the stock service owns", Mounts.railMenu(dropbox).length, 0)
     check("a favourite offers nothing, it is not a mount at all", Mounts.railMenu(favourite).length, 0)
     check("an unmounted volume offers nothing, there is nothing to release", Mounts.railMenu(idle).length, 0)
-    check("a bookmark nothing has mounted offers nothing", Mounts.railMenu(bookmark).length, 0)
+    check("a bookmark nothing has mounted offers no release, only its own rows",
+          actionsOf(Mounts.railMenu(bookmark)), "rename,editPlace,remove")
     check("no entry at all offers nothing rather than throwing", Mounts.railMenu(null).length, 0)
     check("an undefined entry offers nothing rather than throwing", Mounts.railMenu(undefined).length, 0)
 
@@ -119,7 +127,7 @@ function run(check) {
 
     // The call site and the path table checked together: Icons.pathFor answers the file mark in
     // silence, so a row naming a glyph PATHS has never heard of would draw a document instead.
-    var rows = Mounts.railMenu(volume).concat(Mounts.railMenu(share))
+    var rows = solid(Mounts.railMenu(volume)).concat(solid(Mounts.railMenu(share)))
     for (var r = 0; r < rows.length; r++) {
         check(rows[r].label + "'s mark is real, not the silent file fallback",
               Icons.pathFor(rows[r].glyph) === Icons.pathFor("file"), false)

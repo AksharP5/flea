@@ -1,6 +1,7 @@
 .pragma library
 
 .import "Protocols.js" as Protocols
+.import "Menu.js" as Menu
 
 // Sample input, captured live on the box with one network share mounted (2026-08-31):
 // Drive(0): KBG40ZNS256G NVMe KIOXIA 256GB
@@ -149,41 +150,14 @@ function sameEntry(x, y) {
 
 // Sample input: one rail entry as ui/DeviceMounts.qml and ui/NetworkMounts.qml build them,
 // {label:"128GB", group:"device", kind:"volume", device:"/dev/sda1", mounted:true, removable:true}.
-// A removable volume ejects and a mounted network share unmounts; every other rail row offers
-// neither and opens no menu. The kind is read here, never re-derived: the internal disk reads as
-// mounted too, the Dropbox row is a local folder the stock service owns, and a favourite is not a
-// mount. gio's -f is offered nowhere: forcing an unmount over an open write is how data is lost.
-// An internal drive is a volume row as well now, and it is the removable flag that keeps Eject off
-// it: a fixed disk is somewhere to browse, not something to pull out.
+// Every rail row lives in ui/js/Menu.js INVENTORY with kinds R and is built with the same separator
+// rule as the listing menu, so a group change draws the same 10 px separator. Open runs the row's
+// own activation; Mount and Unmount never meet. gio's -f is offered nowhere: forcing an unmount
+// over an open write is how data is lost.
 function railMenu(entry) {
     if (!entry)
         return []
-    // RailAdditions rule 2, which PhoneMark's own menu specimen draws: an unmounted volume offers the
-    // mount the row's own activation does, and a mounted one offers the open beside its release.
-    if (entry.group === "device" && entry.kind === "phone")
-        return entry.mounted
-            ? [{ label: "Open", action: "openPhone", glyph: "folder" },
-               { label: "Unmount", action: "unmountPhone", glyph: "eject" }]
-            : [{ label: "Mount", action: "mountPhone", glyph: "drive" }]
-    // RailAdditions rule 2: Mount is what an unmounted volume offers, a mounted one offers the open
-    // its own activation does beside the release, and Eject stays where it stands today, on a volume
-    // somebody can pull out. Only a row built under rule 1's switch carries any of it.
-    if (entry.group === "device" && entry.kind === "volume" && entry.volumeMenu === true) {
-        if (!entry.mounted)
-            return [{ label: "Mount", action: "mountVolume", glyph: "drive" }]
-        var rows = [{ label: "Open", action: "openVolume", glyph: "folder" },
-                    { label: "Unmount", action: "unmountVolume", glyph: "eject" }]
-        if (entry.removable === true)
-            rows.push({ label: "Eject", action: "eject", glyph: "eject" })
-        return rows
-    }
-    if (!entry.mounted)
-        return []
-    if (entry.group === "device" && entry.kind === "volume" && entry.removable === true)
-        return [{ label: "Eject", action: "eject", glyph: "eject" }]
-    if (entry.group === "network" && entry.kind === "share")
-        return [{ label: "Unmount", action: "unmount", glyph: "eject" }]
-    return []
+    return Menu.railEntries(entry)
 }
 
 // A root-only remote mount covers its saved addressable paths; SMB shares remain path-specific.
@@ -194,19 +168,11 @@ function addressMountCovers(liveUri, savedUri) {
         && saved.length > live.length && saved.indexOf(live) === 0
 }
 
-// What the rail's own right click opens: the release row above, then the three rows a saved place
-// owns whether or not anything mounted it, the last marked as a removal because forgetting a place
-// trashes nothing. ui/js/Eject.js reads railMenu and never this, so Ctrl+E still refuses an unmounted row.
+// What the rail's own right click opens: the table above, which already carries the saved
+// place's own rows with the same separators. ui/js/Eject.js reads railMenu and never this, so
+// Ctrl+E still refuses an unmounted row.
 function rowMenu(entry) {
-    if (entry && entry.kind === "favourite") return [{ label: "Remove", action: "removeFavourite", glyph: "minus" }]
-    var rows = railMenu(entry)
-    if (entry && entry.group === "network" && entry.kind === "share" && entry.editable !== false) {
-        // Edit is the address, Rename is the label: a place gio cannot mount is fixed by the first.
-        rows.push({ label: "Edit", action: "editPlace", glyph: "sliders" })
-        rows.push({ label: "Rename", action: "rename", glyph: "rename" })
-        rows.push({ label: "Remove", action: "remove", glyph: "minus" })
-    }
-    return rows
+    return railMenu(entry)
 }
 
 // The handle a chosen menu row carries back: a volume's device node, a share's uri, "" for a row

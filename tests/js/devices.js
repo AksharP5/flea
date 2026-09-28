@@ -84,7 +84,7 @@ function run(check) {
     // The parsed row itself, not a hand-built one: the menu reads group, kind and mounted too.
     check("so the rail offers it the release a stick gets",
           Mounts.railMenu(Object.assign({ group: "device" }, usb[1]))
-                .map(function (r) { return r.label }).join(","), "Eject")
+                .filter(function (r) { return r.separator !== true }).map(function (r) { return r.label }).join(","), "Open,Eject")
     // The same drive with nothing mounted is still a row, the way an unplugged stick is.
     check("an unmounted USB bridge is a row too",
           Devices.parseDevices(bridge.replace('["/run/media/gm/Passport"]', "[null]")).length, 2)
