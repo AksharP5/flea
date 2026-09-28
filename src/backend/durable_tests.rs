@@ -549,6 +549,7 @@ fn a_durable_copy_confirms_slices_while_it_writes() {
 fn a_filesystem_without_range_writeback_is_not_a_failed_copy() {
     // EINVAL is what some FUSE mounts answer sync_file_range with; EIO is a drive refusing bytes.
     let einval = std::io::Error::from_raw_os_error(crate::backend::durable::EINVAL);
+    assert_eq!(einval.kind(), std::io::ErrorKind::InvalidInput, "EINVAL must be the kernel's invalid-argument errno");
     let eio = std::io::Error::from_raw_os_error(crate::backend::durable::EIO);
     assert!(crate::backend::durable::range_unsupported(&einval));
     assert!(!crate::backend::durable::range_unsupported(&eio));
@@ -647,7 +648,8 @@ fn a_wait_einval_stops_slicing_and_reports_only_the_final_count() {
     let out = d.dir("out");
     test_mark_durable(&out);
     let confirm = crate::backend::copyfile::CONFIRM_BYTES as usize;
-    let total: usize = confirm * 2 + 1024 * 1024;
+    // Three slices, so a range call after the failing wait would show in the log.
+    let total: usize = confirm * 3 + 1024 * 1024;
     let src = d.join("big.bin");
     std::fs::write(&src, vec![b'a'; total]).expect("test sandbox file");
     let mut durability = Durability::begin(&out);
@@ -663,6 +665,12 @@ fn a_wait_einval_stops_slicing_and_reports_only_the_final_count() {
     assert_eq!(seen, vec![(total as u64, total as u64)], "only the final whole-file count, got {:?}", seen);
     assert_eq!(crate::backend::durable::test_range_waits(), 0, "no wait completed");
     assert_eq!(test_counts().0, 3, "two writes plus the final fsync, got {:?}", test_counts());
+    assert_eq!(crate::backend::durable::test_range_log(), vec![
+        "write 0".to_string(),
+        format!("write {confirm}"),
+        "wait 0".to_string(),
+        "fsync".to_string(),
+    ], "slicing stops at the failing wait, got {:?}", crate::backend::durable::test_range_log());
     assert_eq!(std::fs::metadata(out.join("big.bin")).unwrap().len(), total as u64);
     test_reset();
 }

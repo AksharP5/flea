@@ -24,6 +24,7 @@ thread_local! {
 
 // errno 22 means no range writeback, not a lost byte; errno 5 is a drive refusing bytes.
 pub(crate) const EINVAL: i32 = 22;
+#[cfg(test)]
 pub(crate) const EIO: i32 = 5;
 
 // Sample input: "fuse.rclone" trues, "fuse.sshfs" falses.

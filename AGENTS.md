@@ -2590,6 +2590,16 @@ its progress reports and the fallback when a filesystem has no range writeback),
 writes and that EINVAL from a range flush is not a failed copy; `src/backend/durable.rs` stands at 347
 for the sync_range wrapper, its syscall declaration and range_unsupported.
 
+Fixr4r1 moves two recorded ceilings, each re-derived with `wc -l`: `src/backend/copyfile.rs` 459 to
+480 for the pipelined writeback (WRITE alone on slice k, then WAIT on k-1 with reports through k-1,
+the final fsync confirming the rest, the EINVAL fallback kept on both legs), and
+`src/backend/durable_tests.rs` 555 to 638 for driving copy_file_at (EINVAL falls back to final-only
+with one fsync and zero waits, a slice failure notes file_failed with one flush and journals the
+partial, mids equal waits); `src/backend/durable.rs` stands at 389 for sync_range_write, the
+RANGE_WAITS counter and the EINVAL seam. tests/colhero.* are deleted: the real ColumnsArea needs
+qs.Commons, Theme/ViewState and Flea children no qml6 harness can load, so any stub rebuild would
+re-declare the wiring it claims to prove; tests/ui.sh views is the gate.
+
 Fixr4r2 updates the Fixr4r1 ceilings, each re-derived with `wc -l`: `src/backend/copyfile.rs` stays at
 480, the pipelined writeback unchanged (WRITE alone on slice k, then WAIT on k-1 with reports through k-1,
 the final fsync confirming the rest); `src/backend/durable.rs` 389 to 421 for the split write and wait seams
@@ -2597,9 +2607,9 @@ the final fsync confirming the rest); `src/backend/durable.rs` 389 to 421 for th
 RANGE_LOG in call order, EINVAL and EIO named once); `src/backend/durable_tests.rs` 638 to 724 for the
 order-visible proofs (each report records waits completed with mids seeing 1 then 2, wait-leg EINVAL falls back
 final-only with zero waits, wait-leg EIO fails with file_failed and the partial, three slices log write 0,
-write 1, wait 0, write 2, wait 1, then fsync). tests/colhero.* are deleted: the real ColumnsArea needs
-qs.Commons, Theme/ViewState and Flea children no qml6 harness can load, so any stub rebuild would
-re-declare the wiring it claims to prove; tests/ui.sh views is the gate.
+write 1, wait 0, write 2, wait 1, then fsync).
+The review fix after it takes `src/backend/durable.rs` to 422 (EIO kept for tests only) and
+`src/backend/durable_tests.rs` to 732 (the three-slice stop at the failing wait, the errno kind check).
 
 ## The key table is generated
 
