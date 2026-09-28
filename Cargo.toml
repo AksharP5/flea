@@ -11,3 +11,5 @@ rust-version = "1.77"
 opt-level = 3
 lto = true
 strip = true
+# One codegen unit: 47 KB less text and about 80 kB less TUI PSS, paired on minipc.
+codegen-units = 1
