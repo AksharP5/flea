@@ -403,6 +403,44 @@ fn failed_transfer_retry_retains_only_original_sources_after_permission_repair()
     assert_eq!(std::fs::read_to_string(&failed_source).unwrap(), "replacement");
 }
 
+// A cancel landing on the last item still answers cancelled: the loop-top check has nothing left to see.
+#[test]
+fn a_cancel_on_the_last_item_answers_cancelled() {
+    use std::os::unix::fs::PermissionsExt;
+    let d = TestDir::new("transfer-cancel-last");
+    let srcdir = d.dir("src");
+    let out = d.dir("out");
+    let only = srcdir.join("only.txt");
+    std::fs::write(&only, "body").unwrap();
+    // The rename fails ordinarily, so only the close's own cancelled answer can report the cancel.
+    std::fs::set_permissions(&out, std::fs::Permissions::from_mode(0o555)).unwrap();
+    // The flag lands after the loop-top check of the last item, beside its ordinary failure.
+    let _cancel_at = CancelAtGuard::hold(0);
+    let (tx, rx) = channel();
+    run_transfer_checked(1, true, vec![only.to_string_lossy().into_owned()], out.clone(),
+        Arc::new(AtomicBool::new(false)), tx, None, None, Policy::default());
+    let mut lines = Vec::new();
+    let mut done = None;
+    for msg in rx.iter() {
+        match msg {
+            OpMsg::Item { index, ok, err, .. } => lines.push((index, ok, err)),
+            OpMsg::TransferDone { ok, failed, skipped, cancelled, entry, retry, .. } => {
+                done = Some((ok, failed, skipped, cancelled, entry.steps, retry));
+            }
+            _ => {}
+        }
+    }
+    std::fs::set_permissions(&out, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let (ok, failed, skipped, cancelled, steps, retry) = done.expect("a terminal line");
+    assert!(cancelled, "the failure branch carries the close's cancelled answer");
+    assert_eq!((ok, failed, skipped), (0, 1, 0));
+    assert_eq!(lines, vec![(0, false, "permission denied".to_string())]);
+    assert_eq!(std::fs::read_to_string(&only).unwrap(), "body", "the refused source stays whole");
+    assert!(!out.join("only.txt").exists(), "and nothing landed");
+    assert_eq!(retry.len(), 1);
+    assert!(steps.is_empty(), "a refused move journals nothing");
+}
+
 #[test]
 fn retry_preserves_a_symlink_identity_without_following_its_target() {
     let d = TestDir::new("transfer-retry-link");

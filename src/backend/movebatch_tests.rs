@@ -1,6 +1,7 @@
 use super::*;
 use crate::backend::collide::CANCELLED;
 use crate::backend::testdir::TestDir;
+use std::io::Write;
 use std::os::unix::fs::MetadataExt;
 use std::sync::mpsc::channel;
 
@@ -226,6 +227,92 @@ fn a_replaced_batch_source_survives_close_with_both_copies_kept() {
     durable::test_reset();
 }
 
+// A source the batch cannot re-check is never removed: a transient lstat error proves nothing.
+#[test]
+fn an_unverifiable_batch_source_keeps_both_names() {
+    use crate::backend::{durable, undo::Journal};
+    durable::test_reset();
+    let d = TestDir::new("movebatch-inspect-fail");
+    let srcdir = d.dir("src");
+    let out = d.dir("out");
+    durable::test_mark_durable(&out);
+    let mut durability = durable::Durability::begin(&out);
+    let flag = AtomicBool::new(false);
+    let settled = AtomicU64::new(0);
+    let mut batch = MoveBatch::new();
+    let (tx, rx) = channel();
+    let mut steps = Vec::new();
+    let src = srcdir.join("f0.txt");
+    std::fs::write(&src, "body").unwrap();
+    staged(1, &mut batch, &mut durability, &flag, &tx, &settled, &mut steps, 0, &src, &out.join("f0.txt"));
+    let _inspect = InspectFailGuard::hold();
+    let (counts, retry) = close_normal(&mut batch, 1, &tx, &mut steps, &mut durability);
+    assert_eq!((counts.ok, counts.failed, counts.skipped), (0, 1, 0));
+    assert_eq!(retry.len(), 1, "the unverified source is offered again");
+    drop(tx);
+    let lines = items(rx);
+    assert_eq!(lines.len(), 1);
+    assert!(!lines[0].1, "an unverified source is never removed");
+    assert!(lines[0].2.contains("could not verify f0.txt"), "one line names the file: {}", lines[0].2);
+    assert!(lines[0].2.contains("both kept"), "and its reason: {}", lines[0].2);
+    assert_eq!(std::fs::read_to_string(&src).unwrap(), "body", "the source survives");
+    assert_eq!(std::fs::read_to_string(out.join("f0.txt")).unwrap(), "body", "beside the staged copy");
+    assert!(matches!(&steps[..], [Step::Copied { .. }]), "the kept copy journals a Copied step");
+    let mut journal = Journal::new();
+    journal.push(crate::backend::undo::Entry { op: "move".to_string(), steps });
+    journal.undo().unwrap();
+    assert_eq!(std::fs::read_to_string(&src).unwrap(), "body", "undo never touches the source");
+    assert!(!out.join("f0.txt").exists(), "and takes the staged copy");
+    durable::test_reset();
+}
+
+// A source rewritten in place keeps its inode, so only the size and time re-check catches it.
+#[test]
+fn a_batch_source_edited_in_place_survives_close_with_both_copies_kept() {
+    use crate::backend::{durable, undo::Journal};
+    durable::test_reset();
+    let d = TestDir::new("movebatch-edited-source");
+    let srcdir = d.dir("src");
+    let out = d.dir("out");
+    durable::test_mark_durable(&out);
+    let mut durability = durable::Durability::begin(&out);
+    let flag = AtomicBool::new(false);
+    let settled = AtomicU64::new(0);
+    let mut batch = MoveBatch::new();
+    let (tx, rx) = channel();
+    let mut steps = Vec::new();
+    let first = srcdir.join("f0.txt");
+    std::fs::write(&first, "old").unwrap();
+    staged(1, &mut batch, &mut durability, &flag, &tx, &settled, &mut steps, 0, &first, &out.join("f0.txt"));
+    let second = srcdir.join("f1.txt");
+    std::fs::write(&second, "body").unwrap();
+    staged(1, &mut batch, &mut durability, &flag, &tx, &settled, &mut steps, 1, &second, &out.join("f1.txt"));
+    // Appended after its copy landed, so the same inode holds new bytes.
+    let ino = first.symlink_metadata().unwrap().ino();
+    std::fs::OpenOptions::new().append(true).open(&first).unwrap().write_all(b"more").unwrap();
+    assert_eq!(first.symlink_metadata().unwrap().ino(), ino, "the edit stayed in place");
+    let (counts, retry) = close_normal(&mut batch, 1, &tx, &mut steps, &mut durability);
+    assert_eq!((counts.ok, counts.failed, counts.skipped), (1, 1, 0));
+    assert_eq!(retry.len(), 1, "the edited source is offered again");
+    drop(tx);
+    let lines = items(rx);
+    assert_eq!(lines.len(), 2);
+    assert!(lines.iter().any(|(index, ok, _)| *index == 1 && *ok));
+    let reported = lines.iter().find(|(index, ok, _)| *index == 0 && !ok).expect("the edited item reports its own line");
+    assert!(reported.2.contains("changed during the move; both kept"), "one line names the file: {}", reported.2);
+    assert_eq!(std::fs::read_to_string(&first).unwrap(), "oldmore", "the edit survives");
+    assert_eq!(std::fs::read_to_string(out.join("f0.txt")).unwrap(), "old", "beside the stale copy");
+    assert!(!second.exists() && std::fs::read_to_string(out.join("f1.txt")).unwrap() == "body");
+    assert!(matches!(&steps[..], [Step::Copied { .. }, Step::Moved { .. }]), "the kept copy journals a Copied step");
+    let mut journal = Journal::new();
+    journal.push(crate::backend::undo::Entry { op: "move".to_string(), steps });
+    journal.undo().unwrap();
+    assert_eq!(std::fs::read_to_string(&first).unwrap(), "oldmore", "undo never touches the edit");
+    assert_eq!(std::fs::read_to_string(&second).unwrap(), "body", "and the clean move comes back");
+    assert!(!out.join("f0.txt").exists() && !out.join("f1.txt").exists());
+    durable::test_reset();
+}
+
 // A same-filesystem move never stages: the rename answers at once with no batch behind it.
 #[test]
 fn same_filesystem_moves_answer_at_once_and_never_stage() {
@@ -297,56 +384,35 @@ fn collect(rx: std::sync::mpsc::Receiver<OpMsg>) -> Collected {
 #[test]
 fn a_cancelled_move_transfer_reports_cancelled_with_landed_complete() {
     use std::sync::Arc;
-    use std::time::Duration;
     let _force = ForceCopyGuard::hold();
     let d = TestDir::new("movebatch-cancel-transfer");
     let srcdir = d.dir("src");
     let out = d.dir("out");
-    // Small files stage before the watcher fires; large ones keep a copy in flight for the cancel.
-    for n in 0..5 {
-        std::fs::write(srcdir.join(format!("s{n}.txt")), "small").unwrap();
+    let names: Vec<String> = (0..4).map(|n| format!("s{n}.txt")).collect();
+    for name in &names {
+        std::fs::write(srcdir.join(name), "small").unwrap();
     }
-    for n in 0..10 {
-        std::fs::write(srcdir.join(format!("l{n}.txt")), vec![b'l'; 8 * 1024 * 1024]).unwrap();
-    }
-    let names: Vec<String> = (0..5).map(|n| format!("s{n}.txt")).chain((0..10).map(|n| format!("l{n}.txt"))).collect();
     let paths: Vec<String> = names.iter().map(|n| srcdir.join(n).to_string_lossy().into_owned()).collect();
-    let cancel = Arc::new(AtomicBool::new(false));
-    let probe = Arc::clone(&cancel);
-    let dest_probe = out.clone();
-    let watcher = std::thread::spawn(move || {
-        for _ in 0..30_000 {
-            if probe.load(Ordering::Relaxed) {
-                return;
-            }
-            if std::fs::read_dir(&dest_probe).is_ok_and(|e| e.count() >= 5) {
-                probe.store(true, Ordering::Relaxed);
-                return;
-            }
-            std::thread::sleep(Duration::from_millis(1));
-        }
-    });
+    // The flag lands after the loop-top check of item 2, the way a real cancel lands mid-item.
+    let _cancel_at = crate::backend::opsreq::CancelAtGuard::hold(2);
     let (tx, rx) = channel();
-    crate::backend::opsreq::run_transfer_checked(1, true, paths, out.clone(), Arc::clone(&cancel), tx,
+    crate::backend::opsreq::run_transfer_checked(1, true, paths, out.clone(), Arc::new(AtomicBool::new(false)), tx,
         None, None, crate::backend::collide::Policy::default());
-    watcher.join().unwrap();
     let got = collect(rx);
     assert!(got.cancelled, "a pressed cancel answers cancelled whatever the last item hit");
-    assert_eq!(got.failed, 0);
-    assert!(got.ok >= 1, "at least one landed copy completed as a move");
-    assert_eq!(got.ok + got.skipped, 15);
-    assert!(got.lines.iter().all(|(_, ok, err)| *ok || err == CANCELLED), "no landed copy is ever removed by a cancel");
-    assert_eq!(got.lines.iter().filter(|(_, ok, _)| *ok).count(), got.ok);
+    assert_eq!((got.ok, got.failed, got.skipped), (2, 0, 2));
+    assert_eq!(got.lines.iter().map(|(index, ok, _)| (*index, *ok)).collect::<Vec<_>>(),
+        vec![(0, true), (1, true), (2, false)], "landed items complete in order, then the cancelled one");
+    assert_eq!(got.lines[2].2, CANCELLED, "the item the cancel landed on says so");
     assert!(got.steps.iter().all(|s| matches!(s, Step::Moved { .. })), "redo sees moved steps only");
     assert_eq!(got.steps.len(), got.ok);
-    for name in &names {
-        let src = srcdir.join(name);
-        let dst = out.join(name);
-        if dst.exists() {
-            assert!(!src.exists(), "a completed move leaves nothing at its source: {name}");
-        } else {
-            assert!(src.exists(), "an unstarted item keeps its source whole: {name}");
-        }
+    for name in &names[..2] {
+        assert!(!srcdir.join(name).exists(), "a completed move leaves nothing at its source: {name}");
+        assert!(out.join(name).exists(), "and its copy stays: {name}");
+    }
+    for name in &names[2..] {
+        assert!(srcdir.join(name).exists(), "an unstarted item keeps its source whole: {name}");
+        assert!(!out.join(name).exists(), "and copies nothing: {name}");
     }
     let mut journal = crate::backend::undo::Journal::new();
     journal.push(crate::backend::undo::Entry { op: "move".to_string(), steps: got.steps });
@@ -390,4 +456,11 @@ fn non_regular_items_close_the_batch_and_move_alone() {
     assert_eq!(std::fs::read_to_string(out.join("b.txt")).unwrap(), "b");
     assert!(got.steps.iter().all(|s| matches!(s, Step::Moved { .. })));
     assert_eq!(got.steps.len(), 4);
+    assert_eq!(got.lines.iter().map(|(index, ok, _)| (*index, *ok)).collect::<Vec<_>>(),
+        vec![(0, true), (1, true), (2, true), (3, true)], "a staged file's line lands before the directory that follows it");
+    let order: Vec<String> = got.steps.iter().map(|step| match step {
+        Step::Moved { from, .. } => from.file_name().unwrap().to_string_lossy().into_owned(),
+        _ => panic!("every batched move journals Moved: {step:?}"),
+    }).collect();
+    assert_eq!(order, vec!["a.txt", "tree", "link.txt", "b.txt"], "and the steps journal in input order");
 }

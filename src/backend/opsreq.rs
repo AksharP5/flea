@@ -16,6 +16,37 @@ use std::time::{Duration, Instant};
 // One progress line per item at most this often, so a fast copy of a small file may emit none at all.
 pub(crate) const PROGRESS_EVERY: Duration = Duration::from_millis(150);
 
+// Test builds only: set the cancel flag when the loop reaches this item, after the loop-top
+// check, so a cancel landing mid-item is deterministic rather than a racing watcher thread.
+#[cfg(test)]
+thread_local! {
+    static CANCEL_AT: std::cell::Cell<Option<usize>> = const { std::cell::Cell::new(None) };
+}
+#[cfg(test)]
+pub(crate) fn test_set_cancel_at(index: Option<usize>) {
+    CANCEL_AT.with(|v| v.set(index));
+}
+// Cleared on drop, so a failing test never cancels the next one on its thread.
+#[cfg(test)]
+pub(crate) struct CancelAtGuard;
+#[cfg(test)]
+impl CancelAtGuard {
+    pub(crate) fn hold(index: usize) -> Self {
+        test_set_cancel_at(Some(index));
+        CancelAtGuard
+    }
+}
+#[cfg(test)]
+impl Drop for CancelAtGuard {
+    fn drop(&mut self) {
+        test_set_cancel_at(None);
+    }
+}
+#[cfg(test)]
+fn cancel_at_fires(index: usize) -> bool {
+    CANCEL_AT.with(|v| v.get() == Some(index))
+}
+
 // What an operation thread sends back, joined onto the same receiver every other event already arrives on.
 pub enum OpMsg {
     // scanned is the batch's own total, 0 until the sweep beside the copy settles on one.
@@ -239,6 +270,11 @@ pub(crate) fn run_transfer_checked(
             was_cancelled = true;
             skipped += 1;
             continue;
+        }
+        // A test cancel lands here, past the loop-top check, the way a real cancel lands mid-item.
+        #[cfg(test)]
+        if cancel_at_fires(index) {
+            cancel.store(true, Ordering::Relaxed);
         }
         let src = PathBuf::from(raw);
         let name = base_name(&src);

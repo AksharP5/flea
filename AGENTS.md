@@ -2677,6 +2677,14 @@ force-copy seam, `src/backend/movebatch_tests.rs` 279 to 393 for the replacement
 transfer-level cases, and `src/backend/undo.rs` 301 to 309 for the size and mtime the re-check
 reads, each inside its budget.
 
+R6src round 2 moves five recorded ceilings, each re-derived with `wc -l`:
+`src/backend/movebatch.rs` 385 to 428 for the fail-closed source re-check with its test-only
+inspect-failure seam, `src/backend/movebatch_tests.rs` 393 to 466 for the unverifiable-source and
+in-place-edit cases and the deterministic cancel transfer, `src/backend/opsreq.rs` 477 to 513 for
+the test-only cancel-at seam that lands a cancel past the loop-top check,
+`src/backend/opsreq/tests.rs` 424 to 460 for the cancel-on-the-last-item case, and `src/gui.rs`
+407 to 432 for the injected warm job with its rendezvous test.
+
 ## The key table is generated
 
 `keys.toml` at the repository root is the single source of truth for every binding.

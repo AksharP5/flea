@@ -48,6 +48,41 @@ fn force_copy() -> bool {
     false
 }
 
+// Test builds only: fail the source re-check, so the unverified-source arm drives without a sick filesystem.
+#[cfg(test)]
+thread_local! {
+    static INSPECT_FAIL: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+#[cfg(test)]
+pub(crate) fn test_set_inspect_fail(fail: bool) {
+    INSPECT_FAIL.with(|v| v.set(fail));
+}
+// Cleared on drop, so a failing test never leaks the failure into the next one on its thread.
+#[cfg(test)]
+pub(crate) struct InspectFailGuard;
+#[cfg(test)]
+impl InspectFailGuard {
+    pub(crate) fn hold() -> Self {
+        test_set_inspect_fail(true);
+        InspectFailGuard
+    }
+}
+#[cfg(test)]
+impl Drop for InspectFailGuard {
+    fn drop(&mut self) {
+        test_set_inspect_fail(false);
+    }
+}
+
+// A transient lstat error answers EIO-shaped, the shape a sick NFS or SMB mount gives back.
+fn inspect_source(path: &Path) -> Result<ItemIdentity, FleaError> {
+    #[cfg(test)]
+    if INSPECT_FAIL.with(|v| v.get()) {
+        return Err(from_io("journal", &path.to_string_lossy(), &std::io::Error::from_raw_os_error(5)));
+    }
+    ItemIdentity::inspect(path)
+}
+
 // One landed copy waiting on its batch's folder confirm; the source is still whole.
 pub(crate) struct PendingMove {
     index: usize,
@@ -296,12 +331,20 @@ fn finish_item(
     counts: &mut CloseCounts,
     retry: &mut Vec<(PathBuf, ItemIdentity)>,
 ) {
-    // A source that changed under its copy keeps both names; undo then only ever removes the copy.
-    if ItemIdentity::inspect(&item.src).is_ok_and(|current| !item.source.unchanged_for_move(&current)) {
+    // An unverifiable source keeps both names, changed or not: a transient lstat error proves nothing.
+    let unverified = match inspect_source(&item.src) {
+        // The source still holds the bytes its copy took, so the move can finish.
+        Ok(current) if item.source.unchanged_for_move(&current) => None,
+        // A source that changed under its copy keeps both names; undo then only ever removes the copy.
+        Ok(_) => Some(BOTH_KEPT.to_string()),
+        // A source that cannot be re-checked keeps both names the same way, with the error as its reason.
+        Err(e) => Some(format!("could not verify {}: {}; both kept", item.name, e.msg)),
+    };
+    if let Some(reason) = unverified {
         match undo::copied(&item.src, &item.dst, item.source.clone()) {
             Ok(step) => {
                 steps.push(step);
-                send_item(tx, id, item.index, &item.name, false, BOTH_KEPT);
+                send_item(tx, id, item.index, &item.name, false, &reason);
             }
             Err(e) => send_item(tx, id, item.index, &item.name, false, &e.msg),
         }
