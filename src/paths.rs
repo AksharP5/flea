@@ -15,8 +15,7 @@ pub const ENTRY: &str = "boot/shell.qml";
 // The chooser's own entry, beside it; see AGENTS.md "The first window".
 pub const PICKER_ENTRY: &str = "boot/picker.qml";
 
-// Issue 216: a package that ships /usr/share/flea/ui without ui/boot left this reading as if the
-// directory were missing, so the message names the file Flea looked for.
+// Issue 216: names the entry file sought, since a package missing ui/boot reads as a missing dir.
 pub fn missing_ui_message() -> String {
     format!("flea: the shell config is missing: /usr/share/flea/ui/{} was not found; set FLEA_UI or reinstall flea", ENTRY)
 }

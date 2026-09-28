@@ -7,6 +7,10 @@ use std::time::Instant;
 // Phase 1 never stats: d_type is free, see AGENTS.md "Two-phase listing".
 // hidden:false is the shell's own dotfile convention, matched here rather than left to the client.
 pub fn scan(path: &str, hidden: bool) -> Result<(Listing, f64), FleaError> {
+    // The gvfs check first, so a local listing never reads the prefetch environment or the gio name.
+    if !super::gvfslist::is_gvfs(std::path::Path::new(path)) {
+        return scan_with(path, hidden, None, "gio");
+    }
     scan_with(path, hidden, crate::gvfsprefetch::env_prefetch(), &super::gvfslist::gio_bin())
 }
 

@@ -59,7 +59,7 @@ extern "C" {
     fn statfs(path: *const c_char, buf: *mut StatFs) -> i32;
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Info {
     pub name: String,
     // Bytes available to an unprivileged process, which is f_bavail and never f_bfree.
@@ -67,24 +67,46 @@ pub struct Info {
 }
 
 pub fn read(path: &Path) -> Option<Info> {
-    let c = CString::new(path.as_os_str().as_encoded_bytes()).ok()?;
-    // Every field is written by the call, so the zeroed value is never read as a result.
-    let mut buf: StatFs = unsafe { std::mem::zeroed() };
-    if unsafe { statfs(c.as_ptr(), &mut buf) } != 0 {
-        return None;
-    }
-    Some(Info { name: name_for(buf.f_type), free: buf.f_bavail.saturating_mul(buf.f_bsize.max(0) as u64) })
+    read_with_magic(path).0
 }
 
-// The raw f_type for the directory's filesystem, so the class decision can name a network
-// mount the table spells "fuse" for; None when the path cannot be read at all.
-pub fn magic_of(path: &Path) -> Option<i64> {
-    let c = CString::new(path.as_os_str().as_encoded_bytes()).ok()?;
+// Sample input: a temp dir answers (Some, Some(local magic)); a missing path answers (None, None).
+pub fn read_with_magic(path: &Path) -> (Option<Info>, Option<i64>) {
+    let c = match CString::new(path.as_os_str().as_encoded_bytes()) {
+        Ok(c) => c,
+        Err(_) => return (None, None),
+    };
+    // Every field is written by the call, so the zeroed value is never read as a result.
     let mut buf: StatFs = unsafe { std::mem::zeroed() };
+    #[cfg(test)]
+    STATFS_CALLS.with(|n| n.set(n.get() + 1));
     if unsafe { statfs(c.as_ptr(), &mut buf) } != 0 {
-        return None;
+        return (None, None);
     }
-    Some(buf.f_type)
+    let info = Info { name: name_for(buf.f_type), free: buf.f_bavail.saturating_mul(buf.f_bsize.max(0) as u64) };
+    (Some(info), Some(buf.f_type))
+}
+
+#[cfg(test)]
+thread_local! {
+    static STATFS_CALLS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+// A test counts statfs calls on its own thread; production never reads this.
+#[cfg(test)]
+pub fn test_reset_statfs() {
+    STATFS_CALLS.with(|n| n.set(0));
+}
+
+// The calls since the last reset on this thread, so a test pins one statfs for both halves.
+#[cfg(test)]
+pub fn statfs_calls() -> usize {
+    STATFS_CALLS.with(|n| n.get())
+}
+
+// Raw f_type for the class decision to catch a network mount fstype_is_network misses, like smb3.
+pub fn magic_of(path: &Path) -> Option<i64> {
+    read_with_magic(path).1
 }
 
 // An unknown filesystem reports its own magic rather than a wrong name or an empty string.
@@ -97,11 +119,7 @@ pub fn name_for(f_type: i64) -> String {
     format!("0x{:x}", f_type)
 }
 
-// Sample output: {"t":"fsinfo","fs":"btrfs","free":442000000000,"path":"/home/gm","class":""}
-// path is the directory these figures are of. The base only moves when a listing succeeds, so a
-// client whose displayed path has already moved can tell that they describe somewhere else.
-// class is src/backend/extclass.rs's own word for that directory, network, phone, usb or "",
-// computed once per directory change beside this line and never per row.
+// Sample output: {"t":"fsinfo","fs":"btrfs","free":442,"path":"/home/gm","class":""}; path names the dir, class its extclass word.
 pub fn fsinfo_line(info: &Option<Info>, path: &str, class: &str) -> String {
     match info {
         Some(i) => format!(r#"{{"t":"fsinfo","fs":"{}","free":{},"path":"{}","class":"{}"}}"#, escape(&i.name), i.free, escape(path), escape(class)),
@@ -166,5 +184,18 @@ mod tests {
     fn a_path_with_a_quote_in_it_leaves_as_one_escaped_string() {
         let line = fsinfo_line(&None, "/tmp/a\"b", "");
         assert_eq!(line, r#"{"t":"fsinfo","fs":"","free":0,"path":"/tmp/a\"b","class":""}"#);
+    }
+
+    #[test]
+    fn one_statfs_answers_both_the_figures_and_the_magic() {
+        let d = TestDir::new("fsinfoonestatfs");
+        test_reset_statfs();
+        let (info, magic) = read_with_magic(d.path());
+        assert!(info.is_some_and(|i| i.free > 0), "a temp directory is on a mounted filesystem");
+        assert!(magic.is_some(), "the same call carries f_type");
+        assert_eq!(statfs_calls(), 1, "figures and magic share one statfs, not two");
+        test_reset_statfs();
+        assert_eq!(read_with_magic(&d.join("never-existed")), (None, None));
+        assert_eq!(statfs_calls(), 1, "even a failure is one call");
     }
 }

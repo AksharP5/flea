@@ -1,9 +1,8 @@
-// The directory's own class for the thumbnail gate: network, phone, usb or local ("").
-// Computed once per directory change beside the fsinfo line, never per row.
+// The directory's class for the thumbnail gate (network, phone, usb or local "") once per directory change.
 use super::mountinfo::MountEntry;
 use std::path::{Path, PathBuf};
 
-// statfs magics that name a network filesystem even when the mount table spells it "fuse".
+// statfs magics that catch a network mount whose fstype the table spells plainly, like smb3.
 const NETWORK_MAGICS: [i64; 5] = [0x6969, 0xFF534D42, 0xFE534D42, 0x01021997, 0x00C36400];
 
 // Sample input: 0xFE534D42 trues, 0xEF53 falses.
@@ -35,6 +34,14 @@ pub fn gvfs_class(path: &Path) -> Option<&'static str> {
     } else {
         Some("network")
     }
+}
+
+// Sample input: a symlink "~/NAS" into "/run/user/1000/gvfs/..." answers the share.
+pub fn resolved(path: &Path) -> PathBuf {
+    if gvfs_class(path).is_some() {
+        return path.to_path_buf();
+    }
+    std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
 }
 
 // Sample input: "/run/user/1000/gvfs/smb-share:server=n,share=x/dir" answers "/run/user/1000/gvfs/smb-share:server=n,share=x".
@@ -97,19 +104,52 @@ pub fn classify_parts(path: &Path, fstype: Option<&str>, magic: Option<i64>, usb
     ""
 }
 
-// One statfs, one mountinfo read and two sysfs reads at most, once per directory change.
+// One canonicalize, one mountinfo read, one statfs and two sysfs reads at most, once per directory change.
 pub fn classify(path: &Path) -> &'static str {
     if let Some(class) = gvfs_class(path) {
         return class;
     }
     let body = std::fs::read_to_string("/proc/self/mountinfo").unwrap_or_default();
-    classify_entry(path, super::mountinfo::mount_entry_in(path, &body).as_ref())
+    classify_in(path, &body)
+}
+
+// Sample input: a symlink to "/media/nas" answers "network" under a body mounting it cifs.
+pub fn classify_in(path: &Path, body: &str) -> &'static str {
+    if let Some(class) = gvfs_class(path) {
+        return class;
+    }
+    // The raw path's own mount first, so a kernel share whose server died costs no canonicalize.
+    if super::mountinfo::mount_entry_in(path, body).is_some_and(|e| fstype_is_network(&e.fstype)) {
+        return "network";
+    }
+    let owned = resolved(path);
+    if let Some(class) = gvfs_class(&owned) {
+        return class;
+    }
+    classify_entry(&owned, super::mountinfo::mount_entry_in(&owned, body).as_ref())
 }
 
 // The class from a mount entry the caller already read, so fsinfo pays one mountinfo read.
 pub fn classify_entry(path: &Path, entry: Option<&MountEntry>) -> &'static str {
-    let usb = usb_for(entry.map(|e| e.majmin.as_str()));
-    classify_parts(path, entry.map(|e| e.fstype.as_str()), super::fsinfo::magic_of(path), usb)
+    if let Some(class) = gvfs_class(path) {
+        return class;
+    }
+    if entry.is_some_and(|e| fstype_is_network(&e.fstype)) {
+        return "network";
+    }
+    classify_entry_with_magic(path, entry, super::fsinfo::magic_of(path))
+}
+
+// Sample input: (Some("cifs"), None) answers "network" with no statfs of its own.
+pub fn classify_entry_with_magic(path: &Path, entry: Option<&MountEntry>, magic: Option<i64>) -> &'static str {
+    let decided = classify_parts(path, entry.map(|e| e.fstype.as_str()), magic, false);
+    if decided != "" {
+        return decided;
+    }
+    if usb_for(entry.map(|e| e.majmin.as_str())) {
+        return "usb";
+    }
+    ""
 }
 
 // A mount that names no block device answers false without touching sysfs.
@@ -215,5 +255,37 @@ mod tests {
         assert_eq!(disk_of_link("/no/block/here"), Some("here"));
         assert_eq!(disk_of_link("plain/path"), None);
         assert_eq!(disk_of_link("../../devices/pci/block/"), None);
+    }
+
+    #[test]
+    fn resolved_follows_a_symlink_and_keeps_a_gvfs_path_and_a_failure() {
+        let d = crate::backend::testdir::TestDir::new("extclass-resolved");
+        let target = d.dir("real");
+        let link = d.path().join("link");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert_eq!(resolved(&link), target, "a symlink answers its target");
+        let gvfs = Path::new("/run/user/1000/gvfs/smb-share:server=n,share=x");
+        assert_eq!(resolved(gvfs), gvfs.to_path_buf(), "a gvfs path never pays a canonicalize");
+        assert_eq!(resolved(&d.join("never-existed")), d.join("never-existed"), "a failure keeps today's path");
+    }
+
+    #[test]
+    fn a_symlink_into_a_network_mount_classifies_by_its_target() {
+        let d = crate::backend::testdir::TestDir::new("extclass-link");
+        let target = d.dir("real");
+        let link = d.path().join("link");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        let body = format!("1 0 8:1 / / rw - ext4 /dev/a rw\n30 1 0:9 / {} rw - cifs //nas/media rw\n", target.display());
+        assert_eq!(classify_in(&link, &body), "network", "a symlink into a cifs mount is network, not local");
+        let plain = format!("1 0 8:1 / / rw - ext4 /dev/a rw\n");
+        assert_eq!(classify_in(&link, &plain), "", "the same link stays local when its target is local");
+    }
+
+    #[test]
+    fn a_network_fstype_classifies_without_a_statfs() {
+        crate::backend::fsinfo::test_reset_statfs();
+        let body = "31 23 0:27 / /media/nas rw - cifs //nas/media rw\n";
+        assert_eq!(classify_in(Path::new("/media/nas/photos"), body), "network");
+        assert_eq!(crate::backend::fsinfo::statfs_calls(), 0, "fstype already decided; no statfs for nothing");
     }
 }

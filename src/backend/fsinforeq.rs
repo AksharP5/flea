@@ -1,6 +1,6 @@
 // A slow mount's statfs is a network round trip (about 800 ms on the NAS), so it runs on a worker, never the loop.
 use super::events::Event;
-use super::extclass::{classify_entry, fstype_is_network, gvfs_class, gvfs_root};
+use super::extclass::{classify_entry_with_magic, fstype_is_network, gvfs_class, gvfs_root, resolved};
 use super::fsinfo::Info;
 use super::mountinfo::mount_entry_in;
 use std::collections::{HashMap, HashSet};
@@ -22,8 +22,8 @@ pub struct Done {
     pub info: Option<Info>,
 }
 
-// The test seam: production reads statfs, a test sleeps or counts instead.
-type Reader = Arc<dyn Fn(PathBuf) -> Option<Info> + Send + Sync>;
+// The test seam: production reads statfs once for figures and magic, a test sleeps or counts instead.
+type Reader = Arc<dyn Fn(PathBuf) -> (Option<Info>, Option<i64>) + Send + Sync>;
 
 pub struct FsInfo {
     events: Sender<Event>,
@@ -42,7 +42,7 @@ pub struct FsInfo {
 
 impl FsInfo {
     pub fn new(events: Sender<Event>) -> Self {
-        Self::with_reader(events, Arc::new(|path: PathBuf| super::fsinfo::read(&path)))
+        Self::with_reader(events, Arc::new(|path: PathBuf| super::fsinfo::read_with_magic(&path)))
     }
 
     pub fn with_reader(events: Sender<Event>, reader: Reader) -> Self {
@@ -71,9 +71,20 @@ impl FsInfo {
         if let Some(root) = gvfs_root(path) {
             return self.slow_answer(root, path, slow_class(path));
         }
-        match mount_entry_in(path, body) {
+        // The raw path's own mount first, so a kernel share whose server died is decided with no syscall on the loop.
+        if let Some(entry) = mount_entry_in(path, body).filter(|e| fstype_is_network(&e.fstype)) {
+            return self.slow_answer(entry.mount, path, "network");
+        }
+        let owned = resolved(path);
+        if let Some(root) = gvfs_root(&owned) {
+            return self.slow_answer(root, path, slow_class(&owned));
+        }
+        match mount_entry_in(&owned, body) {
             Some(entry) if fstype_is_network(&entry.fstype) => self.slow_answer(entry.mount, path, "network"),
-            entry => ((self.reader)(path.to_path_buf()), classify_entry(path, entry.as_ref())),
+            entry => {
+                let (info, magic) = (self.reader)(path.to_path_buf());
+                (info, classify_entry_with_magic(&owned, entry.as_ref(), magic))
+            }
         }
     }
 
@@ -91,7 +102,7 @@ impl FsInfo {
         self.seq += 1;
         let (events, reader, key, seq) = (self.events.clone(), Arc::clone(&self.reader), root.clone(), self.seq);
         let worker = std::thread::Builder::new().name("flea-fsinfo".into()).spawn(move || {
-            let info = reader(dir.clone());
+            let (info, _) = reader(dir.clone());
             let _ = events.send(Event::FsInfo(Done { root: key, dir, seq, info }));
         });
         // corner: a spawn that fails records nothing, so the next ask tries again and answers unknown meanwhile.
@@ -121,7 +132,7 @@ impl FsInfo {
     }
 }
 
-// A slow mount is a gvfs share or phone by its path, else a kernel network mount.
+// A slow mount is a gvfs share or phone by its path, else a kernel network mount; answer passes a resolved path.
 pub fn slow_class(path: &Path) -> &'static str {
     gvfs_class(path).unwrap_or("network")
 }
@@ -156,7 +167,7 @@ mod tests {
         let reader: Reader = Arc::new(move |_: PathBuf| {
             seen.fetch_add(1, Ordering::SeqCst);
             std::thread::sleep(Duration::from_millis(delay_ms));
-            figures(free)
+            (figures(free), Some(0x65735546))
         });
         (gui(FsInfo::with_reader(events, reader)), rx, calls)
     }
@@ -241,7 +252,7 @@ mod tests {
         let seen = Arc::clone(&asked);
         let reader: Reader = Arc::new(move |path: PathBuf| {
             seen.lock().unwrap().push(path.clone());
-            if path.ends_with("gone") { None } else { figures(7) }
+            if path.ends_with("gone") { (None, None) } else { (figures(7), Some(0x65735546)) }
         });
         (gui(FsInfo::with_reader(events, reader)), rx, asked)
     }
@@ -339,5 +350,57 @@ mod tests {
         assert!(info.is_some_and(|i| i.free > 0), "a local statfs answers its figures at once");
         assert_eq!(class, super::super::extclass::classify(sandbox.path()), "and its class is the full one");
         assert!(fs.inflight.is_empty(), "no worker for a local directory");
+    }
+
+    #[test]
+    fn a_symlink_into_a_network_mount_answers_off_the_loop() {
+        let sandbox = super::super::testdir::TestDir::new("fsinfolink");
+        let target = sandbox.path().join("real");
+        std::fs::create_dir(&target).unwrap();
+        let link = sandbox.path().join("link");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        let body = format!("1 0 8:1 / / rw - ext4 /dev/a rw\n30 1 0:9 / {} rw - cifs //nas/media rw\n", target.display());
+        let (mut fs, _rx, calls) = counted(0, 7);
+        let t = Instant::now();
+        let (info, class) = fs.answer_in(&link, &body);
+        assert_eq!(class, "network", "a symlink into a cifs mount is network, not local");
+        assert!(info.is_none(), "its figures arrive on the worker, never blocked");
+        assert!(t.elapsed() < Duration::from_millis(250), "no statfs ran on the loop");
+        assert_eq!(calls.load(Ordering::SeqCst), 0, "the slow path starts the worker instead of reading here");
+    }
+
+    #[test]
+    fn a_raw_kernel_share_is_decided_before_any_resolve() {
+        let sandbox = super::super::testdir::TestDir::new("fsinforawfirst");
+        let share = sandbox.path().join("share");
+        let real = sandbox.path().join("real");
+        std::fs::create_dir(&share).unwrap();
+        std::fs::create_dir(&real).unwrap();
+        let link = share.join("link");
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        let body = format!("1 0 8:1 / / rw - ext4 /dev/a rw\n30 1 0:9 / {} rw - cifs //nas/media rw\n", share.display());
+        let (mut fs, _rx, _) = counted(0, 7);
+        let (_, class) = fs.answer_in(&link, &body);
+        assert_eq!(class, "network", "a path under a cifs mount is network by its own mount, before its link is followed");
+    }
+
+    #[test]
+    fn a_decided_path_takes_no_statfs_and_a_local_one_takes_exactly_one() {
+        use super::super::fsinfo::{statfs_calls, test_reset_statfs};
+        let cifs = "31 23 0:27 / /media/nas rw - cifs //nas/media rw\n";
+        let (mut fs, _rx, _) = counted(0, 7);
+        test_reset_statfs();
+        let (_, class) = fs.answer_in(Path::new("/media/nas/photos"), cifs);
+        assert_eq!(class, "network");
+        assert_eq!(statfs_calls(), 0, "fstype already decided; a dead server gets no statfs for nothing");
+        let sandbox = super::super::testdir::TestDir::new("fsinfoonestatfs");
+        let local = "1 0 8:1 / / rw - ext4 /dev/a rw\n";
+        let (events, _rx) = std::sync::mpsc::channel();
+        let mut real = FsInfo::new(events);
+        test_reset_statfs();
+        let (info, class) = real.answer_in(sandbox.path(), local);
+        assert!(info.is_some_and(|i| i.free > 0), "a local statfs answers its figures at once");
+        assert_eq!(class, "");
+        assert_eq!(statfs_calls(), 1, "figures and magic share one statfs, not two");
     }
 }

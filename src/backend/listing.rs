@@ -2,8 +2,7 @@
 use std::path::{Component, Path};
 use std::collections::HashMap;
 
-// Prefetched per-row metadata a gio listing carries, so the window and the size/date
-// orders read it instead of statting; keyed by name for the life of that listing.
+// Gio rows carry per-row metadata keyed by name for the listing's life, so sorts read it, never stat.
 #[derive(Clone, Debug, Default)]
 pub struct CachedMeta {
     pub size: u64,
@@ -29,8 +28,7 @@ pub struct Span {
 pub struct Listing {
     pub names: String,
     pub spans: Vec<Span>,
-    // Empty for every readdir listing; filled only by the gvfs gio path, so local
-    // rows pay no map at all and a sorted listing keeps its cache by name.
+    // Empty for readdir listings; the gvfs path fills it, so local rows pay no map.
     pub meta_cache: HashMap<String, CachedMeta>,
 }
 
