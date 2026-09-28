@@ -77,7 +77,7 @@ function run(check) {
     check("and reads no clock per row", rowDate.indexOf("Date.now") < 0, true)
     check("ViewState owns the one midnight timer", countRe(viewState, /Timer\s*\{/g), 1)
     check("and that timer steps in minute stops, so a suspend still lands the day",
-        viewState.indexOf("Math.min(60000") >= 0, true)
+        viewState.indexOf("RecentDates.MINUTE_MS") >= 0, true)
     // Scoped to onHighlightTodayChanged's own body, so the same line in onTriggered cannot cover a deletion here.
     var changedAt = viewState.indexOf("onHighlightTodayChanged")
     var handlerBody = viewState.substring(changedAt, viewState.indexOf("}", viewState.indexOf("{", changedAt)))

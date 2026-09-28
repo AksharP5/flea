@@ -250,9 +250,10 @@ Item {
     }
 
     // A read-only look at a directory that is not the current listing; see docs/protocol.md "peek".
-    function peek(path, first, hidden) {
-        root.send({ c: "peek", path: path, first: first, hidden: hidden,
-                    hiddenLast: ViewState.state.hiddenLast === true })
+    // Tab passes hiddenLast false so dotfiles sort first, every other caller keeps the listing's own order.
+    function peek(path, first, hidden, hiddenLast) {
+        var last = hiddenLast === undefined ? ViewState.state.hiddenLast === true : hiddenLast === true
+        root.send({ c: "peek", path: path, first: first, hidden: hidden, hiddenLast: last })
     }
 
     // op is "peers" for the flyout's list and "send" for the transfer it chooses; both answer late.

@@ -147,7 +147,7 @@ Rectangle {
         onEditClosed: view.currentPane.forceActiveFocus()
         // Tab reads the directory with the same peek the columns view makes of an ancestor,
         // so completion adds no request type and lands in that view's own cache on the way past.
-        onCompleteRequested: function (dir, hidden) { view.currentPane.backend.peek(dir, view.currentPane.windowSize, hidden) }
+        onCompleteRequested: function (dir, hidden) { view.currentPane.backend.peek(dir, view.currentPane.windowSize, hidden, false) }
         onJumpRequested: function (id, favourites, recent) { view.currentPane.backend.jump(id, favourites, recent) }
         onSaid: function (text) { bar.say(text, false) }
         onSettingsRequested: settingsPanel.open(view.currentPane)

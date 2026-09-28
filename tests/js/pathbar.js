@@ -7,6 +7,14 @@
 
 var HOME = "/home/gm"
 
+// A file of this tree, read the way tests/js/columns.js reads ui/ColumnsArea.qml; "" when missing.
+function source(path) {
+    var request = new XMLHttpRequest()
+    request.open("GET", Qt.resolvedUrl("../../" + path), false)
+    request.send()
+    return String(request.responseText || "")
+}
+
 // Only the members Focus.handleKey touches on its way to the path bar, and the counter for the one
 // call it must make: the pane asks, and ui/WindowBody.qml is what opens the field. The routing lives in
 // this suite rather than in tests/js/focus.js, which is at its own hard cap.
@@ -196,4 +204,10 @@ function run(check) {
     // a local path under the pane.
     check("a typed smb server is the network address itself", PathBar.resolve("smb://servername.lan", HOME, HOME), "smb://servername.lan")
     check("and a share with a user keeps its user", PathBar.resolve("smb://dan@192.168.1.75/test", HOME, HOME), "smb://dan@192.168.1.75/test")
+
+    // Tab completes dotfiles first, so the completion peek opts out of the listing's hidden-last order.
+    check("Tab completion peeks with hiddenLast false",
+        source("ui/WindowBody.qml").indexOf("backend.peek(dir, view.currentPane.windowSize, hidden, false)") >= 0, true)
+    check("and the peek keeps the listing order for every other caller",
+        source("ui/Backend.qml").indexOf("function peek(path, first, hidden, hiddenLast)") >= 0, true)
 }

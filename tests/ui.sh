@@ -4460,13 +4460,16 @@ case_columnautofit() {
     omarchy-drive click "$(( wx + edge_x ))" "$(( wy + cy ))" left --double >/dev/null
     settle
     local narrow_w
+    # Sample input: "$(ipc headerCellRect size)" prints "400|70".
     IFS='|' read -r _x narrow_w <<< "$(ipc headerCellRect size)"
     printf 'COLUMNAUTOFIT size first=%s\n' "$narrow_w"
     local held_before held_after
+    # Sample input: ipc listingWindowState | jq -r '.held' answers "12".
     held_before=$(ipc listingWindowState | jq -r '.held')
     key G >/dev/null
     settle
     for _attempt in $(seq 1 60); do
+        # Sample input: ipc listingWindowState | jq -r '.held' answers "12".
         held_after=$(ipc listingWindowState | jq -r '.held')
         [[ "$held_after" =~ ^[0-9]+$ && "$held_after" != "$held_before" ]] && break
         sleep 0.05
@@ -4494,6 +4497,7 @@ case_columnautofit() {
     for _attempt in $(seq 1 60); do
         _seed_ok=1
         for _f4key in mode size date kind; do
+            # Sample input: "$(ipc headerCellRect "$_f4key")" prints "602|480".
             IFS='|' read -r _x _drawn <<< "$(ipc headerCellRect "$_f4key")"
             [[ "$_drawn" =~ ^[0-9]+$ && "$_drawn" != "0" ]] || continue
             [[ "$_drawn" == "480" ]] || _seed_ok=0
@@ -4512,8 +4516,10 @@ case_columnautofit() {
     shot columnautofit-f4
     local _f4key _drawn _have _was _fitted_n=0
     for _f4key in mode size date kind; do
+        # Sample input: "$(ipc headerCellRect "$_f4key")" prints "602|70".
         IFS='|' read -r _x _drawn <<< "$(ipc headerCellRect "$_f4key")"
         [[ "$_drawn" =~ ^[0-9]+$ && "$_drawn" != "0" ]] || continue
+        # Sample input: jq -r --arg k "size" '.[$k] // empty' over {"size":70} answers "70".
         _have=$(jq -r --arg k "$_f4key" '.[$k] // empty' <<< "$widths_once")
         _was=$(jq -r --arg k "$_f4key" '.[$k] // empty' <<< "$widths_before")
         [[ "$_have" == "$_drawn" ]] \

@@ -62,4 +62,13 @@ function run(check) {
           ClipMarks.rowPath(pane("/"), "boot"), "/boot")
     check("an unnamed row has no path",
           ClipMarks.rowPath(home, ""), "")
+
+    // An emptied clipboard frees the lookup, so a cut of a large directory costs nothing after it.
+    ClipMarks.setFor(copied)
+    ClipMarks.markFor("/home/gm/Pictures/phone/IMG_4121.jpg", { paths: [], moving: false })
+    check("emptying through markFor drops the cached clipboard", ClipMarks._cached, null)
+    check("and its marks", JSON.stringify(ClipMarks._marks), "{}")
+    ClipMarks.setFor(copied)
+    ClipMarks.markForRow(home, "IMG_4121.jpg", { paths: [], moving: false })
+    check("emptying through markForRow drops it too", ClipMarks._cached, null)
 }

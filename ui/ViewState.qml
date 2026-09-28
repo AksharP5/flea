@@ -90,16 +90,16 @@ QtObject {
     property var midnightTimer: Timer {
         repeat: true
         running: root.highlightToday
-        interval: Math.min(60000, RecentDates.msUntilMidnight(Date.now()))
+        interval: Math.min(RecentDates.MINUTE_MS, RecentDates.msUntilMidnight(Date.now()))
         onTriggered: {
             root.todayStart = RecentDates.dayStart(Date.now())
-            root.midnightTimer.interval = Math.min(60000, RecentDates.msUntilMidnight(Date.now()))
+            root.midnightTimer.interval = Math.min(RecentDates.MINUTE_MS, RecentDates.msUntilMidnight(Date.now()))
             root.midnightTimer.running = root.highlightToday
         }
     }
     onHighlightTodayChanged: {
         root.todayStart = RecentDates.dayStart(Date.now())
-        root.midnightTimer.interval = Math.min(60000, RecentDates.msUntilMidnight(Date.now()))
+        root.midnightTimer.interval = Math.min(RecentDates.MINUTE_MS, RecentDates.msUntilMidnight(Date.now()))
         root.midnightTimer.running = root.highlightToday
     }
 

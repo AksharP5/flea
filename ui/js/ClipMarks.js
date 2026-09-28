@@ -18,8 +18,16 @@ function setFor(clipboard) {
     return _marks
 }
 
+// An emptied clipboard drops its lookup once, so a cut of a large directory frees it and later rows allocate nothing.
+function release() {
+    if (_cached === null) return
+    _cached = null
+    _marks = {}
+}
+
 function markFor(path, clipboard) {
     if (!clipboard || !clipboard.paths || clipboard.paths.length === 0) {
+        release()
         return ""
     }
     return setFor(clipboard)[path] === true ? (clipboard.moving ? "scissors" : "copy") : ""
@@ -27,7 +35,11 @@ function markFor(path, clipboard) {
 
 // An empty clipboard costs nothing: its paths are never joined or searched.
 function markForRow(pane, name, clipboard) {
-    if (!clipboard || !clipboard.paths || clipboard.paths.length === 0 || !name) {
+    if (!clipboard || !clipboard.paths || clipboard.paths.length === 0) {
+        release()
+        return ""
+    }
+    if (!name) {
         return ""
     }
     return markFor(rowPath(pane, name), clipboard)

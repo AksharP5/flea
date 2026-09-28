@@ -4,6 +4,8 @@
 
 // Sample input: Date.now() on the board date, 2026-09-23 11:40 local.
 var DAY_MS = 24 * 60 * 60 * 1000
+// The midnight timer's minute step, so a suspend still lands the day within a minute of resume.
+var MINUTE_MS = 60 * 1000
 
 // Local midnight starting the day nowMs falls in, in ms since the epoch.
 function dayStart(nowMs) {
