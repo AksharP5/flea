@@ -156,15 +156,16 @@ case_previewswap() {
     local dir="$fixture_root/previewswap"
     sandbox_scratch "$dir"
     mkdir -p "$dir/0-folder"
-    : > "$dir/a-image.jpg"
-    : > "$dir/b-video.mp4"
+    # Real media, made the way case_views makes its clip: a zero-byte image or video fails to decode and Qt logs it.
+    ffmpeg -y -f lavfi -i "testsrc=size=64x64" -frames:v 1 "$dir/a-image.jpg" >/dev/null 2>&1 || fail "previewswap: ffmpeg could not make a-image.jpg"
+    ffmpeg -y -f lavfi -i "testsrc=duration=1:size=64x64:rate=10" "$dir/b-video.mp4" >/dev/null 2>&1 || fail "previewswap: ffmpeg could not make b-video.mp4"
     : > "$dir/c-doc.pdf"
     printf 'hello from flea\n' > "$dir/d-notes.txt"
     printf 'fn main() {}\n' > "$dir/e-main.rs"
     : > "$dir/f-report.odt"
     : > "$dir/g-font.ttf"
     : > "$dir/h-archive.zip"
-    : > "$dir/i-photo.png"
+    ffmpeg -y -f lavfi -i "testsrc=size=64x64" -frames:v 1 "$dir/i-photo.png" >/dev/null 2>&1 || fail "previewswap: ffmpeg could not make i-photo.png"
 
     seed_ui_state "$fixture_root/previewswap-state" '{"keys":"default","view":"columns"}'
     launch "$dir"
