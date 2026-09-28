@@ -52,7 +52,7 @@ ui/ContextMenu.qml 578
 ui/ConvertDialog.qml 440
 ui/Ipc.qml 801
 ui/NetworkDialog.qml 449
-ui/NetworkMounts.qml 803
+ui/NetworkMounts.qml 851
 ui/OpenWithDialog.qml 588
 ui/Pane.qml 741
 ui/PaneMenuActions.qml 404
@@ -60,14 +60,14 @@ ui/PaneWire.qml 485
 ui/PermissionsDialog.qml 426
 ui/PickerWindow.qml 676
 ui/PreviewColumn.qml 499
-ui/Preview.qml 457
+ui/Preview.qml 463
 ui/Row.qml 421
 ui/SettingsPanel.qml 542
 ui/SettingsRow.qml 410
-ui/Sidebar.qml 569
+ui/Sidebar.qml 576
 ui/StatusBar.qml 451
 ui/TrashView.qml 467
-ui/WindowBody.qml 558
+ui/WindowBody.qml 580
 ui/js/Filter.js 253
 ui/js/Focus.js 366
 ui/js/Keymap.js 313

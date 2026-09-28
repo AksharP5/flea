@@ -223,11 +223,29 @@ Item {
         id: listing
         environment: root.gioEnvironment
         active: root._rails > 0 || mountProcess.running || authProcess.running || infoProcess.running
-            || listSharesProcess.running || root._repairActive || root._repairWaiting || bridge.flow.waiter !== null
+            || listSharesProcess.running || root._repairActive || root._repairWaiting || root.bridgeWaiting
         // Cloud rows ride the same five second rhythm: the mount table is a file read, so
-        // nothing new runs. The reload blocks for the same reason ui/Sidebar.qml's own
-        // reloadBookmarks does: a rebuild must read the write it caused.
-        onListed: { root._mountListing = listing.text; cloudFile.reload(); cloudFile.waitForJob(); root.rebuild() }
+        // nothing new runs. The read is asynchronous: /proc has no write of ours to wait for,
+        // and a blocking read every tick stalled the GUI thread mid-scroll.
+        onListed: { root._polledListing = listing.text; root._listedOnce = true; cloudFile.reload() }
+    }
+
+    // The last texts a rebuild parsed: the five second poll rebuilds only when either moved,
+    // so an unchanged tick parses nothing. Nothing rebuilds before the first listing lands.
+    property string _polledListing: ""
+    property bool _listedOnce: false
+    property string _lastMountListing: ""
+    property string _lastMountinfo: ""
+    function pollAnswered() {
+        if (!root._listedOnce)
+            return
+        var infoText = cloudFile.text()
+        if (root._polledListing === root._lastMountListing && infoText === root._lastMountinfo)
+            return
+        root._lastMountListing = root._polledListing
+        root._lastMountinfo = infoText
+        root._mountListing = root._polledListing
+        root.rebuild()
     }
 
     // /proc/self/mountinfo, read on the listing's own poll for ui/js/Cloud.js's FUSE rows.
@@ -236,6 +254,8 @@ Item {
         id: cloudFile
         path: "/proc/self/mountinfo"
         printErrors: false
+        onLoaded: root.pollAnswered()
+        onLoadFailed: root.pollAnswered()
     }
 
     // The saved places file is ui/NetworkPlaces.qml's, the only writer of it in this Service.
@@ -249,10 +269,28 @@ Item {
     // Phones and shares open through the GVFS FUSE bridge, hosted window-long rather than
     // in the rail: hiding the rail mid-wait kills no wait, and the ready, the failure and the
     // Starting line it showed all still land. Files land on openFileRequested, so a typed
-    // network URL naming a file is never listed as a folder.
-    GvfsBridge {
-        id: bridge
-        onReady: function (path, origin, isDir) {
+    // network URL naming a file is never listed as a folder. Built on the first ensure() below
+    // rather than at launch: three Timers, a Process and GvfsBridge.qml's own compile move off
+    // the first frame, and a phone or share that needs it still gets it on the same call.
+    Loader {
+        id: bridgeLoader
+        active: false
+        source: "GvfsBridge.qml"
+    }
+    // Null until the first ensure; every reader below guards it.
+    readonly property var bridge: bridgeLoader.item
+    readonly property bool bridgeBuilt: bridgeLoader.active
+    // Whether a bridge wait is in flight, so the listing poll holds while one stands.
+    readonly property bool bridgeWaiting: root.bridge !== null && root.bridge.flow.waiter !== null
+    // Synchronous: a local source: URL answers item on the same call that sets active.
+    function ensureBridge() {
+        if (!bridgeLoader.active)
+            bridgeLoader.active = true
+        return bridgeLoader.item
+    }
+    Connections {
+        target: root.bridge
+        function onReady(path, origin, isDir) {
             if (root._repairWaiting) {
                 root._repairWaiting = false
                 root.sticky("", origin)
@@ -535,7 +573,11 @@ Item {
             root._repairBridged = true
             root._repairWaiting = true
             mountTimeout.restart()
-            bridge.ensure(root._repairRoot, root._pendingLabel, root._pendingOrigin)
+            var repairBridge = root.ensureBridge()
+            if (repairBridge)
+                repairBridge.ensure(root._repairRoot, root._pendingLabel, root._pendingOrigin)
+            else
+                root.repairFailed()
             return
         }
         mountTimeout.stop()
@@ -581,8 +623,10 @@ Item {
         root._repairActive = false
         root._repairWaiting = false
         root._repairBridged = false
-        // Only this flight's own bridge waiter ends; another flight's wait is never cancelled.
-        bridge.cancelFor(origin)
+        // Only this flight's own bridge waiter ends; another flight's wait is never cancelled,
+        // and with no bridge built no wait can stand.
+        if (root.bridge)
+            root.bridge.cancelFor(origin)
         root.sticky("", origin)
         mountTimeout.stop()
         if (mountProcess.running) { root._mountTimedOut = true; mountProcess.running = false }
@@ -742,7 +786,11 @@ Item {
             if (exitCode === 0 && path.length > 0) {
                 root.result = "mounted"
                 root.finishRequest(true, "")
-                bridge.ensure(path, root._pendingLabel, root._pendingOrigin)
+                var openBridge = root.ensureBridge()
+                if (openBridge)
+                    openBridge.ensure(path, root._pendingLabel, root._pendingOrigin)
+                else
+                    root.failMount("Connect failed: location has no browsable folder", root.passwordFor(root._pendingUri))
                 return
             }
             // A refused keyless sftp attempt is a missing credential and not a refused location, sftp only.

@@ -9,6 +9,9 @@ Item {
 
     // What the surface draws: the host's children land in here.
     default property alias content: content.data
+    // Quick Look keeps its panes eager outside this wrapper and builds only it on first open, so
+    // the picture captures that outer container rather than children of its own. Null draws as before.
+    property Item captureSource: null
     // The host's answer: what is under the picture is the whole preview it was asked for.
     property bool ready: true
     // True for the column, where a move during a hold means held j, and the stale picture gives way to loading.
@@ -177,7 +180,7 @@ Item {
         anchors.fill: parent
         active: root.capturing || root.holding || root.dropping
         sourceComponent: ShaderEffectSource {
-            sourceItem: content
+            sourceItem: root.captureSource !== null ? root.captureSource : content
             // Destroying a layer that hides its source left one frame with neither drawn, so a release unhides first.
             hideSource: root.capturing || root.holding
             visible: root.capturing || root.holding

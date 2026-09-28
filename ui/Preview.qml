@@ -68,7 +68,20 @@ Item {
     // The swap's answer: nothing loading, and a PDF with a page on screen or refused.
     readonly property bool lookReady: !root.active || PreviewSwap.lookReady(root.status, root.isPdf,
         root.pdfItem !== null && root.pdfItem.shownPage >= 0, root.pdfItem !== null && root.pdfItem.failed)
-    function swapState() { return swap.describe() }
+    function swapState() {
+        if (root.swap) return root.swap.describe()
+        return { holding: false, capturing: false, fellBack: false, holds: 0, fallbacks: 0,
+                 bursts: 0, heldFrames: 0, midFrames: 0, loadingFrames: 0, last: { ms: 0, end: "" } }
+    }
+    // The 0.3.6 swap additions, null until the first open builds them below; every reader guards it.
+    readonly property var swap: swapLoader.item
+    readonly property bool swapBuilt: swapLoader.active
+    // Synchronous: a local source: URL answers item on the same call that sets active.
+    function ensureSwap() {
+        if (!swapLoader.active)
+            swapLoader.active = true
+        return swapLoader.item
+    }
 
     property string pendingPath: ""
     property string pendingIcon: ""
@@ -125,13 +138,16 @@ Item {
         root.pendingIcon = newIcon
         root.pendingSize = newSize
         root.pendingKind = newKind
-        if (root.active) swap.hold(null, newPath)
+        if (root.active) {
+            var held = root.ensureSwap()
+            if (held) held.hold(null, newPath)
+        }
         followSettle.restart()
     }
 
     // Dropping the loader's source is what stops playback: media dies with the loader.
     function close() {
-        swap.cancel()
+        if (root.swap) root.swap.cancel()
         followSettle.stop()
         stripHideTimer.stop()
         root.active = false
@@ -149,11 +165,12 @@ Item {
     // Under the held picture when a move took one; Space's own open has none and draws as it builds.
     function load(newPath, newIcon, newSize, newKind) {
         var show = function () { root.show(newPath, newIcon, newSize, newKind) }
-        if (swap.holding || swap.capturing)
-            swap.hold(show, newPath, true)
+        var swapItem = root.ensureSwap()
+        if (swapItem && (swapItem.holding || swapItem.capturing))
+            swapItem.hold(show, newPath, true)
         else
             show()
-        swap.start(Kinds.quickLookKind(newIcon, newPath) === Kinds.PDF)
+        if (swapItem) swapItem.start(Kinds.quickLookKind(newIcon, newPath) === Kinds.PDF)
     }
 
     function show(newPath, newIcon, newSize, newKind) {
@@ -284,15 +301,11 @@ Item {
             }
         }
 
-        // Every kind's pane, drawn through the swap, so moving to the next file holds this one's picture until that one is whole.
-        Flea.PreviewSwap {
-            id: swap
+        // Every kind's pane, eager the way 0.3.5 drew them: the first Space decodes and never
+        // builds. Moving to the next file holds this one's picture through the swap below until that one is whole.
+        Item {
+            id: panes
             anchors.fill: parent
-            ready: root.lookReady
-            // The surface's own fill, inside its hairline, so the live border and rounded corners show round the picture.
-            ground: surface.color
-            groundInset: surface.border.width
-            groundRadius: Math.max(0, surface.radius - surface.border.width)
 
             Flea.PreviewText {
                 id: textPane
@@ -409,7 +422,7 @@ Item {
             Flea.LoadingState {
                 anchors.fill: parent
                 visible: (root.isMedia || root.isImage || root.isArchive) && root.status === "loading"
-                heldOff: swap.fellBack
+                heldOff: root.swap !== null && root.swap.fellBack
             }
 
             // MediaStrip unframed: quiet over the video, permanent on audio, and the column draws the framed form of the same file.
@@ -426,6 +439,24 @@ Item {
                 onToggled: root.togglePlay()
                 onSeeked: function (ms) { root.seekTo(ms) }
                 onTouched: root.revealStrip()
+            }
+        }
+
+        // The 0.3.6 swap additions, built on the first open and never at launch: the Loader, the
+        // MouseArea, the two Timers, the two Connections and QuickLookSwap.qml's own compile.
+        // The picture captures the eager panes above, so the first Space pays no build for them.
+        Loader {
+            id: swapLoader
+            anchors.fill: parent
+            active: false
+            source: "QuickLookSwap.qml"
+            onLoaded: {
+                // The surface's own fill, inside its hairline, so the live border and rounded corners show round the picture.
+                item.panesSource = panes
+                item.ready = Qt.binding(function () { return root.lookReady })
+                item.ground = Qt.binding(function () { return surface.color })
+                item.groundInset = surface.border.width
+                item.groundRadius = Qt.binding(function () { return Math.max(0, surface.radius - surface.border.width) })
             }
         }
     }

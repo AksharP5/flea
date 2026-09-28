@@ -73,6 +73,7 @@ Opener 1.0 Opener.qml
 Preview 1.0 Preview.qml
 PreviewArchive 1.0 PreviewArchive.qml
 PreviewMedia 1.0 PreviewMedia.qml
+QuickLookSwap 1.0 QuickLookSwap.qml
 PreviewText 1.0 PreviewText.qml
 Row 1.0 Row.qml
 Pane 1.0 Pane.qml

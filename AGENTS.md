@@ -2578,6 +2578,15 @@ take-back seam and the test that a copy which will not go back answers `rename`,
 
 The rail's network host fixes take `ui/NetworkMounts.qml` 802 to 803 (one arrival poll) and `ui/WindowBody.qml` 556 to 557 (the RailKeys import), each re-derived with `wc -l`.
 
+p036lazy moves four ceilings, each re-derived with `wc -l`: `ui/NetworkMounts.qml` 803 to 851 for the
+lazy bridge Loader with its `source:` URL, the `ensureBridge` builder, the null-guarded readers and the
+asynchronous, change-gated `pollAnswered`; `ui/WindowBody.qml` 557 to 580 for `orderNetworkHost`, its first-rows
+trigger and its 2000 ms fallback; `ui/Sidebar.qml` 569 to 576 for the on-demand `networkHost` and the
+arrival-pushed bookmarks; `ui/Preview.qml` 457 to 463 for the eager `panes` container, the lazy swap
+Loader and its guards. The wrapper itself is the new `ui/QuickLookSwap.qml`, 13 lines inside both
+budgets, and `ui/PreviewSwap.qml` stands at 242 inside the soft budget for the `captureSource` seam;
+`ui/GvfsBridge.qml` keeps 164 lines with no added line.
+
 Railmenus2 records one ceiling, re-derived with `wc -l`: `ui/js/Menu.js` 297 to 335 for the rail
 rows living in INVENTORY with kinds R (Mount, Open, Unmount, Eject, Rename, Edit address, Remove
 from Network, Remove from Favorites), the rail availability and the hidden-check skip, plus the New

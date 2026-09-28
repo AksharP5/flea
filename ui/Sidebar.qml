@@ -130,19 +130,22 @@ Item {
     // The host keeps its own copy of this text: it outlives this rail, so a rail unload
     // mid-mount leaves the mount's labels and dedup exactly where they were. Pushed only
     // after the FileView loaded, so a reveal never blanks the host with an unread "".
+    // Never builds the host: the window orders it after the first rows, and a press below
+    // builds it on demand. Pushed again on arrival, so a host built after this read still gets it.
     function pushBookmarks() {
-        if (!root.bookmarksReady) return
-        var service = root.navigationPane ? root.navigationPane.ensureNetworkService() : root.service
-        if (service) service.bookmarksText = bookmarksFile.text()
+        if (!root.bookmarksReady || !root.service) return
+        root.service.bookmarksText = bookmarksFile.text()
     }
 
     // The window-long poll runs while a rail is loaded; arrival waits until the pane's overlay parent is bound.
+    // The arrival never builds the host: ui/WindowBody.qml orders it after the primary pane's
+    // first rows, so the gio spawn and mountinfo read land off the first listing's turn.
     Component.onCompleted: Qt.callLater(root.meetHost)
-    function meetHost() { if (root.navigationPane) root.navigationPane.ensureNetworkService(); root.arrive() }
+    function meetHost() { root.arrive() }
     // Arrival counts whenever the service appears, so a host built after this rail still starts the poll.
     property bool arrived: false
     function arrive() { if (root.arrived || !root.service) return; root.arrived = true; root.service.railArrived() }
-    onServiceChanged: root.arrive()
+    onServiceChanged: { root.arrive(); root.pushBookmarks() }
     // Departure hands the timer back to a flight, if any, and the last listing stands while it is off.
     Component.onDestruction: { if (root.service && root.arrived) root.service.railLeft() }
 
@@ -242,6 +245,14 @@ Item {
         function onRailChosen(action, key) { root.releaseChosen(action, key) }
     }
 
+    // Built on demand outside the launch path: a favourite or phone row pressed before the
+    // window-long host exists builds it on that press rather than refusing.
+    function networkHost() {
+        if (root.service) return root.service
+        if (root.navigationPane) return root.navigationPane.ensureNetworkService()
+        return null
+    }
+
     // A favourite's path is already real and opens directly; a share or a volume may need its Service.
     function openFavourite(index) {
         var entry = root.userFavouriteEntries[index]
@@ -249,7 +260,8 @@ Item {
         var error = Places.recordError(entry.original)
         if (error) { root.message("Could not open " + entry.label + " · " + error, true); return }
         if (entry.path.indexOf("://") >= 0 && entry.path.indexOf("file://") !== 0) {
-            root.service.openChildShare(entry.path, entry.label, root.navigationPane)
+            var host = root.networkHost()
+            if (host) host.openChildShare(entry.path, entry.label, root.navigationPane)
         } else {
             root.opened(entry.path.indexOf("file://") === 0 ? Mounts.decodePath(entry.path.substring(7)) : entry.path)
         }
@@ -267,8 +279,8 @@ Item {
         if (rest < root.networkEntries.length) root.service.activate(rest, root.navigationPane)
         // The Photos row walks the device's DCIM through the same mount-and-resolve leg a
         // phone rides; a phone itself mounts, resolves and opens the way a share does.
-        else if (entry.kind === "photos") root.service.openPhotos(entry.uri, entry.mounted, entry.deviceLabel, root.navigationPane)
-        else if (entry.kind === "phone") root.service.openShare(entry.uri, entry.mounted, entry.label, false, { origin: root.navigationPane })
+        else if (entry.kind === "photos") { var photoHost = root.networkHost(); if (photoHost) photoHost.openPhotos(entry.uri, entry.mounted, entry.deviceLabel, root.navigationPane) }
+        else if (entry.kind === "phone") { var phoneHost = root.networkHost(); if (phoneHost) phoneHost.openShare(entry.uri, entry.mounted, entry.label, false, { origin: root.navigationPane }) }
         else devices.activate(rest - root.networkEntries.length)
     }
 
@@ -277,7 +289,8 @@ Item {
     // Its Mount and Open rows are the row's own activation, resolved by key because the poll renumbers.
     function openPhone(key) {
         var e = phones.entries[Mounts.rowByKey(phones.entries, key)]
-        if (e) root.service.openShare(e.uri, e.mounted, e.label, false, { origin: root.navigationPane })
+        var host = e ? root.networkHost() : null
+        if (e && host) host.openShare(e.uri, e.mounted, e.label, false, { origin: root.navigationPane })
     }
 
     // Network only: neither a favourite nor a device has a bookmark line of its own shape for

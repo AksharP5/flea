@@ -108,6 +108,28 @@ Rectangle {
         if (!networkHost.active) networkHost.active = true
         return networkHost.item
     }
+    // The host's arrival spawns gio and reads mountinfo, which can land in the same event-loop
+    // turn as the primary pane's first listing reply. It waits for those first rows instead:
+    // rowsLanded clears listInFlight, and a failed listing clears it too. The fallback covers a
+    // listing that never answers at all, so its window still gets NETWORK rows and eject marks.
+    property bool networkHostOrdered: false
+    readonly property int networkHostFallbackMs: 2000
+    function orderNetworkHost() {
+        if (view.networkHostOrdered) return
+        view.networkHostOrdered = true
+        view.ensureNetworkService()
+    }
+    Connections {
+        target: primaryPane
+        function onListInFlightChanged() { if (!primaryPane.listInFlight) view.orderNetworkHost() }
+    }
+    Timer {
+        id: networkHostFallback
+        interval: view.networkHostFallbackMs
+        running: !view.networkHostOrdered
+        repeat: false
+        onTriggered: view.orderNetworkHost()
+    }
 
     // The canvas's own top chrome: where you are on the left, how you are looking at it on
     // the right. The path lives here, which is why the status bar below carries counts instead.
