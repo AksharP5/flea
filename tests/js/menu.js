@@ -78,10 +78,13 @@ function run(check) {
     var legacyFav = { group: "favourite", kind: "favourite" }
     check("a favourite with the Places menu off is INVENTORY's own row, never a bare Remove",
           railLabels(Menu.railEntries(legacyFav)), "Remove from Favorites")
+    var openTabSpec = Menu.INVENTORY.filter(function (r) { return r[0] === "openTab" })[0]
+    var shelfSpec = Menu.INVENTORY.filter(function (r) { return r[0] === "shelf" })[0]
+    check("New tab keeps its own label", openTabSpec[1], "New tab")
     check("New tab's mark is real, not the silent file fallback",
-          Icons.pathFor("plus") === Icons.pathFor("file"), false)
+          Icons.pathFor(openTabSpec[2]) === Icons.pathFor("file"), false)
     check("Add to shelf draws the shelf's own cut glyph, not the file fallback",
-          Icons.pathFor("shelf") === Icons.pathFor("file"), false)
+          Icons.pathFor(shelfSpec[2]) === Icons.pathFor("file"), false)
     var all = Menu.listingEntries(state({ hiddenActions: [] }))
     check("stored delete id reaches permanent deletion action", entry(all, "deletePermanently").id, "delete")
     check("all optional file controls exist", ["openWith", "moveTo", "copyTo", "properties", "permissions", "copypath", "openTerminal"].every(function (a) { return !!entry(all, a).action }), true)

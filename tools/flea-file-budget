@@ -41,6 +41,7 @@ src/uistore.rs 483
 src/vulkan.rs 620
 tests/js/focus.js 407
 tests/js/mounts.js 383
+tests/js/network.js 305
 tests/js/ops.js 390
 tests/js/status.js 354
 ui/Backend.qml 435

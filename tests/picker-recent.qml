@@ -3,7 +3,8 @@ import Quickshell
 import Quickshell.Io
 import "flea" as Flea
 
-// An absent history answers no rows with no warning on either read; the log check is tests/picker-recent.sh.
+// An absent history answers no rows with no warning on either read, a directory answers no
+// rows with one warning; the log check is tests/picker-recent.sh.
 ShellRoot {
     id: root
     readonly property string home: Quickshell.env("HOME")
@@ -64,6 +65,19 @@ ShellRoot {
         function () { return root.refreshed === root.before + 1 },
         function () {
             root.check("a present history lists its bookmarks", recents.paths, [root.home + "/new.png", root.home + "/old.txt"])
+            writer.command = ["sh", "-c", "rm -f \"$1\"; mkdir -p \"$1\"", "sh", root.xbel]
+            writer.running = true
+            return true
+        },
+        function () { return !writer.running },
+        function () {
+            root.before = root.refreshed
+            recents.refresh()
+            return true
+        },
+        function () { return root.refreshed === root.before + 1 },
+        function () {
+            root.check("a history path that is a directory answers no rows", recents.paths, [])
             console.log("picker-recent: " + root.checks + " checks, " + root.failures + " failed")
             Qt.exit(root.failures === 0 ? 0 : 1)
             return true

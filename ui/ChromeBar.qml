@@ -360,8 +360,7 @@ Item {
             onActiveFocusChanged: if (!activeFocus && root.editing) root.closeEdit()
         }
 
-        // The Jump board's dropdown, which places itself flush under this field and at its width.
-        // The Loader fills the path slot, so the jump still places itself from its parent.
+        // The Jump board's dropdown, flush under this field at its width from the path slot its Loader fills.
         Loader {
             id: jumpLoader
             anchors.fill: parent

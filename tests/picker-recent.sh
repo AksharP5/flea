@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# An absent recently-used.xbel answers no rows with no warning; a present one lists its bookmarks.
+# An absent recently-used.xbel answers no rows with no warning, a present one lists its bookmarks, and a directory answers no rows with one warning.
 set -u
 . "$(dirname "$0")/../tools/flea-sandbox-guard"
 cd "$(dirname "$0")/.." || exit 1
@@ -37,7 +37,7 @@ for _ in $(seq 1 $((limit_seconds * 10))); do
     sleep 0.1
 done
 grep -E ' (ok  |FAIL) |picker-recent:|ERROR|is not a type|Cannot assign|TypeError' "$log" | sed 's/^.*scene[^:]*: //' | uniq
-# Sample input, the last line: 'picker-recent: 4 checks, 0 failed'
+# Sample input, the last line: 'picker-recent: 5 checks, 0 failed'
 tally=$(grep -o 'picker-recent: [0-9]* checks, [0-9]* failed' "$log" | tail -1)
 [ -n "$tally" ] || { echo "FAIL the harness reported no tally, so it did not run to the end; its log ends:"; tail -20 "$log"; exit 1; }
 # The warning this unit removes: Qt opening the absent file itself, once per read.
@@ -46,6 +46,9 @@ if grep -qi 'failed to open file.*recently-used.xbel' "$log"; then
     grep -i 'failed to open file' "$log" | head -5
     exit 1
 fi
+# The directory read warns once; the two absent reads stay quiet.
+warn_count=$(grep -c 'PickerRecent: could not read' "$log" || true)
+[ "$warn_count" = "1" ] || { echo "FAIL expected exactly one PickerRecent warning, got $warn_count"; grep 'PickerRecent: could not read' "$log" | head -5; exit 1; }
 case "$tally" in
     *" 0 failed") exit 0 ;;
     *) exit 1 ;;

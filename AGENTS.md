@@ -2577,8 +2577,11 @@ rows living in INVENTORY with kinds R (Mount, Open, Unmount, Eject, Rename, Edit
 from Network, Remove from Favorites), the rail availability and the hidden-check skip, plus the New
 tab and shelf glyph rows. `ui/js/Mounts.js` falls 289 to 250, over the 200 soft budget and under
 the 300 hard cap, for the table-driven railMenu/rowMenu; `ui/js/RailMenu.js` stands at 127 inside both budgets for the
-INVENTORY favourite row and the generic Open release; `ui/MenuRow.qml` stands at 307 inside the
+INVENTORY favourite row and the generic Open release; `ui/MenuRow.qml` stands at 306 inside the
 hard cap for the compact removal; `ui/ContextMenu.qml` stands at 577 inside its recorded 578.
+
+Fixr3r3 records one ceiling, re-derived with `wc -l`: `tests/js/network.js` 300 to 305 for the
+volume shape offering both Unmount and Eject and the eject-first release check.
 
 ## The key table is generated
 
@@ -5664,9 +5667,8 @@ and open a stick somebody only meant to ask about.
 ### m raises the listing's menu too, under the cursor row
 
 `m` is one action, `menu`, and `ui/js/Focus.js` routes it by focus view. In the rail
-`ui/js/RailKeys.js` `act` calls `raiseMenu`, which asks `Mounts.rowMenu` and says
-`<label> has nothing to eject or unmount.` over a row with no
-release. In the listing `act`'s `menu` case calls `ui/Pane.qml` `openCursorMenu`, whose body is
+`ui/js/RailKeys.js` `act` calls `Mounts.raiseMenu`, which opens the rail menu whenever `Mounts.rowMenu` has rows and says
+`<label> has nothing to eject or unmount.` only when it has none. In the listing `act`'s `menu` case calls `ui/Pane.qml` `openCursorMenu`, whose body is
 `ui/js/Menu.js` `openAtCursor`: it scrolls
 the cursor row into view (a wheel scroll in the grid can leave it off screen), opens the one
 `ContextMenu` at that delegate's bottom-left through `openAt`, and answers whether a delegate was
@@ -6238,7 +6240,7 @@ Repeater keeps every row instantiated, so this just indexes into whichever group
 its own call, and proves that a right click opens `Open|-|Unmount|-|Rename|Edit address|-|Remove
 from Network` drawing `folder-open|-|drive|-|rename|sliders|-|minus`
 without unmounting anything, that Escape closes it with nothing run, that choosing the Unmount row
-unmounts and messages "Unmounted \<label\>.", that a favourite opens no menu at all, and that the
+unmounts and messages "Unmounted \<label\>.", that a favourite opens Remove from Favorites, and that the
 list still takes keys afterwards, which is the focus regression the second-instance bisection found.
 
 ### PR #21: rename and remove a saved place, and one rail row per share

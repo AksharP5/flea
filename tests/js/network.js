@@ -170,6 +170,11 @@ function run(check) {
     check("but it has nothing to release, so Ctrl+E still says so", Eject.releaseFromRows(Mounts.railMenu(saved)), "")
     check("a removable volume's menu is untouched", labels(Mounts.rowMenu(volume)), "Open|Eject")
     check("and Ctrl+E picks Eject out of it", Eject.releaseFromRows(Mounts.railMenu(volume)), "eject")
+    // With showUnmounted on a removable volume offers both releases, and Ctrl+E takes Eject first.
+    var bothVolume = { path: "/run/media/gm/128GB", label: "128GB", group: "device", kind: "volume", device: "/dev/sda1", mounted: true, removable: true, volumeMenu: true }
+    function entries(rows) { return rows.map(function (r) { return r.separator ? "-" : r.label }).join("|") }
+    check("a volume offering both releases draws Open, Unmount and Eject", entries(Mounts.rowMenu(bothVolume)), "Open|-|Unmount|Eject")
+    check("and Ctrl+E picks eject over unmountVolume", Eject.releaseFromRows(Mounts.railMenu(bothVolume)), "eject")
     check("a favourite offers INVENTORY's own Remove from Favorites", labels(Mounts.rowMenu(favourite)), "Remove from Favorites")
     check("no entry at all offers nothing rather than throwing", Mounts.rowMenu(null).length, 0)
     check("Remove from Network draws the minus mark, because forgetting a place trashes nothing",
