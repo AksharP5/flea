@@ -82,7 +82,7 @@ for f in reds:
         fail('missed its red fixture ' + os.path.basename(f))
 for f in cleans:
     found, broken = blocks(f)
-    if broken or any(mixed(members) for _, members in found):
+    if broken or not found or any(mixed(members) for _, members in found):
         fail('misread its clean fixture ' + os.path.basename(f))
 for f in brokens:
     if not blocks(f)[1]:
