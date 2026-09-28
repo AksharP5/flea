@@ -150,10 +150,7 @@ function sameEntry(x, y) {
 
 // Sample input: one rail entry as ui/DeviceMounts.qml and ui/NetworkMounts.qml build them,
 // {label:"128GB", group:"device", kind:"volume", device:"/dev/sda1", mounted:true, removable:true}.
-// Every rail row lives in ui/js/Menu.js INVENTORY with kinds R and is built with the same separator
-// rule as the listing menu, so a group change draws the same 10 px separator. Open runs the row's
-// own activation; Mount and Unmount never meet. gio's -f is offered nowhere: forcing an unmount
-// over an open write is how data is lost.
+// Rows come from ui/js/Menu.js kind R; gio's -f is offered nowhere, since forcing an unmount over an open write loses data.
 function railMenu(entry) {
     if (!entry)
         return []
@@ -168,9 +165,7 @@ function addressMountCovers(liveUri, savedUri) {
         && saved.length > live.length && saved.indexOf(live) === 0
 }
 
-// What the rail's own right click opens: the table above, which already carries the saved
-// place's own rows with the same separators. ui/js/Eject.js reads railMenu and never this, so
-// Ctrl+E still refuses an unmounted row.
+// The rail's right click opens railMenu's rows; ui/js/Eject.js reads railMenu too, so Ctrl+E refuses an unmounted row.
 function rowMenu(entry) {
     return railMenu(entry)
 }

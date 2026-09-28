@@ -86,8 +86,7 @@ function release(action, key, devices, mounts, sidebar) {
         else devices.activate(row)
         return
     }
-    // Open runs the row's own activation: a volume mounts and opens, a share resolves and opens,
-    // a phone mounts and opens, exactly what the row's click does.
+    // Open is the row's own click: a volume or phone mounts and opens, a share resolves and opens.
     if (action === "open") {
         var volume = Mounts.rowByKey(sidebar.deviceEntries, key)
         if (volume >= 0) {
