@@ -34,7 +34,7 @@ pub struct FsInfo {
     inflight: HashMap<PathBuf, (Instant, u64)>,
     // Mount roots asked for again while their statfs was busy; the folder on screen is read when it lands.
     waiting: HashSet<PathBuf>,
-    // The number the next statfs takes.
+    // The number of the last statfs started; the next one takes one more.
     seq: u64,
 }
 
