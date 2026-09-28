@@ -19,7 +19,9 @@ missing ui/NetworkMounts.qml '|| bridge.flow.waiter'
 missing ui/WindowBody.qml 'NetworkHostGate'
 have ui/WindowBody.qml 'id: networkHost'
 # Sample input: "    Flea.NetworkMounts {" directly above "        id: networkHost"; no Loader may wrap it again.
-grep -B1 'id: networkHost$' "$tree/ui/WindowBody.qml" | head -n 1 | grep -q 'Flea.NetworkMounts {$' || fail 'ui/WindowBody.qml networkHost is not a plain Flea.NetworkMounts child'
+grep -B1 '^        id: networkHost$' "$tree/ui/WindowBody.qml" | head -n 1 | grep -q '^    Flea.NetworkMounts {$' || fail 'ui/WindowBody.qml networkHost is not a plain Flea.NetworkMounts child'
+stale=$(grep -rnE 'networkHost\.(item|active|status)' "$tree/ui" --include='*.qml' --include='*.js' || true)
+[ -z "$stale" ] || fail "a Loader read of the plain networkHost remains: $stale"
 command -v qs >/dev/null 2>&1 || { printf 'lazy-objects: no qs here, live halves not run\n'; exit 0; }
 test_root="$FIXTURE_ROOT/flea-lazy-objects-$$"
 sandbox_make "$test_root"
