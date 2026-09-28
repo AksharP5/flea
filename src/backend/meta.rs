@@ -56,7 +56,7 @@ fn stat_range_with(
     for i in start..end {
         out.push(cached_or(base, l, i, &stat));
         let elapsed_ms = t.elapsed().as_secs_f64() * 1000.0;
-        if elapsed_ms >= slow_ms && end - (i + 1) > 1 {
+        if elapsed_ms >= slow_ms && end - (i + 1) > 1 && crate::backend::listing::threaded_for(l.fs_magic) {
             out.extend(stat_parallel_with(base, l, i + 1, end, &stat));
             break;
         }
@@ -352,6 +352,40 @@ mod tests {
         let (metas, _) = stat_range_with(d.path(), &l, 0, 16, SLOW_PASS_MS, slow);
         assert_eq!((metas.len(), metas[0].size, metas[15].size), (16, 0, 15));
         assert!(seen_slow.lock().unwrap().len() > 1, "a slow pass must share the remainder across threads");
+    }
+
+    #[test]
+    fn a_slow_vfat_pass_stays_serial_while_a_slow_local_pass_threads() {
+        use std::collections::HashSet;
+        use std::sync::{Arc, Mutex};
+        let d = TestDir::new("statfatserial");
+        let mk = |magic: Option<i64>| {
+            let mut l = Listing::new();
+            for n in 0..16 {
+                l.push(&format!("f{:02}", n), false);
+            }
+            l.fs_magic = magic;
+            l
+        };
+        let run = |magic: Option<i64>| {
+            let seen: Arc<Mutex<HashSet<std::thread::ThreadId>>> = Arc::new(Mutex::new(HashSet::new()));
+            let slow = {
+                let seen = Arc::clone(&seen);
+                move |_: &Path, name: &str| {
+                    seen.lock().unwrap().insert(std::thread::current().id());
+                    std::thread::sleep(std::time::Duration::from_millis(25));
+                    Meta { size: name[1..].parse().unwrap_or(0), mtime: 1, mode: 0o100644, target_is_dir: false, target: String::new(), dev: 0 }
+                }
+            };
+            let (metas, _) = stat_range_with(d.path(), &mk(magic), 0, 16, SLOW_PASS_MS, slow);
+            assert_eq!((metas.len(), metas[0].size, metas[15].size), (16, 0, 15));
+            let n = seen.lock().unwrap().len();
+            n
+        };
+        assert_eq!(run(Some(0x4D44)), 1, "a slow vfat pass must not pay for threads");
+        assert_eq!(run(Some(0x2011BAB0)), 1, "a slow exfat pass must not pay for threads");
+        assert!(run(Some(0xEF53)) > 1, "a slow ext4 pass keeps today's threads");
+        assert!(run(Some(0xFF534D42)) > 1, "a slow cifs pass keeps today's threads");
     }
 
     #[test]

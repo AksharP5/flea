@@ -21,6 +21,10 @@ pub struct GioTarget {
 // Enough that a normal directory never reallocates its way up from nothing.
 const NAME_RESERVE_BYTES: usize = 1 << 20;
 const SPAN_RESERVE: usize = 4096;
+// vfat's statfs magic, see linux/magic.h MSDOS_SUPER_MAGIC.
+const MSDOS_SUPER_MAGIC: i64 = 0x4D44;
+// exfat's statfs magic, see linux/magic.h EXFAT_SUPER_MAGIC.
+const EXFAT_SUPER_MAGIC: i64 = 0x2011BAB0;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Span {
@@ -39,6 +43,8 @@ pub struct Listing {
     pub gio_targets: Vec<GioTarget>,
     // The directory's device once per listing; every cached row takes this dev.
     pub base_dev: u64,
+    // One statfs f_type per listing, so every window reuses it instead of adding one.
+    pub fs_magic: Option<i64>,
 }
 
 impl Listing {
@@ -47,7 +53,7 @@ impl Listing {
         names.reserve(NAME_RESERVE_BYTES);
         let mut spans = Vec::new();
         spans.reserve(SPAN_RESERVE);
-        Listing { names, spans, gio_meta: Vec::new(), gio_targets: Vec::new(), base_dev: 0 }
+        Listing { names, spans, gio_meta: Vec::new(), gio_targets: Vec::new(), base_dev: 0, fs_magic: None }
     }
 
     // corner: u32 offsets cap the arena at 4 GiB of names, see AGENTS.md.
@@ -110,6 +116,11 @@ fn relative_name<'a>(base: &Path, path: &'a Path) -> Option<&'a str> {
     let relative = path.strip_prefix(base).ok()?;
     if relative.components().any(|part| !matches!(part, Component::Normal(_))) { return None; }
     relative.to_str()
+}
+
+// Sample input: Some(0x4D44) answers false, Some(0x65735546) and None answer true.
+pub fn threaded_for(magic: Option<i64>) -> bool {
+    !matches!(magic, Some(m) if m == MSDOS_SUPER_MAGIC || m == EXFAT_SUPER_MAGIC)
 }
 
 #[cfg(test)]
@@ -188,5 +199,17 @@ mod tests {
         }
         assert_eq!(l.len(), 1000);
         assert_eq!(l.name(999), "file_999.txt");
+    }
+
+    #[test]
+    fn fat_magic_stays_serial_while_fuse_cifs_and_unknown_thread() {
+        assert!(!threaded_for(Some(0x4D44)), "vfat stays serial");
+        assert!(!threaded_for(Some(0x2011BAB0)), "exfat stays serial");
+        assert!(threaded_for(Some(0x65735546)), "fuse keeps today's threads");
+        assert!(threaded_for(Some(0xFF534D42)), "cifs keeps today's threads");
+        assert!(threaded_for(Some(0xFE534D42)), "smb2 keeps today's threads");
+        assert!(threaded_for(Some(0x6969)), "nfs keeps today's threads");
+        assert!(threaded_for(Some(0xEF53)), "ext4 keeps today's threads");
+        assert!(threaded_for(None), "unknown keeps today's threads");
     }
 }

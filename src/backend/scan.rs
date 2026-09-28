@@ -24,6 +24,7 @@ pub fn scan_with(
     // One prefix check: local and USB paths take exactly today's code past it.
     if super::gvfslist::is_gvfs(std::path::Path::new(path)) {
         // The launcher's head start on this exact path; anything else lists as before.
+        // A gvfs listing takes no statfs: FUSE stalls on it when gvfsd-fuse is down, and it threads like today.
         if let Some(found) = prefetch.as_ref().and_then(|p| crate::gvfsprefetch::adopt_matching(path, hidden, p)) {
             return Ok(found);
         }
@@ -51,6 +52,10 @@ pub fn scan_with(
         let index = l.len();
         l.push(&name, file_type.is_some_and(|kind| kind.is_dir()));
         l.spans[index].is_symlink = file_type.is_some_and(|kind| kind.is_symlink());
+    }
+    // One statfs per local listing, reused by every window; gvfs and a failure thread like today.
+    if !super::gvfslist::is_gvfs(std::path::Path::new(path)) {
+        l.fs_magic = crate::backend::fsinfo::magic_of(std::path::Path::new(path));
     }
     Ok((l, t.elapsed().as_secs_f64() * 1000.0))
 }

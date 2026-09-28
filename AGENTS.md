@@ -2611,6 +2611,13 @@ write 1, wait 0, write 2, wait 1, then fsync).
 The review fix after it takes `src/backend/durable.rs` to 422 (EIO kept for tests only) and
 `src/backend/durable_tests.rs` to 732 (the three-slice stop at the failing wait, the errno kind check).
 
+P036statfs records one ceiling, re-derived with `wc -l`: `src/backend/meta.rs` 399 to
+433 for the vfat/exfat serial gate (the gated parallel branch and the slow-pass test that a
+slow vfat/exfat pass stays on one thread while slow ext4/cifs still thread).
+`src/backend/listing.rs` stands at 214 inside the soft budget for the per-listing `fs_magic`
+with its `threaded_for` decision and test; `src/backend/scan.rs` stands at 163 inside the
+soft budget for the one statfs per listing every window reuses.
+
 ## The key table is generated
 
 `keys.toml` at the repository root is the single source of truth for every binding.
