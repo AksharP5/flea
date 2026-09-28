@@ -504,3 +504,17 @@ fn a_cancelled_folder_copy_forgets_the_tree_it_removed() {
     assert!(done.note.is_empty(), "a removed tree is not a confirmation failure: {:?}", done.note);
     assert!(done.ok, "the file that landed is confirmed");
 }
+
+#[test]
+fn duplicate_classifies_the_existing_parent_not_the_missing_name() {
+    test_reset();
+    let d = TestDir::new("durable-dup-parent");
+    let src = d.file("a.txt", "body");
+    // Only the missing name is marked, so probing it answers durable and probing its parent does not.
+    test_mark_durable(&d.join("a copy.txt"));
+    test_set_fail_dirs(true);
+    let (outcome, _) = crate::backend::ops::duplicate(&src);
+    test_set_fail_dirs(false);
+    test_reset();
+    assert!(outcome.is_ok(), "the parent was classified, so no folder flush ran to fail: {:?}", outcome.err().map(|e| e.msg));
+}

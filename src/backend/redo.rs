@@ -214,6 +214,26 @@ mod tests {
     }
 
     #[test]
+    fn redo_classifies_the_existing_parent_not_the_missing_name() {
+        let sandbox = TestDir::new("redo-parent");
+        let original = sandbox.file("original", "payload");
+        let (result, steps) = ops::duplicate(&original);
+        let copy = result.unwrap();
+        let mut journal = Journal::new();
+        journal.push(Entry { op: "duplicate".into(), steps });
+        assert_eq!(journal.undo().unwrap(), "duplicate");
+        assert!(!copy.exists());
+        // Only the missing name is marked, so probing it answers durable and probing its parent does not.
+        crate::backend::durable::test_reset();
+        crate::backend::durable::test_mark_durable(&copy);
+        crate::backend::durable::test_set_fail_dirs(true);
+        let redone = redo(&mut journal);
+        crate::backend::durable::test_set_fail_dirs(false);
+        crate::backend::durable::test_reset();
+        assert!(redone.is_ok(), "the parent was classified, so no folder flush ran to fail: {:?}", redone.err().map(|e| e.msg));
+    }
+
+    #[test]
     fn copy_rename_chain_survives_two_complete_undo_redo_cycles() {
         let sandbox = TestDir::new("redo-chain");
         let original = sandbox.file("original", "keep this payload");

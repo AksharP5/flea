@@ -13,6 +13,8 @@ const RENAME_NOREPLACE: u32 = 1;
 const EINVAL: i32 = 22;
 // GVFS answers a WebDAV rename with EIO instead of refusing it outright.
 const EIO: i32 = 5;
+// The error a copy-fallback rename answers when its folder would not confirm and the copy went back.
+pub const RENAME_UNCONFIRMED: &str = "the drive did not confirm the folder, so the rename was undone";
 const EXDEV: i32 = 18;
 // The kind a half-succeeded rename answers; ui/js/Errors.js words it and ui/PaneWire.qml refreshes on it.
 pub(crate) const KEPT: &str = "rename-kept";
@@ -94,8 +96,9 @@ fn needs_fuse_fallback_in(from: &Path, error: &io::Error, mountinfo: &str) -> bo
 pub(crate) fn copy_then_remove(from: &Path, to: &Path) -> Result<(), FleaError> {
     let cancel = AtomicBool::new(false);
     let mut sink = |_: u64, _: u64| {};
-    // corner: megafs and rclone, the only fallbacks, are never durable destinations, so nothing here is flushed.
-    let mut progress = Progress { cancel: &cancel, on_bytes: &mut sink, partial: None, tree: None, manifest: None, durability: None };
+    // EXDEV and a GVFS WebDAV rename land here too, and a dav share is a durable destination.
+    let mut durability = crate::backend::durable::Durability::begin(to.parent().unwrap_or(from));
+    let mut progress = Progress { cancel: &cancel, on_bytes: &mut sink, partial: None, tree: None, manifest: None, durability: Some(&mut durability) };
     if let Err(error) = copy_any(from, to, &mut progress) {
         if progress.partial.as_deref() == Some(to) {
             if let Err(cleanup) = remove_any(to) {
@@ -109,6 +112,14 @@ pub(crate) fn copy_then_remove(from: &Path, to: &Path) -> Result<(), FleaError> 
         return Err(rename_error(error));
     }
     drop(progress);
+    // The copy landed but its folder is unconfirmed; the landed copy goes back so the tree is as before.
+    if durability.flush_dirs().is_err() {
+        let msg = match remove_any(to) {
+            Ok(()) => RENAME_UNCONFIRMED.to_string(),
+            Err(cleanup) => format!("{}; the landed copy could not be removed: {}", crate::backend::durable::DIR_UNCONFIRMED, cleanup.msg),
+        };
+        return Err(FleaError { where_: "rename".to_string(), path: to.to_string_lossy().to_string(), msg });
+    }
     match remove_any(from) {
         Ok(()) => Ok(()),
         Err(error) => Err(after_failed_removal(from, to, error)),
@@ -356,6 +367,25 @@ mod tests {
         );
         assert_eq!(std::fs::read_link(&source).unwrap(), payload);
         assert!(target.symlink_metadata().is_err(), "the copy is taken back rather than left as an unjournalled duplicate");
+    }
+    #[test]
+    fn a_dir_flush_failure_takes_the_landed_copy_back() {
+        let d = TestDir::new("copyrenameflush");
+        let source = d.dir("source");
+        std::fs::write(source.join("inside.txt"), "body").unwrap();
+        let target = d.join("target");
+        d.assert_contains(&source);
+        d.assert_contains(&target);
+        crate::backend::durable::test_reset();
+        crate::backend::durable::test_mark_durable(d.path());
+        crate::backend::durable::test_set_fail_dirs(true);
+        let error = copy_then_remove(&source, &target).expect_err("an unconfirmed folder takes its copy back");
+        crate::backend::durable::test_set_fail_dirs(false);
+        crate::backend::durable::test_reset();
+        assert_eq!(error.where_, "rename");
+        assert_eq!(error.msg, RENAME_UNCONFIRMED, "nothing stays copied, so the error never says copied");
+        assert!(source.join("inside.txt").is_file(), "the whole source stays");
+        assert!(!target.exists(), "the landed copy goes back so the tree is as before");
     }
     // A removal answering ENOENT after it took effect leaves the copy as the only whole name.
     #[test]

@@ -157,7 +157,7 @@ mod tests {
     // The shortest step waiter the test promises to catch, at twice GAP.
     const SLOWEST_CAUGHT: Duration = Duration::from_millis(10);
 
-    // How far one waiter's least overshoot moves between two sleeps GAP apart; load only ever adds delay, so the least of the runs is the waiter's own floor.
+    // How far one waiter's least overshoot moves between two sleeps GAP apart; load only delays an exact waiter, so its least run is its floor.
     fn overshoot_drift(wait: &dyn Fn(&[String]) -> bool) -> Duration {
         const NEAR_SLEEP: Duration = Duration::from_millis(30);
         // Nine runs a sleep, so at least one of them meets an idle scheduler even on a loaded builder.

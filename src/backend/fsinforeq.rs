@@ -361,12 +361,13 @@ mod tests {
         std::os::unix::fs::symlink(&target, &link).unwrap();
         let body = format!("1 0 0:30 / / rw - ext4 /dev/a rw\n30 1 0:9 / {} rw - cifs //nas/media rw\n", target.display());
         // A statfs that takes half a second, so an answer inside a quarter of one proves it ran on the worker.
-        let (mut fs, _rx, _) = counted(500, 7);
+        let (mut fs, rx, _) = counted(500, 7);
         let t = Instant::now();
         let (info, class) = fs.answer_in(&link, &body);
         assert!(t.elapsed() < Duration::from_millis(250), "no statfs ran on the loop, took {:?}", t.elapsed());
         assert_eq!(class, "network", "a symlink into a cifs mount is network, not local");
         assert!(info.is_none(), "its figures arrive on the worker, never blocked");
+        assert_eq!(next_done(&rx).info.map(|i| i.free), Some(7), "and the worker does report them");
     }
 
     #[test]

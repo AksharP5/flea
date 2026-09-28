@@ -366,6 +366,9 @@ mod tests {
             let mut l = build();
             crate::backend::metasort::sort_by_stat(&mut l, d.path(), by, false);
             assert_eq!((0..l.len()).map(|i| l.name(i)).collect::<Vec<_>>(), ["a.txt", "c.txt", "b.txt"]);
+            // The spans moved, so each row's figures must still be its own name's.
+            let figures: Vec<(u64, i64)> = (0..l.len()).map(|i| l.gio_for(i).map(|g| (g.size, g.mtime)).unwrap_or_default()).collect();
+            assert_eq!(figures, [(10, 100), (20, 200), (30, 300)], "the offset key follows its row through the sort");
         }
     }
 
@@ -383,7 +386,8 @@ mod tests {
         assert_eq!(calls.load(Ordering::SeqCst), 0, "no cached row may reach the stat function");
         assert_eq!((metas[0].size, metas[0].mode), (10, 0o100700));
         assert_eq!((metas[1].size, metas[1].mode), (4096, 0o40700));
-        assert_eq!((metas[2].target.as_str(), metas[2].dev), ("a.txt", l.base_dev));
+        let dev = std::os::unix::fs::MetadataExt::dev(&std::fs::metadata(d.path()).unwrap());
+        assert_eq!((metas[2].target.as_str(), metas[2].dev), ("a.txt", dev), "the directory's own device, stat'ed here");
         let all_calls = AtomicUsize::new(0);
         let (stats, _) = stat_all_with(d.path(), &l, |_: &Path, _: &str| {
             all_calls.fetch_add(1, Ordering::SeqCst);

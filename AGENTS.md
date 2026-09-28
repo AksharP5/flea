@@ -1751,7 +1751,8 @@ failure fails the check rather than passing it.
   A recent file stands for its folder only after that folder resolved, checked through `existing()` on
   the shared budget under its own mount key, so a wedged recent file costs its row and the recent rows
   after it, never the answer or the other two sources.
-  An open behind a slow zoxide draws the last ranking that answered in time, empty on a first-ever open.
+  An open behind a slow zoxide, its run still in flight or past its limit, draws the last ranking that
+  answered in time, empty on a first-ever open.
   A line with a slash in it, starting with `~`, or `.` or `..` alone, is typed as a path exactly as
   before the jump, and so is every line once Tab has completed it, so "Wo", Tab, Enter still opens
   `./Work`; so is a name that matches nothing. A name's Enter before the backend has answered is held
@@ -2557,6 +2558,10 @@ The fsinfo ask gate and the symlink class take `src/backend/fsinforeq.rs` from 3
 cap to a recorded 406: the `asked` gate and its test, the resolve that follows the raw mount
 check with its tests, and the one-statfs reader seam, each count re-derived with `wc -l`;
 `src/backend/extclass.rs` stands at 291 with `resolved` and `classify_in`.
+
+Advloop round 3 on the 0.3.6 fixes moves `src/backend/fsinforeq.rs` 406 to 407 for the assertion that the
+worker reports a symlinked share's figures, and records `src/backend/jump_tests.rs` at 402 for the tests that pin the
+zoxide keep guard and the reaped slot, each re-derived with `wc -l`.
 
 ## The key table is generated
 

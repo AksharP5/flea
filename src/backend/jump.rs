@@ -112,10 +112,12 @@ fn zoxide(program: &str, limit: Duration) -> Vec<(String, f64)> {
         let _ = child.wait();
         ZOXIDE_RUNNING.store(false, Ordering::SeqCst);
     });
-    let ranked = ranked_paths(&String::from_utf8_lossy(&text.1), whole);
-    if text.0 {
-        *LAST_ZOXIDE.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = ranked.clone();
+    // A run past its limit draws the ranking that answered in time, as an open behind a run in flight does.
+    if !text.0 {
+        return last_ranking();
     }
+    let ranked = ranked_paths(&String::from_utf8_lossy(&text.1), whole);
+    *LAST_ZOXIDE.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = ranked.clone();
     ranked
 }
 

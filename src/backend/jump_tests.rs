@@ -54,6 +54,8 @@ fn zoxide_is_asked_for_every_folder_and_its_ranking_is_kept() {
 #[test]
 fn a_wedged_zoxide_is_ended_at_the_limit_and_draws_nothing() {
     let _turn = serial();
+    // A first-ever open, so no kept ranking stands in for the one that never came.
+    *LAST_ZOXIDE.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Vec::new();
     let dir = TestDir::new("jump-wedged");
     let fake = script(&dir, "zoxide", &format!("echo $$ > '{}/pid'; printf '/a\\n'; exec sleep 30", dir.path().display()));
     let started = Instant::now();
@@ -74,11 +76,13 @@ fn a_run_past_its_limit_keeps_the_ranking_that_answered_in_time() {
     let _turn = serial();
     let dir = TestDir::new("jump-keep");
     let full = script(&dir, "full", "printf '   2.0 /a\\n'");
-    let wedged = script(&dir, "wedged", "printf '   9.0 /b\\n'; exec sleep 30");
+    // Two rows, so a cut read would keep one: an empty or kept answer then comes from the limit, never from the cut.
+    let wedged = script(&dir, "wedged", "printf '   9.0 /b\\n   8.0 /c\\n'; exec sleep 30");
     assert_eq!(zoxide(&full, ZOXIDE_LIMIT), vec![("/a".to_string(), 2.0)], "a run inside its limit keeps its ranking");
     reaped();
-    assert!(zoxide(&wedged, Duration::from_millis(200)).is_empty(), "a run past its limit draws nothing");
-    assert_eq!(last_ranking(), vec![("/a".to_string(), 2.0)], "and never overwrites the ranking that answered in time");
+    assert_eq!(zoxide(&wedged, Duration::from_millis(200)), vec![("/a".to_string(), 2.0)], "a run past its limit draws the ranking that answered in time");
+    reaped();
+    assert_eq!(last_ranking(), vec![("/a".to_string(), 2.0)], "and never overwrites it");
     *LAST_ZOXIDE.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Vec::new();
 }
 
@@ -247,10 +251,11 @@ fn a_stuck_recent_file_returns_within_the_limit_with_the_other_sources() {
     // The good file sorts first, so its row is answered before the wedged check spends the budget.
     let recent = strings(&[&format!("{}/kept/note.txt", root), &format!("{}/stuckparent/stuck", root)]);
     let limit = Duration::from_millis(300);
+    let stuck_before = STUCK_RECENT_CALLS.load(Ordering::SeqCst);
     let started = Instant::now();
     let line = answer_checked(&fake, 11, &strings(&[&root]), &recent, limit, stuck_recent_check);
     assert!(started.elapsed() < STUCK_FOR, "the budget answers, took {:?}", started.elapsed());
-    assert!(STUCK_RECENT_CALLS.load(Ordering::SeqCst) >= 1, "the wedged file was reached, so the budget and not a pre-filter answered");
+    assert!(STUCK_RECENT_CALLS.load(Ordering::SeqCst) > stuck_before, "the wedged file was reached, so the budget and not a pre-filter answered");
     let expected = format!(r#"{{"t":"jumped","id":11,"favourites":["{}"],"zoxide":["{}/ranked"],"recent":["{}/kept"],"frecency":{{"{}/ranked":8}},"ms":"#, root, root, root, root);
     assert!(line.starts_with(&expected), "{}", line);
 }
