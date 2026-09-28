@@ -2649,6 +2649,13 @@ The 0.3.6 performance fixes, integrated, take `src/backend/gvfslist.rs` 538 to 5
 deadline and the one-script-per-lifetime exact-wait test) and `src/backend/durable.rs` 422 to 439 (the
 batched folder confirm the cross-device move uses), each re-derived with `wc -l`.
 
+R5mb moves one recorded ceiling, re-derived with `wc -l`: `src/backend/opsreq.rs` 467 to 477 for
+the regular-files-only batch gate with its same-thread single-item move. `src/backend/movebatch.rs`
+349 to 385 for the identity-checked source removal, the completing cancel close and the test-only
+force-copy seam, `src/backend/movebatch_tests.rs` 279 to 393 for the replacement, cancel and
+transfer-level cases, and `src/backend/undo.rs` 301 to 309 for the size and mtime the re-check
+reads, each inside its budget.
+
 ## The key table is generated
 
 `keys.toml` at the repository root is the single source of truth for every binding.

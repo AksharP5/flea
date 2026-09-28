@@ -10,12 +10,15 @@ pub struct ItemIdentity {
     dev: u64,
     ino: u64,
     kind: u32,
+    len: u64,
+    mtime: (i64, i64),
     changed: (i64, i64),
 }
 
 impl ItemIdentity {
     pub fn record(meta: &std::fs::Metadata) -> Self {
-        Self { dev: meta.dev(), ino: meta.ino(), kind: meta.mode() & 0o170000, changed: (meta.ctime(), meta.ctime_nsec()) }
+        Self { dev: meta.dev(), ino: meta.ino(), kind: meta.mode() & 0o170000, len: meta.len(),
+            mtime: (meta.mtime(), meta.mtime_nsec()), changed: (meta.ctime(), meta.ctime_nsec()) }
     }
     pub fn inspect(path: &std::path::Path) -> Result<Self, FleaError> {
         path.symlink_metadata().map(|meta| Self::record(&meta))
@@ -27,6 +30,11 @@ impl ItemIdentity {
     }
     pub fn same_item(&self, other: &Self) -> bool {
         self.dev == other.dev && self.ino == other.ino && self.kind == other.kind
+    }
+    // A batched move removes its source only while it still holds the bytes its copy took.
+    pub fn unchanged_for_move(&self, current: &Self) -> bool {
+        self.same_item(current) && self.len == current.len
+            && self.mtime == current.mtime && self.changed == current.changed
     }
 }
 

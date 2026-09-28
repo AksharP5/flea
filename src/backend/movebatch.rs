@@ -1,7 +1,4 @@
-// Cross-device moves in batches: each copy lands with its file fsync as today, but the
-// destination folders confirm once per batch instead of once per item. Same-filesystem
-// renames and replaces never enter a batch and run exactly as before.
-use crate::backend::collide::{cancelled, CANCELLED};
+// Cross-device file moves in batches: per-file fsyncs as today, one folder confirm per batch.
 use crate::backend::copyfile::{copy_any, remove_any, Progress};
 use crate::backend::durable::{fsync_dir, Durability, DIR_UNCONFIRMED};
 use crate::backend::opsreq::{OpMsg, PROGRESS_EVERY};
@@ -12,10 +9,44 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::Sender;
 use std::time::Instant;
 
-// 64 items keep one folder fsync per batch while bounding what a cancel must clean up.
+// 64 items keep one folder fsync per batch while bounding one unconfirmed batch.
 pub(crate) const BATCH_ITEMS: usize = 64;
 // rename(2) sets EXDEV when the two paths are on different filesystems, the one failure that means "copy instead".
 const EXDEV: i32 = 18;
+
+// Test builds only: force the copy path on one filesystem, so tests drive the batch without two mounts.
+#[cfg(test)]
+thread_local! {
+    static FORCE_COPY: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+#[cfg(test)]
+fn force_copy() -> bool {
+    FORCE_COPY.with(|v| v.get())
+}
+#[cfg(test)]
+pub(crate) fn test_set_force_copy(force: bool) {
+    FORCE_COPY.with(|v| v.set(force));
+}
+// Cleared on drop, so a failing test never leaks the copy path into the next one on its thread.
+#[cfg(test)]
+pub(crate) struct ForceCopyGuard;
+#[cfg(test)]
+impl ForceCopyGuard {
+    pub(crate) fn hold() -> Self {
+        test_set_force_copy(true);
+        ForceCopyGuard
+    }
+}
+#[cfg(test)]
+impl Drop for ForceCopyGuard {
+    fn drop(&mut self) {
+        test_set_force_copy(false);
+    }
+}
+#[cfg(not(test))]
+fn force_copy() -> bool {
+    false
+}
 
 // One landed copy waiting on its batch's folder confirm; the source is still whole.
 pub(crate) struct PendingMove {
@@ -29,7 +60,6 @@ pub(crate) struct PendingMove {
 
 pub(crate) struct MoveBatch {
     pending: Vec<PendingMove>,
-    parent: Option<PathBuf>,
 }
 
 // What one moving item did: answered now, or copied and waiting on its batch's confirm.
@@ -52,7 +82,7 @@ mod tests;
 
 impl MoveBatch {
     pub(crate) fn new() -> Self {
-        MoveBatch { pending: Vec::new(), parent: None }
+        MoveBatch { pending: Vec::new() }
     }
 
     pub(crate) fn is_empty(&self) -> bool {
@@ -64,21 +94,7 @@ impl MoveBatch {
         self.pending.len() >= BATCH_ITEMS
     }
 
-    // A batch holds one destination folder, so a move elsewhere closes it first.
-    pub(crate) fn folder_changed(&self, dst: &Path) -> bool {
-        if self.pending.is_empty() {
-            return false;
-        }
-        match (self.parent.as_deref(), dst.parent()) {
-            (Some(a), Some(b)) => a != b,
-            _ => true,
-        }
-    }
-
     pub(crate) fn push(&mut self, item: PendingMove) {
-        if self.parent.is_none() {
-            self.parent = item.dst.parent().map(Path::to_path_buf);
-        }
         self.pending.push(item);
     }
 }
@@ -149,6 +165,9 @@ pub(crate) fn land_move(
     durability: &mut Durability,
     batch: &mut MoveBatch,
 ) -> MoveOutcome {
+    if force_copy() {
+        return stage_copy(id, index, name, src, dst, source, cancel, tx, settled, steps, durability, batch);
+    }
     match crate::backend::renamecompat::rename_noreplace(src, dst) {
         Ok(()) => {
             // One rename rewrote two directory entries, so both folders are confirmed.
@@ -238,7 +257,85 @@ pub(crate) fn stage_copy(
     }
 }
 
-// A full batch, a moved-on folder, a failure or the end: confirm once, then remove each source.
+// A source edited or replaced while its copy waited on the batch: both names stay.
+pub(crate) const BOTH_KEPT: &str = "changed during the move; both kept";
+
+// A confirm the drive refused: every source stays whole and each copy journals as a partial.
+fn journal_unconfirmed(
+    batch: &mut MoveBatch,
+    id: usize,
+    tx: &Sender<OpMsg>,
+    steps: &mut Vec<Step>,
+) -> (CloseCounts, Vec<(PathBuf, ItemIdentity)>) {
+    let mut counts = CloseCounts::default();
+    let mut retry = Vec::new();
+    for item in batch.pending.drain(..) {
+        let mut err = FleaError {
+            where_: "move".to_string(),
+            path: item.dst.to_string_lossy().to_string(),
+            msg: DIR_UNCONFIRMED.to_string(),
+        };
+        let err = match journal_partial(&item.src, &item.dst, &item.source, item.manifest, steps, &mut err) {
+            Ok(()) => err,
+            Err(record) => record,
+        };
+        counts.failed += 1;
+        retry.push((item.src.clone(), item.source.clone()));
+        send_item(tx, id, item.index, &item.name, false, &err.msg);
+    }
+    (counts, retry)
+}
+
+// One staged copy becomes a move once its folder confirms, unless its source changed meanwhile.
+fn finish_item(
+    item: &PendingMove,
+    id: usize,
+    tx: &Sender<OpMsg>,
+    steps: &mut Vec<Step>,
+    durability: &mut Durability,
+    counts: &mut CloseCounts,
+    retry: &mut Vec<(PathBuf, ItemIdentity)>,
+) {
+    // A source that changed under its copy keeps both names; undo then only ever removes the copy.
+    if ItemIdentity::inspect(&item.src).is_ok_and(|current| !item.source.unchanged_for_move(&current)) {
+        match undo::copied(&item.src, &item.dst, item.source.clone()) {
+            Ok(step) => {
+                steps.push(step);
+                send_item(tx, id, item.index, &item.name, false, BOTH_KEPT);
+            }
+            Err(e) => send_item(tx, id, item.index, &item.name, false, &e.msg),
+        }
+        counts.failed += 1;
+        retry.push((item.src.clone(), item.source.clone()));
+        return;
+    }
+    match remove_any(&item.src) {
+        Ok(()) => {
+            if let Some(parent) = item.src.parent() {
+                durability.touch(parent);
+            }
+            match undo::moved(&item.src, &item.dst, item.source.clone()) {
+                Ok(step) => {
+                    steps.push(step);
+                    counts.ok += 1;
+                    send_item(tx, id, item.index, &item.name, true, "");
+                }
+                Err(e) => {
+                    counts.failed += 1;
+                    retry.push((item.src.clone(), item.source.clone()));
+                    send_item(tx, id, item.index, &item.name, false, &e.msg);
+                }
+            }
+        }
+        Err(e) => {
+            counts.failed += 1;
+            retry.push((item.src.clone(), item.source.clone()));
+            send_item(tx, id, item.index, &item.name, false, &e.msg);
+        }
+    }
+}
+
+// A full batch, a failure or the end: one folder confirm, then each source goes with a re-check.
 pub(crate) fn close_normal(
     batch: &mut MoveBatch,
     id: usize,
@@ -246,62 +343,22 @@ pub(crate) fn close_normal(
     steps: &mut Vec<Step>,
     durability: &mut Durability,
 ) -> (CloseCounts, Vec<(PathBuf, ItemIdentity)>) {
-    let mut counts = CloseCounts::default();
-    let mut retry = Vec::new();
     if batch.pending.is_empty() {
-        return (counts, retry);
+        return (CloseCounts::default(), Vec::new());
     }
     let dsts: Vec<PathBuf> = batch.pending.iter().map(|item| item.dst.clone()).collect();
     if confirm_batch(durability, &dsts).is_err() {
-        // Every source stays whole and every copy is journaled as a partial, as one_item does.
-        for item in batch.pending.drain(..) {
-            let mut err = FleaError {
-                where_: "move".to_string(),
-                path: item.dst.to_string_lossy().to_string(),
-                msg: DIR_UNCONFIRMED.to_string(),
-            };
-            let err = match journal_partial(&item.src, &item.dst, &item.source, item.manifest, steps, &mut err) {
-                Ok(()) => err,
-                Err(record) => record,
-            };
-            counts.failed += 1;
-            retry.push((item.src.clone(), item.source.clone()));
-            send_item(tx, id, item.index, &item.name, false, &err.msg);
-        }
-        batch.parent = None;
-        return (counts, retry);
+        return journal_unconfirmed(batch, id, tx, steps);
     }
+    let mut counts = CloseCounts::default();
+    let mut retry = Vec::new();
     for item in batch.pending.drain(..) {
-        match remove_any(&item.src) {
-            Ok(()) => {
-                if let Some(parent) = item.src.parent() {
-                    durability.touch(parent);
-                }
-                match undo::moved(&item.src, &item.dst, item.source.clone()) {
-                    Ok(step) => {
-                        steps.push(step);
-                        counts.ok += 1;
-                        send_item(tx, id, item.index, &item.name, true, "");
-                    }
-                    Err(e) => {
-                        counts.failed += 1;
-                        retry.push((item.src.clone(), item.source));
-                        send_item(tx, id, item.index, &item.name, false, &e.msg);
-                    }
-                }
-            }
-            Err(e) => {
-                counts.failed += 1;
-                retry.push((item.src.clone(), item.source));
-                send_item(tx, id, item.index, &item.name, false, &e.msg);
-            }
-        }
+        finish_item(&item, id, tx, steps, durability, &mut counts, &mut retry);
     }
-    batch.parent = None;
     (counts, retry)
 }
 
-// A cancel before the confirm removes what the batch copied and keeps every source whole.
+// A cancel completes what already copied: one confirm, then each source goes with a re-check.
 pub(crate) fn close_cancelled(
     batch: &mut MoveBatch,
     id: usize,
@@ -310,40 +367,19 @@ pub(crate) fn close_cancelled(
     durability: &mut Durability,
 ) -> (CloseCounts, Vec<(PathBuf, ItemIdentity)>) {
     let mut counts = CloseCounts::default();
-    let mut retry = Vec::new();
+    counts.cancelled = true;
     if batch.pending.is_empty() {
+        return (counts, Vec::new());
+    }
+    let dsts: Vec<PathBuf> = batch.pending.iter().map(|item| item.dst.clone()).collect();
+    if confirm_batch(durability, &dsts).is_err() {
+        let (mut counts, retry) = journal_unconfirmed(batch, id, tx, steps);
+        counts.cancelled = true;
         return (counts, retry);
     }
-    counts.cancelled = true;
+    let mut retry = Vec::new();
     for item in batch.pending.drain(..) {
-        match remove_any(&item.dst) {
-            Ok(()) => {
-                durability.forget_tree(&item.dst);
-                counts.skipped += 1;
-                send_item(tx, id, item.index, &item.name, false, CANCELLED);
-            }
-            Err(_) => {
-                // The copy stays, so it is journaled for undo exactly as a cancelled tree copy is.
-                let mut err = FleaError {
-                    where_: "copy".to_string(),
-                    path: item.dst.to_string_lossy().to_string(),
-                    msg: CANCELLED.to_string(),
-                };
-                let err = match journal_partial(&item.src, &item.dst, &item.source, item.manifest, steps, &mut err) {
-                    Ok(()) => err,
-                    Err(record) => record,
-                };
-                if cancelled(&err.msg) {
-                    counts.skipped += 1;
-                } else {
-                    // Only the journal failure lands here; the loop counts it as a failure, as one_item does.
-                    counts.failed += 1;
-                    retry.push((item.src.clone(), item.source.clone()));
-                }
-                send_item(tx, id, item.index, &item.name, false, &err.msg);
-            }
-        }
+        finish_item(&item, id, tx, steps, durability, &mut counts, &mut retry);
     }
-    batch.parent = None;
     (counts, retry)
 }

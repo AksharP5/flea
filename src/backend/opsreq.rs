@@ -225,13 +225,12 @@ pub(crate) fn run_transfer_checked(
     // Resolved once: a destination reached through a symlinked directory names the same inode under
     // another string, and the per-item guards below compare against this rather than the raw path.
     let dest_real = dest.canonicalize().unwrap_or_else(|_| dest.clone());
-    // Cross-device moves confirm their folders once per batch instead of once per item; copies
-    // never enter it, so a batch left empty closes to nothing at every settle point below.
+    // Cross-device moves confirm folders once per batch; copies never enter it, so an empty batch closes to nothing.
     let mut batch = super::movebatch::MoveBatch::new();
     for (index, raw) in paths.iter().enumerate() {
         // The flag stops the batch, and so does an item whose own error says it was cancelled, see collide::cancelled.
         if was_cancelled || cancel.load(Ordering::Relaxed) {
-            // A cancel before the confirm keeps the open batch's sources whole and removes its copies.
+            // A cancel completes the open batch's landed copies and skips what never started.
             let (closed, retried) = super::movebatch::close_cancelled(&mut batch, id, &tx, &mut steps, &mut durability);
             ok += closed.ok;
             failed += closed.failed;
@@ -296,23 +295,34 @@ pub(crate) fn run_transfer_checked(
             }
         };
         let mut land = |steps: &mut Vec<Step>| one_item(id, index, &name, moving, &src, &dst, source.clone(), &cancel, &tx, &settled, steps, &mut durability);
-        // A replace runs the single-item path, so its trash and put-back stay synchronous; a plain
-        // move stages cross-device copies into the batch and answers same-filesystem renames at once.
+        // A replace runs the single-item path, so its trash and put-back stay synchronous; other moves may stage.
         enum Landed { Now(Result<(), FleaError>), Later }
         let landed = if replace {
             Landed::Now(replacing(&dst, &mut steps, land))
         } else if moving {
-            // A full batch, or one whose folder changed, closes before the next item joins it.
-            if batch.full() || batch.folder_changed(&dst) {
+            // A full batch closes before the next item joins it.
+            if batch.full() {
                 let (closed, retried) = super::movebatch::close_normal(&mut batch, id, &tx, &mut steps, &mut durability);
                 ok += closed.ok;
                 failed += closed.failed;
                 skipped += closed.skipped;
                 retry.extend(retried);
             }
-            match super::movebatch::land_move(id, index, &name, &src, &dst, source.clone(), &cancel, &tx, &settled, &mut steps, &mut durability, &mut batch) {
-                super::movebatch::MoveOutcome::Done(r) => Landed::Now(r),
-                super::movebatch::MoveOutcome::Deferred => Landed::Later,
+            // Only regular files wait on a batch; anything else closes it first and moves alone.
+            if metadata.is_file() {
+                match super::movebatch::land_move(id, index, &name, &src, &dst, source.clone(), &cancel, &tx, &settled, &mut steps, &mut durability, &mut batch) {
+                    super::movebatch::MoveOutcome::Done(r) => Landed::Now(r),
+                    super::movebatch::MoveOutcome::Deferred => Landed::Later,
+                }
+            } else {
+                if !batch.is_empty() {
+                    let (closed, retried) = super::movebatch::close_normal(&mut batch, id, &tx, &mut steps, &mut durability);
+                    ok += closed.ok;
+                    failed += closed.failed;
+                    skipped += closed.skipped;
+                    retry.extend(retried);
+                }
+                Landed::Now(one_item(id, index, &name, moving, &src, &dst, source.clone(), &cancel, &tx, &settled, &mut steps, &mut durability))
             }
         } else {
             Landed::Now(land(&mut steps))
@@ -324,14 +334,14 @@ pub(crate) fn run_transfer_checked(
                 let _ = tx.send(OpMsg::Item { id, index, name, ok: true, err: String::new() });
             }
             Landed::Now(Err(e)) => {
-                // A failure closes the open batch first, so earlier items keep their order on the
-                // wire; a cancel abandons it instead, keeping every unconfirmed source whole.
+                // A failure closes the open batch first, so earlier items keep their order on the wire.
                 if moving {
                     if cancel.load(Ordering::Relaxed) || cancelled(&e.msg) {
                         let (closed, retried) = super::movebatch::close_cancelled(&mut batch, id, &tx, &mut steps, &mut durability);
                         ok += closed.ok;
                         failed += closed.failed;
                         skipped += closed.skipped;
+                        was_cancelled |= closed.cancelled;
                         retry.extend(retried);
                     } else {
                         let (closed, retried) = super::movebatch::close_normal(&mut batch, id, &tx, &mut steps, &mut durability);
@@ -353,7 +363,7 @@ pub(crate) fn run_transfer_checked(
             }
         }
     }
-    // The end closes whatever the loop left staged; a cancel on the way out abandons it instead.
+    // The end closes whatever the loop left staged; a cancel on the way out completes it as cancelled.
     if !batch.is_empty() {
         if was_cancelled || cancel.load(Ordering::Relaxed) {
             let (closed, retried) = super::movebatch::close_cancelled(&mut batch, id, &tx, &mut steps, &mut durability);
