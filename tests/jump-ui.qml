@@ -19,6 +19,7 @@ ShellRoot {
     property var asked: []
     property var entered: []
     property var peeked: []
+    property var firstJump: null
     property int checks: 0
     property int failures: 0
     property int stepIndex: 0
@@ -48,7 +49,13 @@ ShellRoot {
     }
     // Each step returns true when it is done; a step that waits returns false until its condition holds.
     readonly property var steps: [
-        function () { chrome.startEdit(); return true },
+        function () {
+            root.check("a fresh bar builds no jump until editing starts", chrome.jump === null, true)
+            chrome.startEdit()
+            root.check("the first edit builds the jump and keeps it", chrome.jump !== null, true)
+            root.firstJump = chrome.jump
+            return true
+        },
         function () { return root.asked.length === 1 },
         function () {
             root.check("a stale history still asks at once, with what is kept", root.asked[0].recent, [])
@@ -187,6 +194,7 @@ ShellRoot {
             chrome.startEdit()
             root.check("an open with the history unchanged asks at once, from what it kept", root.asked.length, before + 1)
             root.check("so the history was read once, by the first open", chrome.jump.historyReads, 1)
+            root.check("closing and reopening keeps the same jump", chrome.jump === root.firstJump, true)
             root.press(Qt.Key_Escape)
             history.command = ["sh", "-c", root.rewrite, "sh", root.xbel, root.home]
             history.running = true

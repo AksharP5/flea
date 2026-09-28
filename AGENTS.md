@@ -2104,7 +2104,10 @@ listing while the dropdown shows, the field's `Keys.forwardTo` and the `PathJump
 dropdown padding's dismiss into `closeEdit`; the dropdown,
 its sources and its keys are all `ui/PathJump.qml`. `ui/WindowBody.qml` 484 to 486 for carrying the
 request to the pane's backend and its answer back, the two lines Tab's peek already spends.
-`src/backend/run.rs` 427 to 428 for the `jump` arm, whose work is all `src/backend/jump.rs`.
+`src/backend/run.rs` 427 to 428 for the `jump` arm, whose work is all `src/backend/jump.rs`. Fix4-lazyjump
+takes `ui/ChromeBar.qml` from its recorded 439 to 468 for the lazy jump Loader with its three live bindings
+and its signal connections, and `ui/WindowBody.qml` from its recorded 557 to 558 for the null guard that
+drops a jumped answer arriving before the bar ever opened, each re-derived with `wc -l`.
 
 Trashone takes `ui/js/Ops.js` from 335 to 367 for the five singular/plural sentence helpers every
 delete confirm and status line now shares, `ui/TrashView.qml` from 466 to 467 for the one import

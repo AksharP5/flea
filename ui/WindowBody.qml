@@ -169,7 +169,8 @@ Rectangle {
     Connections {
         target: view.currentPane.backend
         function onPeeked(path, hidden, total, rows, readFailed, mode) { chrome.completeWith(path, hidden, rows) }
-        function onJumped(id, favourites, zoxide, recent, frecency) { chrome.jump.take(id, favourites, zoxide, recent, frecency) }
+        // A bar never opened sent no ask, so an answer with no jump is dropped like a stale one.
+        function onJumped(id, favourites, zoxide, recent, frecency) { if (chrome.jump !== null) chrome.jump.take(id, favourites, zoxide, recent, frecency) }
     }
 
     Flea.TabBar {
