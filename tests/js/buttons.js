@@ -14,6 +14,9 @@ function run(check) {
     check("a disabled control dims", Buttons.DISABLED_OPACITY, 0.55)
     check("hover is 8 percent of the ink", Buttons.WASH_HOVER, 0.08)
     check("press is 14 percent of the ink", Buttons.WASH_PRESS, 0.14)
+    // The label follows the body's text stop, so text size moves the buttons with the rows.
+    check("the label follows the body's text stop", Buttons.labelSizeFor(18), 18)
+    check("and falls back to the shipped size without one", Buttons.labelSizeFor(null), Buttons.LABEL_SIZE)
 
     // The primary is fixed per dialog, the safe or asked-for action.
     check("trash opens on Cancel", Buttons.primaryFor("trash"), "cancel")

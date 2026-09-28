@@ -102,6 +102,8 @@ fn merge(default: &Json, found: &Json, schema: &[(&str, Rule)]) -> Json {
             None => fallback,
             Some(value) => match rule {
                 Rule::Group(sub) => merge(&fallback, value, sub),
+                // A hand-edited map heals one bad entry rather than losing the key.
+                Rule::FolderSorts => normalized(Some(rule), &clean_folder_sorts(value)),
                 _ if fits(rule, value) => normalized(Some(rule), value),
                 _ => fallback,
             },
@@ -125,9 +127,7 @@ fn normalized(rule: Option<&Rule>, value: &Json) -> Json {
         }
         return Json::Num(format!("{}", nearest));
     }
-    // The map is oldest first, so a write past the cap drops the folders sorted longest ago
-    // rather than refusing: every code path that writes goes through here, including a
-    // hand-written patch, so no path can grow the file past the cap.
+    // The map is oldest first, so a write past the cap drops the longest-ago sort.
     if matches!(rule, Some(Rule::FolderSorts)) {
         if let Json::Obj(pairs) = value {
             if pairs.len() > MAX_FOLDER_SORTS {
@@ -208,22 +208,20 @@ fn is_a_place(s: &str) -> bool {
     s.starts_with('/') || s.contains("://")
 }
 
-// ListColumns040's remembered widths: each entry a resizable column key to whole pixels
-// inside the rails, so a hand edit outside them costs the key its default rather than drawing it.
+// ListColumns040's remembered widths: each entry a resizable column key to whole pixels.
 // Sample input: {"size": 120, "date": 140}.
 fn is_column_widths(value: &Json) -> bool {
     match value.as_object() {
         Some(pairs) => pairs.iter().all(|(key, width)| {
             COLUMN_WIDTH_KEYS.contains(&key.as_str())
-                && width.as_f64().is_some_and(|n| n.is_finite() && n >= COLUMN_WIDTH_MIN && n <= COLUMN_WIDTH_MAX)
+                && width.as_f64().is_some_and(|n| n.is_finite() && n.fract() == 0.0 && n >= COLUMN_WIDTH_MIN && n <= COLUMN_WIDTH_MAX)
         }),
         None => false,
     }
 }
 
 // The per-folder sort map: each key a place, each value a sort order in sort's own shape.
-// The count is not checked here: normalized truncates a longer map to the most recent entries,
-// so a hand-edited file heals rather than costing the whole key its default.
+// Sample input: {"/home/gm/Work": {"key": "size", "reverse": true}}.
 fn is_folder_sorts(value: &Json) -> bool {
     match value.as_object() {
         Some(pairs) => pairs.iter().all(|(path, order)| is_a_place(path) && is_sort_order(order)),
@@ -231,6 +229,16 @@ fn is_folder_sorts(value: &Json) -> bool {
     }
 }
 
+// A read keeps the entries a hand edit left valid and drops only the bad ones.
+// Sample input: {"/home/gm/Work": {"key": "size", "reverse": true}}.
+fn clean_folder_sorts(value: &Json) -> Json {
+    match value.as_object() {
+        Some(pairs) => Json::Obj(pairs.iter().filter(|(path, order)| is_a_place(path) && is_sort_order(order)).map(|(path, order)| (path.clone(), order.clone())).collect()),
+        None => Json::Obj(Vec::new()),
+    }
+}
+
+// Sample input: {"key": "size", "reverse": true}.
 fn is_sort_order(value: &Json) -> bool {
     match value.as_object() {
         Some(pairs) => {
@@ -514,5 +522,33 @@ mod tests {
         let mode = from_file(r#"{"startIn":"fromANewerFlea","newTab":"elsewhere"}"#);
         assert_eq!(mode.get("startIn").and_then(Json::as_str), Some("home"));
         assert_eq!(mode.get("newTab").and_then(Json::as_str), Some("current"));
+    }
+
+    // A width that is not a whole pixel is refused, the comment above is_column_widths.
+    #[test]
+    fn a_fractional_column_width_is_refused_while_whole_ones_land() {
+        let current = from_file("{}");
+        let half = jsondoc::parse(r#"{"columnWidths":{"size":120.5}}"#).expect("patch parses");
+        let message = patched(&current, &half).expect_err("120.5 px is not a whole pixel");
+        assert!(message.contains("columnWidths"), "got {}", message);
+        let whole = jsondoc::parse(r#"{"columnWidths":{"size":120,"date":140}}"#).expect("patch parses");
+        assert!(patched(&current, &whole).is_ok(), "whole pixels still land");
+        let read = from_file(r#"{"columnWidths":{"size":120.5},"density":"comfortable"}"#);
+        assert_eq!(read.get("columnWidths").and_then(Json::as_object).map(<[(String, Json)]>::len), Some(0));
+        assert_eq!(read.get("density").and_then(Json::as_str), Some("comfortable"));
+    }
+
+    // One bad folderSorts entry drops only itself on read; a patch naming one is still refused whole.
+    #[test]
+    fn a_bad_folder_sort_entry_costs_itself_and_not_the_map() {
+        let read = from_file(r#"{"folderSorts":{"/home/gm/Work":{"key":"size","reverse":true},"Work":{"key":"size","reverse":true},"/home/gm/Photos":{"key":"date","reverse":false}}}"#);
+        let map = read.get("folderSorts").and_then(Json::as_object).expect("folderSorts");
+        assert_eq!(map.len(), 2, "only the relative path goes: {:?}", map.iter().map(|(k, _)| k).collect::<Vec<_>>());
+        assert!(map.iter().any(|(k, _)| k == "/home/gm/Work"));
+        assert!(map.iter().any(|(k, _)| k == "/home/gm/Photos"));
+        let current = from_file("{}");
+        let bad = jsondoc::parse(r#"{"folderSorts":{"/a":{"key":"mode","reverse":false}}}"#).expect("patch parses");
+        let message = patched(&current, &bad).expect_err("a patch from Flea must be whole");
+        assert!(message.contains("folderSorts"), "got {}", message);
     }
 }

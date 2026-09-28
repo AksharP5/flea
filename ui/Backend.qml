@@ -253,7 +253,8 @@ Item {
 
     // A read-only look at a directory that is not the current listing; see docs/protocol.md "peek".
     function peek(path, first, hidden) {
-        root.send({ c: "peek", path: path, first: first, hidden: hidden })
+        root.send({ c: "peek", path: path, first: first, hidden: hidden,
+                    hiddenLast: ViewState.state.hiddenLast === true })
     }
 
     // op is "peers" for the flyout's list and "send" for the transfer it chooses; both answer late.

@@ -1361,7 +1361,9 @@ peeks the pane's ancestors with the listing's own flag, and the path bar's Tab p
 the typed leaf asks for. `path` alone cannot tell one client's reply from the other's, and `path`
 plus `hidden` can, which is all the correlation either needs: the same pair answers the same rows,
 so no request id has to be threaded through. A client that ignores the field reads the line exactly
-as it did before.
+as it did before. A `peek` request also carries optional `hiddenLast`, `false` unless `true`: with
+it on the peek sorts dotfiles last the way the listing does, so the columns beside a hidden-last
+listing draw the same order instead of today's dotfiles-first one.
 
 ## Known gaps
 

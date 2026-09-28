@@ -45,7 +45,7 @@ pub enum Request {
     // The status bar's filesystem line for the directory the pane is on.
     FsInfo,
     // A read-only look at a directory that is not the current listing; the columns view's ancestors.
-    Peek { path: String, first: usize, hidden: bool, focus: String },
+    Peek { path: String, first: usize, hidden: bool, hidden_last: bool, focus: String },
     // op is "compress" or "extract"; a compress names paths and a format, an extract names one path.
     Archive { op: String, paths: Vec<String>, path: String, dest: String, format: String, menu_id: usize },
     Convert { path: String, dest: String, strip: bool, menu_id: usize, request_id: usize, check: bool },
@@ -174,6 +174,8 @@ pub fn parse_request(line: &str) -> Request {
             path: field_str(line, "path").unwrap_or_default(),
             first: field_usize(line, "first").unwrap_or(0),
             hidden: field_bool(line, "hidden"),
+            // Absent is today's order, so an older client's peek still sorts dotfiles first.
+            hidden_last: field_bool(line, "hiddenLast"),
             focus: field_str(line, "focus").unwrap_or_default(),
         },
         Some("meta") => Request::Meta {

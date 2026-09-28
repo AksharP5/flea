@@ -14,6 +14,12 @@ var DISABLED_OPACITY = 0.55
 var WASH_HOVER = 0.08
 var WASH_PRESS = 0.14
 
+// One label size for every button: the body Theme sizes from the text stop, so buttons grow with the rows beside them.
+function labelSizeFor(body) {
+    var n = Math.round(Number(body))
+    return n > 0 ? n : LABEL_SIZE
+}
+
 // One primary per dialog, fixed: it never moves with focus.
 var PRIMARY = {
     trash: "cancel",

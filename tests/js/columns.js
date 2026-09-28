@@ -132,6 +132,8 @@ function runColumnCount(check) {
     check("the limit caps a narrow window too", Columns.columnCountForWidth(1200, 2), 2)
     check("a limit below the floor still draws 2", Columns.columnCountForWidth(2300, 1), 2)
     check("a missing limit reads as the shipped 5", Columns.columnCountForWidth(2300), 5)
+    check("an empty limit reads as the shipped 5, not the floor", Columns.cappedLimit(""), 5)
+    check("a false limit reads as the shipped 5, not the floor", Columns.cappedLimit(false), 5)
     check("2 columns need no ancestor", Columns.ancestorsForCount(2), 0)
     check("3 columns read one ancestor", Columns.ancestorsForCount(3), 1)
     check("4 columns read two ancestors", Columns.ancestorsForCount(4), 2)
@@ -146,6 +148,8 @@ function runListWidths(check) {
     check("a drag past the ceiling clamps to it", Columns.clampListWidth(9999), Columns.MAX_LIST_WIDTH)
     check("a drag rounds to whole pixels", Columns.clampListWidth(100.6), 101)
     check("autofit takes the widest held cell", Columns.autofitWidth([70, 120, 90], 70), 120)
+    check("autofit narrows a dragged-wide column to the widest held cell",
+        Columns.autofitWidth([60, 80], 300), 80)
     check("autofit clamps a wide cell to the ceiling",
         Columns.autofitWidth([9999], 70), Columns.MAX_LIST_WIDTH)
     check("autofit on no held rows keeps the column", Columns.autofitWidth([], 70), 70)

@@ -76,6 +76,13 @@ function run(check) {
           JSON.stringify({ key: "size", reverse: true }))
     check("and a missing default reads as name ascending",
           JSON.stringify(FolderSorts.orderFor({}, "/a", null, true)), JSON.stringify({ key: "name", reverse: false }))
+    // Settings stores Modified as "date" while Sort.ORDERS spells it "mtime": either spelling reads as the live order.
+    check("a date default reads as the live mtime order",
+          JSON.stringify(FolderSorts.orderFor({}, "/a", { key: "date", reverse: false }, true)),
+          JSON.stringify({ key: "mtime", reverse: false }))
+    check("and a stored date entry wins while remembering is on",
+          JSON.stringify(FolderSorts.orderFor({ "/a": { key: "date", reverse: true } }, "/a", { key: "name" }, true)),
+          JSON.stringify({ key: "mtime", reverse: true }))
 
     // A user sort writes its folder; browsing writes nothing.
     var pane = sortPane("/a", {}, true)

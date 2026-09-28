@@ -2,19 +2,23 @@
 
 .import "Sort.js" as Sort
 
-// A folder's own sort, issue 179: written only when the operator chooses a sort in that folder,
-// read once per listing, forgotten through the Sort by flyout. The map lives in ui.json as
-// folderSorts, oldest first, at most MAX entries; src/uischema.rs and src/uistate.rs own the
-// same shape and the same cap on the Rust side, so either side heals what the other wrote.
+// A folder's own sort, issue 179: written only when the operator chooses a sort in that
+// folder, read once per listing, forgotten through the Sort by flyout. The map lives in
+// ui.json as folderSorts, oldest first, at most MAX entries, in Settings' own spelling.
 
 // The cap ui.json holds, oldest first; setting past it drops the folders sorted longest ago.
 var MAX = 500
 
+// Settings stores Modified as "date" while Sort.ORDERS and the backend spell it "mtime".
+function liveKey(key) {
+    return key === "date" ? "mtime" : key
+}
+
 function get(sorts, path) {
     var entry = sorts ? sorts[path] : null
-    if (!entry || Sort.ORDERS.indexOf(entry.key) < 0)
+    if (!entry || Sort.ORDERS.indexOf(liveKey(entry.key)) < 0)
         return null
-    return { key: entry.key, reverse: entry.reverse === true }
+    return { key: liveKey(entry.key), reverse: entry.reverse === true }
 }
 
 function has(sorts, path) {
@@ -61,6 +65,7 @@ function orderFor(sorts, path, fallback, remember) {
             return own
     }
     fallback = fallback || {}
-    return { key: Sort.ORDERS.indexOf(fallback.key) >= 0 ? fallback.key : "name",
+    var key = liveKey(fallback.key)
+    return { key: Sort.ORDERS.indexOf(key) >= 0 ? key : "name",
              reverse: fallback.reverse === true }
 }

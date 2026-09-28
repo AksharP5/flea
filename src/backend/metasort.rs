@@ -24,8 +24,7 @@ pub fn sort_by_stat(l: &mut Listing, base: &Path, by: SortBy, desc: bool, hidden
     let mut order: Vec<u32> = (0..l.len() as u32).collect();
     order.sort_by(|&a, &b| {
         let (a, b) = (a as usize, b as usize);
-        // Hidden entries follow every visible one in both directions, outside the folder
-        // grouping: neither partition reverses, only the keys inside each block do.
+        // Hidden entries follow every visible one in both directions, outside the folder grouping, and no partition here reverses.
         if hidden_last {
             match (super::sort::is_hidden(l.name(a)), super::sort::is_hidden(l.name(b))) {
                 (true, false) => return Ordering::Greater,
@@ -152,6 +151,9 @@ mod tests {
         let mut l = pushed();
         sort_by_stat(&mut l, d.path(), SortBy::Mtime, false, true);
         assert_eq!(names(&l), "Work notes.md .cache .bashrc");
+        let mut sized = pushed();
+        sort_by_stat(&mut sized, d.path(), SortBy::Size, false, true);
+        assert_eq!(names(&sized), "Work notes.md .cache .bashrc");
     }
 
     #[test]

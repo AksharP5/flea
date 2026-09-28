@@ -1,16 +1,29 @@
 .pragma library
 
-// A row on the clipboard carries a mark after its name: copy for copied,
-// scissors for cut, in the muted role. The mark is derived from the pane's
-// own clipboard, so a paste that spends a cut, a new copy or a new cut
-// clears the old marks at once with no second signal.
+// A row on the clipboard carries a mark after its name: copy for copied, scissors for cut.
+// The mark follows the pane's own clipboard, so spending a cut clears every mark at once.
 
 // Sample input: { paths: ["/home/gm/Pictures/phone/IMG_4121.jpg"], moving: true }
+var _cached = null
+var _marks = {}
+
+// One keyed lookup per clipboard, rebuilt when the clipboard object changes; every row after that is a single key read.
+function setFor(clipboard) {
+    if (clipboard === _cached)
+        return _marks
+    _cached = clipboard
+    _marks = {}
+    var paths = (clipboard && clipboard.paths) || []
+    for (var i = 0; i < paths.length; i++)
+        _marks[paths[i]] = true
+    return _marks
+}
+
 function markFor(path, clipboard) {
-    if (!clipboard || !clipboard.paths || clipboard.paths.indexOf(path) < 0) {
+    if (!clipboard || !clipboard.paths || clipboard.paths.length === 0) {
         return ""
     }
-    return clipboard.moving ? "scissors" : "copy"
+    return setFor(clipboard)[path] === true ? (clipboard.moving ? "scissors" : "copy") : ""
 }
 
 // One lookup per visible row, and an empty clipboard costs nothing: the

@@ -88,16 +88,14 @@ pub const STATE_VERSION: &str = "stateVersion";
 
 pub const COLUMN_KEYS: &[&str] = &["name", "mode", "size", "date", "kind"];
 
-// ListColumns040: the four resizable list columns and the rails a drag clamps to,
-// the same pair ui/js/Columns.js MIN_LIST_WIDTH and MAX_LIST_WIDTH name.
+// ListColumns040: the four resizable list columns and the rails a drag clamps to, the same pair ui/js/Columns.js MIN_LIST_WIDTH and MAX_LIST_WIDTH name.
 pub const COLUMN_WIDTH_KEYS: [&str; 4] = ["mode", "size", "date", "kind"];
 pub const COLUMN_WIDTH_MIN: f64 = 48.0;
 pub const COLUMN_WIDTH_MAX: f64 = 480.0;
 
-pub const SORT: &[(&str, Rule)] = &[("key", Rule::Word(&["name", "size", "date", "kind"])), ("reverse", Rule::Bool)];
+pub const SORT: &[(&str, Rule)] = &[("key", Rule::Word(&SORT_KEYS)), ("reverse", Rule::Bool)];
 
-// A folder's own sort, stored the way sort stores the default: the key the header marks and
-// whether it runs reversed. The map holds the 500 most recent folders, oldest first.
+// A folder's own sort in sort's own shape; the map holds the 500 most recent folders, oldest first.
 pub const SORT_KEYS: [&str; 4] = ["name", "size", "date", "kind"];
 pub const MAX_FOLDER_SORTS: usize = 500;
 

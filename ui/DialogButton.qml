@@ -67,7 +67,7 @@ Item {
         text: root.label
         color: root.ink
         font.family: Theme.font.family
-        font.pixelSize: Buttons.LABEL_SIZE
+        font.pixelSize: Buttons.labelSizeFor(Theme.font.body)
         textFormat: Text.PlainText
     }
 

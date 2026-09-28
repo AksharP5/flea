@@ -223,4 +223,13 @@ function run(check) {
     check("every effective Mac binding resolves to advertised action", effective.every(function (r) {
         return Keymap.lookupFor("mac", r.keycode, r.text, r.mask, "listing", "gui") === r.action
     }), true)
+    // ListColumns040's F4: the key resolves in every preset, and its keys token is lowercase like every other.
+    var f4ok = true
+    for (var f = 0; f < Keymap.PRESETS.length; f++) {
+        if (Keymap.lookupFor(Keymap.PRESETS[f], Qt.Key_F4, "", none, "listing", "gui") !== "autofitColumns")
+            f4ok = false
+    }
+    check("F4 fits columns in every preset", f4ok, true)
+    var f4row = Keymap.PRESET_KEYS.filter(function (r) { return r.action === "autofitColumns" })[0] || {}
+    check("and its keys token is lowercase like every other", f4row.keys, "f4")
 }

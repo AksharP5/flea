@@ -24,10 +24,7 @@ pub fn parse_sort_by(s: &str) -> Result<SortBy, &'static str> {
     }
 }
 
-// The one entry the loop calls: name works on phase-1 data alone, size and date pay the metadata
-// pass first. Answers (pass ms, sort ms), which the listed line carries as read and sort.
-// hidden_last is read off the request line beside by and desc, so a listing that shows dotfiles
-// can still keep them out of the way without a second pass over the rows.
+// The loop's one entry: name reads phase 1 alone, size and date pay the metadata pass, and hidden_last keeps dotfiles out of the way without a second pass.
 pub fn sort_listing(l: &mut Listing, base: &Path, by: SortBy, desc: bool, hidden_last: bool) -> (f64, f64, Vec<Option<DirSize>>) {
     match by {
         SortBy::Name => (0.0, sort_by_name(l, desc, hidden_last), Vec::new()),

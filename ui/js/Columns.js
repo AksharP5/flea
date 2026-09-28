@@ -63,11 +63,11 @@ var COUNT_MIN = 2
 var COUNT_MAX = 5
 
 // The limit is the stored segment, so a stored number clamps to 2 to 5 and anything
-// else reads as the shipped 5.
+// else reads as the shipped 5, the same value Settings shows for it.
 function cappedLimit(limit) {
-    if (typeof limit === "undefined" || limit === null)
+    if (typeof limit !== "number")
         return COUNT_MAX
-    var n = Math.floor(Number(limit))
+    var n = Math.floor(limit)
     if (!(n >= COUNT_MIN) && !(n <= COUNT_MAX))
         return COUNT_MAX
     if (n < COUNT_MIN)
@@ -115,13 +115,14 @@ function clampListWidth(px) {
     return n
 }
 
-// The widest held cell, clamped; an empty window keeps the column it has.
+// The widest held cell, clamped; an empty window keeps the column it has, so a fit can narrow as well as widen.
 function autofitWidth(widths, fallback) {
-    var best = Math.round(Number(fallback))
-    if (!(best >= 0))
-        best = MIN_LIST_WIDTH
-    for (var i = 0; i < (widths || []).length; i++) {
-        var w = Math.round(Number(widths[i]))
+    var cells = widths || []
+    if (cells.length === 0)
+        return clampListWidth(fallback)
+    var best = MIN_LIST_WIDTH
+    for (var i = 0; i < cells.length; i++) {
+        var w = Math.round(Number(cells[i]))
         if (w >= 0 && w > best)
             best = w
     }

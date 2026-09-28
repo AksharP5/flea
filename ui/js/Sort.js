@@ -76,8 +76,9 @@ function resort(pane, key, desc) {
     pane.backend.sortBy = key
     pane.backend.sortDesc = desc
     // Issue 179: the folder remembers the sort its operator chose, once per user sort and never
-    // per browse. A backend without the writer, every stub in tests/js, simply sorts.
-    if (pane.backend && pane.backend.rememberFolderSort)
+    // per browse. A walk's rows are matches, not the folder's, so sorting them writes nothing.
+    if (pane.backend && pane.backend.rememberFolderSort
+            && (pane.searchMode || "") === "" && (pane.photosMode || "") === "")
         pane.backend.rememberFolderSort(pane.path, key, desc)
     // A reorder moves every row, so the caches keyed by a row index are as stale as a new listing's,
     // and a selection of row indices would silently come to name different files.

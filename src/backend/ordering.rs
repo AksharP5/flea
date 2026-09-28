@@ -83,8 +83,7 @@ pub fn ordered(
     };
     let mut indices: Vec<usize> = (0..l.len()).collect();
     indices.sort_by(|&a, &b| {
-        // Hidden entries follow every visible one in both directions, outside every other
-        // grouping: this partition never reverses, and neither do the ones below it.
+        // Hidden entries follow every visible one in both directions, outside every other grouping, and no partition here reverses.
         if hidden_last {
             match (super::sort::is_hidden(l.name(a)), super::sort::is_hidden(l.name(b))) {
                 (true, false) => return Ordering::Greater,
@@ -316,25 +315,29 @@ mod tests {
         for by in ["name", "size", "mtime", "kind"] {
             for desc in [false, true] {
                 for folders in [false, true] {
-                    let mut l = pushed();
-                    ordered(&mut l, d.path(), &db, by, desc, folders, false, true).unwrap();
-                    let got = names(&l);
-                    assert!(partitioned(&got),
-                        "{by} desc={desc} folders={folders} keeps every dotfile last: {got:?}");
-                    let mut off = pushed();
-                    ordered(&mut off, d.path(), &db, by, desc, folders, false, false).unwrap();
-                    let old = names(&off);
-                    // Descending name order without folders first is already dotfiles-last: it is
-                    // the exact reverse of the dotfiles-first ascending order, so the flag is a
-                    // no-op there and off satisfies the partition too. Everywhere else off leaves
-                    // a visible entry behind a dotfile.
-                    if by == "name" && desc && !folders {
-                        assert_eq!(old, got,
-                            "{by} desc={desc} folders={folders} is symmetric, so off already reads hidden-last: {old:?}");
-                    } else {
-                        let first_hidden = old.iter().position(|n| n.starts_with('.')).expect("dotfiles");
-                        assert!(old[first_hidden..].iter().any(|n| !n.starts_with('.')),
-                            "{by} desc={desc} folders={folders} off leaves a visible entry behind a dotfile: {old:?}");
+                    // groups=true walks the group_rank arm, so the partition is pinned there too.
+                    for groups in [false, true] {
+                        let mut l = pushed();
+                        ordered(&mut l, d.path(), &db, by, desc, folders, groups, true).unwrap();
+                        let got = names(&l);
+                        assert!(partitioned(&got),
+                            "{by} desc={desc} folders={folders} groups={groups} keeps every dotfile last: {got:?}");
+                        let mut off = pushed();
+                        ordered(&mut off, d.path(), &db, by, desc, folders, groups, false).unwrap();
+                        let old = names(&off);
+                        // Descending name order without folders first is already dotfiles-last: it is
+                        // the exact reverse of the dotfiles-first ascending order, so the flag is a
+                        // no-op there and off satisfies the partition too. Everywhere else off leaves
+                        // a visible entry behind a dotfile.
+                        // With groups the ranks do not reverse, so the symmetry below needs !groups too.
+                        if by == "name" && desc && !folders && !groups {
+                            assert_eq!(old, got,
+                                "{by} desc={desc} folders={folders} groups={groups} is symmetric, so off already reads hidden-last: {old:?}");
+                        } else {
+                            let first_hidden = old.iter().position(|n| n.starts_with('.')).expect("dotfiles");
+                            assert!(old[first_hidden..].iter().any(|n| !n.starts_with('.')),
+                                "{by} desc={desc} folders={folders} groups={groups} off leaves a visible entry behind a dotfile: {old:?}");
+                        }
                     }
                 }
             }
@@ -357,6 +360,10 @@ mod tests {
         let mut today = pushed();
         ordered(&mut today, d.path(), &db, "name", false, true, false, false).unwrap();
         assert_eq!(names(&today), [".cache", "Work", ".bashrc", ".shot.jpg", "notes.md", "photo.jpg"]);
+        // Grouped keeps the partition first, then the group rank, then the name inside each.
+        let mut grouped = pushed();
+        ordered(&mut grouped, d.path(), &db, "name", false, false, true, true).unwrap();
+        assert_eq!(names(&grouped), ["Work", "photo.jpg", "notes.md", ".cache", ".shot.jpg", ".bashrc"]);
     }
 
     #[test]

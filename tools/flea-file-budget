@@ -30,7 +30,7 @@ src/backend/movebatch_tests.rs 528
 src/backend/opsdispatch.rs 536
 src/backend/opsreq.rs 513
 src/backend/opsreq/tests.rs 460
-src/backend/proto.rs 285
+src/backend/proto.rs 287
 src/backend/run.rs 444
 src/backend/thumbs.rs 441
 src/backend/thumbworker.rs 953
@@ -42,7 +42,7 @@ src/tui/input.rs 449
 src/tui/model.rs 1247
 src/tui/render.rs 889
 src/uischema.rs 424
-src/uistate.rs 518
+src/uistate.rs 554
 src/uistore.rs 483
 src/vulkan.rs 620
 tests/js/focus.js 406
@@ -50,7 +50,7 @@ tests/js/mounts.js 383
 tests/js/network.js 306
 tests/js/ops.js 390
 tests/js/status.js 354
-ui/Backend.qml 425
+ui/Backend.qml 426
 ui/ChromeBar.qml 477
 ui/ContextMenu.qml 579
 ui/ConvertDialog.qml 440

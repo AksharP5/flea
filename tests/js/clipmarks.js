@@ -19,6 +19,11 @@ function run(check) {
     var copied = { paths: ["/home/gm/Pictures/phone/IMG_4121.jpg",
                             "/home/gm/Pictures/phone/IMG_4122.jpg",
                             "/home/gm/Pictures/phone/IMG_4123.jpg"], moving: false }
+    check("the clipboard builds one keyed lookup", typeof ClipMarks.setFor, "function")
+    check("and it keys every path",
+          ClipMarks.setFor(copied)["/home/gm/Pictures/phone/IMG_4122.jpg"], true)
+    check("and misses a path outside it",
+          ClipMarks.setFor(copied)["/home/gm/Pictures/phone/IMG_4124.jpg"] === true, false)
     check("a copied row carries the copy mark",
           ClipMarks.markForRow(home, "IMG_4121.jpg", copied), "copy")
     check("a row outside the clipboard carries no mark",
