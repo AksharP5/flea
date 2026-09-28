@@ -2567,6 +2567,9 @@ sorted-store and device assertions, each re-derived with `wc -l`.
 Advloop round 5 and its second run take `src/backend/renamecompat.rs` from 412 lines (recorded 416) to 447 for the
 take-back seam and the test that a copy which will not go back answers `rename`, re-derived with `wc -l`.
 
+The rail's network host fixes take `ui/NetworkMounts.qml` 802 to 805 (one arrival poll, the providers read at
+completion) and `ui/WindowBody.qml` 556 to 557 (the RailKeys import), each re-derived with `wc -l`.
+
 ## The key table is generated
 
 `keys.toml` at the repository root is the single source of truth for every binding.

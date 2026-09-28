@@ -49,7 +49,7 @@ ui/ContextMenu.qml 578
 ui/ConvertDialog.qml 440
 ui/Ipc.qml 801
 ui/NetworkDialog.qml 449
-ui/NetworkMounts.qml 802
+ui/NetworkMounts.qml 805
 ui/OpenWithDialog.qml 588
 ui/Pane.qml 741
 ui/PaneMenuActions.qml 404
@@ -64,7 +64,7 @@ ui/SettingsRow.qml 410
 ui/Sidebar.qml 569
 ui/StatusBar.qml 451
 ui/TrashView.qml 467
-ui/WindowBody.qml 556
+ui/WindowBody.qml 557
 ui/js/Filter.js 253
 ui/js/Focus.js 366
 ui/js/Keymap.js 313
