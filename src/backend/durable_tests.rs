@@ -2,8 +2,8 @@ use super::*;
 use crate::backend::copyfile::Progress;
 use crate::backend::testdir::TestDir;
 
-fn quiet<'a>(flag: &'a std::sync::atomic::AtomicBool, sink: &'a mut dyn FnMut(u64, u64), ctx: &'a mut Ctx) -> Progress<'a> {
-    Progress { cancel: flag, on_bytes: sink, partial: None, tree: None, manifest: None, durability: Some(ctx) }
+fn quiet<'a>(flag: &'a std::sync::atomic::AtomicBool, sink: &'a mut dyn FnMut(u64, u64), durability: &'a mut Durability) -> Progress<'a> {
+    Progress { cancel: flag, on_bytes: sink, partial: None, tree: None, manifest: None, durability: Some(durability) }
 }
 
 #[test]
@@ -24,9 +24,10 @@ fn fat_names_and_magics_count_as_durable() {
     assert!(fat_name_is_durable("VFAT"), "the mount table never promises a case");
     assert!(!fat_name_is_durable("ext4"));
     assert!(!fat_name_is_durable("btrfs"));
-    assert!(fat_magic_is_durable(0x4D44));
-    assert!(fat_magic_is_durable(0x2011BAB0));
-    assert!(fat_magic_is_durable(0x5346544E));
+    assert!(fat_magic_is_durable(MSDOS_SUPER_MAGIC));
+    assert!(fat_magic_is_durable(EXFAT_SUPER_MAGIC));
+    assert!(fat_magic_is_durable(NTFS_SUPER_MAGIC));
+    assert!(fat_magic_is_durable(NTFS3_SUPER_MAGIC));
     assert!(!fat_magic_is_durable(0xEF53));
 }
 
@@ -39,16 +40,16 @@ fn a_durable_copy_fsyncs_each_file_and_confirms_its_parent_once() {
     std::fs::write(src.join("b.txt"), "b").unwrap();
     let out = d.dir("out");
     test_mark_durable(&out);
-    let mut ctx = Ctx::begin(&out);
-    assert!(ctx.durable, "the marked target is durable");
+    let mut durability = Durability::begin(&out);
+    assert!(durability.durable, "the marked target is durable");
     let flag = std::sync::atomic::AtomicBool::new(false);
     let mut sink = |_: u64, _: u64| {};
-    let mut p = quiet(&flag, &mut sink, &mut ctx);
+    let mut p = quiet(&flag, &mut sink, &mut durability);
     crate::backend::copyfile::copy_any(&src.join("a.txt"), &out.join("a.txt"), &mut p).expect("copy");
     crate::backend::copyfile::copy_any(&src.join("b.txt"), &out.join("b.txt"), &mut p).expect("copy");
     drop(p);
     assert_eq!(test_counts().0, 2, "one fsync per file, got {:?}", test_counts());
-    ctx.flush_dirs().expect("real dirs flush");
+    durability.flush_dirs().expect("real dirs flush");
     assert_eq!(test_counts(), (2, 1), "one parent flush for two files, got {:?}", test_counts());
 }
 
@@ -57,13 +58,13 @@ fn touched_dirs_are_recorded_once_and_ordered_deepest_first() {
     test_reset();
     let d = TestDir::new("durable-order");
     test_mark_durable(d.path());
-    let mut ctx = Ctx::begin(d.path());
+    let mut durability = Durability::begin(d.path());
     let (a, b) = (d.join("a"), d.join("a/b"));
-    ctx.touch(&a);
-    ctx.touch(&a);
-    ctx.touch(&b);
-    ctx.touch(&a);
-    assert_eq!(ctx.ordered(), vec![b, a]);
+    durability.touch(&a);
+    durability.touch(&a);
+    durability.touch(&b);
+    durability.touch(&a);
+    assert_eq!(durability.ordered(), vec![b, a]);
 }
 
 #[test]
@@ -72,11 +73,11 @@ fn a_local_copy_fsyncs_nothing() {
     let d = TestDir::new("durable-local");
     let src = d.file("a.txt", "body");
     let out = d.dir("out");
-    let mut ctx = Ctx::begin(&out);
-    assert!(!ctx.durable, "an unmarked TestDir is local");
+    let mut durability = Durability::begin(&out);
+    assert!(!durability.durable, "an unmarked TestDir is local");
     let flag = std::sync::atomic::AtomicBool::new(false);
     let mut sink = |_: u64, _: u64| {};
-    let mut p = quiet(&flag, &mut sink, &mut ctx);
+    let mut p = quiet(&flag, &mut sink, &mut durability);
     crate::backend::copyfile::copy_any(&src, &out.join("a.txt"), &mut p).expect("copy");
     drop(p);
     assert_eq!(test_counts(), (0, 0), "no flush on a local target");
@@ -89,12 +90,12 @@ fn a_failed_fsync_fails_the_copy_like_any_other_write_error() {
     let src = d.file("a.txt", "body");
     let out = d.dir("out");
     test_mark_durable(&out);
-    let mut ctx = Ctx::begin(&out);
-    assert!(ctx.durable);
+    let mut durability = Durability::begin(&out);
+    assert!(durability.durable);
     test_set_fail(true);
     let flag = std::sync::atomic::AtomicBool::new(false);
     let mut sink = |_: u64, _: u64| {};
-    let mut p = quiet(&flag, &mut sink, &mut ctx);
+    let mut p = quiet(&flag, &mut sink, &mut durability);
     let err = crate::backend::copyfile::copy_any(&src, &out.join("a.txt"), &mut p).expect_err("a failed fsync is a failed copy");
     assert_eq!(err.where_, "copy");
     assert!(p.partial.is_some(), "the partial is journalled for undo: {:?}", p.partial);
@@ -123,10 +124,10 @@ fn finish_names_the_destination_it_flushes() {
     let d = TestDir::new("durable-finish-drive");
     let out = d.dir("out");
     test_mark_durable(&out);
-    let ctx = Ctx::begin(&out);
-    assert!(ctx.durable);
+    let durability = Durability::begin(&out);
+    assert!(durability.durable);
     let (tx, rx) = channel();
-    finish(7, &tx, &ctx, &out);
+    finish(7, &tx, &durability, &out, 1);
     let mut drive = None;
     for msg in rx.try_iter() {
         if let crate::backend::opsreq::OpMsg::Meta { line } = msg {
@@ -136,7 +137,22 @@ fn finish_names_the_destination_it_flushes() {
         }
     }
     let line = drive.expect("the final phase emits one writing line");
-    assert!(line.contains(r#""drive":"out""#), "the drive is the destination's own name: {}", line);
+    let want = drive_name(&out);
+    assert!(line.contains(&format!(r#""drive":"{}""#, want)), "the drive is the mount's own name: {}", line);
+}
+
+#[test]
+fn drive_name_answers_the_mount_not_the_folder() {
+    let body = "1 0 8:1 / / rw - ext4 /dev/a rw\n30 1 8:17 / /media/stick rw - vfat /dev/sdb1 rw\n";
+    assert_eq!(drive_name_in(std::path::Path::new("/media/stick/DCIM"), body), "stick");
+    assert_eq!(drive_name_in(std::path::Path::new("/media/stick/photos"), body), "stick");
+}
+
+#[test]
+fn drive_name_answers_the_share_for_a_gvfs_path() {
+    let body = "";
+    assert_eq!(drive_name_in(std::path::Path::new("/run/user/1000/gvfs/smb-share:server=nas,share=media/photos"), body), "media");
+    assert_eq!(drive_name_in(std::path::Path::new("/run/user/1000/gvfs/smb-share:server=nas,share=media"), body), "media");
 }
 
 #[test]
@@ -204,26 +220,55 @@ fn a_failed_file_fsync_fails_the_item_and_journals_the_partial() {
     let src = d.file("a.txt", "body");
     let out = d.dir("out");
     test_mark_durable(&out);
-    test_set_fail(true);
+    test_set_fail_files(true);
     let (tx, rx) = channel();
     run_transfer(9, false, vec![src.to_string_lossy().to_string()], out.clone(), Arc::new(std::sync::atomic::AtomicBool::new(false)), tx);
     let mut item_err = String::new();
     let mut entry_steps = 0;
-    let mut durable = None;
+    let mut done = None;
     for msg in rx.iter() {
         match msg {
             OpMsg::Item { ok: false, err, .. } => item_err = err,
-            OpMsg::TransferDone { entry, durable: done_durable, ok, failed, .. } => {
+            OpMsg::TransferDone { entry, durable: done_durable, ok, failed, note, .. } => {
                 entry_steps = entry.steps.len();
-                durable = Some((done_durable, ok, failed));
+                done = Some((done_durable, ok, failed, note));
             }
             _ => {}
         }
     }
     assert!(!item_err.is_empty(), "the file's name rides a copy error");
     assert_eq!(entry_steps, 1, "the partial is journalled for undo");
-    assert_eq!(durable, Some((false, 0, 1)), "a failed flush is not durable: {:?}", durable);
-    test_set_fail(false);
+    assert_eq!(done, Some((false, 0, 1, String::new())), "a failed file flush is not durable with no note: {:?}", done);
+    test_set_fail_files(false);
+}
+
+#[test]
+fn a_file_fsync_failure_beside_a_landed_file_is_not_durable() {
+    use std::sync::mpsc::channel;
+    test_reset();
+    let d = TestDir::new("durable-wire-filefail");
+    let first = d.file("a.txt", "body");
+    let second = d.file("b.txt", "body");
+    let out = d.dir("out");
+    test_mark_durable(&out);
+    let mut durability = Durability::begin(&out);
+    assert!(durability.durable);
+    let flag = std::sync::atomic::AtomicBool::new(false);
+    let mut sink = |_: u64, _: u64| {};
+    let mut p = quiet(&flag, &mut sink, &mut durability);
+    crate::backend::copyfile::copy_any(&first, &out.join("a.txt"), &mut p).expect("first file lands");
+    drop(p);
+    test_set_fail_files(true);
+    let mut p = quiet(&flag, &mut sink, &mut durability);
+    let err = crate::backend::copyfile::copy_any(&second, &out.join("b.txt"), &mut p).expect_err("a failed file fsync is a failed copy");
+    assert_eq!(err.where_, "copy");
+    drop(p);
+    test_set_fail_files(false);
+    let (tx, rx) = channel();
+    let done = finish(16, &tx, &durability, &out, 1);
+    assert!(!done.ok, "a failed file flush is not durable");
+    assert!(done.note.is_empty(), "a failed file flush carries no note: {:?}", done.note);
+    assert!(rx.try_iter().any(|m| matches!(m, crate::backend::opsreq::OpMsg::Meta { line } if line.contains(r#""phase":"writing""#))), "the writing line still runs beside a landed file");
 }
 
 #[test]
@@ -313,10 +358,10 @@ fn a_copy_onto_rclone_says_it_uploads_in_the_background_and_never_claims_the_dri
     test_reset();
     let d = TestDir::new("durable-rclone-note");
     let out = d.dir("out");
-    let ctx = Ctx { durable: false, rclone: true, file_failed: false,
+    let durability = Durability { durable: false, rclone: true, file_failed: false,
         touched: std::collections::HashSet::new(), last: None };
     let (tx, rx) = channel();
-    let done = finish(9, &tx, &ctx, &out);
+    let done = finish(9, &tx, &durability, &out, 1);
     assert!(!done.ok, "an rclone copy never claims the drive confirmed it");
     assert_eq!(done.note, RCLONE_NOTE, "the verdict names the background upload: {:?}", done.note);
     assert!(rx.try_iter().next().is_none(), "no writing phase on an rclone target");
@@ -329,12 +374,147 @@ fn a_move_confirms_only_the_folders_its_destination_filled() {
     std::fs::create_dir_all(d.join("src")).unwrap();
     std::fs::create_dir_all(d.join("dst/tree")).unwrap();
     test_mark_durable(d.path());
-    let mut ctx = Ctx::begin(&d.join("dst/tree"));
-    ctx.touch(&d.join("src"));
-    ctx.touch(&d.join("dst/tree"));
-    ctx.touch(&d.join("dst"));
+    let mut durability = Durability::begin(&d.join("dst/tree"));
+    durability.touch(&d.join("src"));
+    durability.touch(&d.join("dst/tree"));
+    durability.touch(&d.join("dst"));
     test_reset_counts();
-    ctx.flush_dirs_for(&d.join("dst/tree")).unwrap();
+    durability.flush_dirs_for(&d.join("dst/tree")).unwrap();
     assert_eq!(test_counts().1, 2, "the tree and its parent, never the source's folder");
     test_reset();
+}
+
+#[test]
+fn finish_with_nothing_landed_sends_no_writing_line_and_claims_nothing() {
+    use std::sync::mpsc::channel;
+    test_reset();
+    let d = TestDir::new("durable-finish-empty");
+    let out = d.dir("out");
+    test_mark_durable(&out);
+    let durability = Durability::begin(&out);
+    let (tx, rx) = channel();
+    let done = finish(11, &tx, &durability, &out, 0);
+    assert!(!done.ok, "nothing landed, so nothing is durable");
+    assert!(done.note.is_empty(), "nothing landed, so no note: {:?}", done.note);
+    assert!(rx.try_iter().next().is_none(), "nothing landed, so no writing line");
+}
+
+#[test]
+fn finish_with_nothing_landed_on_rclone_says_nothing() {
+    use std::sync::mpsc::channel;
+    test_reset();
+    let d = TestDir::new("durable-rclone-empty");
+    let out = d.dir("out");
+    let durability = Durability { durable: false, rclone: true, file_failed: false,
+        touched: std::collections::HashSet::new(), last: None };
+    let (tx, rx) = channel();
+    let done = finish(12, &tx, &durability, &out, 0);
+    assert!(!done.ok, "nothing landed, so nothing is durable");
+    assert!(done.note.is_empty(), "nothing landed, so no rclone note: {:?}", done.note);
+    assert!(rx.try_iter().next().is_none(), "nothing landed, so no writing line");
+}
+
+#[test]
+fn a_failed_batch_lands_nothing_and_sends_no_writing_line() {
+    use crate::backend::opsreq::{run_transfer, OpMsg};
+    use std::sync::mpsc::channel;
+    use std::sync::Arc;
+    test_reset();
+    let d = TestDir::new("durable-wire-failall");
+    let missing = d.join("gone.txt");
+    let out = d.dir("out");
+    test_mark_durable(&out);
+    let (tx, rx) = channel();
+    run_transfer(14, false, vec![missing.to_string_lossy().to_string()], out.clone(), Arc::new(std::sync::atomic::AtomicBool::new(false)), tx);
+    let mut saw_writing = false;
+    let mut done = None;
+    for msg in rx.iter() {
+        match msg {
+            OpMsg::Meta { line } if line.contains(r#""phase":"writing""#) => saw_writing = true,
+            OpMsg::TransferDone { durable: done_durable, ok, failed, note, .. } => {
+                done = Some((done_durable, ok, failed, note));
+            }
+            _ => {}
+        }
+    }
+    assert!(!saw_writing, "nothing landed, so no writing line");
+    assert_eq!(done, Some((false, 0, 1, String::new())), "a failed batch claims nothing: {:?}", done);
+}
+
+#[test]
+fn a_cancelled_batch_lands_nothing_and_sends_no_writing_line() {
+    use crate::backend::opsreq::{run_transfer, OpMsg};
+    use std::sync::mpsc::channel;
+    use std::sync::Arc;
+    use std::sync::atomic::AtomicBool;
+    test_reset();
+    let d = TestDir::new("durable-wire-skipall");
+    let src = d.file("a.txt", "body");
+    let out = d.dir("out");
+    test_mark_durable(&out);
+    let (tx, rx) = channel();
+    run_transfer(15, false, vec![src.to_string_lossy().to_string()], out.clone(), Arc::new(AtomicBool::new(true)), tx);
+    let mut saw_writing = false;
+    let mut done = None;
+    for msg in rx.iter() {
+        match msg {
+            OpMsg::Meta { line } if line.contains(r#""phase":"writing""#) => saw_writing = true,
+            OpMsg::TransferDone { durable: done_durable, ok, failed, skipped, note, .. } => {
+                done = Some((done_durable, ok, failed, skipped, note));
+            }
+            _ => {}
+        }
+    }
+    assert!(!saw_writing, "nothing landed, so no writing line");
+    assert_eq!(done, Some((false, 0, 0, 1, String::new())), "a skipped batch claims nothing: {:?}", done);
+}
+
+#[test]
+fn a_cancelled_folder_copy_forgets_the_tree_it_removed() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::mpsc::channel;
+    test_reset();
+    let d = TestDir::new("durable-cancel-forget");
+    let first = d.file("first.txt", "body");
+    let src = d.dir("src");
+    std::fs::write(src.join("a.txt"), "a").unwrap();
+    std::fs::create_dir(src.join("sub")).unwrap();
+    std::fs::write(src.join("sub/b.txt"), "b").unwrap();
+    let out = d.dir("out");
+    test_mark_durable(&out);
+    let mut durability = Durability::begin(&out);
+    let idle = AtomicBool::new(false);
+    let mut quiet_sink = |_: u64, _: u64| {};
+    let mut p = quiet(&idle, &mut quiet_sink, &mut durability);
+    crate::backend::copyfile::copy_any(&first, &out.join("first.txt"), &mut p).expect("one file lands first");
+    drop(p);
+    let dst = out.join("clone");
+    d.assert_contains(&dst);
+    // The first bytes of the tree raise the cancel, so the folder exists and was touched before it goes.
+    let flag = AtomicBool::new(false);
+    let mut cancelling = |_: u64, _: u64| flag.store(true, Ordering::Relaxed);
+    let mut p = quiet(&flag, &mut cancelling, &mut durability);
+    let err = crate::backend::copyfile::copy_any(&src, &dst, &mut p).expect_err("cancelled mid-tree");
+    drop(p);
+    assert_eq!(err.msg, "cancelled");
+    assert!(!dst.exists(), "the cancelled tree goes with the cancel");
+    let (tx, _rx) = channel();
+    let done = finish(13, &tx, &durability, &out, 1);
+    assert!(done.note.is_empty(), "a removed tree is not a confirmation failure: {:?}", done.note);
+    assert!(done.ok, "the file that landed is confirmed");
+}
+
+#[test]
+fn duplicate_classifies_its_parent_that_exists() {
+    test_reset();
+    let d = TestDir::new("durable-dup-parent");
+    let src = d.file("a.txt", "body");
+    test_mark_durable(d.path());
+    let dst = d.join("a copy.txt");
+    assert!(!dst.exists(), "the duplicate name is free before the copy");
+    let parent = dst.parent().unwrap();
+    assert!(parent.is_dir(), "the parent a duplicate classifies exists");
+    assert!(Durability::begin(parent).durable, "the parent probes answer");
+    let (outcome, _) = crate::backend::ops::duplicate(&src);
+    assert!(outcome.is_ok());
 }

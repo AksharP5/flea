@@ -25,9 +25,16 @@ pub fn fat_name_is_durable(name: &str) -> bool {
     lower == "vfat" || lower == "exfat" || lower == "ntfs"
 }
 
+// Linux statfs magics for removable Windows filesystems; MSDOS and EXFAT match linux/magic.h.
+const MSDOS_SUPER_MAGIC: i64 = 0x4D44;
+const EXFAT_SUPER_MAGIC: i64 = 0x2011BAB0;
+// NTFS legacy driver magic and the ntfs3 magic from fs/ntfs3/super.c (lowercase sftn).
+const NTFS_SUPER_MAGIC: i64 = 0x5346544E;
+const NTFS3_SUPER_MAGIC: i64 = 0x7366746e;
+
 // Sample input: 0x4D44 trues, 0xEF53 falses.
 pub fn fat_magic_is_durable(magic: i64) -> bool {
-    magic == 0x4D44 || magic == 0x2011BAB0 || magic == 0x5346544E
+    magic == MSDOS_SUPER_MAGIC || magic == EXFAT_SUPER_MAGIC || magic == NTFS_SUPER_MAGIC || magic == NTFS3_SUPER_MAGIC
 }
 
 #[cfg(test)]
@@ -57,8 +64,7 @@ fn seam_flush(_dir: bool) -> bool {
     false
 }
 
-// True when the destination is an rclone mount: the copy lands in rclone's cache first,
-// so an fsync here would force the upload the verdict below says happens in the background.
+// Rclone lands in its cache first, so an fsync here would force its background upload now.
 pub fn dest_is_rclone(dest: &Path) -> bool {
     std::fs::read_to_string("/proc/self/mountinfo").is_ok_and(|body| {
         crate::backend::mountinfo::mount_entry_in(dest, &body).is_some_and(|e| fstype_is_rclone(&e.fstype))
@@ -92,12 +98,11 @@ pub fn dest_is_durable(dest: &Path) -> bool {
 // The done line's own words for a folder the drive would not confirm, printable as-is.
 pub const DIR_UNCONFIRMED: &str = "copied, but the drive did not confirm the folder";
 
-// The done line's own words for a copy onto rclone, printable as-is: the files landed in
-// rclone's cache and its own upload follows, so the UI never claims the drive confirmed them.
+// The done line's own words for a copy onto rclone, printable as-is.
 pub const RCLONE_NOTE: &str = "rclone uploads them in the background";
 
 // One operation's durability, created from its destination and carried down through Progress.
-pub struct Ctx {
+pub struct Durability {
     pub durable: bool,
     pub rclone: bool,
     pub file_failed: bool,
@@ -105,18 +110,15 @@ pub struct Ctx {
     last: Option<PathBuf>,
 }
 
-impl Ctx {
-    // Classified once per operation, so a copy never classifies per file. An rclone target
-    // is not durable: every fsync on it would force a synchronous upload of what the note
-    // above says uploads in the background.
-    pub fn begin(dest: &Path) -> Ctx {
+impl Durability {
+    // Classified once per operation, never per file; rclone stays non-durable to keep its upload in the background.
+    pub fn begin(dest: &Path) -> Durability {
         let rclone = dest_is_rclone(dest);
-        Ctx { durable: !rclone && dest_is_durable(dest), rclone, file_failed: false,
+        Durability { durable: !rclone && dest_is_durable(dest), rclone, file_failed: false,
             touched: HashSet::new(), last: None }
     }
 
-    // One entry per directory however many files land in it: a 100,000-file copy into one
-    // folder records one path, and the set covers a tree that revisits a parent.
+    // One entry per directory however many files land in it, covering a tree that revisits a parent.
     pub fn touch(&mut self, dir: &Path) {
         if !self.durable {
             return;
@@ -130,6 +132,14 @@ impl Ctx {
 
     pub fn note_file_failed(&mut self) {
         self.file_failed = true;
+    }
+
+    // A cancelled tree removed its own folders, so they leave the touched set with it.
+    pub fn forget_tree(&mut self, root: &Path) {
+        self.touched.retain(|p| p != root && !p.starts_with(root));
+        if self.last.as_deref().is_some_and(|l| l == root || l.starts_with(root)) {
+            self.last = None;
+        }
     }
 
     // Deepest first, so a child's entry is confirmed before its parent's.
@@ -187,9 +197,41 @@ pub fn fsync_dir(path: &Path) -> std::io::Result<()> {
     std::fs::File::open(path)?.sync_all()
 }
 
-// Sample input: /run/media/gm/128GB answers "128GB".
-pub fn drive_name(dest: &Path) -> String {
+// Sample input: "smb-share:server=nas,share=media" answers "media".
+fn gvfs_drive_name(root: &Path) -> Option<String> {
+    let name = root.file_name()?.to_str()?;
+    for key in ["share=", "server=", "host="] {
+        if let Some(at) = name.find(key) {
+            let rest = &name[at + key.len()..];
+            let end = rest.find(',').unwrap_or(rest.len());
+            let value = rest[..end].trim();
+            if !value.is_empty() {
+                return Some(value.to_string());
+            }
+        }
+    }
+    None
+}
+
+// Sample input: dest "/run/media/gm/128GB/photos" with mount "/run/media/gm/128GB" answers "128GB".
+pub fn drive_name_in(dest: &Path, body: &str) -> String {
+    if let Some(root) = crate::backend::extclass::gvfs_root(dest) {
+        if let Some(name) = gvfs_drive_name(&root) {
+            return name;
+        }
+    }
+    if let Some(entry) = crate::backend::mountinfo::mount_entry_in(dest, body) {
+        if let Some(name) = entry.mount.file_name().and_then(|n| n.to_str()).filter(|n| !n.is_empty()) {
+            return name.to_string();
+        }
+    }
     dest.file_name().map(|n| n.to_string_lossy().into_owned()).filter(|n| !n.is_empty()).unwrap_or_else(|| dest.to_string_lossy().into_owned())
+}
+
+// Sample input: /run/media/gm/128GB/photos answers "128GB".
+pub fn drive_name(dest: &Path) -> String {
+    let body = std::fs::read_to_string("/proc/self/mountinfo").unwrap_or_default();
+    drive_name_in(dest, &body)
 }
 
 // Sample output: {"t":"transferprogress","id":1,"index":0,"name":"","bytes":0,"total":0,"scanned":0,"phase":"writing","drive":"128GB"}
@@ -202,21 +244,22 @@ pub struct Finish {
     pub note: String,
 }
 
-// After the last file: one writing line, then every touched directory. Cancel is not
-// honoured here because every file is already complete. An rclone target answers its note
-// with no flush at all, so neither the writing phase nor a "written to the drive" line exists for it.
-pub fn finish(id: usize, tx: &std::sync::mpsc::Sender<crate::backend::opsreq::OpMsg>, ctx: &Ctx, dest: &Path) -> Finish {
-    if ctx.rclone {
+// After the last landed file: one writing line, then every touched directory.
+pub fn finish(id: usize, tx: &std::sync::mpsc::Sender<crate::backend::opsreq::OpMsg>, durability: &Durability, dest: &Path, landed: usize) -> Finish {
+    if landed == 0 {
+        return Finish { ok: false, note: String::new() };
+    }
+    if durability.rclone {
         return Finish { ok: false, note: RCLONE_NOTE.to_string() };
     }
-    if !ctx.durable {
+    if !durability.durable {
         return Finish { ok: false, note: String::new() };
     }
     let _ = tx.send(crate::backend::opsreq::OpMsg::Meta { line: writing_line(id, &drive_name(dest)) });
-    if ctx.file_failed {
+    if durability.file_failed {
         return Finish { ok: false, note: String::new() };
     }
-    match ctx.flush_dirs() {
+    match durability.flush_dirs() {
         Ok(()) => Finish { ok: true, note: String::new() },
         Err(_) => Finish { ok: false, note: DIR_UNCONFIRMED.to_string() },
     }
@@ -253,6 +296,11 @@ pub fn test_set_fail(fail: bool) {
 #[cfg(test)]
 pub fn test_set_fail_dirs(fail: bool) {
     FAIL_DIR.with(|v| v.set(fail));
+}
+
+#[cfg(test)]
+pub fn test_set_fail_files(fail: bool) {
+    FAIL_FILE.with(|v| v.set(fail));
 }
 
 #[cfg(test)]

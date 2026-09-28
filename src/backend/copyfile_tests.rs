@@ -309,9 +309,9 @@ fn a_cross_device_move_confirms_the_destination_before_removing_the_source() {
     crate::backend::durable::test_mark_durable(d.path());
     let flag = AtomicBool::new(false);
     let mut sink = |_: u64, _: u64| {};
-    let mut ctx = crate::backend::durable::Ctx::begin(&dst);
-    assert!(ctx.durable, "the marked sandbox is a durable destination");
-    let mut p = Progress { cancel: &flag, on_bytes: &mut sink, partial: None, tree: None, manifest: None, durability: Some(&mut ctx) };
+    let mut durability = crate::backend::durable::Durability::begin(&dst);
+    assert!(durability.durable, "the marked sandbox is a durable destination");
+    let mut p = Progress { cancel: &flag, on_bytes: &mut sink, partial: None, tree: None, manifest: None, durability: Some(&mut durability) };
     crate::backend::durable::test_set_fail_dirs(true);
     let error = move_cross_device(&src, &dst, &mut p).expect_err("a failed folder confirm must not remove the source");
     assert_eq!(error.msg, crate::backend::durable::DIR_UNCONFIRMED);

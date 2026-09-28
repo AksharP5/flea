@@ -43,15 +43,14 @@ pub fn rename(path: &Path, to_name: &str) -> Result<(PathBuf, Vec<Step>), FleaEr
     let before = ItemIdentity::inspect(path)?;
     renamecompat::rename_path(path, &to)?;
     {
-        // A same-filesystem rename is atomic, so confirming its directory is best effort: the
-        // rename already happened, and an error here would claim otherwise. It is still said aloud.
-        let mut confirm = crate::backend::durable::Ctx::begin(&to);
+        // A same-filesystem rename is atomic, so its folder confirmation stays best effort.
+        let mut confirm = crate::backend::durable::Durability::begin(&to);
         if confirm.durable {
             if let Some(parent) = to.parent() {
                 confirm.touch(parent);
             }
-            if confirm.flush_dirs().is_err() {
-                eprintln!("flea: rename landed but the drive did not confirm the folder");
+            if let Err(error) = confirm.flush_dirs() {
+                eprintln!("flea: rename {} landed but the drive did not confirm the folder: {}", to.display(), error);
             }
         }
     }
@@ -95,14 +94,14 @@ pub fn duplicate(path: &Path) -> (Result<PathBuf, FleaError>, Vec<Step>) {
     };
     let flag = AtomicBool::new(false);
     let mut sink = |_: u64, _: u64| {};
-    let mut ctx = crate::backend::durable::Ctx::begin(&dst);
+    let mut durability = crate::backend::durable::Durability::begin(dst.parent().unwrap_or(path));
     let mut p = Progress { cancel: &flag, on_bytes: &mut sink, partial: None, tree: None,
-        manifest: crate::backend::copymanifest::writer_for(path, &dst), durability: Some(&mut ctx) };
+        manifest: crate::backend::copymanifest::writer_for(path, &dst), durability: Some(&mut durability) };
     match copy_any(path, &dst, &mut p) {
         Ok(()) => {
             drop(p);
             // The bytes landed; only the folder confirmation can still fail, so the step stays journalled either way.
-            let unconfirmed = ctx.flush_dirs().is_err();
+            let unconfirmed = durability.flush_dirs().is_err();
             match undo::copied(path, &dst, source) {
                 Ok(step) if !unconfirmed => (Ok(dst), vec![step]),
                 Ok(step) => (Err(named("duplicate", &dst, crate::backend::durable::DIR_UNCONFIRMED)), vec![step]),

@@ -24,9 +24,8 @@ pub struct Progress<'a> {
     pub partial: Option<PathBuf>,
     // Where a tree copy records every path it creates; a finished copy drops it unread.
     pub manifest: Option<super::copymanifest::Writer>,
-    // Some while the destination needs its bytes confirmed: the transfer (or duplicate, redo,
-    // rename) created it from the destination and flushes it at the end.
-    pub durability: Option<&'a mut super::durable::Ctx>,
+    // Some while the destination needs its bytes confirmed: the transfer created it for its dest.
+    pub durability: Option<&'a mut super::durable::Durability>,
 }
 
 pub fn cancelled(p: &Progress) -> bool {
@@ -35,8 +34,8 @@ pub fn cancelled(p: &Progress) -> bool {
 
 // The one durable call every copy path makes: a no-op unless the destination needs confirming.
 fn touch(p: &mut Progress, dir: &Path) {
-    if let Some(ctx) = p.durability.as_mut() {
-        ctx.touch(dir);
+    if let Some(durability) = p.durability.as_mut() {
+        durability.touch(dir);
     }
 }
 
@@ -110,8 +109,8 @@ fn copy_file_at(src: At, dst: At, total: u64, p: &mut Progress) -> Result<(), Fl
     if durable {
         // The bytes count only once the drive confirms them, so the rate is the drive's real rate.
         if let Err(e) = crate::backend::durable::fsync_file(&w) {
-            if let Some(ctx) = p.durability.as_mut() {
-                ctx.note_file_failed();
+            if let Some(durability) = p.durability.as_mut() {
+                durability.note_file_failed();
             }
             return Err(left_half_written(p, dst, &w, from_io("copy", &dst.named.to_string_lossy(), &e)));
         }
@@ -252,14 +251,17 @@ fn copy_dir_at(src: At, dst: At, p: &mut Progress) -> Result<(), FleaError> {
     );
     if r.is_err() {
         if cancelled(p) {
-            // The tree goes with the cancel, the same rule copy_file already applies to a partial file: a
-            // half-copied directory is not a result anyone asked for, and no journal step records one.
-            // Gated on the flag rather than the message, because a nested copy_file returns its own cancel.
+            // A half-copied tree goes with the cancel, gated on the flag not the message.
             p.partial = match remove_tree(dst.at, &into) {
                 Ok(()) => None,
                 // Still there, so the journal is told where it is rather than that nothing was left.
                 Err(()) => Some(dst.named.to_path_buf()),
             };
+            if p.partial.is_none() {
+                if let Some(durability) = p.durability.as_mut() {
+                    durability.forget_tree(dst.named);
+                }
+            }
         } else {
             // Any other failure leaves what was copied, since removing it would destroy data on a
             // transient error, and reports the whole tree as the one partial the journal records.
@@ -390,7 +392,7 @@ pub(crate) fn move_cross_device(src: &Path, dst: &Path, p: &mut Progress) -> Res
 // The folders copy_any touched, or the parent with no context; a failure keeps the source.
 fn confirm_dest(p: &Progress, dst: &Path) -> Result<(), FleaError> {
     let failed = match p.durability.as_ref() {
-        Some(ctx) => ctx.flush_dirs_for(dst).is_err(),
+        Some(durability) => durability.flush_dirs_for(dst).is_err(),
         None => dst
             .parent()
             .map(crate::backend::durable::fsync_dir)

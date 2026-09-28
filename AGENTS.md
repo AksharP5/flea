@@ -2061,6 +2061,13 @@ Durable copies record two ceilings, each re-derived with `wc -l` on the integrat
 `src/backend/opsreq.rs` 402 for carrying the batch's durability context and its verdict on the
 done line; the policy itself is all `src/backend/durable.rs`.
 
+Fix3-durable2 moves three ceilings, each re-derived with `wc -l`: `src/backend/copyfile.rs` 432
+to 434 for the cancelled-tree forget, `src/backend/renamecompat.rs` 390 to 416 for the
+flush-failure take-back and its test, and `src/backend/durable_tests.rs` 323 to 520 (beside the dest-only confirm test) for the
+cancel, empty-finish, file-fail, drive-name and parent-classify tests; `src/backend/durable.rs`
+stands at 297 inside the hard cap for the mount-named drive, the landed count and the full-word
+rename.
+
 Durability's UI half records one ceiling, re-derived with `wc -l` at the commit that recorded it.
 `ui/StatusBar.qml` 397 to 446 for the clickable "z undoes" (the undo segment beside the rest the
 secondary already drew, its hover lift, the click that reaches the strip's own pane through the

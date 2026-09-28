@@ -11,9 +11,11 @@ known_over_cap="shelf/Model.js 669
 shelf/Panel.qml 430
 shelf/ShelfCard.qml 443
 shelf/ShelfService.qml 481
-src/backend/copyfile.rs 432
+src/backend/copyfile.rs 434
 src/backend/copyfile_tests.rs 412
+src/backend/durable_tests.rs 520
 src/backend/fsinforeq.rs 406
+src/backend/renamecompat.rs 416
 src/backend/gvfslist.rs 435
 src/backend/imagesize.rs 475
 src/backend/localsend.rs 403
