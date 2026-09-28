@@ -6,6 +6,7 @@ import "." as Flea
 import "js/TextSize.js" as TextSize
 import "js/Nav.js" as Nav
 import "js/Ops.js" as Ops
+import "js/RailKeys.js" as RailKeys
 import "js/RailMenu.js" as RailMenu
 import "js/Search.js" as Search
 import "js/Startup.js" as Startup
