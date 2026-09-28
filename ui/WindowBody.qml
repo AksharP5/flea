@@ -91,21 +91,15 @@ Rectangle {
         preserveSort: view.dualMode
     }
 
-    // The window-long network host: mounts, the GVFS bridge wait and the dialog answers all
-    // outlive the rail Loader in ui/PaneRail.qml, so hiding the rail mid-mount kills no wait and
-    // the folder still opens. Built with the window, before the first listing reply can arrive,
-    // so the rail finds it on arrival and its compile never lands inside the settle window.
-    Loader {
+    // Built with the window and outliving the rail, so hiding the rail mid-mount kills no wait.
+    Flea.NetworkMounts {
         id: networkHost
-        active: true
-        sourceComponent: Flea.NetworkMounts {
-            backend: primaryPane.backend
-            origin: primaryPane
-        }
+        backend: primaryPane.backend
+        origin: primaryPane
     }
-    readonly property var networkService: networkHost.item
+    readonly property var networkService: networkHost
     function ensureNetworkService() {
-        return networkHost.item
+        return networkHost
     }
 
     // The canvas's own top chrome: where you are on the left, how you are looking at it on

@@ -241,8 +241,7 @@ Item {
         function onRailChosen(action, key) { root.releaseChosen(action, key) }
     }
 
-    // The window-long host exists from creation, so a favourite or phone row pressed
-    // before the rail arrived still answers it on that press rather than refusing.
+    // The host exists from creation, so a row pressed before the rail arrives still answers.
     function networkHost() {
         if (root.service) return root.service
         if (root.navigationPane) return root.navigationPane.ensureNetworkService()
