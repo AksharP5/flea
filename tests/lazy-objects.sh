@@ -18,10 +18,16 @@ missing ui/NetworkMounts.qml '|| bridge.flow.waiter'
 # f036net: the host builds with the window again, so no gate orders it after rows.
 missing ui/WindowBody.qml 'NetworkHostGate'
 have ui/WindowBody.qml 'id: networkHost'
-# Sample input: "        id: networkHost", "        active: true", then the Loader's "    }"; it builds at creation, synchronously.
-host=$(sed -n '/id: networkHost/,/^    }/p' "$tree/ui/WindowBody.qml")
-printf '%s\n' "$host" | grep -q 'active: true' || fail 'ui/WindowBody.qml networkHost Loader misses active: true'
-printf '%s\n' "$host" | grep -q 'asynchronous' && fail 'ui/WindowBody.qml networkHost Loader must not build asynchronously'
+# Sample input: "    Loader {", "        id: networkHost", "        active: true", then "    }" closing the Loader.
+body=$tree/ui/WindowBody.qml
+id_line=$(grep -n 'id: networkHost$' "$body" | head -n 1 | cut -d: -f1)
+[ -n "$id_line" ] || fail 'ui/WindowBody.qml has no networkHost id'
+open_line=$(head -n "$id_line" "$body" | grep -n 'Loader {$' | tail -n 1 | cut -d: -f1)
+[ -n "$open_line" ] || fail 'ui/WindowBody.qml has no Loader line above the networkHost id'
+indent=$(sed -n "${open_line}p" "$body" | sed 's/Loader {$//')
+host=$(tail -n +"$open_line" "$body" | sed "/^${indent}}\$/q")
+printf '%s\n' "$host" | grep -q "^${indent}    active: true\$" || fail 'ui/WindowBody.qml networkHost Loader misses active: true'
+printf '%s\n' "$host" | grep -q "^${indent}    asynchronous: true" && fail 'ui/WindowBody.qml networkHost Loader must not build asynchronously'
 command -v qs >/dev/null 2>&1 || { printf 'lazy-objects: no qs here, live halves not run\n'; exit 0; }
 test_root="$FIXTURE_ROOT/flea-lazy-objects-$$"
 sandbox_make "$test_root"

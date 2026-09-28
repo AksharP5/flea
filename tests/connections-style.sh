@@ -11,7 +11,7 @@ python3 - "$tree" "$PWD/tests/fixtures/connections-style" <<'PY'
 import glob, os, re, sys
 
 MEMBER_INDENT = '    '
-OPEN = re.compile(r'^(\s*)(?!//|\*)(.*\b)?Connections\s*\{(.*)$')
+OPEN = re.compile(r'\bConnections\s*\{(.*)$')
 METHOD = re.compile(r'function\s+(on[A-Z]\w*)\s*\(')
 BINDING = re.compile(r'(?:^|[;{}])\s*(on[A-Z]\w*)\s*:')
 
@@ -22,27 +22,30 @@ def fail(message):
 def blocks(path):
     # Sample input: "    Connections {" at indent 4, "        function onReady() {" at 8, "    }" closing at 4.
     lines = open(path).read().split('\n')
-    found = []
+    found, broken = [], []
     for n, line in enumerate(lines):
-        m = OPEN.match(line)
-        if not m:
+        code = line.lstrip()
+        m = OPEN.search(code)
+        if not m or code.startswith(('//', '/*', '*')):
             continue
-        indent, rest = m.group(1), m.group(3)
-        if rest.rstrip().endswith('}'):
+        indent, rest = line[:len(line) - len(code)], m.group(1).strip()
+        following = [later for later in lines[n + 1:] if later.strip()]
+        if rest.endswith('}') and not (following and following[0].startswith(indent + MEMBER_INDENT)):
             found.append((n + 1, [rest]))
             continue
-        members = []
+        members = [rest]
         for later in lines[n + 1:]:
             if later.startswith(indent + '}'):
+                found.append((n + 1, members))
                 break
             if later.strip() and not later.startswith(indent + MEMBER_INDENT):
-                fail('%s:%d has a member off its indent' % (path, n + 1))
+                broken.append('%s:%d has a member off its indent' % (path, n + 1))
+                break
             if not later.startswith(indent + MEMBER_INDENT + ' ') and not later.strip().startswith(('//', '/*', '*')):
                 members.append(later)
         else:
-            fail('%s:%d never closes at its own indent' % (path, n + 1))
-        found.append((n + 1, members))
-    return found
+            broken.append('%s:%d never closes at its own indent' % (path, n + 1))
+    return found, broken
 
 def mixed(members):
     meth = [x for m in members for x in METHOD.findall(m)]
@@ -58,7 +61,9 @@ if not files:
 total = 0
 bad = []
 for f in files:
-    for line, members in blocks(f):
+    found, broken = blocks(f)
+    bad += ['connections-style ' + b for b in broken]
+    for line, members in found:
         total += 1
         hit = mixed(members)
         if hit:
@@ -71,8 +76,8 @@ reds = sorted(glob.glob(os.path.join(reds_dir, '*.qml')))
 if not reds:
     fail('has no red fixtures in ' + reds_dir)
 for f in reds:
-    if not any(mixed(members) for _, members in blocks(f)):
+    if not any(mixed(members) for _, members in blocks(f)[0]):
         fail('missed its red fixture ' + os.path.basename(f))
-print('connections-style: %d file(s), %d block(s), %d mixed, %d red fixture(s) caught' % (len(files), total, len(bad), len(reds)))
+print('connections-style: %d file(s), %d block(s), %d problem(s), %d red fixture(s) caught' % (len(files), total, len(bad), len(reds)))
 sys.exit(1 if bad else 0)
 PY
