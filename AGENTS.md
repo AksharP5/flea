@@ -173,10 +173,15 @@ sentence that names the four it accepts.
 A gvfs FUSE path is the exception to both halves. `scan.rs` lists it through one `gio list`
 child (`backend/gvfslist.rs`) instead of readdir: the daemon answers names with size, type
 and mtime in one pass, where the FUSE path would block in getdents64 and then pay one round
-trip per row. That per-row metadata lives in `Listing.meta_cache` for the listing's life
+trip per row. That per-row metadata lives in `Listing`'s compact gio store for the listing's life
 rather than for one request, and every re-list rebuilds it, which every Flea write triggers;
 a remote change raises no inotify on either route, so the watched re-read never fires for
-one. `stat_range()` answers those rows from the cache with no lstat, a symlink row paying the one
+one. The store is one 24-byte `GioMeta` record per gio row (the span's name offset, mode,
+size and mtime), pushed in build order so the offsets increase and row lookups binary search
+it, plus the directory's device once per listing and a side store of symlink targets keyed by
+the same offset, since only symlink rows have one; `build_listing` shrinks both to their length.
+The offset rides in the span through every sort, so a sorted listing looks its rows up by the same
+key. `stat_range()` answers those rows from the store with no lstat, a symlink row paying the one
 follow-stat `meta_one` pays so a linked folder draws as one, and past
 `SLOW_PASS_MS` (10 ms) the remainder of a window goes across 8 threads: a stat on FUSE, a
 network share or a cold vfat stick is a round trip of a millisecond or more against
@@ -2522,6 +2527,13 @@ chunk-stamping reader, and the three tests that pin them. `src/backend/meta.rs` 
 
 Advloop round 2 on the gvfs listing moves `src/backend/gvfslist.rs` 434 to 435, re-derived with
 `wc -l`, for the assertion that pins the cached mtime of a gio symlink row.
+
+Fix3-pss2 moves one recorded ceiling, re-derived with `wc -l`: `src/backend/gvfslist.rs` 435 to
+458 for replacing the per-row owned `meta_cache` map with the compact offset-keyed store (the
+10,000-row store-shape test and the two tests its build_listing rewrite touched).
+`src/backend/listing.rs` stands at 192 inside the soft budget for the `GioMeta` record, the
+symlink side store and the two binary-search lookups; `src/backend/meta.rs` stands at 395 inside
+the hard cap for the store lookups and the cached-sort test with its injected-stat seam.
 
 Advloop round 3 moves `src/backend/copyfile.rs` 428 to 432 and `src/backend/copyfile_tests.rs` 411 to
 412, re-derived with `wc -l`, for the unconfirmed EXDEV copy handed to the caller as a partial.

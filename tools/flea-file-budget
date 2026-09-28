@@ -16,7 +16,7 @@ src/backend/copyfile_tests.rs 412
 src/backend/durable_tests.rs 520
 src/backend/fsinforeq.rs 406
 src/backend/renamecompat.rs 416
-src/backend/gvfslist.rs 435
+src/backend/gvfslist.rs 458
 src/backend/imagesize.rs 475
 src/backend/localsend.rs 403
 src/backend/menu_actions.rs 560

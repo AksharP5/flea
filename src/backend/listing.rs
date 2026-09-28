@@ -1,15 +1,21 @@
 // One buffer plus a span each, see AGENTS.md "Why the listing is an arena".
-use std::path::{Component, Path};
 use std::collections::HashMap;
+use std::path::{Component, Path};
 
-// Gio rows carry per-row metadata keyed by name for the listing's life, so sorts read it, never stat.
-#[derive(Clone, Debug, Default)]
-pub struct CachedMeta {
+// One gio row's figures in 24 bytes, keyed by its span's name offset, which every sort carries along.
+#[derive(Clone, Copy, Debug)]
+pub struct GioMeta {
+    pub name_off: u32,
+    pub mode: u32,
     pub size: u64,
     pub mtime: i64,
-    pub mode: u32,
+}
+
+// A symlink row's target keyed by the same offset; only symlink rows have one.
+#[derive(Clone, Debug)]
+pub struct GioTarget {
+    pub name_off: u32,
     pub target: String,
-    pub dev: u64,
 }
 
 // Enough that a normal directory never reallocates its way up from nothing.
@@ -28,8 +34,11 @@ pub struct Span {
 pub struct Listing {
     pub names: String,
     pub spans: Vec<Span>,
-    // Empty for readdir listings; the gvfs path fills it, so local rows pay no map.
-    pub meta_cache: HashMap<String, CachedMeta>,
+    // Empty for readdir listings; the gvfs path fills it, so local rows pay no store.
+    pub gio_meta: Vec<GioMeta>,
+    pub gio_targets: Vec<GioTarget>,
+    // The directory's device once per listing; every cached row takes this dev.
+    pub base_dev: u64,
 }
 
 impl Listing {
@@ -38,7 +47,7 @@ impl Listing {
         names.reserve(NAME_RESERVE_BYTES);
         let mut spans = Vec::new();
         spans.reserve(SPAN_RESERVE);
-        Listing { names, spans, meta_cache: HashMap::new() }
+        Listing { names, spans, gio_meta: Vec::new(), gio_targets: Vec::new(), base_dev: 0 }
     }
 
     // corner: u32 offsets cap the arena at 4 GiB of names, see AGENTS.md.
@@ -61,6 +70,17 @@ impl Listing {
     // The seam: callers ask the listing; spans is public only because sort borrows it.
     pub fn is_dir(&self, i: usize) -> bool {
         self.spans[i].is_dir
+    }
+
+    // A cached gio row by its listing index: the span's offset binary searched in build order.
+    pub fn gio_for(&self, i: usize) -> Option<&GioMeta> {
+        let off = self.spans.get(i)?.off;
+        self.gio_meta.binary_search_by_key(&off, |m| m.name_off).ok().map(|at| &self.gio_meta[at])
+    }
+
+    // A cached symlink's target by the same offset; empty for every other row.
+    pub fn gio_target(&self, name_off: u32) -> &str {
+        self.gio_targets.binary_search_by_key(&name_off, |t| t.name_off).ok().map(|at| self.gio_targets[at].target.as_str()).unwrap_or("")
     }
 
     pub fn len(&self) -> usize {

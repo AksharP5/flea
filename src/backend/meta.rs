@@ -64,13 +64,13 @@ fn stat_range_with(
     (out, t.elapsed().as_secs_f64() * 1000.0)
 }
 
-// A prefetched gio row answers from its cache, a symlink paying one follow-stat; anything else runs the injected stat.
+// A prefetched gio row answers from its store, a symlink paying one follow-stat; anything else runs the injected stat.
 fn cached_or(base: &Path, l: &Listing, i: usize, stat: &(impl Fn(&Path, &str) -> Meta + Sync)) -> Meta {
-    if let Some(c) = l.meta_cache.get(l.name(i)) {
+    if let Some(g) = l.gio_for(i) {
         // corner: a cached symlink pays meta_one's one follow-stat so a linked folder draws as one.
         let target_is_dir = l.spans.get(i).is_some_and(|s| s.is_symlink)
             && base.join(l.name(i)).metadata().map(|t| t.is_dir()).unwrap_or(false);
-        return Meta { size: c.size, mtime: c.mtime, mode: c.mode, target_is_dir, target: c.target.clone(), dev: c.dev };
+        return Meta { size: g.size, mtime: g.mtime, mode: g.mode, target_is_dir, target: l.gio_target(g.name_off).to_string(), dev: l.base_dev };
     }
     stat(base, l.name(i))
 }
@@ -143,13 +143,13 @@ pub fn stat_all(base: &Path, l: &Listing) -> (Vec<Stat>, f64) {
     stat_all_with(base, l, stat_one)
 }
 
-// The test seam: a prefetched gio listing answers from its cache with no stat at all.
+// The test seam: a prefetched gio listing answers from its store with no stat at all.
 fn stat_all_with(base: &Path, l: &Listing, stat: impl Fn(&Path, &str) -> Stat + Sync) -> (Vec<Stat>, f64) {
     let t = Instant::now();
     let n = l.len();
-    if !l.meta_cache.is_empty() {
-        let out: Vec<Stat> = (0..n).map(|i| match l.meta_cache.get(l.name(i)) {
-            Some(c) => Stat { size: c.size, mtime: c.mtime },
+    if !l.gio_meta.is_empty() {
+        let out: Vec<Stat> = (0..n).map(|i| match l.gio_for(i) {
+            Some(g) => Stat { size: g.size, mtime: g.mtime },
             None => stat(base, l.name(i)),
         }).collect();
         return (out, t.elapsed().as_secs_f64() * 1000.0);
@@ -355,16 +355,26 @@ mod tests {
     }
 
     #[test]
+    fn a_sorted_gio_listing_reads_cached_figures_with_no_stat() {
+        // Rows name files absent from the test dir, so any stat would answer zeroes.
+        let d = TestDir::new("gio-sort-cached");
+        let text = "smb://h/share/b.txt\t30\t(regular)\ttime::modified=300\nsmb://h/share/a.txt\t10\t(regular)\ttime::modified=100\nsmb://h/share/c.txt\t20\t(regular)\ttime::modified=200\n";
+        let build = || crate::backend::gvfslist::build_listing(text, false, d.path().to_str().unwrap()).unwrap();
+        let (stats, _) = stat_all_with(d.path(), &build(), |_: &Path, _: &str| panic!("a cached sort must not stat"));
+        assert_eq!(stats.iter().map(|s| (s.size, s.mtime)).collect::<Vec<_>>(), [(30, 300), (10, 100), (20, 200)]);
+        for by in [crate::backend::sort::SortBy::Size, crate::backend::sort::SortBy::Mtime] {
+            let mut l = build();
+            crate::backend::metasort::sort_by_stat(&mut l, d.path(), by, false);
+            assert_eq!((0..l.len()).map(|i| l.name(i)).collect::<Vec<_>>(), ["a.txt", "c.txt", "b.txt"]);
+        }
+    }
+
+    #[test]
     fn a_prefetched_listing_answers_without_any_stat() {
         use std::sync::atomic::{AtomicUsize, Ordering};
         let d = TestDir::new("statcached");
-        let mut l = Listing::new();
-        for name in ["a.txt", "sub", "link"] {
-            l.push(name, name == "sub");
-        }
-        for (name, size, mode, target) in [("a.txt", 10, 0o100700, ""), ("sub", 4096, 0o40700, ""), ("link", 5, 0o120777, "a.txt")] {
-            l.meta_cache.insert(name.to_string(), crate::backend::listing::CachedMeta { size, mtime: 1790537811, mode, target: target.to_string(), dev: 9 });
-        }
+        let text = "smb://h/share/a.txt\t10\t(regular)\ttime::modified=1790537811 unix::mode=33216\nsmb://h/share/sub\t4096\t(directory)\ttime::modified=1790537811 unix::mode=16832\nsmb://h/share/link\t5\t(symlink)\tstandard::is-symlink=TRUE standard::symlink-target=a.txt time::modified=1790537811 unix::mode=41471\n";
+        let l = crate::backend::gvfslist::build_listing(text, false, d.path().to_str().unwrap()).unwrap();
         let calls = AtomicUsize::new(0);
         let (metas, _) = stat_range_with(d.path(), &l, 0, 3, SLOW_PASS_MS, |_: &Path, _: &str| {
             calls.fetch_add(1, Ordering::SeqCst);
@@ -373,7 +383,7 @@ mod tests {
         assert_eq!(calls.load(Ordering::SeqCst), 0, "no cached row may reach the stat function");
         assert_eq!((metas[0].size, metas[0].mode), (10, 0o100700));
         assert_eq!((metas[1].size, metas[1].mode), (4096, 0o40700));
-        assert_eq!((metas[2].target.as_str(), metas[2].dev), ("a.txt", 9));
+        assert_eq!((metas[2].target.as_str(), metas[2].dev), ("a.txt", l.base_dev));
         let all_calls = AtomicUsize::new(0);
         let (stats, _) = stat_all_with(d.path(), &l, |_: &Path, _: &str| {
             all_calls.fetch_add(1, Ordering::SeqCst);

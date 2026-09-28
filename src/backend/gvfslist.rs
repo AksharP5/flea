@@ -1,6 +1,6 @@
 // A gvfs FUSE directory lists through one gio child; see AGENTS.md "Two-phase listing".
 use crate::backend::extclass;
-use crate::backend::listing::{CachedMeta, Listing};
+use crate::backend::listing::{GioMeta, GioTarget, Listing};
 use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -230,11 +230,12 @@ pub(crate) fn raw_output(path: &str, gio: &str, timeout: Duration) -> Result<Vec
     reader.join().map_err(|_| "gio reader failed".to_string())
 }
 
-// The parse half the prefetch adoption shares: gio's text in, the listing with its cache out.
+// The parse half the prefetch adoption shares: gio's text in, the listing with its store out.
 // Sample input: "smb://h/share/a.txt\t3\t(regular)\ttime::modified=100\n"
 pub(crate) fn build_listing(text: &str, hidden: bool, path: &str) -> Result<Listing, String> {
     let base_dev: u64 = std::fs::metadata(path).map(|m| m.dev()).unwrap_or(0);
     let mut l = Listing::new();
+    l.base_dev = base_dev;
     for line in text.lines() {
         if line.is_empty() {
             continue;
@@ -247,10 +248,17 @@ pub(crate) fn build_listing(text: &str, hidden: bool, path: &str) -> Result<List
                 let index = l.len();
                 l.push(&row.name, row.is_dir);
                 l.spans[index].is_symlink = row.is_symlink;
-                l.meta_cache.insert(row.name.clone(), CachedMeta { size: row.size, mtime: row.mtime, mode, target: row.target, dev: base_dev });
+                let name_off = l.spans[index].off;
+                l.gio_meta.push(GioMeta { name_off, mode, size: row.size, mtime: row.mtime });
+                if row.is_symlink && !row.target.is_empty() {
+                    l.gio_targets.push(GioTarget { name_off, target: row.target });
+                }
+                // Nothing else from this row's parse outlives the iteration: the name is in the arena, the figures in the record.
             }
         }
     }
+    l.gio_meta.shrink_to_fit();
+    l.gio_targets.shrink_to_fit();
     Ok(l)
 }
 
@@ -393,10 +401,10 @@ mod tests {
         assert_eq!((l.name(0), l.name(1), l.name(2)), ("a.txt", "sub", "l"));
         assert!(l.is_dir(1) && !l.is_dir(0) && !l.is_dir(2));
         assert!(l.spans[2].is_symlink, "the symlink bit rides in the span like the readdir path");
-        let cached = l.meta_cache.get("l").expect("every row is cached by name");
+        let cached = l.gio_for(2).expect("every row is cached by offset");
         assert_eq!((cached.size, cached.mtime, cached.mode), (1, 300, 0o120777));
-        assert_eq!(cached.target, "a.txt");
-        assert_eq!(l.meta_cache.get("a.txt").expect("file cached").size, 3);
+        assert_eq!(l.gio_target(cached.name_off), "a.txt");
+        assert_eq!(l.gio_for(0).expect("file cached").size, 3);
     }
 
     #[test]
@@ -404,10 +412,10 @@ mod tests {
         let d = TestDir::new("gvfs-unixmode");
         let fake = fake_gio(&d, "gio", "#!/bin/sh\nprintf '%s\\n' 'smb://h/share/plain.txt\t6\t(regular)\ttime::modified=100 unix::mode=33188' 'smb://h/share/l\t6\t(symlink)\tstandard::is-symlink=TRUE standard::symlink-target=plain.txt time::modified=100 unix::mode=41471' 'smb://h/share/odd.txt\t6\t(regular)\ttime::modified=100 unix::mode=notanumber'\n");
         let (l, _) = list_via_gio(d.path().to_str().unwrap(), false, &fake, Duration::from_secs(5)).unwrap();
-        assert_eq!(l.meta_cache.get("plain.txt").expect("file cached").mode, 33188, "0644, not the 0700 fallback");
-        assert_eq!(l.meta_cache.get("l").expect("link cached").mode, 41471, "the link's own 0o120777");
+        assert_eq!(l.gio_for(0).expect("file cached").mode, 33188, "0644, not the 0700 fallback");
+        assert_eq!(l.gio_for(1).expect("link cached").mode, 41471, "the link's own 0o120777");
         assert!(l.spans[1].is_symlink, "the symlink bit still rides in the span");
-        assert_eq!(l.meta_cache.get("odd.txt").expect("odd row cached").mode, 0o100700, "a garbled mode keeps the fallback");
+        assert_eq!(l.gio_for(2).expect("odd row cached").mode, 0o100700, "a garbled mode keeps the fallback");
     }
 
     #[test]
@@ -424,6 +432,21 @@ mod tests {
         assert!(metas[1].target_is_dir, "a cached symlink to a folder must draw the folder icon");
         assert!(!metas[2].target_is_dir, "a broken cached link resolves to nothing");
         assert_eq!(metas[1].mtime, 100, "the gio mtime, never the local link's own, so the cache branch answered");
+    }
+
+    #[test]
+    fn ten_thousand_rows_build_a_compact_store_with_no_slack() {
+        use std::fmt::Write as _;
+        let d = TestDir::new("gvfs-compact-10k");
+        let mut text = String::with_capacity(10000 * 72);
+        for i in 0..10000 {
+            let _ = writeln!(text, "smb://h/share/file-{i:05}.txt\t{i}\t(regular)\ttime::modified={}", 1790537811 + (i as i64 % 100));
+        }
+        let l = build_listing(&text, false, d.path().to_str().unwrap()).unwrap();
+        assert_eq!(std::mem::size_of::<crate::backend::listing::GioMeta>(), 24, "one record per gio row is 24 bytes");
+        assert_eq!(l.gio_meta.len(), 10000);
+        assert_eq!(l.gio_meta.capacity(), l.gio_meta.len(), "the store is shrunk to its length");
+        assert!(l.gio_meta.windows(2).all(|w| w[0].name_off < w[1].name_off), "build order keeps offsets increasing for the binary search");
     }
 
     #[test]
