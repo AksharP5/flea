@@ -248,7 +248,8 @@ Item {
         var text = Status.centreText(root.slot())
         return root.noticeHint.length > 0 ? text.replace(root.noticeHint, "") : text
     }
-    function centreColor() { return Theme.color[Status.centreRole(root.slot())] }
+    // Error ink sits on the surface, so it takes the surface lift and not the background one.
+    function centreColor() { return Status.centreRole(root.slot()) === "error" ? Theme.color.errorOnSurface : Theme.color.foreground }
 
     Timer { id: clear; interval: root.messageMs; onTriggered: root.notice = "" }
 
@@ -424,7 +425,7 @@ Item {
             y: Theme.spacing.rowPaddingY
             width: parent.width - 2 * Theme.spacing.rowPaddingX
             text: root.errorDetail
-            color: Theme.color.error
+            color: Theme.color.errorOnSurface
             font.family: Theme.font.family
             font.pixelSize: Theme.font.caption
             wrapMode: Text.Wrap

@@ -47,7 +47,9 @@ function roles(body) {
              accentFrame: Contrast.ensureRatio(accent, surface, MARK_MIN),
              // ui/Theme.qml: a red with no chroma of its own reads as switched off, so it is dropped
              // for the foreground; every other red is lifted to AA the way symlink and executable are.
-             error: saturation(urgent) > 0.2 ? Contrast.ensureRatio(urgent, background, TEXT_MIN) : foreground }
+             error: saturation(urgent) > 0.2 ? Contrast.ensureRatio(urgent, background, TEXT_MIN) : foreground,
+             // ui/Theme.qml's status bar role: the same red lifted on the surface it is drawn on.
+             errorOnSurface: saturation(urgent) > 0.2 ? Contrast.ensureRatio(urgent, surface, TEXT_MIN) : foreground }
 }
 
 // Qt.darker(c, 1.4) in the value channel, which is ui/Theme.qml's fallback when a palette sets no
@@ -95,8 +97,25 @@ function mirrorFallbacks(check) {
           eight.muted, none.muted)
 }
 
+// The status bar draws error ink on the surface, where the background lift lands under 4.5.
+var ERROR_ON_SURFACE_SAMPLES = [
+    "background = \"#eff1f5\"\ndark_background = \"#e6e9ef\"\nforeground = \"#4c4f69\"\nred = \"#d20f39\"\n",
+    "background = \"#faf4d6\"\ndark_background = \"#f0e9d0\"\nforeground = \"#4c4f69\"\nred = \"#b4637a\"\n",
+    "background = \"#eef0f5\"\ndark_background = \"#dfe3ec\"\nforeground = \"#4c4f69\"\nred = \"#c2435c\"\n",
+    "background = \"#f5f0e8\"\ndark_background = \"#e8dfd0\"\nforeground = \"#4c4f69\"\nred = \"#a8435f\"\n"
+];
+
+// Sample input: one palette body above; the bar's own ground is the surface it sits on.
+function errorOnSurfaceSamples(check) {
+    for (var i = 0; i < ERROR_ON_SURFACE_SAMPLES.length; i++) {
+        var r = roles(ERROR_ON_SURFACE_SAMPLES[i])
+        atLeast(check, "surface sample " + i, "error on surface", Contrast.ratio(r.errorOnSurface, r.surface), TEXT_MIN)
+    }
+}
+
 function run(check) {
     mirrorFallbacks(check)
+    errorOnSurfaceSamples(check)
     // A truncated table would iterate few times and report every check it did run as green, so the
     // table's own size is checked first; tests/themes.sh compares it with the directory itself.
     check("the table still names the themes this box ships", THEMES.length >= 22, true)
