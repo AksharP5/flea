@@ -134,6 +134,8 @@ Item {
     }
 
     onBackendChanged: if (backend) root.readDropboxAccount(backend.providers)
+    // Built after the providers answered, with backend bound at creation, so no change fires; read them once here.
+    Component.onCompleted: if (backend) root.readDropboxAccount(backend.providers)
     Connections {
         target: root.backend
         function onProvidersChanged() { root.readDropboxAccount(root.backend.providers) }

@@ -98,7 +98,7 @@ Rectangle {
         id: networkHost
         active: false
         sourceComponent: Flea.NetworkMounts {
-            backend: backend
+            backend: primaryPane.backend
             origin: primaryPane
         }
     }
