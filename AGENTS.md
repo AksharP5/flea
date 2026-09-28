@@ -2755,6 +2755,9 @@ its own `ui/qmldir` line, `ui/Header.qml` takes the handles and the fits at 346 
 `ui/ColumnsArea.qml` the ancestor columns at 373 lines, all inside their budgets; `ui/Theme.qml`
 reads the stored widths at 399 lines, one over its last note and still under the hard cap.
 
+0.3.7 integration records `ui/Theme.qml` at 401, re-derived with `wc -l`, where the button system and the
+list columns each added their tokens.
+
 ## The key table is generated
 
 `keys.toml` at the repository root is the single source of truth for every binding.
