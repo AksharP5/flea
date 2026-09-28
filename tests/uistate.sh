@@ -188,17 +188,34 @@ out=$(flea_ui 2>&1)
 check "a duplicated column in the file falls back to the shipped set" "1" "$(echo "$out" | tr -d ' \n' | grep -c '"columns":\["name","size","date"\]')"
 check "the key beside the refused columns array stands" "1" "$(echo "$out" | grep -c '"density": "comfortable"')"
 
-# ColumnsWidth caps the count at 5 and ListColumns040 remembers a dragged edge per column.
+# ColumnsWidth caps the count at 2..5 and ListColumns040 remembers a dragged edge per column at 48..480.
 fresh
 out=$(flea_ui '{"columnsLimit":3,"columnWidths":{"size":120}}' 2>&1); rc=$?
 check "a column limit and width patch exits 0" "0" "$rc"
 check "the limit landed" "1" "$(grep -c '"columnsLimit": 3' "$UI")"
 check "the width landed" "1" "$(tr -d ' \n' < "$UI" | grep -c '"columnWidths":{"size":120}')"
-for bad_column_key in '{"columnsLimit":1}' '{"columnsLimit":6}' '{"columnWidths":{"size":47}}' '{"columnWidths":{"name":100}}'; do
+for good_column_key in '{"columnsLimit":2}' '{"columnsLimit":5}' '{"columnWidths":{"size":48}}' '{"columnWidths":{"size":480}}'; do
+  out=$(flea_ui "$good_column_key" 2>&1); rc=$?
+  check "a column value on its rails exits 0: $good_column_key" "0" "$rc"
+done
+for bad_column_key in '{"columnsLimit":1}' '{"columnsLimit":6}' '{"columnWidths":{"size":47}}' '{"columnWidths":{"size":481}}' '{"columnWidths":{"name":100}}'; do
+  before_bad=$(cat "$UI")
   out=$(flea_ui "$bad_column_key" 2>&1); rc=$?
   check "a column value outside its rails exits 2: $bad_column_key" "2" "$rc"
-  check "and names the key it refused: $bad_column_key" "1" "$(echo "$out" | grep -c 'column')"
+  case "$bad_column_key" in
+    *columnsLimit*) want_key="columnsLimit" ;;
+    *) want_key="columnWidths" ;;
+  esac
+  check "and names the key it refused: $bad_column_key" "1" "$(echo "$out" | grep -c "$want_key")"
+  check "and leaves ui.json untouched: $bad_column_key" "$before_bad" "$(cat "$UI")"
 done
+out=$(flea_ui '{"density":"tight"}' 2>&1); rc=$?
+check "a tight density patch exits 0" "0" "$rc"
+check "the tight density landed" "1" "$(grep -c '"density": "tight"' "$UI")"
+out=$(flea_ui '{"preview":{"thumbSize":"huge"}}' 2>&1); rc=$?
+check "a huge thumbnail patch exits 0" "0" "$rc"
+out=$(flea_ui '{"preview":{"thumbSize":"largest"}}' 2>&1); rc=$?
+check "a largest thumbnail patch exits 0" "0" "$rc"
 
 # The path is predictable, so a link planted at it is refused and what it points at is untouched.
 fresh

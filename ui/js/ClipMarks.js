@@ -45,10 +45,9 @@ function rowPath(pane, name) {
     return pane.join(pane.path, name)
 }
 
-// A paste that spends a cut empties the clipboard, so the marks go with it;
-// a copy paste keeps it. ui/CollideHost.qml decides through this.
+// A sent cut empties a cut clipboard, so the marks go with it; anything else keeps it. ui/CollideHost.qml decides through this.
 function spent(clipboard, spendsCut) {
-    if (spendsCut === true) {
+    if (spendsCut === true && clipboard && clipboard.moving === true) {
         return { paths: [], moving: false }
     }
     return clipboard

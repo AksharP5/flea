@@ -5,12 +5,12 @@
 .import "../../ui/js/Tabs.js" as Tabs
 .import "tabsfixture.js" as Fixture
 
-// Per-folder sorts, issue 179, and Hidden files last, issue 70: the map in ui.json, the rows in
-// Settings View Sorting, the Sort by flyout's forget row, and the tabs that keep their own sort.
-
+// Per-folder sorts (issue 179) and Hidden files last (issue 70): map, Settings rows, flyout forget row, tab-kept sorts.
 function sortPane(path, sorts, remember) {
     var p = {
         path: path,
+        sorts: sorts || {},
+        remember: remember,
         windowSize: 200,
         remembered: [],
         forgotten: [],
@@ -21,7 +21,8 @@ function sortPane(path, sorts, remember) {
         sortDesc: false,
         sort: function (by, desc) { p.sent.push("sort " + by); this.sortBy = by; this.sortDesc = desc },
         window: function (start, count) { p.sent.push("window") },
-        rememberFolderSort: function (folder, key, desc) { p.remembered.push(folder + "|" + key + ":" + desc) },
+        // Sample input: rememberFolderSort("/a", "size", false) records "/a|size:false" while remembering is on.
+        rememberFolderSort: function (folder, key, desc) { if (p.remember === false) return; p.remembered.push(folder + "|" + key + ":" + desc) },
         forgetFolderSort: function (folder) { p.forgotten.push(folder) }
     }
     p.thumbState = {}
@@ -61,19 +62,19 @@ function run(check) {
     check("forgetting drops that folder alone", FolderSorts.has(FolderSorts.forget(two, "/a"), "/a"), false)
     check("and keeps the rest", FolderSorts.count(FolderSorts.forget(FolderSorts.set(two, "/b", "name", false), "/a")), 1)
     check("forgetting a folder with no entry changes nothing", FolderSorts.count(FolderSorts.forget({}, "/a")), 0)
-    // The order a listing takes: the folder's own while remembering is on, else the default.
-    var fallback = { key: "size", reverse: true }
+    // The fallback differs from /a's stored size-descending sort, so a branch answering the wrong one fails.
+    var fallback = { key: "name", reverse: false }
     check("a folder's own sort wins while remembering is on",
           JSON.stringify(FolderSorts.orderFor(one, "/a", fallback, true)), JSON.stringify({ key: "size", reverse: true }))
     check("and when the flag is absent, which is how an old file reads",
           JSON.stringify(FolderSorts.orderFor(one, "/a", fallback)), JSON.stringify({ key: "size", reverse: true }))
     check("elsewhere the default applies", JSON.stringify(FolderSorts.orderFor(one, "/b", fallback, true)),
-          JSON.stringify({ key: "size", reverse: true }))
+          JSON.stringify({ key: "name", reverse: false }))
     check("and with remembering off every folder takes the default",
-          JSON.stringify(FolderSorts.orderFor(one, "/a", fallback, false)), JSON.stringify({ key: "size", reverse: true }))
+          JSON.stringify(FolderSorts.orderFor(one, "/a", fallback, false)), JSON.stringify({ key: "name", reverse: false }))
     check("a stored key no order knows reads as the default",
           JSON.stringify(FolderSorts.orderFor({ "/a": { key: "mode", reverse: true } }, "/a", fallback, true)),
-          JSON.stringify({ key: "size", reverse: true }))
+          JSON.stringify({ key: "name", reverse: false }))
     check("and a missing default reads as name ascending",
           JSON.stringify(FolderSorts.orderFor({}, "/a", null, true)), JSON.stringify({ key: "name", reverse: false }))
     // Settings stores Modified as "date" while Sort.ORDERS spells it "mtime": either spelling reads as the live order.
@@ -89,6 +90,13 @@ function run(check) {
     Sort.column(pane, "size")
     check("choosing a sort writes its folder", pane.remembered.join(","), "/a|size:false")
     check("and still sends the sort and the window", pane.sent.join(","), "sort size,window")
+    var changed = sortPane("/a", {}, true)
+    Sort.resort(changed, "size", true)
+    check("a changed order writes its folder", changed.remembered.join(","), "/a|size:true")
+    var off = sortPane("/a", {}, false)
+    Sort.column(off, "size")
+    check("with remembering off a user sort writes nothing", off.remembered.length, 0)
+    check("but still sends the sort and the window", off.sent.join(","), "sort size,window")
     var same = sortPane("/a", {}, true)
     Sort.resort(same, "name", false)
     check("asking for the order already shown writes nothing", same.remembered.length, 0)
@@ -108,22 +116,31 @@ function run(check) {
     check("and the flyout marks no current sort, as shipped",
           owned.filter(function (r) { return r.selected || r.current || r.checked }).length, 0)
 
-    // Tabs keep their own sort until they change folder, and a switch writes no folder sort.
+    // A tab keeps its own sort across a switch, and neither opening nor switching writes a folder sort.
     var tabs = Fixture.pane("/home/gm/Work")
+    tabs.remembered = []
+    tabs.backend.rememberFolderSort = function (folder, key, desc) { tabs.remembered.push(folder + "|" + key + ":" + desc) }
     check("a snapshot carries its tab's sort", tabs.backend.sortBy + ":" + tabs.backend.sortDesc, "name:false")
-    Tabs.openNew(tabs)
-    check("opening a tab writes no folder sort", tabs.remembered === undefined, true)
+    Tabs.openNew(tabs, "/home/gm/Pictures")
+    check("opening a tab writes no folder sort", tabs.remembered.length, 0)
     check("and tabs still count", Tabs.count(tabs), 2)
+    check("and the left tab's snapshot keeps its sort", tabs.tabs.items[0].sortBy + ":" + tabs.tabs.items[0].sortDesc, "name:false")
+    tabs.backend.sortBy = "size"
+    tabs.backend.sortDesc = true
+    Tabs.selectAt(tabs, 0)
+    check("a tab switch writes no folder sort", tabs.remembered.length, 0)
+    Tabs.applyPending(tabs)
+    check("and the switch still writes no folder sort", tabs.remembered.length, 0)
+    check("while the tab's own sort is restored", tabs.backend.sortBy + ":" + tabs.backend.sortDesc, "name:false")
 
-    // Settings View Sorting: Hidden files last directly under Show hidden files with no hint,
-    // greyed while hidden files are off; Remember each folder's sort last and on.
+    // Settings View Sorting: Hidden files last sits under Show hidden files with no hint; Remember each folder's sort is last and on.
     var view = Settings.rows("view", { data: {} })
     var labels = view.map(function (r) { return r.label || r.id }).join("|")
     check("Hidden files last sits directly under Show hidden files",
           labels.indexOf("Show hidden files|Hidden files last") >= 0, true)
     var hiddenLast = view.filter(function (r) { return r.id === "hiddenLast" })[0] || {}
     check("it draws no hint of its own",
-          view.filter(function (r) { return r.kind === "hint" && (r.label || "").indexOf("hidden") >= 0 }).length, 0)
+          view.filter(function (r) { return r.kind === "hint" && (r.label || "").toLowerCase().indexOf("hidden") >= 0 }).length, 0)
     check("and it is greyed while hidden files are off", hiddenLast.available, false)
     var shown = Settings.rows("view", { data: { hidden: true } })
     var shownLast = shown.filter(function (r) { return r.id === "hiddenLast" })[0] || {}

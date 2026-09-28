@@ -42,7 +42,7 @@ function run(check) {
     check("extra large cell", GridGeometry.cellHeightFor(128, 9, 33, 14), 198)
     check("huge cell", GridGeometry.cellHeightFor(192, 9, 33, 14), 262)
     check("largest cell", GridGeometry.cellHeightFor(256, 9, 33, 14), 326)
-    check("a zero tile still draws one pixel", GridGeometry.cellHeightFor(0, 9, 33, 14) > 0, true)
+    check("a zero tile still draws one pixel", GridGeometry.cellHeightFor(0, 0, 0, 0), 1)
 
     var view = Settings.rows("view", { data: {} })
     check("row density offers all four stops", find(view, "density").values.join(","), "tight,compact,normal,comfortable")

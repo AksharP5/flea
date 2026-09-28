@@ -1,7 +1,6 @@
 .import "../../ui/js/ClipMarks.js" as ClipMarks
 
-// ClipMarks board: a row on the clipboard carries a mark after its name,
-// copy for copied and scissors for cut, and the mark follows the clipboard.
+// ClipMarks board: a clipboard row carries copy for copied and scissors for cut, following the clipboard.
 function run(check) {
     function pane(path) {
         return { path: path, join: function (base, name) { return base === "/" ? "/" + name : base + "/" + name } }
@@ -35,7 +34,7 @@ function run(check) {
     check("a cut row carries the scissors mark",
           ClipMarks.markForRow(home, "IMG_4121.jpg", cut), "scissors")
 
-    // The mark follows the clipboard: a new copy clears the old cut at once.
+    // A new copy clears the old cut at once.
     var afterCopy = { paths: ["/home/gm/Pictures/phone/IMG_4124.jpg"], moving: false }
     check("a new copy clears the old cut mark",
           ClipMarks.markForRow(home, "IMG_4121.jpg", afterCopy)
@@ -46,14 +45,17 @@ function run(check) {
           ClipMarks.markForRow(home, "IMG_4121.jpg", afterCut)
           + "/" + ClipMarks.markForRow(home, "IMG_4124.jpg", afterCut), "/scissors")
 
-    // A paste that spends a cut clears the marks; a copy paste keeps them.
+    // Only a cut spent by a cut paste clears; the other two pairings keep the clipboard.
     check("spending a cut empties the clipboard",
           JSON.stringify(ClipMarks.spent(cut, true)), JSON.stringify({ paths: [], moving: false }))
     check("a copy paste keeps the clipboard",
           JSON.stringify(ClipMarks.spent(copied, false)), JSON.stringify(copied))
+    check("an unspent cut keeps the clipboard",
+          JSON.stringify(ClipMarks.spent(cut, false)), JSON.stringify(cut))
+    check("a copy is never spent, even by a cut paste",
+          JSON.stringify(ClipMarks.spent(copied, true)), JSON.stringify(copied))
 
-    // The row path is the pane's own join, so a search result resolves against
-    // the scope the pane is standing on, which Search.run made its path.
+    // A search result resolves against the scope the pane stands on, which Search.run made its path.
     check("a row path joins the pane path",
           ClipMarks.rowPath(home, "IMG_4121.jpg"), "/home/gm/Pictures/phone/IMG_4121.jpg")
     check("a row path off the root keeps its single separator",

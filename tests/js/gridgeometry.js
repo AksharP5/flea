@@ -34,10 +34,9 @@ function run(check) {
     check("zero columns never divide",
           GridGeometry.cellWidthFor(800, 0, GAP), 800 - GAP)
 
-    // The grid keeps the same lane clear on its right: tiles are counted and sized on the width
-    // less the gap and the lane, which is why the board's Medium cells draw beside it.
-    // Sample input: (700, 146, 64, 14, 9, 14) is 4, four 169 px cells beside a 14 px lane.
-    var laneWidths = [500, 700, 1200]
+    // The grid keeps the same lane clear on its right: tiles are counted and sized on the width less the gap and the lane.
+    // Sample input: (738, 146, 96, 7, 8, 7) is 4, four 180 px cells beside a 7 px lane, while the lane-blind count is 5.
+    var laneWidths = [500, 738, 1200]
     for (var l = 0; l < laneWidths.length; l++) {
         var laneWidth = laneWidths[l]
         var laneColumns = GridGeometry.columnsFor(laneWidth, MIN_CELL, THUMB_PX, PAD_X, GAP, PAD_X)
@@ -51,8 +50,11 @@ function run(check) {
         check("one more column at " + laneWidth + " would not fit beside them",
               (laneColumns + 1) * laneCell > laneWidth - GAP - PAD_X, true)
     }
-    // Five arguments keep the old shape: no lane named is no lane kept, so the callers that never
-    // name one cannot change what they draw.
+    // At 738 the lane costs a column, so a lane-blind columnsFor fails here.
+    check("at 738 the lane costs a column",
+          GridGeometry.columnsFor(738, MIN_CELL, THUMB_PX, PAD_X, GAP, PAD_X)
+          + "|" + GridGeometry.columnsFor(738, MIN_CELL, THUMB_PX, PAD_X, GAP), "4|5")
+    // Five arguments keep the old shape: no lane named is no lane kept, so the callers that never name one cannot change what they draw.
     check("an unnamed lane keeps nothing back",
           GridGeometry.columnsFor(800, MIN_CELL, THUMB_PX, PAD_X, GAP),
           GridGeometry.columnsFor(800, MIN_CELL, THUMB_PX, PAD_X, GAP, 0))

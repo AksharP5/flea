@@ -118,9 +118,7 @@ function run(check) {
     runListWidths(check)
 }
 
-// ColumnsWidth board, GM ruling on #167 and #69: the columns view's count follows the
-// window width, 2 below 900, 3 by default, 4 from 1700 and 5 from 2300, capped by the
-// View section's Columns view limit, which ships at 5.
+// ColumnsWidth board (#167, #69): the columns count follows the window width, 2 below 900 up to 5 from 2300, capped by the View limit at 5.
 function runColumnCount(check) {
     check("below 900 px the view draws 2 columns", Columns.columnCountForWidth(899, 5), 2)
     check("at 900 px the view draws 3 columns", Columns.columnCountForWidth(900, 5), 3)
@@ -140,8 +138,7 @@ function runColumnCount(check) {
     check("5 columns read three ancestors", Columns.ancestorsForCount(5), 3)
 }
 
-// ListColumns040 board: a dragged edge clamps, and a double click fits the widest value
-// the window holds, never a directory-wide scan.
+// ListColumns040 board: a dragged edge clamps, and a double click fits the widest held value, never a directory scan.
 function runListWidths(check) {
     check("a drag inside the rails lands as drawn", Columns.clampListWidth(100), 100)
     check("a drag under the floor clamps to it", Columns.clampListWidth(10), Columns.MIN_LIST_WIDTH)
@@ -157,8 +154,7 @@ function runListWidths(check) {
     runColumnFit(check)
 }
 
-// ColumnFit.cellText names the same strings ui/Row.qml draws, so the header's autofit
-// measures what the rows show: a link reads its target length, a folder its walk size.
+// ColumnFit.cellText names the strings ui/Row.qml draws, so autofit measures them: a link fits "link", a folder its walk size.
 function runColumnFit(check) {
     check("a file fits its size", ColumnFit.cellText("size", {p: 33188, d: false, s: 18000}, [], null), "18.0 kB")
     check("a link fits its kind, not its target length",

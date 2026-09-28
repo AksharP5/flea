@@ -1,7 +1,4 @@
-// Row.qml cells split: the four metadata Texts live in their own files, one Text
-// each, and Row builds the same four objects with no wrapper Item around them.
-// Before: 4 inline Texts in ui/Row.qml (mode, size, modified, kind). After: those 4
-// as ui/RowMode/Size/Date/Kind.qml, each rooting a Text, Row instantiating one each.
+// Row.qml cells split: the four metadata Texts live in ui/RowMode/Size/Date/Kind.qml, each rooting one Text with no wrapper Item.
 
 // A file of this tree, read the way tests/js/themes.js reads colors.toml; "" when missing.
 function source(path) {
@@ -28,10 +25,9 @@ function run(check) {
     if (bodies.some(function (body) { return body.length === 0 })) {
         return
     }
-    // One Text object per cell file, and no other primitive beside it: no wrapper Item,
-    // no Rectangle, Image, Loader, Glyph or MatchText on the per-row path.
+    // One Text object per cell file and no other primitive beside it: no wrapper Item, Rectangle, Image, Loader, Glyph or MatchText.
     for (var c = 0; c < CELLS.length; c++) {
-        check(CELLS[c] + " roots one Text", countRe(bodies[c], /^\s*Text\s*\{/m), 1)
+        check(CELLS[c] + " roots one Text", countRe(bodies[c], /^\s*Text\s*\{/gm), 1)
         check(CELLS[c] + " holds one Text total", countRe(bodies[c], /Text\s*\{/g), 1)
         check(CELLS[c] + " adds no Item wrapper", countRe(bodies[c], /Item\s*\{/g), 0)
         check(CELLS[c] + " adds no Rectangle", countRe(bodies[c], /Rectangle\s*\{/g), 0)
@@ -49,16 +45,13 @@ function run(check) {
     check("no inline size Text is left", countRe(row, /Text\s*\{\s*id:\s*size\b/g), 0)
     check("no inline modified Text is left", countRe(row, /Text\s*\{\s*id:\s*modified\b/g), 0)
     check("no inline kind Text is left", countRe(row, /Text\s*\{\s*id:\s*kind\b/g), 0)
-    // The anchor chain is untouched: every cell still anchors to its right neighbour,
-    // and the name and the rename editor still end at the mode cell's left edge.
+    // The anchor chain is untouched: every cell still anchors to its right neighbour, and the name still ends at the mode cell.
     check("mode still anchors to size", row.indexOf("anchors.right: size.left") >= 0, true)
     check("size still anchors to modified", row.indexOf("anchors.right: modified.left") >= 0, true)
     check("modified still anchors to kind", row.indexOf("anchors.right: kind.left") >= 0, true)
-    check("kind still anchors to the row edge", row.indexOf("id: kind") >= 0, true)
+    check("kind still anchors to the row edge", row.indexOf("id: kind") >= 0 && row.slice(row.indexOf("id: kind"), row.indexOf("id: kind") + 200).indexOf("anchors.right: parent.right") >= 0, true)
     check("the name still ends at the mode cell", row.indexOf("anchors.right: mode.left") >= 0, true)
-    // Every drawn property stays a binding: Row hands down shown flags, ink and text,
-    // and each cell file draws only what it was handed. RowDate alone may lift: with
-    // Highlight today's dates on, a stamp from today draws the foreground role.
+    // Every drawn property stays a binding: Row hands down flags, ink and text, and only RowDate may lift today to the foreground role.
     check("mode hands down its ink and text", row.indexOf("ink: root.cellColor()") >= 0, true)
     check("size hands down its width", row.indexOf("sizeWidth: root.sizeWidth") >= 0, true)
     check("date hands down its width", row.indexOf("dateWidth: root.dateWidth") >= 0, true)
@@ -75,8 +68,7 @@ function run(check) {
         bodies[2].indexOf("root.ink") >= 0, true)
     check("and lifts today to the foreground role",
         bodies[2].indexOf("Theme.color.foreground") >= 0, true)
-    // The pixels are the same tokens: caption type, right elide, plain text, right
-    // alignment on the three numeric columns, and the by-key cell() lookup still answers all four.
+    // The pixels are the same tokens: caption type, right elide, plain text, right-aligned numerics, and the by-key cell() lookup.
     check("cells keep caption type", bodies.every(function (body) { return body.indexOf("font.pixelSize: Theme.font.caption") >= 0 }), true)
     check("cells keep right elide", bodies.every(function (body) { return body.indexOf("elide: Text.ElideRight") >= 0 }), true)
     check("cells keep plain text", bodies.every(function (body) { return body.indexOf("textFormat: Text.PlainText") >= 0 }), true)

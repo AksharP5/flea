@@ -107,10 +107,24 @@ var ERROR_ON_SURFACE_SAMPLES = [
 
 // Sample input: one palette body above; the bar's own ground is the surface it sits on.
 function errorOnSurfaceSamples(check) {
+    var applied = source("ui/Theme.qml")
+    check("Theme.qml lifts the status bar red on its surface", applied.indexOf("Contrast.ensureRatio(Color.urgent, surface, 4.5)") >= 0, true)
+    var weak = 0
     for (var i = 0; i < ERROR_ON_SURFACE_SAMPLES.length; i++) {
         var r = roles(ERROR_ON_SURFACE_SAMPLES[i])
         atLeast(check, "surface sample " + i, "error on surface", Contrast.ratio(r.errorOnSurface, r.surface), TEXT_MIN)
+        if (Contrast.ratio(r.error, r.surface) < TEXT_MIN)
+            weak += 1
     }
+    check("the background lift alone lands under 4.5 on at least one surface", weak >= 1, true)
+}
+
+// A file of this tree, read the way rowcells.js reads ui/Row.qml; "" when missing.
+function source(path) {
+    var request = new XMLHttpRequest()
+    request.open("GET", Qt.resolvedUrl("../../" + path), false)
+    request.send()
+    return String(request.responseText || "")
 }
 
 function run(check) {

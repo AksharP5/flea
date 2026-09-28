@@ -1,8 +1,7 @@
 .import "../../ui/js/Buttons.js" as Buttons
 .import "../../ui/js/Collide.js" as Collide
 
-// Variant A (Buttons040, GM 2026-09-24): one 30 px control at body 14, fixed
-// primary per dialog, destructive as error ink in a muted frame, disabled 0.55.
+// Variant A (Buttons040, GM 2026-09-24): one 30 px control at body 14, fixed primary per dialog, destructive as error ink, disabled 0.55.
 
 function run(check) {
     // One geometry for every dialog, card and picker button; the label follows Theme.font.body.

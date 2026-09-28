@@ -1,8 +1,6 @@
 .import "../../ui/js/Names.js" as Names
 
-// Names040 board: a long name elides in the middle so the extension and
-// the end of a version number stay visible. The board's 64-character sample
-// elides to 49 characters keeping ".png".
+// Names040 board: a long name elides in the middle so the extension stays visible; the 64-character sample elides to 49 keeping ".png".
 function run(check) {
     var full = "screenshot-2026-08-30-final-review-for-gm-after-the-bench-v3.png"
     check("the board sample elides to the board string",
@@ -29,5 +27,7 @@ function run(check) {
           Names.middleElide("photo-📷-2026-08-30-final-review-v3.png", 20),
           "photo-📷-20…ew-v3.png")
     check("a tiny width keeps one character each side",
-          Names.middleElide("abcdefghij", 5), "ab…ij")
+          Names.middleElide("abcdefghij", 3), "a…j")
+    check("a two-wide budget keeps the head and the mark",
+          Names.middleElide("abcdefghij", 2), "a…")
 }

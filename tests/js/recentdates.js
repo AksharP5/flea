@@ -1,8 +1,6 @@
 .import "../../ui/js/RecentDates.js" as RecentDates
 
-// Highlight today's dates (Settings, View, ships off): on, a stamp from today draws
-// in the foreground role and every older stamp keeps the dimmed metadata ink. The text
-// keeps its one sortable form, so no relative word is drawn anywhere in this unit.
+// Highlight today's dates (Settings, View, ships off): on, today draws foreground and older stamps keep dimmed ink, with no relative words.
 
 // A file of this tree, read the way tests/js/themes.js reads colors.toml; "" when missing.
 function source(path) {
@@ -31,8 +29,7 @@ function run(check) {
         RecentDates.dayStart(at(2026, 9, 23, 23, 59, 59)), start)
     check("and the next day starts a day later",
         RecentDates.dayStart(at(2026, 9, 24, 0, 0, 0)) - start, 24 * 60 * 60 * 1000)
-    // The boundary is the local wall clock and not UTC midnight, which is what a
-    // timezone offset moves: every stock timezone in this harness is off UTC.
+    // The boundary is the local wall clock and not UTC midnight: every stock timezone in this harness is off UTC.
     check("local midnight is not UTC midnight",
         start !== Date.UTC(2026, 8, 23, 0, 0, 0), true)
     // The one-second boundary each side of it.
@@ -68,8 +65,7 @@ function run(check) {
     check("and re-arming there waits out the day",
         RecentDates.msUntilMidnight(at(2026, 9, 24, 0, 1, 0)), 24 * 60 * 60 * 1000 - 60000)
 
-    // The wiring the window carries: one midnight timer for the whole window, one
-    // numeric compare per row, and no per-row timer or Date on the row path.
+    // The wiring the window carries: one midnight timer for the whole window, one numeric compare per row, no per-row timer or Date.
     var rowDate = source("ui/RowDate.qml")
     var viewState = source("ui/ViewState.qml")
     var row = source("ui/Row.qml")

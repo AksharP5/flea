@@ -1228,12 +1228,13 @@ case_scrollbar() {
 # rectOf answers rounded window pixels; within1 keeps a fractional layout honest.
 within1() { local got=$1 want=$2; (( got >= want - 1 && got <= want + 1 )); }
 
-# The bar sits in the lane it is measured against: ends at the view's own right edge, one lane
-# wide, its knob 2 px inside. $1 names the surface, $2 is the view's right edge, $3 is the lane.
+# The bar sits in the lane it is measured against: ends at the view's own right edge, one lane wide, its knob 2 px inside.
 scrolllane_bar() {
     local what="$1" view_right=$2 pad=$3 state bx by bw bh kx ky kw kh inset
     state=$(ipc scrollbarState)
+    # Sample input: scrollbarState .rect prints "1234 200 12 800".
     read -r bx by bw bh <<< "$(jq -r '.rect' <<< "$state")"
+    # Sample input: scrollbarState .knobRect prints "1236 200 8 100".
     read -r kx ky kw kh <<< "$(jq -r '.knobRect' <<< "$state")"
     (( bx + bw >= view_right - 1 && bx + bw <= view_right + 1 )) \
         || fail "scrolllane: $what bar ends at $((bx + bw)), the view at $view_right"
@@ -1244,25 +1245,27 @@ scrolllane_bar() {
     (( kx >= bx )) || fail "scrolllane: $what knob starts left of its lane"
 }
 
-# The list holds its rows one lane short of the view, and the header carries the same padding so
-# its Kind title stays over the rows' own Kind cells. $1 is the text size, $2 is the lane.
+# The list holds its rows one lane short of the view, and the header carries the same padding so its Kind title stays over the rows' Kind cells.
 scrolllane_list() {
     local base=$1 pad=$2 ax ay aw ah rx ry rw rh area_right row_right left hx hw kind_right
+    # Sample input: listAreaRect prints "0 100 732 500", rowRect 0 prints "14 100 718 37".
     read -r ax ay aw ah <<< "$(ipc listAreaRect)"
     read -r rx ry rw rh <<< "$(ipc rowRect 0)"
+    [[ "$rx" =~ ^-?[0-9]+$ && "$rw" =~ ^[0-9]+$ ]] \
+        || fail "scrolllane: base $base list rowRect 0 answered '$rx $ry $rw $rh'"
     area_right=$((ax + aw)); row_right=$((rx + rw))
     within1 $((area_right - row_right)) "$pad" \
         || fail "scrolllane: base $base rows end $((area_right - row_right)) px short of the view, not the $pad px lane"
     scrolllane_bar "base $base list" "$area_right" "$pad"
     left=$(ipc headerLeft)
+    # Sample input: headerCellRect kind prints "602|130".
     IFS='|' read -r hx hw <<< "$(ipc headerCellRect kind)"
     kind_right=$((left + hx + hw))
     within1 "$kind_right" $((row_right - pad)) \
         || fail "scrolllane: base $base header Kind ends at $kind_right, rows end at $row_right with a $pad px padding"
 }
 
-# The grid counts and sizes its cells on the width less the lane, so the last tile of a row ends
-# short of it. $1 is the text size, $2 is the lane.
+# The grid counts and sizes its cells on the width less the lane, so the last tile of a row ends short of it.
 scrolllane_grid() {
     local base=$1 pad=$2 ax ay aw ah area_right columns tx ty tw th lx ly lw lh last_right
     read -r ax ay aw ah <<< "$(ipc listAreaRect)"
@@ -1272,6 +1275,8 @@ scrolllane_grid() {
         || fail "scrolllane: base $base grid reports $columns columns"
     read -r tx ty tw th <<< "$(ipc rowRect 0)"
     read -r lx ly lw lh <<< "$(ipc rowRect $((columns - 1)))"
+    [[ "$tx" =~ ^-?[0-9]+$ && "$tw" =~ ^[0-9]+$ && "$lx" =~ ^-?[0-9]+$ && "$lw" =~ ^[0-9]+$ ]] \
+        || fail "scrolllane: base $base grid rowRect answered '$tx $ty $tw $th' and '$lx $ly $lw $lh'"
     last_right=$((lx + lw))
     (( last_right <= area_right - pad + 1 )) \
         || fail "scrolllane: base $base grid tiles reach $last_right, the lane starts at $((area_right - pad))"
@@ -1280,25 +1285,25 @@ scrolllane_grid() {
     scrolllane_bar "base $base grid" "$area_right" "$pad"
 }
 
-# Each Miller column keeps its own lane: the active column's rows are one lane short of it, and
-# its bar ends at the column's own right edge rather than the view's. $1 is the size, $2 the lane.
+# Each Miller column keeps its own lane: the active column's rows end one lane short of the active edge, read off the drawn count.
 scrolllane_columns() {
-    local base=$1 pad=$2 ax ay aw ah col rx ry rw rh
+    local base=$1 pad=$2 ax ay aw ah col count rx ry rw rh
     read -r ax ay aw ah <<< "$(ipc listAreaRect)"
-    col=$((aw / 3))
+    count=$(ipc columnCount)
+    [[ "$count" =~ ^[0-9]+$ && "$count" -ge 2 && "$count" -le 5 ]] \
+        || fail "scrolllane: base $base columns draws $count columns"
+    col=$((aw / count))
     read -r rx ry rw rh <<< "$(ipc rowRect 0)"
+    [[ "$rx" =~ ^-?[0-9]+$ && "$rw" =~ ^[0-9]+$ ]] \
+        || fail "scrolllane: base $base columns rowRect 0 answered '$rx $ry $rw $rh'"
     within1 "$rw" $((col - pad)) \
         || fail "scrolllane: base $base the active column holds $rw px rows in a $col px column with a $pad px lane"
-    within1 $((rx + rw)) $((ax + 2 * col - pad)) \
-        || fail "scrolllane: base $base column rows end at $((rx + rw)), the column at $((ax + 2 * col - pad))"
-    scrolllane_bar "base $base columns" $((ax + 2 * col)) "$pad"
+    within1 $((rx + rw)) $((ax + (count - 1) * col - pad)) \
+        || fail "scrolllane: base $base column rows end at $((rx + rw)), the column at $((ax + (count - 1) * col - pad))"
+    scrolllane_bar "base $base columns" $((ax + (count - 1) * col)) "$pad"
 }
 
-# ScrollLane040: every scrolling listing reserves a lane at its right edge, rowPaddingX wide,
-# whether or not the bar shows, so rows never reflow and the last column never sits under the
-# bar. The bar itself keeps 0.3.4's reveal, hold and fade, which case_scrollbar already drives.
-# Two text sizes prove the lane scales with the token; the shots are the controller's render
-# comparison against the board at those sizes.
+# ScrollLane040: every scrolling listing reserves a rowPaddingX lane at its right edge; two text sizes prove the lane scales with the token.
 case_scrolllane() {
     local dir="$fixture_root/scrolllane"
     sandbox_scratch "$dir"
@@ -1308,16 +1313,22 @@ case_scrolllane() {
     fixture_home_make "$fixture_home"
     mkdir -p "$fixture_home/.config/omarchy"
 
-    local base pad
+    local base pad prev_pad="" pad_12="" pad_14=""
     for base in 12 14; do
         printf '[font]\nbase-size = %s\n' "$base" > "$fixture_home/.config/omarchy/shell.toml"
+        seed_ui_state "$fixture_root/scrolllane-state-$base" '{"view":"list"}'
         export HOME="$fixture_home"
         launch "$dir"
         export HOME="$real_home"
         wait_listing 30
         settle
+        [[ "$(ipc viewMode)" == list ]] || fail "scrolllane: base $base opened in $(ipc viewMode), not the seeded list"
+        # Sample input: metrics prints "14 12 14 37", field 3 is rowPaddingX.
         pad=$(ipc metrics | cut -d' ' -f3)
         [[ "$pad" =~ ^[0-9]+$ ]] || fail "scrolllane: no row padding from metrics at base $base"
+        [[ -z "$prev_pad" || "$pad" != "$prev_pad" ]] || fail "scrolllane: base $base pad $pad equals the other size, the shell.toml override never reached Flea"
+        prev_pad="$pad"
+        [[ "$base" == 12 ]] && pad_12="$pad" || pad_14="$pad"
         scrolllane_list "$base" "$pad"
         shot "scrolllane-$base-list"
         click_chrome grid
@@ -1327,6 +1338,7 @@ case_scrolllane() {
         shot "scrolllane-$base-grid"
         click_chrome list
         settle
+        [[ "$(ipc viewMode)" == list ]] || fail "scrolllane: the chrome button did not switch back to the list at base $base"
         click_chrome columns
         settle
         [[ "$(ipc viewMode)" == columns ]] || fail "scrolllane: the chrome button did not switch to the columns at base $base"
@@ -1336,7 +1348,7 @@ case_scrolllane() {
     done
     sandbox_remove "$fixture_home"
     sandbox_remove "$dir"
-    printf 'SCROLLLANE sizes=12,14 views=list,grid,columns\n'
+    printf 'SCROLLLANE sizes=12,14 pads=%s,%s views=list,grid,columns\n' "$pad_12" "$pad_14"
 }
 
 # Catches removing the cursor clamp from ListView.onContentYChanged in ui/Pane.qml.
@@ -4284,9 +4296,8 @@ case_header() {
     kill_flea
 }
 
-# ListColumns040: dragging a column edge resizes it, remembers the width, and never sorts.
-# The drag is closed-loop, one 10 px step at a time against the live header rect, because
-# ydotool relative motion is accelerated and an open-loop step count cannot name a distance.
+# ListColumns040: dragging a column edge resizes it, remembers the width, and never sorts. Sample input: headerCellRect size prints "400|70".
+# The drag is closed-loop against the live header rect, because ydotool relative motion is accelerated and a step count cannot name a distance.
 column_drag_to() {
     local key="$1" target="$2" tries="$3"
     local rect _x w
@@ -4319,7 +4330,7 @@ case_columnresize() {
     IFS='|' read -r _x before_w <<< "$(ipc headerCellRect size)"
     [[ "$before_w" =~ ^[0-9]+$ ]] || fail "columnresize: the size header has no width, got $before_w"
 
-    # The hairline is the cell's left edge; the grab zone spans 4 px either side of it.
+    # The hairline is the cell's left edge and follows the pointer, so dragging it left widens the column.
     local cx cy cell_w edge_x wx wy ww wh
     read -r cx cy <<< "$(ipc headerCellCentre size)"
     [[ -n "$cx" && -n "$cy" ]] || fail "columnresize: the size header has no centre"
@@ -4330,7 +4341,7 @@ case_columnresize() {
     YDOTOOL_SOCKET="$XDG_RUNTIME_DIR/.ydotool_socket" ydotool click 0x40 >/dev/null 2>&1 \
         || fail "columnresize: the edge press failed"
     # Closed-loop: ydotool relative motion is accelerated, so the rect decides when to stop.
-    column_drag_to size "$(( before_w + 40 ))" 12 10
+    column_drag_to size "$(( before_w + 40 ))" 12 -10
     YDOTOOL_SOCKET="$XDG_RUNTIME_DIR/.ydotool_socket" ydotool click 0x80 >/dev/null 2>&1 \
         || fail "columnresize: the edge release failed"
     settle
@@ -4339,7 +4350,7 @@ case_columnresize() {
     printf 'COLUMNRESIZE before=%s grown=%s mark=%s\n' "$before_w" "$grown_w" "$(ipc sortMark)"
     shot columnresize-drag
     (( grown_w >= before_w + 30 && grown_w <= before_w + 70 )) \
-        || fail "columnresize: a +40 drag moved size from $before_w to $grown_w"
+        || fail "columnresize: a leftward 40 px drag moved size from $before_w to $grown_w"
     [[ "$(ipc sortMark)" == "$before_mark" ]] \
         || fail "columnresize: the drag sorted, mark is $(ipc sortMark)"
     [[ "$(ipc columnWidths | jq -er '.size')" == "$grown_w" ]] \
@@ -4355,14 +4366,19 @@ case_columnresize() {
     [[ "$(ipc rowCellOverflow 0)" == "0|0|0|0" ]] \
         || fail "columnresize: a cell painted past its resized column, $(ipc rowCellOverflow 0)"
 
-    # To the floor: steps continue until the rails clamp it at exactly 48, whatever the start.
+    # To the floor: a rightward drag shrinks to the 48 rail, and six steps past it still read 48.
     read -r cx cy <<< "$(ipc headerCellCentre size)"
     IFS='|' read -r _x cell_w <<< "$(ipc headerCellRect size)"
     edge_x=$(( cx - cell_w / 2 ))
     omarchy-drive move "$(( wx + edge_x ))" "$(( wy + cy ))" >/dev/null
     YDOTOOL_SOCKET="$XDG_RUNTIME_DIR/.ydotool_socket" ydotool click 0x40 >/dev/null 2>&1 \
         || fail "columnresize: the floor press failed"
-    column_drag_to size -48 24 -10
+    column_drag_to size -48 24 10
+    for _over in $(seq 1 6); do
+        YDOTOOL_SOCKET="$XDG_RUNTIME_DIR/.ydotool_socket" ydotool mousemove -x 10 -y 0 >/dev/null 2>&1 \
+            || fail "columnresize: the overshoot step failed"
+        sleep 0.1
+    done
     YDOTOOL_SOCKET="$XDG_RUNTIME_DIR/.ydotool_socket" ydotool click 0x80 >/dev/null 2>&1 \
         || fail "columnresize: the floor release failed"
     settle
@@ -4375,20 +4391,24 @@ case_columnresize() {
     kill_flea
 }
 
-# ListColumns040: a double click fits the widest held value, and F4 fits every drawn column.
-# Neither scans the directory: the fit reads the held window alone, so extra files off screen
-# never move it.
+# ListColumns040: a double click fits the widest held value, and F4 fits every drawn column; the fit reads the held window alone, so an off-screen wide file never moves it.
 case_columnautofit() {
     local dir="$fixture_root/columnautofit"
     sandbox_scratch "$dir"
     mkdir -p "$dir/subdir"
     printf 'alpha\n' > "$dir/alpha.txt"
     : > "$dir/photo.jpg"
-    truncate -s 1500000000 "$dir/big.bin"
+    # Sample input: "1.5 GB" is GLib's own render of 1500000000, the first screen's widest size.
+    local big_bytes=1500000000
+    truncate -s "$big_bytes" "$dir/big.bin"
+    local i
+    for i in $(seq -w 1 50); do printf 'body\n' > "$dir/file-$i.txt"; done
+    # 999,950 bytes renders as "1000.0 kB", wider than the "1.5 GB" above, and sorts last so it starts off screen.
+    truncate -s 999950 "$dir/zzz-wide.bin"
     # Kind alone is widened: every other column keeps its floor, so the set still draws whole.
     seed_ui_state "$fixture_root/columnautofit-state" '{"view":"list","columnWidths":{"kind":200}}'
     launch "$dir"
-    wait_listing 4
+    wait_listing 55
     local before_mark before_w
     before_mark=$(ipc sortMark)
     IFS='|' read -r _x before_w <<< "$(ipc headerCellRect kind)"
@@ -4421,15 +4441,52 @@ case_columnautofit() {
     [[ "$(ipc rowCellOverflow 0)" == "0|0|0|0" ]] \
         || fail "columnautofit: a cell painted past its fitted column, $(ipc rowCellOverflow 0)"
 
+    # The fit follows the held window: fitting size on the first screenful ignores the off-screen wide file, and fitting it again after G widens.
+    read -r cx cy <<< "$(ipc headerCellCentre size)"
+    [[ -n "$cx" && -n "$cy" ]] || fail "columnautofit: the size header has no centre"
+    IFS='|' read -r _x cell_w <<< "$(ipc headerCellRect size)"
+    edge_x=$(( cx - cell_w / 2 ))
+    omarchy-drive click "$(( wx + edge_x ))" "$(( wy + cy ))" left --double >/dev/null
+    settle
+    local narrow_w
+    IFS='|' read -r _x narrow_w <<< "$(ipc headerCellRect size)"
+    printf 'COLUMNAUTOFIT size first=%s\n' "$narrow_w"
+    local held_before held_after
+    held_before=$(ipc listingWindowState | jq -r '.held')
+    key G >/dev/null
+    settle
+    for _attempt in $(seq 1 60); do
+        held_after=$(ipc listingWindowState | jq -r '.held')
+        [[ "$held_after" =~ ^[0-9]+$ && "$held_after" != "$held_before" ]] && break
+        sleep 0.05
+    done
+    [[ "$held_after" != "$held_before" ]] || fail "columnautofit: the held window never left the first screenful, held is $held_after"
+    read -r cx cy <<< "$(ipc headerCellCentre size)"
+    IFS='|' read -r _x cell_w <<< "$(ipc headerCellRect size)"
+    edge_x=$(( cx - cell_w / 2 ))
+    omarchy-drive click "$(( wx + edge_x ))" "$(( wy + cy ))" left --double >/dev/null
+    settle
+    local wide_w
+    IFS='|' read -r _x wide_w <<< "$(ipc headerCellRect size)"
+    printf 'COLUMNAUTOFIT size second=%s\n' "$wide_w"
+    shot columnautofit-scrolled
+    (( wide_w > narrow_w )) \
+        || fail "columnautofit: fitting size after scrolling to the wide file left $narrow_w at $wide_w, so the fit scanned the directory"
+    [[ "$(ipc sortMark)" == "$before_mark" ]] \
+        || fail "columnautofit: fitting size sorted, mark is $(ipc sortMark)"
+
     # F4 fits every drawn column in one write, and a second F4 is a no-op.
+    local widths_before widths_once widths_twice
+    widths_before=$(ipc columnWidths)
     key -k F4 >/dev/null
     settle
-    local widths_once widths_twice
     widths_once=$(ipc columnWidths)
     printf 'COLUMNAUTOFIT f4=%s\n' "$widths_once"
     shot columnautofit-f4
-    [[ "$(jq -er 'keys | length' <<< "$widths_once")" -ge 1 ]] \
-        || fail "columnautofit: F4 fitted nothing, $widths_once"
+    [[ "$widths_once" != "$widths_before" ]] \
+        || fail "columnautofit: F4 left $widths_before unchanged, so it fitted nothing new"
+    [[ "$(jq -er 'keys | length' <<< "$widths_once")" -ge 2 ]] \
+        || fail "columnautofit: F4 fitted fewer than two columns, $widths_once"
     key -k F4 >/dev/null
     settle
     widths_twice=$(ipc columnWidths)
@@ -4438,6 +4495,7 @@ case_columnautofit() {
 
     kill_flea
 }
+# contentWidth exceeds width only when elide is missing, since elide always caps it to width; this guards elide, not sizing.
 case_overflow() {
     local dir="$fixture_root/overflow"
     sandbox_scratch "$dir"

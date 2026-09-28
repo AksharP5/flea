@@ -1,7 +1,6 @@
 .import "../../ui/js/Scroll.js" as Scroll
 
-// The wheel arithmetic behind ui/FastScrollHandler.qml: the distance a notch or a touchpad delta
-// moves, the bounds a write is kept inside, and when an event counts as consumed.
+// The wheel arithmetic behind ui/FastScrollHandler.qml: notch distance, write bounds, and when an event counts as consumed.
 function run(check) {
     // A notch: 120 units, the platform's lines, the pixels a line is worth, and the multiplier.
     check("one notch down moves lines times notch pixels times the multiplier",
