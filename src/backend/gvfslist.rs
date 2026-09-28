@@ -3,14 +3,15 @@ use crate::backend::extclass;
 use crate::backend::listing::{GioMeta, GioTarget, Listing};
 use std::os::unix::fs::MetadataExt;
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 // Sample input: gio list -u -a standard::type,standard::size,time::modified,standard::symlink-target,unix::mode --nofollow-symlinks -h <path>
 const GIO_ATTRS: &str = "standard::type,standard::size,time::modified,standard::symlink-target,unix::mode";
 // A 10k NAS folder answers in about 1.1 s; 15 s of no output bounds a hung daemon, never a large listing.
 pub const GIO_TIMEOUT: Duration = Duration::from_secs(15);
-const POLL_MS: Duration = Duration::from_millis(20);
+// After EOF the exit is due within microseconds, so a 1 ms look cannot step the listing.
+const EXIT_LOOK: Duration = Duration::from_millis(1);
 // Fallback modes for a gio that omits unix::mode, matching what the SMB FUSE stat reports.
 const MODE_FILE: u32 = 0o100700;
 const MODE_DIR: u32 = 0o40700;
@@ -187,22 +188,20 @@ pub(crate) fn raw_output(path: &str, gio: &str, timeout: Duration) -> Result<Vec
         .stderr(std::process::Stdio::null())
         .spawn()
         .map_err(|e| format!("gio did not start: {}", e))?;
-    // The reader drains stdout beside the wait and stamps every chunk, so the deadline bounds idleness, never size.
+    // The reader sends one message per chunk and closes at EOF, so the wait below is exact.
     let stdout = child.stdout.take();
-    let last = Arc::new(Mutex::new(Instant::now()));
-    let stamp = Arc::clone(&last);
+    let (tx, rx) = mpsc::channel::<Vec<u8>>();
     let reader = std::thread::spawn(move || {
-        let mut bytes = Vec::new();
         if let Some(mut out) = stdout {
             use std::io::Read;
             let mut chunk = [0u8; 8192];
             loop {
                 match out.read(&mut chunk) {
                     Ok(0) => break,
+                    // A gone receiver means the idle deadline fired; the kill below ends this read.
                     Ok(n) => {
-                        bytes.extend_from_slice(&chunk[..n]);
-                        if let Ok(mut t) = stamp.lock() {
-                            *t = Instant::now();
+                        if tx.send(chunk[..n].to_vec()).is_err() {
+                            break;
                         }
                     }
                     Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
@@ -210,24 +209,40 @@ pub(crate) fn raw_output(path: &str, gio: &str, timeout: Duration) -> Result<Vec
                 }
             }
         }
-        bytes
     });
-    let status = loop {
-        match child.try_wait().map_err(|e| format!("gio wait failed: {}", e))? {
-            Some(status) => break status,
-            // A hung daemon must not strand the listing: kill when no byte arrived for the timeout, then reap.
-            None if last.lock().unwrap_or_else(|e| e.into_inner()).elapsed() >= timeout => {
+    // Each recv rearms the idle deadline, so a large listing never trips it, only a quiet one.
+    let mut bytes = Vec::new();
+    loop {
+        match rx.recv_timeout(timeout) {
+            Ok(chunk) => bytes.extend_from_slice(&chunk),
+            Err(mpsc::RecvTimeoutError::Disconnected) => break,
+            // A hung daemon must not strand the listing: kill and reap, then refuse.
+            Err(mpsc::RecvTimeoutError::Timeout) => {
                 let _ = child.kill();
                 let _ = child.wait();
                 return Err("gio list timed out".to_string());
             }
-            None => std::thread::sleep(POLL_MS),
+        }
+    }
+    // EOF comes with gio's exit; one that closed its output and lingers is killed at the same deadline.
+    let eof = Instant::now();
+    let status = loop {
+        match child.try_wait().map_err(|e| format!("gio wait failed: {}", e))? {
+            Some(status) => break status,
+            None if eof.elapsed() >= timeout => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err("gio list timed out".to_string());
+            }
+            None => std::thread::sleep(EXIT_LOOK),
         }
     };
+    // The sender is dropped, so a join that fails means the reader itself panicked.
+    reader.join().map_err(|_| "gio reader failed".to_string())?;
     if !status.success() {
         return Err(format!("gio list exited {}", status));
     }
-    reader.join().map_err(|_| "gio reader failed".to_string())
+    Ok(bytes)
 }
 
 // The parse half the prefetch adoption shares: gio's text in, the listing with its store out.
@@ -266,7 +281,6 @@ pub(crate) fn build_listing(text: &str, hidden: bool, path: &str) -> Result<List
 mod tests {
     use super::*;
     use crate::backend::testdir::TestDir;
-    use std::os::unix::fs::PermissionsExt;
 
     const NAS: &str = "smb://192.168.21.25/isos/flea-b036-nas-1790537810/fix-10k";
 
@@ -335,10 +349,7 @@ mod tests {
     }
 
     fn fake_gio(dir: &TestDir, name: &str, body: &str) -> String {
-        let p = dir.join(name);
-        std::fs::write(&p, body).unwrap();
-        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
-        p.to_string_lossy().into_owned()
+        dir.script(name, body).to_string_lossy().into_owned()
     }
 
     #[test]
@@ -382,6 +393,86 @@ mod tests {
         let e = list_via_gio("/run/user/1000/gvfs/smb-share:server=x,share=y/dir", false, &fake, Duration::from_millis(200)).unwrap_err();
         assert!(e.contains("timed out"), "expected a timeout, got {}", e);
         assert!(t.elapsed() < Duration::from_secs(10), "the deadline must fire, not the sleep");
+    }
+
+    // Two sleeps GAP apart move a period-P step waiter's overshoot by GAP or P - GAP.
+    const GAP: Duration = Duration::from_millis(5);
+    // The shortest step waiter this test promises to catch, at twice GAP.
+    const SLOWEST_CAUGHT: Duration = Duration::from_millis(10);
+
+    // A try_wait loop looking at fixed multiples of one period from its spawn.
+    fn poll_wait(full: &[String], period: Duration) -> bool {
+        let spawned = Instant::now();
+        let mut child = std::process::Command::new(&full[0]).args(&full[1..])
+            .stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null()).spawn().unwrap();
+        let mut looks: u32 = 1;
+        loop {
+            match child.try_wait() {
+                Ok(Some(status)) => return status.success(),
+                Ok(None) => {
+                    std::thread::sleep((spawned + period * looks).saturating_duration_since(Instant::now()));
+                    looks += 1;
+                }
+                Err(_) => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return false;
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_gio_exit_is_noticed_when_it_exits_rather_than_at_the_next_poll_boundary() {
+        const ATTEMPTS: usize = 3;
+        const RUNS: usize = 9;
+        const NEAR_SLEEP: Duration = Duration::from_millis(30);
+        for attempt in 1..=ATTEMPTS {
+            let dir = TestDir::new("gvfs-exact-wait");
+            // Sample gio output, two rows then exit; the sleep sets the child's lifetime, one script per lifetime.
+            let fake_for = |sleep: Duration| -> String {
+                let body = format!("#!/bin/sh\nsleep {:.4}\nprintf '%s\\n' 'smb://h/share/a.txt\t3\t(regular)\ttime::modified=100' 'smb://h/share/b.txt\t4\t(regular)\ttime::modified=200'\n", sleep.as_secs_f64());
+                fake_gio(&dir, &format!("gio-{}-{}", attempt, sleep.as_micros()), &body)
+            };
+            let near_gio = fake_for(NEAR_SLEEP);
+            let far_gio = fake_for(NEAR_SLEEP + GAP);
+            let run_gio = |fake: &str, sleep: Duration| -> Duration {
+                let started = Instant::now();
+                let bytes = raw_output("/run/user/1000/gvfs/smb-share:server=x,share=y/dir", fake, Duration::from_secs(5)).expect("fake gio");
+                let took = started.elapsed();
+                assert!(!bytes.is_empty(), "the fake gio printed nothing");
+                assert!(took >= sleep, "the child returned before its own sleep, at {took:?}");
+                took - sleep
+            };
+            let mut near: Vec<Duration> = Vec::with_capacity(RUNS);
+            let mut far: Vec<Duration> = Vec::with_capacity(RUNS);
+            for _ in 0..RUNS {
+                near.push(run_gio(&near_gio, NEAR_SLEEP));
+                far.push(run_gio(&far_gio, NEAR_SLEEP + GAP));
+            }
+            let least = |samples: &[Duration]| samples.iter().copied().min().unwrap_or_default();
+            let exact = least(&near).abs_diff(least(&far));
+            let mut near_ref: Vec<Duration> = Vec::with_capacity(RUNS);
+            let mut far_ref: Vec<Duration> = Vec::with_capacity(RUNS);
+            for _ in 0..RUNS {
+                for (sleep, out) in [(NEAR_SLEEP, &mut near_ref), (NEAR_SLEEP + GAP, &mut far_ref)] {
+                    let argv = vec!["/usr/bin/sleep".to_string(), format!("{:.4}", sleep.as_secs_f64())];
+                    let started = Instant::now();
+                    assert!(poll_wait(&argv, SLOWEST_CAUGHT), "the sleep child failed");
+                    let took = started.elapsed();
+                    assert!(took >= sleep, "the child returned before its own sleep, at {took:?}");
+                    out.push(took - sleep);
+                }
+            }
+            let stepped = least(&near_ref).abs_diff(least(&far_ref));
+            if stepped < GAP / 2 && attempt < ATTEMPTS {
+                continue;
+            }
+            assert!(stepped >= GAP / 2, "a {SLOWEST_CAUGHT:?} poll waiter moved only {stepped:?}, so this builder cannot see a step");
+            assert!(exact < GAP / 2, "least overshoot moves {exact:?} between a 30 ms and a 35 ms gio child, against {stepped:?} for a {SLOWEST_CAUGHT:?} poll waiter");
+            return;
+        }
     }
 
     #[test]

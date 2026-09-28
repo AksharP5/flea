@@ -1,6 +1,5 @@
 use super::*;
 use crate::backend::testdir::TestDir;
-use std::os::unix::fs::PermissionsExt;
 use std::sync::atomic::AtomicUsize;
 use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard};
@@ -29,11 +28,7 @@ fn strings(paths: &[&str]) -> Vec<String> {
 }
 
 fn script(dir: &TestDir, name: &str, body: &str) -> String {
-    let path = dir.path().join(name);
-    dir.assert_contains(&path);
-    std::fs::write(&path, format!("#!/bin/sh\n{}\n", body)).unwrap();
-    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
-    path.to_string_lossy().into_owned()
+    dir.script(name, &format!("#!/bin/sh\n{}\n", body)).to_string_lossy().into_owned()
 }
 
 #[test]

@@ -5,20 +5,24 @@ use crate::vulkan;
 use std::ffi::OsStr;
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
+
+// std already links libc, so fork is declared here rather than taking a crate.
+extern "C" {
+    fn fork() -> i32;
+}
 
 // exec rather than spawn, so the shell replaces this process and no pid is orphaned.
 pub fn exec_qs(ui: &Path, start: Option<&str>, select: Option<&str>) -> i32 {
-    // Before the Vulkan probe below, which is the first cold read a launch makes; see AGENTS.md "The first window".
+    // One helper fork for the launch: the page-cache list and the gvfs head start together.
     let list = prefetch::list_path();
-    if let Some(list) = &list {
-        prefetch::warm(list);
-    }
-    // A gvfs share lists for a second over the network; start gio while the window builds.
-    let gvfs: Option<(PathBuf, u64)> = match start.and_then(crate::gvfsprefetch::prepare) {
-        Some((dest, start_ms)) if start.is_some_and(|p| crate::gvfsprefetch::spawn(p, &dest)) => Some((dest, start_ms)),
+    let prepared: Option<(PathBuf, u64)> = start.and_then(crate::gvfsprefetch::prepare);
+    let gvfs_arg: Option<(&str, &Path)> = match (&prepared, start) {
+        (Some((dest, _)), Some(path)) => Some((path, dest.as_path())),
         _ => None,
     };
+    let warmed = warm_all(list.as_deref(), gvfs_arg);
+    let gvfs: Option<(PathBuf, u64)> = prepared.filter(|_| warmed);
     let mut cmd = qs_command(ui.join(paths::ENTRY));
     if let Some(list) = &list {
         cmd.env(prefetch::LIST_ENV, list);
@@ -38,6 +42,64 @@ pub fn exec_qs(ui: &Path, start: Option<&str>, select: Option<&str>) -> i32 {
         cmd.env("FLEA_SELECT", target);
     }
     exec(cmd)
+}
+
+// One helper invocation for the launch, so a gvfs start pays one fork, never two.
+pub(crate) fn launch_warm_command(exe: &Path, list: Option<&Path>, gvfs: Option<(&str, &Path)>) -> Option<Command> {
+    let has_list = list.is_some_and(|p| p.is_file());
+    if !has_list && gvfs.is_none() {
+        return None;
+    }
+    let mut cmd = Command::new(exe);
+    cmd.arg("--launch-warm");
+    // Sample args: "flea --launch-warm /cache/flea/prefetch /run/user/1000/gvfs/x/dir /run/user/1000/flea/gvfs-1.list"; "-" skips a job.
+    cmd.arg(if has_list { list.unwrap().as_os_str() } else { OsStr::new("-") });
+    match gvfs {
+        Some((path, dest)) => {
+            cmd.arg(path);
+            cmd.arg(dest);
+        }
+        None => {
+            cmd.arg("-");
+            cmd.arg("-");
+        }
+    }
+    cmd.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+    // The gvfs head start outlives the exec, the page-cache job sharing its fork; a local launch keeps today's shape.
+    if gvfs.is_some() {
+        cmd.process_group(0);
+    }
+    Some(cmd)
+}
+
+// The launcher's side: one spawn and one fork-wait for both jobs, true when the helper started.
+fn warm_all(list: Option<&Path>, gvfs: Option<(&str, &Path)>) -> bool {
+    let Ok(exe) = std::env::current_exe() else { return false };
+    let Some(mut cmd) = launch_warm_command(&exe, list, gvfs) else { return false };
+    // The child forks and its parent exits at once, so this wait is only the fork.
+    match cmd.spawn() {
+        Ok(mut child) => {
+            let _ = child.wait();
+            true
+        }
+        Err(_) => false,
+    }
+}
+
+// flea --launch-warm <list> <gvfs-path> <gvfs-dest>: one fork for both jobs; "-" skips a job.
+pub fn run_launch_warm(list: &str, gvfs_path: &str, gvfs_dest: &str) -> i32 {
+    // corner: a fork that fails keeps the work here, and the launcher waits it out, which is still a launch.
+    if unsafe { fork() } > 0 {
+        return 0;
+    }
+    if list != "-" {
+        prefetch::do_warm(Path::new(list));
+    }
+    if gvfs_path != "-" && gvfs_dest != "-" {
+        let gio = crate::backend::gvfslist::gio_bin();
+        let _ = crate::gvfsprefetch::run_in(gvfs_path, Path::new(gvfs_dest), &gio, crate::gvfsprefetch::runtime_dir().as_deref());
+    }
+    0
 }
 
 // flea --pick <reply>: the portal's chooser window on the same shell and renderer choice.
@@ -284,5 +346,37 @@ mod tests {
         apply_display_pin(&mut cmd, vulkan::DisplayPin::Unmatched { vendor: 0x10de });
         assert_eq!(override_of(&cmd, "VK_DRIVER_FILES"), None);
         assert_eq!(override_of(&cmd, "VK_ICD_FILENAMES"), None);
+    }
+
+    // The argv a launch helper carries, read back from the built command.
+    fn argv_of(cmd: &Command) -> Vec<String> {
+        cmd.get_args().map(|a| a.to_string_lossy().into_owned()).collect()
+    }
+
+    #[test]
+    fn a_gvfs_launch_carries_both_jobs_in_one_helper_command() {
+        let dir = crate::backend::testdir::TestDir::new("launch-warm-gvfs");
+        let list = dir.file("prefetch", "flea-prefetch 2\n");
+        let dest = dir.join("gvfs-1.list");
+        let share = "/run/user/1000/gvfs/smb-share:server=x,share=y/dir";
+        let cmd = launch_warm_command(Path::new("flea"), Some(list.as_path()), Some((share, dest.as_path())))
+            .expect("a gvfs launch with a list warms");
+        assert_eq!(argv_of(&cmd), vec!["--launch-warm", list.to_str().unwrap(), share, dest.to_str().unwrap()]);
+    }
+
+    #[test]
+    fn a_local_launch_carries_no_gvfs_job() {
+        let dir = crate::backend::testdir::TestDir::new("launch-warm-local");
+        let list = dir.file("prefetch", "flea-prefetch 2\n");
+        let cmd = launch_warm_command(Path::new("flea"), Some(list.as_path()), None).expect("a local launch with a list warms");
+        assert_eq!(argv_of(&cmd), vec!["--launch-warm", list.to_str().unwrap(), "-", "-"]);
+    }
+
+    #[test]
+    fn a_launch_with_nothing_to_warm_spawns_nothing() {
+        let dir = crate::backend::testdir::TestDir::new("launch-warm-none");
+        let missing = dir.join("no-such-list");
+        assert!(launch_warm_command(Path::new("flea"), Some(missing.as_path()), None).is_none());
+        assert!(launch_warm_command(Path::new("flea"), None, None).is_none());
     }
 }

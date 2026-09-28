@@ -2,9 +2,7 @@
 use crate::backend::gvfslist;
 use crate::backend::listing::Listing;
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
-use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -123,26 +121,6 @@ pub fn prepare(path: &str) -> Option<(PathBuf, u64)> {
     let n = NEXT.fetch_add(1, Ordering::Relaxed);
     let dest = dir.join(format!("gvfs-{}-{}-{}.list", std::process::id(), start_ms, n));
     Some((dest, start_ms))
-}
-
-// The enumeration starts while the window builds; true when the child was started.
-pub fn spawn(path: &str, dest: &Path) -> bool {
-    let Ok(exe) = std::env::current_exe() else { return false };
-    let spawned = Command::new(exe)
-        .arg("--gvfs-prefetch")
-        .arg(path)
-        .arg(dest)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .process_group(0)
-        .spawn();
-    // The child forks and its parent exits at once, so this wait is only the fork.
-    if let Ok(mut child) = spawned {
-        let _ = child.wait();
-        return true;
-    }
-    false
 }
 
 // flea --gvfs-prefetch <path> <dest>: same gio call the backend would make, hidden included.

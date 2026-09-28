@@ -2638,6 +2638,13 @@ with its one-line reason, the next_slice_len helper, and the offset-plus-len inf
 `src/backend/durable_tests.rs` 732 to 766 for the ramped expectations (four mids at 1, 3, 7, 15 MiB,
 the ramped wait log, and the first-slice red test), each re-derived with `wc -l`.
 
+p036gio moves one recorded ceiling, re-derived with `wc -l`: `src/backend/gvfslist.rs` 458 to
+538 for the exact gio wait (one channel message per chunk plus EOF, `recv_timeout` on the idle
+budget, kill and reap on timeout with no join) and its overshoot-drift test copied from
+`child.rs`. `src/gui.rs` 288 to 382 for the single-fork launch helper with its builder tests
+stays under the hard cap; `src/prefetch.rs` 325 to 311 and `src/gvfsprefetch.rs` 328 to 306
+for removing the two superseded spawners.
+
 ## The key table is generated
 
 `keys.toml` at the repository root is the single source of truth for every binding.

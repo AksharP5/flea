@@ -4,7 +4,6 @@ use std::io::Read;
 use std::os::unix::fs::{FileExt, OpenOptionsExt};
 use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
 use std::sync::{mpsc, OnceLock};
 use std::time::Duration;
 
@@ -57,31 +56,19 @@ pub fn list_path() -> Option<PathBuf> {
     Some(cache.join("flea/prefetch"))
 }
 
-// The launcher's side: a helper that queues the reads, waited for only as long as its fork takes.
-pub fn warm(list: &Path) {
-    if !list.is_file() {
-        return;
-    }
-    let Ok(exe) = std::env::current_exe() else { return };
-    let spawned = Command::new(exe)
-        .arg("--prefetch")
-        .arg(list)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn();
-    if let Ok(mut child) = spawned {
-        let _ = child.wait();
-    }
-}
-
 // flea --prefetch <list>: forks, so the launcher's wait returns at once and its shell holds no unreaped child.
 pub fn helper(list: &Path) -> i32 {
     // corner: a fork that fails keeps the work here, and the launcher waits it out, which is still a launch.
     if unsafe { fork() } > 0 {
         return 0;
     }
-    let Some(text) = read_bounded(list) else { return 0 };
+    do_warm(list);
+    0
+}
+
+// The page-cache half the combined launch helper shares: the same bounded read and advice, no fork.
+pub(crate) fn do_warm(list: &Path) {
+    let Some(text) = read_bounded(list) else { return };
     let mut open: Option<(&str, Option<fs::File>)> = None;
     for range in parse_list(&text) {
         if open.as_ref().map(|(path, _)| *path) != Some(range.path) {
@@ -94,7 +81,6 @@ pub fn helper(list: &Path) -> i32 {
             }
         }
     }
-    0
 }
 
 fn read_bounded(list: &Path) -> Option<String> {

@@ -27,10 +27,7 @@ fn write_prefetch(runtime: &Path, name: &str, body: &str) -> PathBuf {
 }
 
 fn fake_gio(dir: &TestDir, name: &str, body: &str) -> String {
-    let p = dir.join(name);
-    std::fs::write(&p, body).unwrap();
-    std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
-    p.to_string_lossy().into_owned()
+    dir.script(name, body).to_string_lossy().into_owned()
 }
 
 fn live_deadline() -> SystemTime {

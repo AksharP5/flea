@@ -74,6 +74,24 @@ impl TestDir {
         p
     }
 
+    // Written by a child process, so this process never holds the script open for write while a
+    // parallel test forks: the fork's copy of that fd is what made exec fail with ETXTBSY.
+    pub fn script(&self, name: &str, body: &str) -> PathBuf {
+        let p = self.join(name);
+        self.assert_contains(&p);
+        let mut writer = std::process::Command::new("/bin/sh")
+            .arg("-c")
+            .arg("cat > \"$1\" && chmod 755 \"$1\"")
+            .arg("sh")
+            .arg(&p)
+            .stdin(std::process::Stdio::piped())
+            .spawn()
+            .expect("test script writer");
+        writer.stdin.take().expect("test script writer stdin").write_all(body.as_bytes()).expect("test script body");
+        assert!(writer.wait().expect("test script writer exit").success(), "test script not written: {}", p.display());
+        p
+    }
+
     pub fn dir(&self, name: &str) -> PathBuf {
         let p = self.join(name);
         std::fs::create_dir_all(&p).expect("test sandbox dir");

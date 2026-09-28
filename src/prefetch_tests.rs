@@ -1,6 +1,7 @@
 // src/prefetch.rs's tests, kept beside it so that file stays a mechanism file.
 use super::*;
 use std::os::unix::fs::PermissionsExt;
+use std::process::Command;
 
 #[test]
 fn only_present_file_pages_are_kept_in_first_mapped_order_and_merged() {
