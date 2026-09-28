@@ -26,8 +26,9 @@ open_line=$(head -n "$id_line" "$body" | grep -n 'Loader {$' | tail -n 1 | cut -
 [ -n "$open_line" ] || fail 'ui/WindowBody.qml has no Loader line above the networkHost id'
 indent=$(sed -n "${open_line}p" "$body" | sed 's/Loader {$//')
 host=$(tail -n +"$open_line" "$body" | sed "/^${indent}}\$/q")
+printf '%s\n' "$host" | grep -q "^${indent}    id: networkHost\$" || fail 'ui/WindowBody.qml Loader read above the networkHost id is not the networkHost Loader'
 printf '%s\n' "$host" | grep -q "^${indent}    active: true\$" || fail 'ui/WindowBody.qml networkHost Loader misses active: true'
-printf '%s\n' "$host" | grep -q "^${indent}    asynchronous: true" && fail 'ui/WindowBody.qml networkHost Loader must not build asynchronously'
+printf '%s\n' "$host" | grep "^${indent}    asynchronous:" | grep -qv "asynchronous: false\$" && fail 'ui/WindowBody.qml networkHost Loader must not build asynchronously'
 command -v qs >/dev/null 2>&1 || { printf 'lazy-objects: no qs here, live halves not run\n'; exit 0; }
 test_root="$FIXTURE_ROOT/flea-lazy-objects-$$"
 sandbox_make "$test_root"

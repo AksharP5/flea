@@ -73,11 +73,20 @@ for b in bad:
 if total == 0:
     fail('found zero Connections blocks in %d files' % len(files))
 reds = sorted(glob.glob(os.path.join(reds_dir, '*.qml')))
-if not reds:
-    fail('has no red fixtures in ' + reds_dir)
+cleans = sorted(glob.glob(os.path.join(reds_dir, 'clean', '*.qml')))
+brokens = sorted(glob.glob(os.path.join(reds_dir, 'broken', '*.qml')))
+if not reds or not cleans or not brokens:
+    fail('needs red, clean and broken fixtures under ' + reds_dir)
 for f in reds:
     if not any(mixed(members) for _, members in blocks(f)[0]):
         fail('missed its red fixture ' + os.path.basename(f))
-print('connections-style: %d file(s), %d block(s), %d problem(s), %d red fixture(s) caught' % (len(files), total, len(bad), len(reds)))
+for f in cleans:
+    found, broken = blocks(f)
+    if broken or any(mixed(members) for _, members in found):
+        fail('misread its clean fixture ' + os.path.basename(f))
+for f in brokens:
+    if not blocks(f)[1]:
+        fail('missed its broken fixture ' + os.path.basename(f))
+print('connections-style: %d file(s), %d block(s), %d problem(s), %d fixture(s) held' % (len(files), total, len(bad), len(reds) + len(cleans) + len(brokens)))
 sys.exit(1 if bad else 0)
 PY
