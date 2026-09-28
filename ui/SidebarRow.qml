@@ -152,9 +152,9 @@ Item {
     readonly property bool editorShown: renameLoader.item !== null && renameLoader.item.visible
     // RailEject: a mounted drive or SMB share draws the eject mark in place of
     // the square, so the label keeps its column; anything else keeps what it drew.
-    // The ink takes the rail's own mark token, the slot the leading mark already draws in.
+    // A trailing mark, so it takes the caption slot's ink like NETWORK's plus, never the leading icon's size.
     readonly property bool showsEject: Eject.releasable(root.modelData)
-    readonly property real ejectMarkSize: Theme.railIconSize
+    readonly property real ejectMarkSize: Theme.font.caption
     // The rail's real trailing indicator slot, so ui/Ipc.qml measures this dot instead of recomputing it.
     readonly property Item indicatorSlot: dot
     readonly property Item detailItem: detailText
