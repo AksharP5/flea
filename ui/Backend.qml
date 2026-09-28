@@ -58,8 +58,8 @@ Item {
     // it. path is that directory, so a pane that has since moved can ignore it; see docs/protocol.md.
     signal changed(string path)
     // readFailed tells a zero-row answer apart from an empty directory; mode is that directory's own, 0 when the stat failed too.
-    // hidden is the flag the request carried, echoed by the backend: two clients peek this wire, so path alone does not say whose reply this is.
-    signal peeked(string path, bool hidden, int total, var rows, bool readFailed, int mode)
+    // hidden and hiddenLast are the flags the request carried, echoed by the backend: two clients peek this wire, so path alone does not say whose reply this is.
+    signal peeked(string path, bool hidden, int total, var rows, bool readFailed, int mode, bool hiddenLast)
     // The path bar's folder jump, the existing folders of each source in its own order; see docs/protocol.md "jump".
     signal jumped(int id, var favourites, var zoxide, var recent, var frecency)
     signal archiveStarted(int id)

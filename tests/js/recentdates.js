@@ -78,8 +78,11 @@ function run(check) {
     check("ViewState owns the one midnight timer", countRe(viewState, /Timer\s*\{/g), 1)
     check("and that timer steps in minute stops, so a suspend still lands the day",
         viewState.indexOf("Math.min(60000") >= 0, true)
+    // Scoped to onHighlightTodayChanged's own body, so the same line in onTriggered cannot cover a deletion here.
+    var changedAt = viewState.indexOf("onHighlightTodayChanged")
+    var handlerBody = viewState.substring(changedAt, viewState.indexOf("}", viewState.indexOf("{", changedAt)))
     check("and the switch restarts it outright",
-        viewState.indexOf("root.midnightTimer.running = root.highlightToday") >= 0, true)
+        handlerBody.indexOf("root.midnightTimer.running = root.highlightToday") >= 0, true)
     check("the timer re-arms through the same helper",
         viewState.indexOf("msUntilMidnight") >= 0, true)
     check("the switch ships off",

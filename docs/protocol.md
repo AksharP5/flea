@@ -1356,12 +1356,12 @@ uses, so a column can tell an unreadable directory from an empty one instead of 
 empty state. A `peeked` line that succeeded carries neither field, whatever `n` is.
 
 Two more `peek` fields are worth naming for the same reason. Every `peeked` line, failed or not,
-echoes the `hidden` its request carried, because two clients read this wire at once: `ui/ColumnsArea.qml`
-peeks the pane's ancestors with the listing's own flag, and the path bar's Tab peeks with whatever
+echoes the `hidden` and `hiddenLast` its request carried, because two clients read this wire at once: `ui/ColumnsArea.qml`
+peeks the pane's ancestors with the listing's own flags, and the path bar's Tab peeks with whatever
 the typed leaf asks for. `path` alone cannot tell one client's reply from the other's, and `path`
-plus `hidden` can, which is all the correlation either needs: the same pair answers the same rows,
-so no request id has to be threaded through. A client that ignores the field reads the line exactly
-as it did before. A `peek` request also carries optional `hiddenLast`, `false` unless `true`: with
+plus `hidden` plus `hiddenLast` can, which is all the correlation either needs: the same triple answers the same rows,
+so no request id has to be threaded through. A client that ignores the fields reads the line exactly
+as it did before. A `peek` request carries optional `hiddenLast`, `false` unless `true`: with
 it on the peek sorts dotfiles last the way the listing does, so the columns beside a hidden-last
 listing draw the same order instead of today's dotfiles-first one.
 

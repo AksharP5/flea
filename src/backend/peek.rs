@@ -18,7 +18,7 @@ pub fn peek_line(path: &str, first: usize, hidden: bool, hidden_last: bool, focu
         Ok(v) => v,
         // An unreadable ancestor is still not an error for the pane it belongs to, but it is not an
         // empty directory either, and the column drew those two the same way until this line.
-        Err(_) => return failed_peek(path, hidden),
+        Err(_) => return failed_peek(path, hidden, hidden_last),
     };
     sort_by_name(&mut listing, false, hidden_last);
     let total = listing.len();
@@ -29,10 +29,10 @@ pub fn peek_line(path: &str, first: usize, hidden: bool, hidden_last: bool, focu
     };
     let mut out = String::with_capacity(count * 64);
     // Echoed so the columns view and the path bar's Tab tell their two replies apart; both ask with
-    // pane.windowSize, so first cannot differ between them and path plus hidden is the whole key.
+    // pane.windowSize, so first cannot differ between them and path plus hidden plus hiddenLast is the whole key.
     out.push_str(&format!(
-        r#"{{"t":"peeked","path":"{}","hidden":{},"n":{},"rows":["#,
-        escape(path), hidden, total
+        r#"{{"t":"peeked","path":"{}","hidden":{},"hiddenLast":{},"n":{},"rows":["#,
+        escape(path), hidden, hidden_last, total
     ));
     for i in start..start + count {
         if i > start {
@@ -55,12 +55,12 @@ pub fn peek_line(path: &str, first: usize, hidden: bool, hidden_last: bool, focu
 // A scan that failed answers zero rows, which is the exact count an empty directory answers, so the
 // line says which of the two it is. mode carries the directory's own permissions when the stat
 // outlived the refused read, and is left out when it did not, the same rule the error line follows.
-fn failed_peek(path: &str, hidden: bool) -> String {
+fn failed_peek(path: &str, hidden: bool, hidden_last: bool) -> String {
     let mode = mode_of(path);
     let mode_field = if mode == 0 { String::new() } else { format!(r#","mode":{}"#, mode) };
     format!(
-        r#"{{"t":"peeked","path":"{}","hidden":{},"n":0,"failed":true{},"rows":[]}}"#,
-        escape(path), hidden, mode_field
+        r#"{{"t":"peeked","path":"{}","hidden":{},"hiddenLast":{},"n":0,"failed":true{},"rows":[]}}"#,
+        escape(path), hidden, hidden_last, mode_field
     )
 }
 
@@ -188,6 +188,19 @@ mod tests {
         assert_eq!(missing, initial);
         let zero = peek_line(&d.path().to_string_lossy(), 0, false, false, "d19", &mime, &icons);
         assert!(zero.ends_with(r#""rows":[]}"#));
+    }
+
+    #[test]
+    fn a_peeked_line_echoes_hidden_last_the_way_it_echoes_hidden() {
+        let d = TestDir::new("peekecho");
+        d.file("a.txt", "");
+        let (mime, icons) = tables();
+        let off = peek_line(&d.path().to_string_lossy(), 10, false, false, "", &mime, &icons);
+        assert!(off.contains(r#""hiddenLast":false"#), "the reply says which order it was asked for: {}", off);
+        let on = peek_line(&d.path().to_string_lossy(), 10, true, true, "", &mime, &icons);
+        assert!(on.contains(r#""hiddenLast":true"#), "a stale dotfiles-first column must not survive the toggle: {}", on);
+        let missing = peek_line(&d.join("never-existed").to_string_lossy(), 10, true, true, "", &mime, &icons);
+        assert!(missing.contains(r#""hiddenLast":true"#), "a refusal is still a reply to a request: {}", missing);
     }
 
     #[test]

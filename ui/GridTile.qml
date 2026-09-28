@@ -107,7 +107,7 @@ Item {
 
     // corner: a filename is arbitrary text, so PlainText; Qt elides wrapped text only with ElideRight, so Names.js keeps the extension visible.
     readonly property int captionLines: root.dropTarget ? 1 : 2
-    readonly property int captionBudget: Theme.glyphAdvance > 0 && nameLabel.width > 0 ? Math.floor(nameLabel.width / Theme.glyphAdvance) * root.captionLines : -1
+    readonly property int captionBudget: Names.gridBudget(nameLabel.width, Theme.bodyAdvance, root.captionLines)
     Text {
         id: nameLabel
         visible: !root.renaming
@@ -138,8 +138,8 @@ Item {
         active: root.clipMark.length > 0 && !root.renaming
         width: root.clipPx
         height: root.clipPx
-        x: Math.min(nameLabel.x + (nameLabel.width + Math.min(nameLabel.contentWidth, nameLabel.width)) / 2 + Theme.spacing.gap,
-                    nameLabel.x + nameLabel.width - root.clipPx)
+        // The label's right margin reserves gap plus the mark, so the mark sits in that strip past the last glyph.
+        x: nameLabel.x + nameLabel.width + Theme.spacing.gap
         y: nameLabel.y + nameLabel.height - (Theme.grid.captionLineHeight + root.clipPx) / 2 - 1
         sourceComponent: Flea.Glyph {
             width: root.clipPx

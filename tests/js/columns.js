@@ -22,6 +22,14 @@ var PICKER = { rowPaddingX: 14, gap: 9, iconSize: 23, nameMin: 156, mode: 70, si
 // takes Theme.space(150), 175 px of it, measured off the window Hyprland reported for flea --pick.
 var PICKER_SLOT = 700
 
+// A file of this tree, read the way tests/js/themes.js reads colors.toml; "" when missing.
+function source(path) {
+    var request = new XMLHttpRequest()
+    request.open("GET", Qt.resolvedUrl("../../" + path), false)
+    request.send()
+    return String(request.responseText || "")
+}
+
 // The anchor chain in ui/Row.qml, walked here independently of ui/js/Columns.js: the row, less its
 // padding either side, the mark and the gap after it, and every drawn column with its own gap.
 function nameSlot(width, s, t) {
@@ -116,6 +124,10 @@ function run(check) {
 
     runColumnCount(check)
     runListWidths(check)
+    runStoredWidths(check)
+    runPeekKey(check)
+    runHeaderDrag(check)
+    runColumnsLimitWire(check)
 }
 
 // ColumnsWidth board (#167, #69): the columns count follows the window width, 2 below 900 up to 5 from 2300, capped by the View limit at 5.
@@ -152,6 +164,58 @@ function runListWidths(check) {
     check("autofit on no held rows keeps the column", Columns.autofitWidth([], 70), 70)
 
     runColumnFit(check)
+}
+
+// ui.json carries whatever a hand edit wrote, so ui/Theme.qml's storedWidth takes only a finite
+// number through here; anything else keeps the measured width.
+function runStoredWidths(check) {
+    check("a stored number lands as drawn", Columns.storedNumber(120), 120)
+    check("and rounds to whole pixels", Columns.storedNumber(120.6), 121)
+    check("null keeps the measured width", isNaN(Columns.storedNumber(null)), true)
+    check("an empty string keeps it too", isNaN(Columns.storedNumber("")), true)
+    check("false keeps it too", isNaN(Columns.storedNumber(false)), true)
+    check("an empty array keeps it too", isNaN(Columns.storedNumber([])), true)
+    check("true is not a width", isNaN(Columns.storedNumber(true)), true)
+    check("a numeric string is not a width", isNaN(Columns.storedNumber("120")), true)
+    check("a negative is not a width", isNaN(Columns.storedNumber(-40)), true)
+    check("NaN is not a width", isNaN(Columns.storedNumber(NaN)), true)
+    check("Infinity is not a width", isNaN(Columns.storedNumber(Infinity)), true)
+}
+
+// The peek cache key: path plus what ordered it, so a stale ancestor column never survives the hidden-last toggle.
+function runPeekKey(check) {
+    check("the plain order keys plain", Columns.peekKey("/a", false, false), "/a\n00")
+    check("hidden keys apart", Columns.peekKey("/a", true, false), "/a\n10")
+    check("hidden-last keys apart too", Columns.peekKey("/a", false, true), "/a\n01")
+    check("both keys apart together", Columns.peekKey("/a", true, true), "/a\n11")
+    check("an absent flag reads as off", Columns.peekKey("/a"), "/a\n00")
+    var area = source("ui/ColumnsArea.qml")
+    check("the columns view answers replies under that key",
+        area.indexOf("Columns.peekKey(path, hidden, hiddenLast)") >= 0, true)
+    check("and asks under the order it shows",
+        area.indexOf("Columns.peekKey(path, root.pane.showHidden, ViewState.state.hiddenLast === true)") >= 0, true)
+}
+
+// The header drag writes once on release after a real move, so a click pins nothing and a fit survives its own release.
+function runHeaderDrag(check) {
+    var header = source("ui/Header.qml")
+    check("a press that never travels marks nothing to write",
+        header.indexOf("root.dragMoved = false") >= 0, true)
+    check("only a travelled pointer arms the write",
+        header.indexOf("root.dragMoved = true") >= 0, true)
+    check("and the release writes only when armed",
+        header.indexOf("if (root.dragMoved)") >= 0, true)
+    var fitAt = header.indexOf("function autofitColumn")
+    var fitBody = header.substring(fitAt, header.indexOf("}", header.indexOf("{", fitAt)))
+    check("a fit ends the drag so its release writes nothing",
+        fitBody.indexOf('root.dragKey = ""') >= 0, true)
+}
+
+// The window passes the raw stored limit through, so a hand-edited false or "" reaches cappedLimit instead of coercing to 0.
+function runColumnsLimitWire(check) {
+    var area = source("ui/ColumnsArea.qml")
+    check("the limit is not an int property",
+        area.indexOf("readonly property var columnsLimit") >= 0, true)
 }
 
 // ColumnFit.cellText names the strings ui/Row.qml draws, so autofit measures them: a link fits "link", a folder its walk size.

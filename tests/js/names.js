@@ -1,6 +1,14 @@
 .import "../../ui/js/Names.js" as Names
 
 // Names040 board: a long name elides in the middle so the extension stays visible; the 64-character sample elides to 49 keeping ".png".
+
+// A file of this tree, read the way tests/js/themes.js reads colors.toml; "" when missing.
+function source(path) {
+    var request = new XMLHttpRequest()
+    request.open("GET", Qt.resolvedUrl("../../" + path), false)
+    request.send()
+    return String(request.responseText || "")
+}
 function run(check) {
     var full = "screenshot-2026-08-30-final-review-for-gm-after-the-bench-v3.png"
     check("the board sample elides to the board string",
@@ -30,4 +38,24 @@ function run(check) {
           Names.middleElide("abcdefghij", 3), "a…j")
     check("a two-wide budget keeps the head and the mark",
           Names.middleElide("abcdefghij", 2), "a…")
+    runGridBudget(check)
+}
+
+// A grid caption wraps at word boundaries, so the tile budgets the face it draws and the first
+// line whole with each continuation half, keeping the extension on the second line.
+function runGridBudget(check) {
+    check("one line budgets whole", Names.gridBudget(128, 7.8, 1), 16)
+    check("two lines budget whole plus half", Names.gridBudget(128, 7.8, 2), 24)
+    check("a dead width budgets nothing", Names.gridBudget(0, 7.8, 2), -1)
+    check("a dead advance budgets nothing", Names.gridBudget(128, 0, 2), -1)
+    var full = "screenshot-2026-08-30-final-review-for-gm-after-the-bench-v3.png"
+    check("the board sample keeps its extension under word wrap",
+          Names.middleElide(full, Names.gridBudget(128, 7.8, 2)).slice(-4), ".png")
+    var tile = source("ui/GridTile.qml")
+    check("the caption budgets off the face it draws",
+          tile.indexOf("Theme.bodyAdvance") >= 0, true)
+    check("through the wrap-safe helper",
+          tile.indexOf("Names.gridBudget") >= 0, true)
+    check("the mark sits in the reserved strip past the last glyph",
+          tile.indexOf("nameLabel.x + nameLabel.width + Theme.spacing.gap") >= 0, true)
 }

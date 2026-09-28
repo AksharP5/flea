@@ -21,7 +21,7 @@ Item {
     // Whichever view is up owns the keyboard, and Focus.handleKey is the one route all three take.
     Keys.onPressed: function (event) { event.accepted = Focus.handleKey(event, root.pane, root.pane.sidebar) }
 
-    // path -> the rows a peek answered for it. Cleared whenever the pane moves, because a stale
+    // peekKey -> the rows a peek answered for it. Cleared whenever the pane moves, because a stale
     // column is worse than an empty one.
     property var peeked: ({})
     // path -> the mode of a peek that came back denied, which answers zero rows as an empty one does.
@@ -48,7 +48,8 @@ Item {
         : (!root.shownHasRow || !ViewState.previewColumn || preview.ready)
 
     // One columnWidth per shown column from the window width (ColumnsWidth board #167 and #69); the third column takes the remainder at activeX, and resizing re-lays widths in one frame with no re-read.
-    readonly property int columnsLimit: ViewState.state.columnsLimit !== undefined ? ViewState.state.columnsLimit : 5
+    // The raw stored value, so cappedLimit reads a hand-edited false or "" as the shipped 5 instead of the 0 an int property coerces.
+    readonly property var columnsLimit: ViewState.state.columnsLimit !== undefined ? ViewState.state.columnsLimit : 5
     readonly property int columnCount: Columns.columnCountForWidth(root.width, root.columnsLimit)
     readonly property int columnWidth: Math.max(1, Math.floor(root.width / Math.max(1, root.columnCount)))
     // Ancestors shown oldest first: 2 hides the parent, 5 adds the great-grandparent.
@@ -58,23 +59,31 @@ Item {
     readonly property int shownBefore: (root.showGreatGrandparent ? 1 : 0) + (root.showGrandparent ? 1 : 0) + (root.showParent ? 1 : 0) + 1
     readonly property int activeX: (root.shownBefore - 1) * root.columnWidth
 
+    // The key this view asks under, so a reply ordered another way never lands in this column.
+    function peekKey(path) {
+        return Columns.peekKey(path, root.pane.showHidden, ViewState.state.hiddenLast === true)
+    }
+
     // A read of peeked that a binding re-evaluates when a peek lands; peekVersion is the trigger.
     function rowsFor(path) {
-        return root.peekVersion >= 0 && path.length > 0 && root.peeked[path] ? root.peeked[path] : []
+        var key = root.peekKey(path)
+        return root.peekVersion >= 0 && path.length > 0 && root.peeked[key] ? root.peeked[key] : []
     }
 
     // -1 for a path that was not denied, so mode 0, the denial whose stat failed too, stays its own answer.
     function deniedMode(path) {
-        return root.peekVersion >= 0 && root.denials[path] !== undefined ? root.denials[path] : -1
+        var key = root.peekKey(path)
+        return root.peekVersion >= 0 && root.denials[key] !== undefined ? root.denials[key] : -1
     }
 
     // A peek still out answers zero rows the way an empty directory does, so a column holds its empty tile back until the reply has actually landed for that path.
     function answered(path) {
-        return root.peekVersion >= 0 && path.length > 0 && root.peeked[path] !== undefined
+        var key = root.peekKey(path)
+        return root.peekVersion >= 0 && path.length > 0 && root.peeked[key] !== undefined
     }
 
     function ask(path) {
-        if (path.length === 0 || root.peeked[path])
+        if (path.length === 0 || root.peeked[root.peekKey(path)])
             return
         root.pane.backend.peek(path, root.pane.windowSize, root.pane.showHidden)
     }
@@ -259,15 +268,15 @@ Item {
     Connections {
         target: root.pane.backend
 
-        // hidden is the request's own flag, echoed; this view asks with the listing's and has only
-        // ever one answer per path, so it reads the rows and lets the path bar do the correlating.
-        function onPeeked(path, hidden, total, rows, readFailed, mode) {
+        // hidden and hiddenLast are the request's own flags, echoed; this view asks with the listing's and keys every answer on them.
+        function onPeeked(path, hidden, total, rows, readFailed, mode, hiddenLast) {
+            var key = Columns.peekKey(path, hidden, hiddenLast)
             var next = root.peeked
-            next[path] = rows
+            next[key] = rows
             root.peeked = next
             if (readFailed) {
                 var locked = root.denials
-                locked[path] = mode
+                locked[key] = mode
                 root.denials = locked
             }
             root.peekVersion += 1

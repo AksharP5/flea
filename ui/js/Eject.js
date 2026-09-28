@@ -137,6 +137,7 @@ function releasable(entry) {
     if (entry.group === "device" && entry.kind === "phone")
         return true
     if (entry.group === "network" && entry.kind === "share")
+        // Unmounting NFS needs root, so it draws no mark.
         return Protocols.schemeOf(entry.uri) !== "nfs"
     return false
 }

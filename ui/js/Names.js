@@ -33,3 +33,14 @@ function middleElide(name, maxChars) {
     return chars.slice(0, head).join("") + "…"
         + (tail > 0 ? chars.slice(chars.length - tail).join("") : "")
 }
+
+// Text.Wrap breaks at word boundaries, so a short first line pushes the tail past ElideRight: the first line budgets whole, each continuation half.
+// Sample input: gridBudget(128, 7.8, 2) is 24.
+function gridBudget(width, advance, lines) {
+    if (!(width > 0) || !(advance > 0))
+        return -1
+    var per = Math.floor(width / advance)
+    if (!(lines > 1))
+        return per
+    return per + Math.floor(per / 2) * (lines - 1)
+}

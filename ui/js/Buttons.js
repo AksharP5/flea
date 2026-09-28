@@ -1,9 +1,8 @@
 .pragma library
 
 // Sample input: primaryFor("collide") === "keep", isDestructive("trash", "delete") === true.
-// Variant A: one control for every dialog button, HEIGHT mirrors Theme and primary is the safe Enter action.
+// Variant A: one control for every dialog button, sized by Theme, primary is the safe Enter action.
 
-var HEIGHT = 30
 var PAD = 9
 var GAP = 9
 var RING = 2

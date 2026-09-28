@@ -248,8 +248,7 @@ Item {
         var text = Status.centreText(root.slot())
         return root.noticeHint.length > 0 ? text.replace(root.noticeHint, "") : text
     }
-    // Error ink sits on the surface, so it takes the surface lift and not the background one.
-    // Any other role centreRole names draws in that role, falling back to foreground.
+    // Centre ink sits on the surface, so error takes the surface lift and any other role its own.
     function centreColor() {
         var role = Status.centreRole(root.slot())
         if (role === "error")

@@ -1,11 +1,18 @@
 .import "../../ui/js/Buttons.js" as Buttons
 .import "../../ui/js/Collide.js" as Collide
 
-// Variant A (Buttons040, GM 2026-09-24): one 30 px control at body 14, fixed primary per dialog, destructive as error ink, disabled 0.55.
+// Variant A (Buttons040, GM 2026-09-24): one control at Theme.rowHeight minus its padding, fixed primary per dialog, destructive as error ink, disabled 0.55.
+
+// A file of this tree, read the way tests/js/themes.js reads colors.toml; "" when missing.
+function source(path) {
+    var request = new XMLHttpRequest()
+    request.open("GET", Qt.resolvedUrl("../../" + path), false)
+    request.send()
+    return String(request.responseText || "")
+}
 
 function run(check) {
     // One geometry for every dialog, card and picker button; the label follows Theme.font.body.
-    check("every button is 30 tall", Buttons.HEIGHT, 30)
     check("one pad", Buttons.PAD, 9)
     check("one gap", Buttons.GAP, 9)
     check("the ring is its own signal", Buttons.RING, 2)
@@ -39,4 +46,8 @@ function run(check) {
 
     // The card's keyboard opening and its primary agree, so Enter is safe.
     check("the card still opens on Keep both", Collide.START, Buttons.primaryFor("collide"))
+
+    // The height lives in ui/DialogButton.qml as Theme.rowHeight minus its padding, so no constant here can drift from it.
+    check("buttons draw the theme height, not a constant",
+        source("ui/DialogButton.qml").indexOf("implicitHeight: Theme.rowHeight - Theme.spacing.rowPaddingY") >= 0, true)
 }

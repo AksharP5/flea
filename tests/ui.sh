@@ -4402,13 +4402,14 @@ case_columnautofit() {
     local big_bytes=1500000000
     truncate -s "$big_bytes" "$dir/big.bin"
     local i
-    for i in $(seq -w 1 50); do printf 'body\n' > "$dir/file-$i.txt"; done
+    # Past the pane's own window (visible rows plus twice the 150-row buffer, about 336 here), so G really moves the held window.
+    for i in $(seq -w 1 400); do printf 'body\n' > "$dir/file-$i.txt"; done
     # 999,950 bytes renders as "1000.0 kB", wider than the "1.5 GB" above, and sorts last so it starts off screen.
     truncate -s 999950 "$dir/zzz-wide.bin"
     # Kind alone is widened: every other column keeps its floor, so the set still draws whole.
     seed_ui_state "$fixture_root/columnautofit-state" '{"view":"list","columnWidths":{"kind":200}}'
     launch "$dir"
-    wait_listing 55
+    wait_listing 405
     local before_mark before_w
     before_mark=$(ipc sortMark)
     IFS='|' read -r _x before_w <<< "$(ipc headerCellRect kind)"
@@ -4475,7 +4476,8 @@ case_columnautofit() {
     [[ "$(ipc sortMark)" == "$before_mark" ]] \
         || fail "columnautofit: fitting size sorted, mark is $(ipc sortMark)"
 
-    # F4 fits every drawn column in one write, and a second F4 is a no-op.
+    # F4 fits every drawn column in one write: each drawn column's stored width is new or
+    # changed and matches what the header draws, and a second F4 is a no-op.
     local widths_before widths_once widths_twice
     widths_before=$(ipc columnWidths)
     key -k F4 >/dev/null
@@ -4483,10 +4485,20 @@ case_columnautofit() {
     widths_once=$(ipc columnWidths)
     printf 'COLUMNAUTOFIT f4=%s\n' "$widths_once"
     shot columnautofit-f4
-    [[ "$widths_once" != "$widths_before" ]] \
-        || fail "columnautofit: F4 left $widths_before unchanged, so it fitted nothing new"
-    [[ "$(jq -er 'keys | length' <<< "$widths_once")" -ge 2 ]] \
-        || fail "columnautofit: F4 fitted fewer than two columns, $widths_once"
+    local _f4key _drawn _have _was _fitted_n=0
+    for _f4key in mode size date kind; do
+        IFS='|' read -r _x _drawn <<< "$(ipc headerCellRect "$_f4key")"
+        [[ "$_drawn" =~ ^[0-9]+$ && "$_drawn" != "0" ]] || continue
+        _have=$(jq -r --arg k "$_f4key" '.[$k] // empty' <<< "$widths_once")
+        _was=$(jq -r --arg k "$_f4key" '.[$k] // empty' <<< "$widths_before")
+        [[ "$_have" == "$_drawn" ]] \
+            || fail "columnautofit: F4 left $_f4key stored as '$_have' while the header draws $_drawn"
+        [[ "$_have" != "$_was" ]] \
+            || fail "columnautofit: F4 left $_f4key at its pre-fit '$_was', so it fitted nothing there"
+        _fitted_n=$((_fitted_n + 1))
+    done
+    (( _fitted_n >= 1 )) \
+        || fail "columnautofit: F4 fitted no drawn column, before $widths_before after $widths_once"
     key -k F4 >/dev/null
     settle
     widths_twice=$(ipc columnWidths)

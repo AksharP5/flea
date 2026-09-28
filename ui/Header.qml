@@ -30,6 +30,8 @@ Item {
     property real dragStartX: 0
     property real dragStartWidth: 0
     property real dragPreview: 0
+    // True once the pointer travelled, so a click or a fit ending the drag writes nothing.
+    property bool dragMoved: false
 
     // A right click over the titles opens the pane's one ContextMenu with the column toggles and
     // the hidden toggle; a left click still sorts, and sortable still gates everything on a search.
@@ -155,7 +157,7 @@ Item {
         id: modeHandle
         visible: root.cols.mode && !root.dualMode && root.sortable && root.pane !== null
         anchors.left: headerMode.left
-        anchors.leftMargin: -modeHandle.width / 2
+        anchors.leftMargin: -Math.floor(modeHandle.width / 2)
         anchors.top: parent.top
         anchors.bottom: parent.bottom
         z: 3
@@ -171,7 +173,7 @@ Item {
         id: sizeHandle
         visible: root.cols.size && !root.dualMode && root.sortable && root.pane !== null
         anchors.left: headerSize.left
-        anchors.leftMargin: -sizeHandle.width / 2
+        anchors.leftMargin: -Math.floor(sizeHandle.width / 2)
         anchors.top: parent.top
         anchors.bottom: parent.bottom
         z: 3
@@ -187,7 +189,7 @@ Item {
         id: dateHandle
         visible: root.cols.date && !root.dualMode && root.sortable && root.pane !== null
         anchors.left: headerDate.left
-        anchors.leftMargin: -dateHandle.width / 2
+        anchors.leftMargin: -Math.floor(dateHandle.width / 2)
         anchors.top: parent.top
         anchors.bottom: parent.bottom
         z: 3
@@ -203,7 +205,7 @@ Item {
         id: kindHandle
         visible: root.cols.kind && !root.dualMode && root.sortable && root.pane !== null
         anchors.left: headerKind.left
-        anchors.leftMargin: -kindHandle.width / 2
+        anchors.leftMargin: -Math.floor(kindHandle.width / 2)
         anchors.top: parent.top
         anchors.bottom: parent.bottom
         z: 3
@@ -260,6 +262,7 @@ Item {
         root.dragStartX = handle.mapToItem(root, mouse.x, mouse.y).x
         root.dragStartWidth = root.currentWidthOf(key)
         root.dragPreview = root.dragStartWidth
+        root.dragMoved = false
     }
 
     function moveDrag(key, handle, mouse) {
@@ -269,15 +272,18 @@ Item {
         // A press that never travels is a click; the grab zone sits on the column's left hairline of a right-anchored chain, so widening moves it left: start minus dx.
         if (Math.abs(x - root.dragStartX) < 1)
             return
+        root.dragMoved = true
         root.dragPreview = Columns.clampListWidth(root.dragStartWidth - (x - root.dragStartX))
     }
 
-    // One remembered edge, written once on release, so a drag is layout only until it lands.
+    // One remembered edge, written once on release after a real move, so a click or a fit writes nothing.
     function endDrag() {
         if (root.dragKey.length === 0)
             return
-        root.writeWidth(root.dragKey, root.dragPreview)
+        if (root.dragMoved)
+            root.writeWidth(root.dragKey, root.dragPreview)
         root.dragKey = ""
+        root.dragMoved = false
     }
 
     // The same strings ui/Row.qml draws, measured in the cells' own caption face over the rows
@@ -297,8 +303,10 @@ Item {
         return Columns.autofitWidth(widths, root.currentWidthOf(key))
     }
 
-    // A double click fits one column; F4 fits every drawn one in a single write.
+    // A double click fits one column and ends the drag, so the release after doubleClicked writes nothing back; F4 fits every drawn one.
     function autofitColumn(key) {
+        root.dragKey = ""
+        root.dragMoved = false
         if (!root.pane || root.dualMode || !root.sortable || !root.cols[key])
             return
         var next = root.fittedWidth(key)

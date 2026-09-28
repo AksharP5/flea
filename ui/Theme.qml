@@ -79,8 +79,7 @@ Singleton {
         readonly property int gap: Math.round(Style.spacing.rowGap * root.sizeRatio)
     }
 
-    // One glyph's advance in a monospace face is every glyph's advance, so this sizes every fixed column.
-    // Names.js reads it too, so a middle-elided name budgets characters off the same advance the columns do.
+    // One glyph's advance in a monospace face is every glyph's advance, so this sizes every fixed column; names budget off bodyAdvance below.
     readonly property real glyphAdvance: glyphMetrics.advanceWidth
     // The body-face advance the row names draw at; Row and ColumnRow budget off this, never the caption one.
     readonly property real bodyAdvance: bodyGlyphMetrics.advanceWidth
@@ -94,13 +93,12 @@ Singleton {
     // Trash draws its Deleted cell at body, and body/bodySmall is not one ratio across the size stops.
     TextMetrics { id: bodyGlyphMetrics; font.family: Style.font.family; font.pixelSize: root.font.body; text: "0" }
 
-    // The header and every row read these, so the two cannot drift apart. A dragged edge
-    // writes ui.json's columnWidths, which wins here; an empty map keeps the measured widths.
+    // The header and every row read the stored widths so the two cannot drift apart; a drag previews in the header alone, ListColumns040 callout 1.
     // Sample input: {"mode": "wide"} answers the measured width, {"size": -40} the same.
     function storedWidth(key, fallback) {
         var raw = ViewState.state.columnWidths ? ViewState.state.columnWidths[key] : undefined
-        var n = Math.round(Number(raw))
-        if (raw === undefined || !(n >= 0))
+        var n = Columns.storedNumber(raw)
+        if (!(n >= 0))
             return fallback
         return Columns.clampListWidth(n)
     }

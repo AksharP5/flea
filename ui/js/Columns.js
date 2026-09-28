@@ -53,6 +53,12 @@ function dualSet(width, t, hidden) {
     return {mode: false, kind: false, size: showSize, date: showDate}
 }
 
+// A peeked reply is keyed by what ordered it, so a stale ancestor column never survives the hidden-last toggle: path plus hidden plus hiddenLast.
+// Sample input: peekKey("/a", true, true) is "/a\n11".
+function peekKey(path, hidden, hiddenLast) {
+    return String(path) + "\n" + (hidden === true ? "1" : "0") + (hiddenLast === true ? "1" : "0")
+}
+
 // The columns view's count follows the window width, capped by Settings View's limit.
 // Sample input: (899, 5) answers 2.
 var COUNT_4_AT = 1700
@@ -94,6 +100,14 @@ function ancestorsForCount(count) {
     if (!(n >= COUNT_MIN))
         return 0
     return Math.min(n, COUNT_MAX) - 2
+}
+
+// ui.json carries whatever a hand edit wrote, so only a finite number is a stored width; anything else keeps the measured one.
+// Sample input: storedNumber("120") is NaN, storedNumber(120.6) is 121.
+function storedNumber(raw) {
+    if (typeof raw !== "number" || !isFinite(raw) || raw < 0)
+        return NaN
+    return Math.round(raw)
 }
 
 // ListColumns040 board: a dragged edge clamps to the rails, and a double click fits the
