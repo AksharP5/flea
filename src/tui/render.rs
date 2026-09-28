@@ -147,6 +147,26 @@ pub fn bytes(n: usize) -> String {
     }
     format!("{:.1} {}", value, UNITS[unit])
 }
+// The one-vs-many rule every counted line shares, so one item never reads "1 items".
+pub fn word(n: usize, one: &'static str, many: &'static str) -> &'static str {
+    if n == 1 { one } else { many }
+}
+
+// "1 item" or "1,204 items", so no caller builds a plural by hand.
+pub fn items(n: usize) -> String {
+    format!("{} {}", grouped(n), word(n, "item", "items"))
+}
+
+// "1 marked item" or "2 marked items", the selection count past the loaded rows.
+fn marked(n: usize) -> String {
+    format!("{} marked {}", grouped(n), word(n, "item", "items"))
+}
+
+// "1 row hidden by the filter", the body note the listing draws under a filtered view.
+pub fn hidden_note(hidden: usize) -> String {
+    format!("{} {} hidden by the filter", grouped(hidden), word(hidden, "row", "rows"))
+}
+
 // Counts of rows, items, files and matches group in thousands, the way the GUI formats them.
 pub fn grouped(n: usize) -> String {
     let digits = n.to_string().into_bytes();
@@ -377,7 +397,7 @@ pub fn draw(
         } else if filtered.as_ref().is_some_and(|rows| y == rows.len()) {
             let count = filtered.as_ref().unwrap().len();
             let note = if count == 0 { format!("Nothing matches {}", m.filter) }
-                else { format!("{} rows hidden by the filter", grouped(m.rows.len() - count)) };
+                else { hidden_note(m.rows.len() - count) };
             out.push_str(&" ".repeat(middle_padding));
             out.push_str(&fit(&note, middle - middle_padding * 2));
             out.push_str(&" ".repeat(middle_padding));
@@ -545,7 +565,7 @@ fn footer(m: &Model, theme: &Theme, columns: usize, elapsed: std::time::Duration
     let mut parts = Vec::new();
     let chip = format!("{}\x1b[7m", theme.accent);
     if !m.selected.is_empty() { parts.push((chip.as_str(), format!(" V {} ", grouped(m.selected.len())))); }
-    parts.push((theme.foreground.as_str(), format!("{} items", grouped(m.total))));
+    parts.push((theme.foreground.as_str(), items(m.total)));
     if !m.error.is_empty() {
         let queued = if m.errors.is_empty() { String::new() } else { format!(" (+{})", m.errors.len()) };
         parts.push((theme.error.as_str(), format!("{}{} · Esc dismisses", m.error, queued)));
@@ -560,7 +580,8 @@ fn footer(m: &Model, theme: &Theme, columns: usize, elapsed: std::time::Duration
         parts.push((theme.foreground.as_str(), m.message.clone()));
     }
     if !m.filter.is_empty() {
-        parts.push((theme.foreground.as_str(), format!("Filter {} · {} matches in {} loaded rows", m.filter, grouped(m.shown().len()), grouped(m.rows.len()))));
+        let shown = m.shown().len();
+        parts.push((theme.foreground.as_str(), format!("Filter {} · {} {} in {} {}", m.filter, grouped(shown), word(shown, "match", "matches"), grouped(m.rows.len()), word(m.rows.len(), "loaded row", "loaded rows"))));
     }
     let mut out = String::new();
     let mut used = 0;
@@ -583,7 +604,7 @@ fn footer(m: &Model, theme: &Theme, columns: usize, elapsed: std::time::Duration
 }
 fn selection_line(m: &Model, y: usize, columns: usize) -> String {
     if y == 0 {
-        return format!("{} items selected", grouped(m.selected.len()));
+        return format!("{} selected", items(m.selected.len()));
     }
     if y == 1 {
         return "─".repeat(columns);
@@ -605,10 +626,8 @@ fn selection_line(m: &Model, y: usize, columns: usize) -> String {
                 .fold(0usize, |sum, row| sum.saturating_add(row.size));
             return format!("Selection total · {}", bytes(total));
         }
-        return format!(
-            "{} marked items outside loaded rows",
-            m.selected.len() - m.selected_rows.len()
-        );
+        let outside = m.selected.len() - m.selected_rows.len();
+        return format!("{} outside loaded rows", marked(outside));
     }
     if footer >= 2 {
         return Wrapped::new("Preview follows the marked set while visual mode is active.", columns).nth(footer - 2).unwrap_or("").into();
@@ -725,6 +744,41 @@ mod tests {
         assert_eq!(menu_rows(&model), ["hide hidden", "taildrop  ▶"]);
         model.taildrop.error = "signed out".into();
         assert_eq!(menu_rows(&model), ["hide hidden", "taildrop · signed out"]);
+    }
+    #[test]
+    fn counted_lines_read_singular_for_one_and_plural_for_many() {
+        let mut model = Model::new(std::path::PathBuf::from("/"), &crate::jsondoc::Json::Null);
+        let theme = Theme::from_text("");
+        model.total = 1;
+        let one = footer(&model, &theme, 120, std::time::Duration::ZERO);
+        assert!(one.contains("1 item") && !one.contains("1 items"), "one row in the footer: {one}");
+        model.total = 1204;
+        let many = footer(&model, &theme, 120, std::time::Duration::ZERO);
+        assert!(many.contains("1,204 items"), "many rows in the footer: {many}");
+        let row = || Row::parse(&crate::jsondoc::Json::Obj(vec![("n".into(), crate::tui::wire::word("a"))]), &[]);
+        model.selected = [0].into_iter().collect();
+        model.selected_rows.insert(0, row());
+        assert_eq!(selection_line(&model, 0, 80), "1 item selected");
+        model.selected = [0, 1].into_iter().collect();
+        model.selected_rows.insert(1, row());
+        assert_eq!(selection_line(&model, 0, 80), "2 items selected");
+        model.selected = [0, 1].into_iter().collect();
+        model.selected_rows = [(0, row())].into_iter().collect();
+        assert_eq!(selection_line(&model, 4, 80), "1 marked item outside loaded rows");
+        model.selected = [0, 1, 2].into_iter().collect();
+        assert_eq!(selection_line(&model, 4, 80), "2 marked items outside loaded rows");
+        model.selected.clear();
+        model.selected_rows.clear();
+        model.filter = "a".into();
+        model.rows = [(0, row())].into_iter().collect();
+        let filtered = footer(&model, &theme, 120, std::time::Duration::ZERO);
+        assert!(filtered.contains("1 match in 1 loaded row"), "one match of one row: {filtered}");
+        assert!(!filtered.contains("matches") && !filtered.contains("rows"), "no plural may survive it: {filtered}");
+        model.rows.insert(1, row());
+        let filtered = footer(&model, &theme, 120, std::time::Duration::ZERO);
+        assert!(filtered.contains("2 matches in 2 loaded rows"), "two matches of two rows: {filtered}");
+        assert_eq!(hidden_note(1), "1 row hidden by the filter");
+        assert_eq!(hidden_note(1204), "1,204 rows hidden by the filter");
     }
     #[test]
     fn deletion_confirm_is_singular_for_one_item() {

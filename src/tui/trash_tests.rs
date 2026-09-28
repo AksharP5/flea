@@ -1,5 +1,5 @@
 // Issue 133 through the real key path: on a GVFS mount every preset's trash keys reach no backend and say why.
-use super::sort_tests::{drain, echo_wire, finish, press, requests};
+use super::sort_tests::{drain, press, requests};
 use super::*;
 use crate::tui::input::Key;
 use crate::tui::keymap::Map;

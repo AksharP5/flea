@@ -2097,6 +2097,12 @@ delete confirm and status line now shares, `ui/TrashView.qml` from 466 to 467 fo
 that reaches them, `src/tui/render.rs` from 822 to 835 for the singular TUI confirm and its test,
 and `src/tui/model.rs` from 1196 to 1197 for the noun on its Deleted line.
 
+Fix3-rest takes `src/tui/render.rs` from its recorded 835 to 889 for the shared one-vs-many
+helpers (`word`, `items`, `marked`, `hidden_note`) with their tests, and `src/tui/model.rs` from its
+recorded 1197 to 1247 for the singular-aware clipboard, search, trash, transfer and bulk lines
+with their one-and-many tests plus the echo-wire helper in `src/tui/wire.rs`, each count
+re-derived with `wc -l`.
+
 ExtThumbs moves seven recorded ceilings, each re-derived with `wc -l`: `src/backend/run.rs` 428
 to 429 for the fsinfo class beside the figures and the thumb flag; `ui/Pane.qml` 673 to 687 for
 the storage class, its menu binding and the class toggle; `ui/ContextMenu.qml` 566 to 570 for the

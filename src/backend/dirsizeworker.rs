@@ -107,11 +107,7 @@ impl Drop for Worker {
 #[cfg(test)]
 mod tests {
     use super::*;
-    // Depth 1900 exceeds the default 1024 open-file limit for any traversal
-    // holding a descriptor per level, which is what std's remove_dir_all does,
-    // so the cleanup below runs on every path out of a deep test, panic
-    // included, and holds none. The walk itself holds one listing at a time,
-    // pinned beside this in dirsize.rs; the depth here is stack headroom.
+    // Depth 1900 exceeds the 1024 open-file limit of a per-level-descriptor traversal like remove_dir_all, so cleanup runs on every exit including panic while the walk itself holds one listing (see dirsize.rs).
     const DEEP_DEPTH: usize = 1900;
 
     struct DeepTree {
@@ -138,8 +134,7 @@ mod tests {
 
     impl Drop for DeepTree {
         fn drop(&mut self) {
-            // Bottom up, one rmdir at a time; best effort, so whatever this
-            // cannot take falls through to the sandbox drop as before.
+            // Bottom up, one rmdir at a time; whatever this cannot take falls through to the sandbox drop.
             while self.leaf != self.sandbox.path() {
                 if std::fs::remove_dir(&self.leaf).is_err() {
                     break;
@@ -149,8 +144,7 @@ mod tests {
         }
     }
 
-    // A test that dies before its manual cleanup leaves its whole tree to the
-    // sandbox drop, whose remove_dir_all holds a descriptor per level.
+    // A test dying before manual cleanup leaves its tree to the sandbox drop, whose remove_dir_all holds a descriptor per level.
     #[test]
     fn a_deep_tree_is_removed_even_when_its_test_fails_before_cleanup() {
         let slot: std::sync::Mutex<Option<PathBuf>> = std::sync::Mutex::new(None);

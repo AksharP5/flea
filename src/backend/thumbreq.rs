@@ -57,8 +57,7 @@ pub(crate) fn thumb_rows(
             Hit::Failed => {
                 writeln!(out, "{}", thumbed_line(row, "", since(t))).ok();
             }
-            // A class whose switch is off is cache-only: a miss answers none rather than
-            // starting a decoder, so a NAS folder costs one stat per visible row and no read.
+            // A class whose switch is off is cache-only: a miss answers none without a decoder, so a NAS folder costs one stat per row and no read.
             Hit::Miss if cache_only => {
                 writeln!(out, "{}", thumbed_line(row, "", since(t))).ok();
             }
@@ -157,13 +156,12 @@ mod tests {
     use std::sync::mpsc::channel;
     use std::sync::Arc;
 
-    // One jpeg declaration over /bin/sh, which is_runnable resolves on this box; the
-    // cache-only path never runs it, and the full path only queues under it here.
+    // One jpeg declaration over /usr/bin/false, which reads and writes nothing; the full path only queues under it here and a popped job just exits non-zero.
     fn tables() -> Tables {
         let aliases = Arc::new(Aliases::load());
         let thumbs = Arc::new(Thumbnailers::from_entries(
             &[("t.thumbnailer".to_string(),
-               "[Thumbnailer Entry]\nExec=/bin/sh -i %i -o %o -s %s\nMimeType=image/jpeg;\n".to_string())],
+               "[Thumbnailer Entry]\nExec=/usr/bin/false %i %o %s\nMimeType=image/jpeg;\n".to_string())],
             &aliases,
         ));
         assert!(thumbs.for_mime("image/jpeg", &aliases).is_some(), "the fixture declares jpeg");

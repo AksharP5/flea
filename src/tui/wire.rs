@@ -76,6 +76,33 @@ pub fn flag(value: &Json, key: &str) -> bool {
     value.get(key).and_then(Json::as_bool).unwrap_or(false)
 }
 
+// An echo child for model tests: every send comes back as an event, quit ends it.
+#[cfg(test)]
+pub(crate) fn echo_wire() -> (Wire, std::thread::JoinHandle<()>) {
+    let quit = jsondoc::render(&Json::Obj(vec![("c".into(), word("quit"))])).replace('\n', "");
+    let mut child = Command::new("sh").args(["-c",
+        r#"while IFS= read -r line; do [ "$line" = "$1" ] && exit 0; printf '%s\n' "$line"; done"#,
+        "flea-tui-wire-test", &quit]).stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().unwrap();
+    let input = child.stdin.take().unwrap();
+    let output = child.stdout.take().unwrap();
+    let (tx, events) = mpsc::channel();
+    let reader = std::thread::spawn(move || {
+        for line in BufReader::new(output).lines() {
+            let value = line.map_err(|error| error.to_string()).and_then(|line| jsondoc::parse(&line));
+            if tx.send(value).is_err() { break; }
+        }
+    });
+    (Wire { child, input, events }, reader)
+}
+
+// Ends an echo wire, proving the child exits cleanly rather than lingering.
+#[cfg(test)]
+pub(crate) fn finish(mut wire: Wire, reader: std::thread::JoinHandle<()>) {
+    wire.send(vec![("c", word("quit"))]).unwrap();
+    assert!(wire.child.wait().unwrap().success(), "TUI test wire child did not exit cleanly");
+    reader.join().unwrap();
+}
+
 // The sort-anchor battery, kept beside this suite so this file stays a mechanism file.
 #[cfg(test)]
 #[path = "sort_tests.rs"]

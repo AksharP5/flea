@@ -14,8 +14,7 @@ const BMP_MAGIC: &[u8] = b"BM";
 const RIFF_MAGIC: &[u8] = b"RIFF";
 const WEBP_MAGIC: &[u8] = b"WEBP";
 
-// The stored pixels, and the EXIF orientation a viewer turns them by: 1 unless a JPEG names another, and
-// 5 to 8 swap the sides, which is what a preview must know before it asks Qt for a size.
+// Stored pixels plus the EXIF orientation a viewer turns them by (1 unless named; 5 to 8 swap sides), needed before Qt is asked for a size.
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub struct Header {
     pub width: u32,
@@ -144,8 +143,7 @@ fn jpeg_header<R: Read + Seek>(r: &mut R) -> Option<Header> {
         // The first APP1 named Exif carries the orientation near its start, so only its head is read, in this same walk.
         if marker == APP1 && orientation.is_none() {
             let take = body.min(EXIF_HEAD);
-            // The head is read rather than stepped over, so the walk's own bound is checked before
-            // it: a chain of APP1s with no frame in it must still give up at the bound, not past it.
+            // The head is read rather than stepped over, so the walk bound is checked first: APP1s with no frame still give up at the bound.
             if walked + take > JPEG_WALK {
                 return None;
             }

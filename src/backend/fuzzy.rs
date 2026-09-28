@@ -1,7 +1,4 @@
-// The scoring half of docs/protocol.md "search"; search.rs owns the walk that calls it.
-// A subsequence match over a whole home directory returns far too much to read, so the score is what
-// makes the result usable: a contiguous run, a match at a word or path boundary, and a match in the
-// file's own name all beat a match scattered through a parent directory's spelling.
+// The scoring half of docs/protocol.md "search": a home-directory subsequence match needs ranking by run, boundary and basename to stay usable.
 use crate::backend::sort::name_order;
 use std::cmp::Ordering;
 
@@ -13,8 +10,7 @@ const BONUS_BOUNDARY: i32 = 6;
 const BONUS_BASENAME: i32 = 4;
 // Charged per candidate character skipped between two matches, so a scattered match sinks.
 const PENALTY_GAP: i32 = 1;
-// A candidate with more occurrences of the query's first character than this is scored from the
-// first ones alone: an alignment nobody can see is not worth an unbounded scan inside the read loop.
+// Past this many first-character occurrences only the first ones score: an unseen alignment is not worth an unbounded scan.
 const MAX_STARTS: usize = 16;
 
 // The characters a word or a path segment starts after.
@@ -22,10 +18,7 @@ fn is_separator(c: char) -> bool {
     c == '/' || c == '-' || c == '_' || c == '.' || c == ' '
 }
 
-// One candidate character, folded once per candidate so the scan compares by index rather than
-// re-folding at every start position it tries.
-// corner: a character whose lowercase form is more than one char (Turkish dotted capital I) keeps
-// only the first, the same corner ui/js/Match.js documents for the accent run it paints.
+// One candidate character folded once per candidate for index comparison; a multi-char lowercase (Turkish dotted capital I) keeps only its first, matching ui/js/Match.js.
 #[derive(Clone, Copy)]
 struct Folded {
     lower: char,
@@ -48,8 +41,7 @@ fn base_start(hay: &[Folded]) -> usize {
     start
 }
 
-// Holds the folded query for the whole walk and reuses one candidate buffer, so a subtree walk
-// allocates twice rather than once per entry.
+// The folded query plus one reusable candidate buffer, so a subtree walk allocates twice rather than once per entry.
 pub struct Fuzzy {
     needle: Vec<char>,
     hay: Vec<Folded>,
@@ -63,8 +55,7 @@ impl Fuzzy {
         }
     }
 
-    // None means the query is not a subsequence of the candidate at all, which is the gate every
-    // ranking sits behind. Some carries the best alignment's score, higher being the better match.
+    // None means the query is no subsequence of the candidate; Some carries the best alignment's score, higher winning.
     pub fn score(&mut self, candidate: &str) -> Option<i32> {
         // An empty query matches everything, which is what an empty search line shows.
         if self.needle.is_empty() {
@@ -82,8 +73,7 @@ impl Fuzzy {
             }
             match self.score_from(i, base) {
                 Some(s) => best = Some(best.map_or(s, |b| if s > b { s } else { b })),
-                // A greedy scan from the earliest start takes the earliest position for every needle
-                // character, so a start that cannot finish means no later start can either.
+                // A greedy scan takes the earliest position per character, so a start that cannot finish means no later start can.
                 None => return best,
             }
             starts += 1;
@@ -94,8 +84,7 @@ impl Fuzzy {
         best
     }
 
-    // Greedy from one start: every needle character takes the next candidate character that matches
-    // it, which is the alignment a reader tracing the two strings by hand would find.
+    // Greedy alignment from one start: each needle character takes its next match, the hand-traced alignment.
     fn score_from(&self, start: usize, base: usize) -> Option<i32> {
         let mut total = 0;
         let mut at = start;
@@ -116,8 +105,7 @@ impl Fuzzy {
         Some(total)
     }
 
-    // What one matched character is worth: a run, a boundary and the base name each add, and the
-    // characters skipped to reach it are charged back.
+    // One matched character's worth: run, boundary and basename bonuses minus the gap charge.
     fn character_score(&self, at: usize, base: usize, previous: Option<usize>) -> i32 {
         let mut score = 0;
         match previous {
@@ -143,8 +131,7 @@ impl Fuzzy {
     }
 }
 
-// The order results are answered in: the better score first, then the shorter path, then the
-// listing's own name order, so one walk over one tree always answers in exactly one order.
+// Result order: better score, then shorter path, then name order, so one walk answers in exactly one order.
 pub fn rank_order(a_score: i32, a_name: &str, b_score: i32, b_name: &str) -> Ordering {
     match b_score.cmp(&a_score) {
         Ordering::Equal => {}
@@ -245,24 +232,44 @@ mod tests {
         assert_eq!(rank_order(4, "a.txt", 4, "a.txt"), Ordering::Equal);
     }
 
-    // The same table, value for value, is SCORES in tests/js/jump.js: ui/js/Fuzzy.js ports this scorer, so a
-    // weight changed here fails this test until the port and its table are changed with it.
+    // Sample input: ["report.txt", "rep", 34] or [bounded + "ab", "ab", 6], one row per entry of the SCORES array below.
+    fn js_scores(src: &str, bounded: &str) -> Vec<(String, String, Option<i32>)> {
+        let table = src.split("var SCORES = [").nth(1).expect("tests/js/jump.js carries SCORES").split("]]").next().expect("SCORES closes");
+        let mut out = Vec::new();
+        for entry in table.split("],") {
+            let entry = entry.trim().trim_start_matches('[').trim();
+            if entry.is_empty() { continue; }
+            let (hay, rest) = match entry.strip_prefix('"') {
+                Some(quoted) => {
+                    let end = quoted.find('"').expect("a SCORES row closes its file");
+                    (quoted[..end].to_string(), &quoted[end + 1..])
+                }
+                // The one row jump.js builds programmatically rather than spelling out.
+                None => {
+                    assert!(entry.starts_with("bounded + \"ab\""), "a SCORES row names its file first: {entry}");
+                    (bounded.to_string(), &entry["bounded + \"ab\"".len()..])
+                }
+            };
+            let rest = &rest[rest.find('"').expect("a SCORES row names its query") + 1..];
+            let end = rest.find('"').expect("a SCORES row closes its query");
+            let (query, rest) = (rest[..end].to_string(), &rest[end + 1..]);
+            let digits = rest.rsplit(',').next().expect("a SCORES row carries its score").trim().trim_end_matches(']');
+            out.push((hay, query, match digits {
+                "null" => None,
+                _ => Some(digits.parse().expect("a SCORES score parses as an integer")),
+            }));
+        }
+        out
+    }
+
+    // SCORES is read out of tests/js/jump.js, so a weight changed here fails this test until the JS table is changed with it.
     #[test]
     fn the_exact_scores_the_jump_port_mirrors() {
         let bounded = format!("{}ab", "ax".repeat(16));
-        let table: [(&str, &str, Option<i32>); 15] = [
-            ("report.txt", "rep", Some(34)), ("raspberry-pie.txt", "rep", Some(16)),
-            ("my-notes.txt", "notes", Some(58)), ("bignotes.txt", "notes", Some(52)),
-            ("SearchStrip.qml", "strip", Some(58)), ("searchstrip.qml", "strip", Some(52)),
-            ("notes/bench.txt", "bench", Some(58)), ("bench/notes.txt", "bench", Some(38)),
-            ("axxab", "ab", Some(16)), ("axxb", "ab", Some(12)),
-            // The run at the seventeenth "a" is never tried, so the sixteenth start's gapped 6 is the answer.
-            (&bounded, "ab", Some(6)),
-            ("downloads/helper.txt", "dwnhelp", Some(53)), ("~/Documents/claude/omarchy", "o", Some(10)),
-            ("~/Documents/claude/omarchy", "src", Some(5)), ("~/Projects/homelab/nix", "tax", Some(-7)),
-        ];
-        for (hay, query, expected) in table {
-            assert_eq!(score(hay, query), expected, "{} against {}", query, hay);
+        let rows = js_scores(include_str!("../../tests/js/jump.js"), &bounded);
+        assert_eq!(rows.len(), 15, "SCORES grew or shrank; change both tables together");
+        for (hay, query, expected) in &rows {
+            assert_eq!(score(hay, query), *expected, "{query} against {hay}");
         }
     }
 }

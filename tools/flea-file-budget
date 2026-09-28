@@ -30,8 +30,8 @@ src/backend/trashbrowse.rs 698
 src/backend/trashdelete.rs 901
 src/tui/actions.rs 1021
 src/tui/input.rs 449
-src/tui/model.rs 1197
-src/tui/render.rs 835
+src/tui/model.rs 1247
+src/tui/render.rs 889
 src/uistate.rs 442
 src/uistore.rs 483
 src/vulkan.rs 620

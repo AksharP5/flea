@@ -5,33 +5,6 @@ use crate::tui::{actions, input::Key, keymap::Map};
 use std::path::PathBuf;
 use std::time::Duration;
 
-pub(super) fn echo_wire() -> (Wire, std::thread::JoinHandle<()>) {
-    let quit = jsondoc::render(&Json::Obj(vec![("c".into(), word("quit"))])).replace('\n', "");
-    let mut child = Command::new("sh").args(["-c",
-        r#"while IFS= read -r line; do [ "$line" = "$1" ] && exit 0; printf '%s\n' "$line"; done"#,
-        "flea-tui-wire-test", &quit]).stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().unwrap();
-    let input = child.stdin.take().unwrap();
-    let output = child.stdout.take().unwrap();
-    let (tx, events) = mpsc::channel();
-    let reader = std::thread::spawn(move || {
-        for line in BufReader::new(output).lines() {
-            let value = line
-                .map_err(|error| error.to_string())
-                .and_then(|line| jsondoc::parse(&line));
-            if tx.send(value).is_err() {
-                break;
-            }
-        }
-    });
-    (Wire { child, input, events }, reader)
-}
-
-pub(super) fn finish(mut wire: Wire, reader: std::thread::JoinHandle<()>) {
-    wire.send(vec![("c", word("quit"))]).unwrap();
-    assert!(wire.child.wait().unwrap().success(), "TUI test wire child did not exit cleanly");
-    reader.join().unwrap();
-}
-
 // A wait for a line that never comes; only a broken echo child reaches it.
 const FENCE_WAIT: Duration = Duration::from_secs(10);
 

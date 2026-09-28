@@ -133,43 +133,56 @@ mod tests {
         assert!(matches!(verdict(&mut child), Ran::NotStarted));
     }
 
-    #[test]
-    fn a_child_is_noticed_when_it_exits_rather_than_at_the_next_poll_boundary() {
-        // Two sleeps half a 25 ms quantum apart: a step waiter lands them on opposite
-        // sides of its sawtooth and its overshoots differ by half the quantum whatever
-        // the load, while an exact waiter answers both alike. Scheduler delay shifts
-        // both medians together, which is what an absolute bound could not survive:
-        // the exact arm alone measured 15 to 18 ms medians under CPU oversubscription.
+    // A try_wait loop sleeping one period between looks, the step waiter this test must tell apart.
+    fn poll_wait(full: &[String], period: Duration) -> bool {
+        let mut child = std::process::Command::new(&full[0]).args(&full[1..])
+            .stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null()).spawn().unwrap();
+        loop {
+            match child.try_wait() {
+                Ok(Some(status)) => return status.success(),
+                Ok(None) => std::thread::sleep(period),
+                Err(_) => { kill_and_reap(&mut child); return false; }
+            }
+        }
+    }
+
+    // Two sleeps GAP apart move a period-P step waiter's overshoot by GAP or P - GAP, so every P of at least twice GAP shows at least GAP.
+    const GAP: Duration = Duration::from_millis(5);
+    // The shortest step waiter the test promises to catch, at twice GAP.
+    const SLOWEST_CAUGHT: Duration = Duration::from_millis(10);
+
+    // How far one waiter's median overshoot moves between two sleeps GAP apart; both sleeps share every run, so load shifts both medians together.
+    fn overshoot_drift(wait: &dyn Fn(&[String]) -> bool) -> Duration {
         const NEAR_SLEEP: Duration = Duration::from_millis(30);
-        const FAR_SLEEP: Duration = Duration::from_micros(42_500);
         // Nine runs a sleep, so a single scheduling stall cannot move either fifth value.
         const RUNS: usize = 9;
-        // Half the old quantum is 12.5 ms against this 10, so a regressed step waiter
-        // reddens it and an exact waiter clears it by its own noise alone.
-        const FLAT: Duration = Duration::from_millis(10);
-        let argv = |sleep: Duration| {
-            // Four decimals, because the half-quantum pair needs the half millisecond spelled out.
-            vec!["/usr/bin/sleep".to_string(), format!("{:.4}", sleep.as_secs_f64())]
-        };
+        // Four decimals, so a sub-millisecond gap is spelled out.
+        let argv = |sleep: Duration| vec!["/usr/bin/sleep".to_string(), format!("{:.4}", sleep.as_secs_f64())];
         let mut near: Vec<Duration> = Vec::with_capacity(RUNS);
         let mut far: Vec<Duration> = Vec::with_capacity(RUNS);
         for _ in 0..RUNS {
-            for (sleep, out) in [(NEAR_SLEEP, &mut near), (FAR_SLEEP, &mut far)] {
-                let full = argv(sleep);
+            for (sleep, out) in [(NEAR_SLEEP, &mut near), (NEAR_SLEEP + GAP, &mut far)] {
                 let started = Instant::now();
-                assert!(matches!(run_with_timeout(&full, A_LONG_LIMIT), Ran::Succeeded));
+                assert!(wait(&argv(sleep)), "the sleep child failed");
                 let took = started.elapsed();
                 // The lower bound is what stops a shortened child from making every overshoot zero and the test vacuous.
-                assert!(took >= sleep, "the child returned before its own sleep, at {:?}", took);
+                assert!(took >= sleep, "the child returned before its own sleep, at {took:?}");
                 out.push(took - sleep);
             }
         }
         near.sort();
         far.sort();
-        let drift = near[RUNS / 2].abs_diff(far[RUNS / 2]);
-        assert!(drift < FLAT,
-            "median overshoot moves {:?} between a 30 ms and a 42.5 ms child over {} runs a sleep",
-            drift, RUNS);
+        near[RUNS / 2].abs_diff(far[RUNS / 2])
+    }
+
+    #[test]
+    fn a_child_is_noticed_when_it_exits_rather_than_at_the_next_poll_boundary() {
+        let exact = overshoot_drift(&|full| matches!(run_with_timeout(full, A_LONG_LIMIT), Ran::Succeeded));
+        let stepped = overshoot_drift(&|full| poll_wait(full, SLOWEST_CAUGHT));
+        // The reference proves the run could see a step at all, so a quiet exact arm is a pass and never a blind one.
+        assert!(stepped >= GAP / 2, "a {SLOWEST_CAUGHT:?} poll waiter moved only {stepped:?}, so this run cannot see a step");
+        assert!(exact < GAP / 2, "median overshoot moves {exact:?} between a 30 ms and a 35 ms child, against {stepped:?} for a {SLOWEST_CAUGHT:?} poll waiter");
     }
 
     #[test]
