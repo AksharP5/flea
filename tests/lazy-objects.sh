@@ -4,19 +4,31 @@ set -u
 . "$(dirname "$0")/../tools/flea-sandbox-guard"
 cd "$(dirname "$0")/.." || exit 1
 tree=${1:-$PWD}
-for f in ui/NetworkMounts.qml ui/Preview.qml ui/WindowBody.qml ui/js/Mounts.js tests/lazy-live.qml tests/lazy-swap-live.qml tests/lazy-host-live.qml; do [ -f "$tree/$f" ] || { printf 'FAIL missing %s\n' "$f"; exit 1; }; done
-command -v qml6 >/dev/null 2>&1 || { printf 'lazy-objects: qml6 is not installed\n'; exit 1; }
-host_out=$(QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1 timeout 20 qml6 "$tree/tests/lazy-host-live.qml" 2>&1)
-host_rc=$?
-printf '%s\n' "$host_out" | grep -q 'LAZY_HOST ordered-after-rows fallback-when-never-lands' || { printf 'FAIL host not ordered after rows with fallback\n%s\n' "$host_out"; exit 1; }
-[ "$host_rc" -eq 0 ] || { printf 'FAIL host live exited %s\n%s\n' "$host_rc" "$host_out"; exit 1; }
-printf 'lazy-objects: host ordered after rows, fallback when never lands\n'
-command -v qs >/dev/null 2>&1 || { printf 'lazy-objects: no qs here, bridge and swap live not run\n'; exit 0; }
+for f in ui/NetworkMounts.qml ui/NetworkHostGate.qml ui/Preview.qml ui/WindowBody.qml ui/js/Mounts.js tests/lazy-live.qml tests/lazy-swap-live.qml tests/lazy-host-live.qml; do [ -f "$tree/$f" ] || { printf 'FAIL missing %s\n' "$f"; exit 1; }; done
+# A QML property name starting upper-case never loads, and neither qmllint nor the
+# syntax gate flags it, so any one anywhere in ui/ fails here naming its file.
+upper=$(grep -rnE 'property[[:space:]]+[^[:space:]]+[[:space:]]+[A-Z][A-Za-z0-9_]*' "$tree"/ui/*.qml || true)
+[ -z "$upper" ] || { printf 'FAIL upper-case QML property name (must start lower-case):\n%s\n' "$upper"; exit 1; }
+# Static wiring no live probe replaces: the poll's mountinfo read never blocks the
+# GUI thread, the rail pushes bookmarks on every service arrival, and every bridge
+# wait read null-guards through root instead of reading the flow bare.
+fail() { printf 'FAIL %s\n' "$*"; exit 1; }
+have() { grep -qF "$2" "$tree/$1" || fail "$1 misses $2"; }
+missing() { grep -qF "$2" "$tree/$1" && fail "$1 still carries $2"; }
+missing ui/NetworkMounts.qml 'cloudFile.waitForJob()'
+have ui/Sidebar.qml 'onServiceChanged: { root.arrive(); root.pushBookmarks() }'
+missing ui/NetworkMounts.qml '|| bridge.flow.waiter'
+command -v qs >/dev/null 2>&1 || { printf 'lazy-objects: no qs here, live halves not run\n'; exit 0; }
 test_root="$FIXTURE_ROOT/flea-lazy-objects-$$"
 sandbox_make "$test_root"
 cleanup() { sandbox_remove "$test_root"; }
 trap cleanup EXIT
-mkdir -p "$test_root/home" "$test_root/bridge-config" "$test_root/swap-config"
+mkdir -p "$test_root/home" "$test_root/host-config" "$test_root/bridge-config" "$test_root/swap-config"
+ln -s "$tree/tests/lazy-host-live.qml" "$test_root/host-config/shell.qml"
+host_out=$(env HOME="$test_root/home" PATH="/usr/bin:/bin" QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1 LAZY_HOST_UI="$tree/ui" timeout 20 qs -p "$test_root/host-config" 2>&1)
+printf '%s\n' "$host_out" | grep -q 'LAZY_HOST ordered-after-rows fallback-when-never-lands' || { printf 'FAIL host not ordered after rows with fallback\n%s\n' "$host_out"; exit 1; }
+printf '%s\n' "$host_out" | grep -q 'LAZY_HOST FAIL' && { printf 'FAIL host live refused\n%s\n' "$host_out"; exit 1; }
+printf 'lazy-objects: host ordered after rows, fallback when never lands\n'
 ln -s "$tree/ui/NetworkMounts.qml" "$test_root/bridge-config/NetworkMounts.qml"
 ln -s "$tree/ui/MountListing.qml" "$test_root/bridge-config/MountListing.qml"
 ln -s "$tree/ui/NetworkPlaces.qml" "$test_root/bridge-config/NetworkPlaces.qml"
@@ -27,6 +39,18 @@ bridge_out=$(env HOME="$test_root/home" PATH="/usr/bin:/bin" QT_QPA_PLATFORM=off
 printf '%s\n' "$bridge_out" | grep -q 'LAZY_OBJECTS bridge=absent-then-built served-on-same-call' || { printf 'FAIL bridge did not arrive whole on first use\n%s\n' "$bridge_out"; exit 1; }
 printf '%s\n' "$bridge_out" | grep -q 'LAZY_OBJECTS FAIL' && { printf 'FAIL bridge live refused\n%s\n' "$bridge_out"; exit 1; }
 printf 'lazy-objects: live bridge absent before first use, built and serving after\n'
+# The same probe in a tree without GvfsBridge.qml: the ensure answers null and the
+# request finishes failed naming that file, with no password retry.
+mkdir -p "$test_root/absent-config"
+ln -s "$tree/ui/NetworkMounts.qml" "$test_root/absent-config/NetworkMounts.qml"
+ln -s "$tree/ui/MountListing.qml" "$test_root/absent-config/MountListing.qml"
+ln -s "$tree/ui/NetworkPlaces.qml" "$test_root/absent-config/NetworkPlaces.qml"
+ln -s "$tree/ui/js" "$test_root/absent-config/js"
+ln -s "$tree/tests/lazy-live.qml" "$test_root/absent-config/shell.qml"
+absent_out=$(env HOME="$test_root/home" PATH="/usr/bin:/bin" QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1 LAZY_BRIDGE_ABSENT=1 timeout 20 qs -p "$test_root/absent-config" 2>&1)
+printf '%s\n' "$absent_out" | grep -q 'LAZY_OBJECTS bridge-absent-fails-naming-file' || { printf 'FAIL missing bridge did not fail naming its file\n%s\n' "$absent_out"; exit 1; }
+printf '%s\n' "$absent_out" | grep -q 'LAZY_OBJECTS FAIL' && { printf 'FAIL missing bridge live refused\n%s\n' "$absent_out"; exit 1; }
+printf 'lazy-objects: missing bridge fails naming GvfsBridge.qml with no retry\n'
 ln -s /usr/share/omarchy/shell/Commons "$test_root/swap-config/Commons"
 ln -s /usr/share/omarchy/shell/Ui "$test_root/swap-config/Ui"
 ln -s "$tree/tests/lazy-swap-live.qml" "$test_root/swap-config/shell.qml"

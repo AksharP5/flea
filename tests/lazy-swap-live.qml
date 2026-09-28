@@ -49,6 +49,12 @@ ShellRoot {
                 root.finish("LAZY_SWAP FAIL wrapper built with zero size")
                 return
             }
+            // The wrapper captures Preview's own panes item through its panesSource,
+            // the production wiring ui/Preview.qml sets and ui/QuickLookSwap.qml binds.
+            if (!swap.panesSource || swap.captureSource !== swap.panesSource) {
+                root.finish("LAZY_SWAP FAIL wrapper does not capture Preview panes")
+                return
+            }
             root.finish("LAZY_SWAP wrapper=absent-then-built size=" + swap.width + "x" + swap.height)
         }
     }

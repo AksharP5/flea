@@ -109,31 +109,10 @@ Rectangle {
         return networkHost.item
     }
     // The host waits for the first rows to paint, so its gio spawn misses the listing turn; the fallback covers a listing that never lands.
-    property bool networkHostOrdered: false
-    readonly property int NETWORK_HOST_AFTER_ROWS_MS: 100
-    readonly property int networkHostFallbackMs: 2000
-    function orderNetworkHost() {
-        if (view.networkHostOrdered) return
-        view.networkHostOrdered = true
-        view.ensureNetworkService()
-    }
-    Connections {
-        target: primaryPane
-        function onListInFlightChanged() { if (!primaryPane.listInFlight && !view.networkHostOrdered) networkHostAfterRows.restart() }
-    }
-    // The host build runs after the rows paint, so its rail arrival and gio spawn miss the first listing turn.
-    Timer {
-        id: networkHostAfterRows
-        interval: view.NETWORK_HOST_AFTER_ROWS_MS
-        repeat: false
-        onTriggered: view.orderNetworkHost()
-    }
-    Timer {
-        id: networkHostFallback
-        interval: view.networkHostFallbackMs
-        running: !view.networkHostOrdered
-        repeat: false
-        onTriggered: view.orderNetworkHost()
+    NetworkHostGate {
+        id: networkHostGate
+        listInFlight: primaryPane.listInFlight
+        onOrderRequested: view.ensureNetworkService()
     }
 
     // The canvas's own top chrome: where you are on the left, how you are looking at it on

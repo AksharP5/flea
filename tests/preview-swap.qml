@@ -4,9 +4,10 @@ import Quickshell
 import QtQuick
 
 // tests/preview-swap.sh's harness: the real ui/PreviewSwap.qml holds one preview's
-// picture while the next one builds under it, over every preview kind, on the column
-// surface (burstEnds true) and on the Quick Look surface (burstEnds false). Moves run
-// the same call sequence the product runs: ColumnsArea.moveThird plus
+// picture while the next one builds under it on the column surface (burstEnds true),
+// and the real ui/QuickLookSwap.qml does the same on the Quick Look surface
+// (burstEnds false), capturing the eager panes beside it as ui/Preview.qml wires it.
+// Moves run the same call sequence the product runs: ColumnsArea.moveThird plus
 // SelectionPreview.replace/armSettle/load, or Preview.follow/load for Quick Look.
 // Sample input: PREVIEW_SWAP_SURFACE=column PREVIEW_SWAP_DIRECT=1 skips the hold and
 // mutates directly, which is the v0.3.4 shape and the control that proves the harness
@@ -61,14 +62,16 @@ ShellRoot {
             Loader {
                 id: swapLoader
                 anchors.fill: parent
-                source: "file://" + shell.uiDir + "/PreviewSwap.qml"
+                source: shell.surfaceKind === "quicklook"
+                    ? "file://" + shell.uiDir + "/QuickLookSwap.qml"
+                    : "file://" + shell.uiDir + "/PreviewSwap.qml"
                 onLoaded: {
                     item.burstEnds = shell.surfaceKind === "column"
                     item.ground = "#101315"
                     if (shell.surfaceKind === "quicklook") {
                         item.groundInset = 1
                         item.groundRadius = 8
-                        item.captureSource = qlPanes
+                        item.panesSource = qlPanes
                     }
                 }
                 onStatusChanged: if (status === Loader.Error) { shell.log("FAIL the swap did not load"); shell.quit() }
@@ -188,17 +191,21 @@ ShellRoot {
     }
 
     property int grabSeq: 0
+    // The settled grab reads the common parent holding panes and wrapper, the way
+    // ui/Preview.qml's surface holds both, so a half-built pane is visible to it.
+    function grabTarget() { return shell.surfaceKind === "quicklook" ? host : shell.swap }
     Timer {
         id: grabTimer
         interval: 200
         repeat: false
         onTriggered: {
             shell.pending += 1
-            shell.swap.grabToImage(function (result) {
+            var target = shell.grabTarget()
+            target.grabToImage(function (result) {
                 result.saveToFile(shell.outDir + "/settled.png")
                 shell.pending -= 1
                 drain.restart()
-            }, Qt.size(shell.swap.width, shell.swap.height))
+            }, Qt.size(target.width, target.height))
         }
     }
 
