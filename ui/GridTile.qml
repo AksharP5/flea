@@ -105,9 +105,9 @@ Item {
 
     HoverHandler { id: hover }
 
-    // corner: a filename is arbitrary text, so PlainText; the breaks are Flea's own, so the label never wraps.
+    // corner: a filename is arbitrary text, so PlainText; the breaks are Flea's own, WrapAnywhere only catches wide glyphs.
     readonly property int captionLines: root.dropTarget ? 1 : 2
-    // Characters of one caption line at the bodySmall advance the label draws at; Flea's font is monospace, so this is a floor.
+    // Characters of one caption line at the bodySmall advance the label draws at; a floor for single-width glyphs only, wide ones paint past it.
     readonly property int captionPerLine: Theme.bodySmallAdvance > 0 && nameLabel.width > 0 ? Math.floor(nameLabel.width / Theme.bodySmallAdvance) : -1
     Text {
         id: nameLabel
@@ -126,7 +126,7 @@ Item {
         font.family: Theme.font.family
         font.pixelSize: Theme.font.bodySmall
         textFormat: Text.PlainText
-        wrapMode: Text.NoWrap
+        wrapMode: Text.WrapAnywhere
         maximumLineCount: root.captionLines
         lineHeightMode: Text.FixedHeight
         lineHeight: Theme.grid.captionLineHeight
@@ -139,8 +139,8 @@ Item {
         active: root.clipMark.length > 0 && !root.renaming
         width: root.clipPx
         height: root.clipPx
-        // The label's right margin reserves gap plus the mark, so the mark sits in that strip past the last glyph.
-        x: nameLabel.x + nameLabel.width + Theme.spacing.gap
+        // One gap past the centred text's own right end, capped at the strip the margin reserves.
+        x: Math.min(nameLabel.x + (nameLabel.width + nameLabel.contentWidth) / 2 + Theme.spacing.gap, nameLabel.x + nameLabel.width + Theme.spacing.gap)
         y: nameLabel.y + nameLabel.height - (Theme.grid.captionLineHeight + root.clipPx) / 2 - 1
         sourceComponent: Flea.Glyph {
             width: root.clipPx

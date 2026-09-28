@@ -79,7 +79,7 @@ Singleton {
         readonly property int gap: Math.round(Style.spacing.rowGap * root.sizeRatio)
     }
 
-    // One glyph's advance in a monospace face is every glyph's advance, so this sizes every fixed column; names budget off bodyAdvance below.
+    // One glyph's advance in a monospace face is every glyph's advance, so this sizes every fixed column; row names budget off bodyAdvance, grid captions off bodySmallAdvance.
     readonly property real glyphAdvance: glyphMetrics.advanceWidth
     // The body-face advance the row names draw at; Row and ColumnRow budget off this, never the caption one.
     readonly property real bodyAdvance: bodyGlyphMetrics.advanceWidth

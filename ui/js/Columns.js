@@ -59,6 +59,32 @@ function peekKey(path, hidden, hiddenLast) {
     return String(path) + "\n" + (hidden === true ? "1" : "0") + (hiddenLast === true ? "1" : "0")
 }
 
+// An ask this view made and still awaits, keyed by peekKey, so a reply another client asked for never lands in its column.
+// Sample input: trackAsk({}, "/a\n10") holds that key.
+function trackAsk(pending, key) {
+    var next = {}
+    var src = pending || {}
+    for (var k in src) next[k] = true
+    next[String(key)] = true
+    return next
+}
+
+// True only for a reply this view asked for; anything else is another client's.
+// Sample input: hasAsk(trackAsk({}, "/a\n10"), "/a\n10") is true.
+function hasAsk(pending, key) {
+    return !!((pending || {})[String(key)])
+}
+
+// One ask answered or superseded; a new listing drops them all.
+// Sample input: dropAsk(trackAsk({}, "/a\n10"), "/a\n10") holds nothing.
+function dropAsk(pending, key) {
+    var next = {}
+    var want = String(key)
+    var src = pending || {}
+    for (var k in src) if (k !== want) next[k] = true
+    return next
+}
+
 // The columns view's count follows the window width, capped by Settings View's limit.
 // Sample input: (899, 5) answers 2.
 var COUNT_4_AT = 1700

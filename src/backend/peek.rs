@@ -28,8 +28,7 @@ pub fn peek_line(path: &str, first: usize, hidden: bool, hidden_last: bool, focu
             .map(|i| i.saturating_sub(count / 2).min(total - count)).unwrap_or(0)
     };
     let mut out = String::with_capacity(count * 64);
-    // Echoed so the columns view and the path bar's Tab tell their two replies apart; both ask with
-    // pane.windowSize, so first cannot differ between them and path plus hidden plus hiddenLast is the whole key.
+    // Echoed so the two peek clients tell replies apart: both ask with pane.windowSize, so the key is path plus hidden plus hiddenLast.
     out.push_str(&format!(
         r#"{{"t":"peeked","path":"{}","hidden":{},"hiddenLast":{},"n":{},"rows":["#,
         escape(path), hidden, hidden_last, total
@@ -199,6 +198,10 @@ mod tests {
         assert!(off.contains(r#""hiddenLast":false"#), "the reply says which order it was asked for: {}", off);
         let on = peek_line(&d.path().to_string_lossy(), 10, true, true, "", &mime, &icons);
         assert!(on.contains(r#""hiddenLast":true"#), "a stale dotfiles-first column must not survive the toggle: {}", on);
+        let mixed = peek_line(&d.path().to_string_lossy(), 10, false, true, "", &mime, &icons);
+        assert!(mixed.contains(r#""hidden":false"#) && mixed.contains(r#""hiddenLast":true"#), "the mixed pair echoes each flag in its own place: {}", mixed);
+        let swapped = peek_line(&d.path().to_string_lossy(), 10, true, false, "", &mime, &icons);
+        assert!(swapped.contains(r#""hidden":true"#) && swapped.contains(r#""hiddenLast":false"#), "the reverse pair does too: {}", swapped);
         let missing = peek_line(&d.join("never-existed").to_string_lossy(), 10, true, true, "", &mime, &icons);
         assert!(missing.contains(r#""hiddenLast":true"#), "a refusal is still a reply to a request: {}", missing);
     }

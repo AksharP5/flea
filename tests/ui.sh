@@ -4476,8 +4476,7 @@ case_columnautofit() {
     [[ "$(ipc sortMark)" == "$before_mark" ]] \
         || fail "columnautofit: fitting size sorted, mark is $(ipc sortMark)"
 
-    # F4 fits every drawn column in one write: each drawn column's stored width is new or
-    # changed and matches what the header draws, and a second F4 is a no-op.
+    # F4 fits every drawn column in one write: stored matches drawn, one unfitted column changes, a second F4 is a no-op.
     local widths_before widths_once widths_twice
     widths_before=$(ipc columnWidths)
     key -k F4 >/dev/null
@@ -4485,7 +4484,7 @@ case_columnautofit() {
     widths_once=$(ipc columnWidths)
     printf 'COLUMNAUTOFIT f4=%s\n' "$widths_once"
     shot columnautofit-f4
-    local _f4key _drawn _have _was _fitted_n=0
+    local _f4key _drawn _have _was _fitted_n=0 _changed_n=0
     for _f4key in mode size date kind; do
         IFS='|' read -r _x _drawn <<< "$(ipc headerCellRect "$_f4key")"
         [[ "$_drawn" =~ ^[0-9]+$ && "$_drawn" != "0" ]] || continue
@@ -4493,12 +4492,15 @@ case_columnautofit() {
         _was=$(jq -r --arg k "$_f4key" '.[$k] // empty' <<< "$widths_before")
         [[ "$_have" == "$_drawn" ]] \
             || fail "columnautofit: F4 left $_f4key stored as '$_have' while the header draws $_drawn"
-        [[ "$_have" != "$_was" ]] \
-            || fail "columnautofit: F4 left $_f4key at its pre-fit '$_was', so it fitted nothing there"
+        [[ "$_have" != "$_was" ]] && _changed_n=$((_changed_n + 1))
+        [[ "$_was" == "$_drawn" || "$_have" != "$_was" ]] \
+            || fail "columnautofit: F4 left unfitted $_f4key at its pre-fit '$_was', so it fitted nothing there"
         _fitted_n=$((_fitted_n + 1))
     done
     (( _fitted_n >= 1 )) \
         || fail "columnautofit: F4 fitted no drawn column, before $widths_before after $widths_once"
+    (( _changed_n >= 1 )) \
+        || fail "columnautofit: F4 changed no drawn column, before $widths_before after $widths_once"
     key -k F4 >/dev/null
     settle
     widths_twice=$(ipc columnWidths)

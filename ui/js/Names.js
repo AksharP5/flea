@@ -74,6 +74,8 @@ function elideChars(chars, capacity, perLine) {
 function wrapChars(chars, perLine, count) {
     var out = []
     var pos = 0
+    // The extension's own dot, so a break there never wins while an earlier separator fits.
+    var extDot = chars.length - extensionLength(chars)
     for (var ln = 0; ln < count && pos < chars.length; ln++) {
         var rest = chars.length - pos
         var left = count - ln
@@ -86,14 +88,19 @@ function wrapChars(chars, perLine, count) {
             break
         }
         var cut = -1
+        var extCut = -1
         for (var i = pos + perLine - 1; i > pos; i--) {
-            if (isBreakAfter(chars[i]) && chars.length - (i + 1) <= (left - 1) * perLine) {
-                cut = i + 1
-                break
+            if (!isBreakAfter(chars[i]) || chars.length - (i + 1) > (left - 1) * perLine)
+                continue
+            if (i === extDot) {
+                extCut = i + 1
+                continue
             }
+            cut = i + 1
+            break
         }
         if (cut < 0)
-            cut = pos + perLine
+            cut = extCut >= 0 ? extCut : pos + perLine
         out.push(chars.slice(pos, cut).join(""))
         pos = cut
     }

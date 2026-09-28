@@ -126,6 +126,7 @@ function run(check) {
     runListWidths(check)
     runStoredWidths(check)
     runPeekKey(check)
+    runPeekPending(check)
     runHeaderDrag(check)
     runColumnsLimitWire(check)
 }
@@ -166,8 +167,7 @@ function runListWidths(check) {
     runColumnFit(check)
 }
 
-// ui.json carries whatever a hand edit wrote, so ui/Theme.qml's storedWidth takes only a finite
-// number through here; anything else keeps the measured width.
+// ui.json carries whatever a hand edit wrote, so storedWidth takes only a finite number here.
 function runStoredWidths(check) {
     check("a stored number lands as drawn", Columns.storedNumber(120), 120)
     check("and rounds to whole pixels", Columns.storedNumber(120.6), 121)
@@ -196,15 +196,33 @@ function runPeekKey(check) {
         area.indexOf("Columns.peekKey(path, root.pane.showHidden, ViewState.state.hiddenLast === true)") >= 0, true)
 }
 
+// Live cover: tests/ui.sh columns. Only a reply this view asked for lands in it, so a repair peek or a path-bar Tab never fills a column with wrong rows.
+function runPeekPending(check) {
+    var key = Columns.peekKey("/a", true, false), other = Columns.peekKey("/b", true, false)
+    check("an ask is outstanding once tracked", Columns.hasAsk(Columns.trackAsk({}, key), key), true)
+    check("anything else is another client's", Columns.hasAsk({}, key), false)
+    check("a stored reply drops its own ask", Columns.hasAsk(Columns.dropAsk(Columns.trackAsk({}, key), key), key), false)
+    check("a stored reply keeps a sibling ask", Columns.hasAsk(Columns.dropAsk(Columns.trackAsk(Columns.trackAsk({}, key), other), key), other), true)
+    var area = source("ui/ColumnsArea.qml")
+    check("the columns view tracks its own asks", area.indexOf("Columns.trackAsk(root.pending, key)") >= 0, true)
+    check("and stores only a reply it asked for", area.indexOf("if (!Columns.hasAsk(root.pending, key)) return") >= 0, true)
+    check("and drops the ask it stored", area.indexOf("Columns.dropAsk(root.pending, key)") >= 0, true)
+    check("and forgets every ask with the listing", area.indexOf("root.pending = ({})") >= 0, true)
+    check("and re-asks the shown ancestors under the new key", area.indexOf("onPeekOrderChanged") >= 0, true)
+}
+
 // The header drag writes once on release after a real move, so a click pins nothing and a fit survives its own release.
 function runHeaderDrag(check) {
     var header = source("ui/Header.qml")
+    var beginBody = header.substring(header.indexOf("function beginDrag"), header.indexOf("}", header.indexOf("function beginDrag")))
     check("a press that never travels marks nothing to write",
-        header.indexOf("root.dragMoved = false") >= 0, true)
+        beginBody.indexOf("root.dragMoved = false") >= 0, true)
+    var moveBody = header.substring(header.indexOf("function moveDrag"), header.indexOf("}", header.indexOf("function moveDrag")))
+    var guardAt = moveBody.indexOf("Math.abs(x - root.dragStartX) < 1"), armAt = moveBody.indexOf("root.dragMoved = true")
     check("only a travelled pointer arms the write",
-        header.indexOf("root.dragMoved = true") >= 0, true)
+        guardAt >= 0 && armAt > guardAt, true)
     check("and the release writes only when armed",
-        header.indexOf("if (root.dragMoved)") >= 0, true)
+        header.substring(header.indexOf("function endDrag"), header.indexOf("}", header.indexOf("function endDrag"))).indexOf("if (root.dragMoved)") >= 0, true)
     var fitAt = header.indexOf("function autofitColumn")
     var fitBody = header.substring(fitAt, header.indexOf("}", header.indexOf("{", fitAt)))
     check("a fit ends the drag so its release writes nothing",

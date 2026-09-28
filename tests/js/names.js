@@ -59,6 +59,8 @@ function runGridCaption(check) {
     check("the board sample breaks deterministically",
           board, "screenshot-2026-\n…he-bench-v3.png")
     check("every board line fits one line", fits(board, 16), true)
+    check("the extension's dot never breaks when an earlier separator fits",
+          Names.gridCaption("my-vacation-1.jpeg", 16, 2), "my-vacation-\n1.jpeg")
     var token = Names.gridCaption("a verylongnamewithoutanyspacesatall.png", 16, 2)
     check("a short word then a long token keeps the extension",
           token, "a verylongnamewi\n…spacesatall.png")
@@ -92,13 +94,13 @@ function runGridCaption(check) {
           tile.indexOf("Theme.bodySmallAdvance") >= 0, true)
     check("the caption no longer budgets off the body face",
           tile.indexOf("Theme.bodyAdvance") >= 0, false)
-    check("the breaks are Flea's own",
-          tile.indexOf("wrapMode: Text.NoWrap") >= 0, true)
+    check("the breaks are Flea's own, Qt only catches wide glyphs",
+          tile.indexOf("wrapMode: Text.WrapAnywhere") >= 0, true)
     var labelAt = tile.indexOf("id: nameLabel")
     var tipAt = tile.indexOf("id: tip")
-    check("NoWrap sits on the caption label, ahead of the tooltip",
-          labelAt >= 0 && tipAt > labelAt
-              && tile.indexOf("Text.NoWrap", labelAt) < tipAt, true)
+    var wrapAt = tile.indexOf("Text.WrapAnywhere", labelAt)
+    check("WrapAnywhere sits on the caption label, ahead of the tooltip",
+          labelAt >= 0 && tipAt > labelAt && wrapAt >= labelAt && wrapAt < tipAt, true)
     check("the mark sits in the reserved strip past the last glyph",
           tile.indexOf("nameLabel.x + nameLabel.width + Theme.spacing.gap") >= 0, true)
 }

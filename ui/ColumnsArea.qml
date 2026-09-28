@@ -21,10 +21,10 @@ Item {
     // Whichever view is up owns the keyboard, and Focus.handleKey is the one route all three take.
     Keys.onPressed: function (event) { event.accepted = Focus.handleKey(event, root.pane, root.pane.sidebar) }
 
-    // peekKey -> the rows a peek answered for it. Cleared whenever the pane moves, because a stale
-    // column is worse than an empty one.
+    // peekKey -> answered rows (peeked) and outstanding asks (pending), cleared whenever the pane moves.
     property var peeked: ({})
-    // path -> the mode of a peek that came back denied, which answers zero rows as an empty one does.
+    property var pending: ({})
+    // peekKey -> the mode of a peek that came back denied, which answers zero rows as an empty one does.
     property var denials: ({})
     property int peekVersion: 0
 
@@ -47,10 +47,10 @@ Item {
     readonly property bool thirdReady: root.shownIsDir ? root.answered(root.shownChildPath)
         : (!root.shownHasRow || !ViewState.previewColumn || preview.ready)
 
-    // One columnWidth per shown column from the window width (ColumnsWidth board #167 and #69); the third column takes the remainder at activeX, and resizing re-lays widths in one frame with no re-read.
     // The raw stored value, so cappedLimit reads a hand-edited false or "" as the shipped 5 instead of the 0 an int property coerces.
     readonly property var columnsLimit: ViewState.state.columnsLimit !== undefined ? ViewState.state.columnsLimit : 5
     readonly property int columnCount: Columns.columnCountForWidth(root.width, root.columnsLimit)
+    // One columnWidth per shown column from the window width (ColumnsWidth board #167 and #69); the third column takes the remainder at activeX, and resizing re-lays widths in one frame with no re-read.
     readonly property int columnWidth: Math.max(1, Math.floor(root.width / Math.max(1, root.columnCount)))
     // Ancestors shown oldest first: 2 hides the parent, 5 adds the great-grandparent.
     readonly property bool showGreatGrandparent: root.columnCount >= 5
@@ -83,9 +83,11 @@ Item {
     }
 
     function ask(path) {
-        if (path.length === 0 || root.peeked[root.peekKey(path)])
-            return
-        root.pane.backend.peek(path, root.pane.windowSize, root.pane.showHidden)
+        var key = root.peekKey(path)
+        if (path.length > 0 && !root.peeked[key] && !Columns.hasAsk(root.pending, key)) {
+            root.pending = Columns.trackAsk(root.pending, key)
+            root.pane.backend.peek(path, root.pane.windowSize, root.pane.showHidden)
+        }
     }
 
     // Both neighbours are asked for on every move, hidden ancestors never: visible false stops no model work.
@@ -247,6 +249,9 @@ Item {
     }
 
     onParentPathChanged: root.refreshNeighbours()
+    // Toggling Hidden files re-asks the shown ancestors under the new key, or every column goes blank.
+    readonly property string peekOrder: (root.pane.showHidden === true ? "1" : "0") + (ViewState.state.hiddenLast === true ? "1" : "0")
+    onPeekOrderChanged: if (visible) root.refreshNeighbours()
     // The rows/cursor move can early-return on values this binding had not settled yet, so its own change re-moves with fresh ones.
     onChildPathChanged: { root.refreshNeighbours(); root.moveThird() }
     // Widening over a step shows an ancestor never asked for; ask() stays a no-op for the rest.
@@ -271,6 +276,8 @@ Item {
         // hidden and hiddenLast are the request's own flags, echoed; this view asks with the listing's and keys every answer on them.
         function onPeeked(path, hidden, total, rows, readFailed, mode, hiddenLast) {
             var key = Columns.peekKey(path, hidden, hiddenLast)
+            if (!Columns.hasAsk(root.pending, key)) return
+            root.pending = Columns.dropAsk(root.pending, key)
             var next = root.peeked
             next[key] = rows
             root.peeked = next
@@ -288,6 +295,7 @@ Item {
         target: root.pane
         function onPathChanged() {
             root.peeked = ({})
+            root.pending = ({})
             root.denials = ({})
             root.peekVersion += 1
             root.refreshNeighbours()
