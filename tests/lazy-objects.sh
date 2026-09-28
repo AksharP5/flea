@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# p036lazy live gate: bridge and wrapper arrive off launch and whole on first use;
-# the network host builds with the window again (f036net), so it has no live half.
+# Bridge and wrapper arrive off launch; the host builds with the window, so its Loader stays active.
 set -u
 . "$(dirname "$0")/../tools/flea-sandbox-guard"
 cd "$(dirname "$0")/.." || exit 1
@@ -19,6 +18,8 @@ missing ui/NetworkMounts.qml '|| bridge.flow.waiter'
 # f036net: the host builds with the window again, so no gate orders it after rows.
 missing ui/WindowBody.qml 'NetworkHostGate'
 have ui/WindowBody.qml 'id: networkHost'
+# An inactive host builds nothing at creation, so the networkHost Loader must carry active: true.
+grep -A2 'id: networkHost' "$tree/ui/WindowBody.qml" | grep -q 'active: true' || fail 'ui/WindowBody.qml networkHost Loader misses active: true'
 command -v qs >/dev/null 2>&1 || { printf 'lazy-objects: no qs here, live halves not run\n'; exit 0; }
 test_root="$FIXTURE_ROOT/flea-lazy-objects-$$"
 sandbox_make "$test_root"
