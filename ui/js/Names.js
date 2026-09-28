@@ -38,7 +38,7 @@ function middleElide(name, maxChars) {
 var CAPTION_BREAKS = " -_."
 
 // Display cells: East Asian Wide and Fullwidth paint two columns, emoji paint two, all else one.
-// Sample input: cellWidth(0x1F389) is 2, cellWidth(0x41) is 1.
+// Sample input: cellWidthOf("🎉") is 2, cellWidthOf("A") is 1.
 var WIDE_RANGES = [[0x1100, 0x115F], [0x2E80, 0x303E], [0x3041, 0x33FF], [0x3400, 0x4DBF], [0x4E00, 0xA4CF], [0xAC00, 0xD7A3], [0xF900, 0xFAFF], [0xFE10, 0xFE19], [0xFE30, 0xFE4F], [0xFF00, 0xFF60], [0xFFE0, 0xFFE6], [0x20000, 0x3FFFD]]
 var EMOJI_RANGES = [[0x2600, 0x26FF], [0x2700, 0x27BF], [0x2B00, 0x2BFF], [0x1F000, 0x1FAFF]]
 
@@ -191,7 +191,9 @@ function gridCaption(name, perLine, lines) {
     var chars = charsOf(text)
     if (chars.length === 0)
         return text
-    if (cellsOf(chars) > per * count)
-        chars = elideChars(chars, per * count, per)
-    return wrapChars(chars, per, count).join("\n")
+    // A wide glyph never straddles a line and wastes a cell, so elide until Flea's own wrap holds every char.
+    var capacity = per * count, shown = elideChars(chars, capacity, per)
+    while (capacity > 1 && wrapChars(shown, per, count).join("") !== shown.join(""))
+        shown = elideChars(chars, --capacity, per)
+    return wrapChars(shown, per, count).join("\n")
 }

@@ -57,9 +57,7 @@ Item {
     // The one line no request asked for: the directory the current listing came from changed under
     // it. path is that directory, so a pane that has since moved can ignore it; see docs/protocol.md.
     signal changed(string path)
-    // readFailed tells a zero-row answer apart from an empty directory; mode is that directory's own, 0 when the stat failed too.
-    // hidden and hiddenLast are the flags the request carried, echoed by the backend: two clients peek this wire, so path alone does not say whose reply this is.
-    // first is the row count the request asked for, echoed the same way: a repair peek asks with 1 or 512 while a column asks with the pane's window size.
+    // readFailed tells an unreadable directory from an empty one (mode 0 when its stat failed too); hidden, hiddenLast and first echo the request, so each of the three peek clients knows its own reply.
     signal peeked(string path, bool hidden, int total, var rows, bool readFailed, int mode, bool hiddenLast, int first)
     // The path bar's folder jump, the existing folders of each source in its own order; see docs/protocol.md "jump".
     signal jumped(int id, var favourites, var zoxide, var recent, var frecency)

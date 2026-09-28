@@ -65,8 +65,8 @@ function sentKey(key, first) {
     return String(key) + "\n" + Math.floor(Number(first))
 }
 
-// An ask this view made and still awaits, keyed by peekKey, so a reply another client asked for never lands in its column.
-// Sample input: trackAsk({}, "/a\n10") holds that key.
+// An ask this view made and still awaits, keyed by sentKey (path, flags, row count), so another client's reply never lands in its column.
+// Sample input: trackAsk({}, "/a\n10\n35") holds that key.
 function trackAsk(pending, key) {
     var next = {}
     var src = pending || {}

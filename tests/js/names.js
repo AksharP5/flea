@@ -118,4 +118,11 @@ function runGridCaption(check) {
           tile.indexOf("Names.lastLineCells(nameLabel.text)") >= 0, true)
     check("the widest-line guess is gone",
           tile.indexOf("nameLabel.contentWidth") < 0, true)
+    // A wide glyph that cannot straddle the first line's end must not cost the extension its last chars.
+    var wide = [["中".repeat(13) + ".png", 15, ".png"], ["a" + "中".repeat(13) + "b.pdf", 16, ".pdf"], ["abc" + "中".repeat(12) + "x.jpg", 16, ".jpg"]]
+    for (var w = 0; w < wide.length; w++) {
+        var cap = Names.gridCaption(wide[w][0], wide[w][1], 2), parts = cap.split("\n")
+        check("a straddling wide name keeps " + wide[w][2], parts[parts.length - 1].slice(-wide[w][2].length), wide[w][2])
+        check("and every line fits its cells for " + wide[w][2], parts.every(function (l) { return Names.cellsOf(Names.charsOf(l)) <= wide[w][1] }), true)
+    }
 }
