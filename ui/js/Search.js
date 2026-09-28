@@ -77,10 +77,8 @@ function run(root) {
     root.backend.askFsInfo()
 }
 
-// One shared "leave the walk" step: a navigation drops the walk that owns the rows
-// without re-listing, so the listing that follows lands on clean state. Returns true
-// when it dropped anything. Sample input: a pane with the mode set answers true
-// and the mode reads "" after.
+// A navigation drops the search walk without re-listing, so the next listing lands on clean state.
+// Sample input: a pane with searchMode set answers true and reads searchMode "" after.
 function leaveWalk(root) {
     var dropped = false
     if ((root.searchMode || "").length > 0) {
