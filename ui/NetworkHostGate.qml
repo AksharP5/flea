@@ -3,7 +3,8 @@ import QtQuick
 // Orders the network host once, a beat after the first rows or at the fallback if they never land.
 Item {
     id: root
-    property bool listInFlight: true
+    // False until a real listing starts, so the creation binding never fires the edge.
+    property bool listInFlight: false
     property int afterRowsMs: 100
     property int fallbackMs: 2000
     property bool ordered: false

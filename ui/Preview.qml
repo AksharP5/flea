@@ -76,6 +76,8 @@ Item {
     // The 0.3.6 swap additions, null until the first open builds them below; every reader guards it.
     readonly property var swap: swapLoader.item
     readonly property bool swapBuilt: swapLoader.active
+    // Exposes the eager panes for the live swap gate, so it can pin the wiring.
+    readonly property var panesItem: panes
     // Synchronous: a local source: URL answers item on the same call that sets active.
     function ensureSwap() {
         if (!swapLoader.active)

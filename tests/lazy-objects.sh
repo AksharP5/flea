@@ -5,9 +5,8 @@ set -u
 cd "$(dirname "$0")/.." || exit 1
 tree=${1:-$PWD}
 for f in ui/NetworkMounts.qml ui/NetworkHostGate.qml ui/Preview.qml ui/WindowBody.qml ui/js/Mounts.js tests/lazy-live.qml tests/lazy-swap-live.qml tests/lazy-host-live.qml; do [ -f "$tree/$f" ] || { printf 'FAIL missing %s\n' "$f"; exit 1; }; done
-# A QML property name starting upper-case never loads, and neither qmllint nor the
-# syntax gate flags it, so any one anywhere in ui/ fails here naming its file.
-upper=$(grep -rnE 'property[[:space:]]+[^[:space:]]+[[:space:]]+[A-Z][A-Za-z0-9_]*' "$tree"/ui/*.qml || true)
+# Upper-case property names never load, so every .qml under ui/ is swept, boot included.
+upper=$(grep -rnE 'property[[:space:]]+[^[:space:]]+[[:space:]]+[A-Z][A-Za-z0-9_]*' "$tree/ui" --include='*.qml' || true)
 [ -z "$upper" ] || { printf 'FAIL upper-case QML property name (must start lower-case):\n%s\n' "$upper"; exit 1; }
 # Static wiring no live probe replaces: the poll's mountinfo read never blocks the
 # GUI thread, the rail pushes bookmarks on every service arrival, and every bridge

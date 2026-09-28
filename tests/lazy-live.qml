@@ -40,23 +40,18 @@ ShellRoot {
             if (root.absent) root.retried = true
         }
     }
+    // Absent mode drives the production mount-success leg, so a null ensure ends failed naming its file.
     function absentPhase() {
         if (network.bridge !== null) {
             root.finish("LAZY_OBJECTS FAIL bridge built without its file")
             return
         }
-        // The production missing-component path: a null ensure names its file and ends failed.
-        var missing = network.ensureBridge()
-        if (missing !== null || network.bridge !== null) {
-            root.finish("LAZY_OBJECTS FAIL ensure answered without its file")
-            return
-        }
-        network.failBridgeMissing()
+        network.openShare("file:///tmp", true, "tmp")
         checkAbsent.restart()
     }
     Timer {
         id: checkAbsent
-        interval: 250
+        interval: 2000
         repeat: false
         onTriggered: {
             if (root.retried)

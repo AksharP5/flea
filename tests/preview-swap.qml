@@ -191,8 +191,7 @@ ShellRoot {
     }
 
     property int grabSeq: 0
-    // The settled grab reads the common parent holding panes and wrapper, the way
-    // ui/Preview.qml's surface holds both, so a half-built pane is visible to it.
+    // The settled grab reads the common parent, the way ui/Preview.qml holds both, so a half-built pane shows.
     function grabTarget() { return shell.surfaceKind === "quicklook" ? host : shell.swap }
     Timer {
         id: grabTimer

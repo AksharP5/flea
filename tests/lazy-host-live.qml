@@ -1,15 +1,13 @@
 //@ pragma ShellId flea-lazy-host-test
 import QtQuick
 import Quickshell
-// Live host gate: the production ui/NetworkHostGate.qml orders after rows paint,
-// never synchronously, with a fallback when the listing never lands. The gates
-// below are the production file through a Loader, not a copy, so a change to it
-// turns this red. tests/lazy-objects.sh drives it.
+// Live host gate: production NetworkHostGate orders after rows paint, never synchronously, with fallback.
 ShellRoot {
     id: root
     property string uiDir: Quickshell.env("LAZY_HOST_UI")
     property bool finished: false
     property int failures: 0
+    property int orderCount: 0
     function fail(text) {
         failures += 1
         console.log("LAZY_HOST FAIL " + text)
@@ -19,6 +17,11 @@ ShellRoot {
         root.finished = true
         if (failures === 0) console.log("LAZY_HOST ordered-after-rows fallback-when-never-lands")
         Quickshell.execDetached(["kill", String(Quickshell.processId)])
+    }
+    // Stub pane holding the binding WindowBody sets, false before the first open.
+    QtObject {
+        id: stubPane
+        property bool inFlight: false
     }
     Loader {
         id: gateA
@@ -46,10 +49,42 @@ ShellRoot {
                 root.done()
                 return
             }
-            gateA.item.listInFlight = false
-            if (gateA.item.ordered) root.fail("ordered synchronously with rows, expected after paint")
-            checkA.restart()
+            if (gateA.item.listInFlight !== false) {
+                root.fail("the production gate defaults listInFlight true, expected false")
+                root.done()
+                return
+            }
+            gateA.item.orderRequested.connect(function () { root.orderCount += 1 })
+            // Bind like WindowBody does, so a true default would flip false here and order early.
+            gateA.item.listInFlight = Qt.binding(function () { return stubPane.inFlight })
+            noEarly.restart()
             earlyB.restart()
+        }
+    }
+    // No order before any listing: catches a creation true-to-false edge starting afterRows.
+    Timer {
+        id: noEarly
+        interval: 150
+        repeat: false
+        onTriggered: {
+            if (gateA.item.ordered || root.orderCount !== 0) {
+                root.fail("ordered before any listing, expected silence until rows land")
+                root.done()
+                return
+            }
+            stubPane.inFlight = true
+            stubPane.inFlight = false
+            earlyCheck.restart()
+            checkA.restart()
+        }
+    }
+    // Lower bound after rows land: catches an interval of 0 or a Qt.callLater order.
+    Timer {
+        id: earlyCheck
+        interval: 50
+        repeat: false
+        onTriggered: {
+            if (gateA.item.ordered) root.fail("ordered synchronously with rows, expected after paint")
         }
     }
     Timer {
@@ -58,6 +93,7 @@ ShellRoot {
         repeat: false
         onTriggered: {
             if (!gateA.item.ordered) root.fail("never ordered after rows")
+            else if (root.orderCount !== 1) root.fail("expected exactly one order, got " + root.orderCount)
         }
     }
     Timer {
@@ -78,6 +114,7 @@ ShellRoot {
         repeat: false
         onTriggered: {
             if (!gateB.item || !gateB.item.ordered) root.fail("fallback never ordered a listing that never lands")
+            if (root.orderCount !== 1) root.fail("expected exactly one order, got " + root.orderCount)
             root.done()
         }
     }
