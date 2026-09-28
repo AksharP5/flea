@@ -1,4 +1,5 @@
 import Quickshell
+import Quickshell.Io
 import QtQuick
 import QtQml.XmlListModel
 import "js/Format.js" as Format
@@ -20,12 +21,22 @@ QtObject {
     // Asked for when the Recent location is opened, so the file is re-read rather than remembered:
     // every other application on the box appends to it while this window is up.
     function refresh() {
+        if (historyFile.path === root.file) historyFile.reload()
+        else historyFile.path = root.file
+    }
+
+    // A silent read first: XmlListModel prints a warning for an absent file, and a fresh account has none.
+    property FileView historyFile: FileView {
+        printErrors: false
+        onLoaded: root.parse()
+        onLoadFailed: { root.paths = []; root.refreshed() }
+    }
+
+    // The model re-reads what the check just read, so a present history is a second read from the page cache.
+    function parse() {
         var url = Format.fileUri(root.file)
-        if (history.source.toString() === url) {
-            history.reload()
-            return
-        }
-        history.source = url
+        if (history.source.toString() === url) history.reload()
+        else history.source = url
     }
 
     property XmlListModel historyModel: XmlListModel {
