@@ -6,7 +6,6 @@ import "." as Flea
 import "js/Icons.js" as Icons
 import "js/Eject.js" as Eject
 import "js/Mounts.js" as Mounts
-import "js/Photos.js" as Photos
 import "js/Places.js" as Places
 import "js/PlaceMenu.js" as PlaceMenu
 import "js/RailMenu.js" as RailMenu
@@ -60,9 +59,7 @@ Item {
     // The poll rebinds its delegates in place, so a rename left standing would edit a different share.
     onNetworkEntriesChanged: root.cancelRename()
     // Phones ride the DEVICES group behind the block devices: a plugged phone is a device to the person holding it, whatever transport gvfs reaches it over.
-    // A phone or camera carries its Photos row directly under it, at the same column and never
-    // indented, only while the device is on the rail; see ui/js/Photos.js.
-    readonly property var deviceEntries: root.placesState.showDevices === false || !root.railGate.showDevices ? [] : devices.entries.concat(Photos.withPhotoRows(phones.entries))
+    readonly property var deviceEntries: root.placesState.showDevices === false || !root.railGate.showDevices ? [] : devices.entries.concat(phones.entries)
     readonly property var entries: root.placesEntries.concat(root.networkEntries, root.deviceEntries)
 
     // The rail lands in one step by gating the entries themselves, so cursor, IPC and menus match only drawn rows.
@@ -272,9 +269,7 @@ Item {
         if (entry.kind === "trash") { root.trashRequested(); return }
         var rest = index - root.placesEntries.length
         if (rest < root.networkEntries.length) root.service.activate(rest, root.navigationPane)
-        // The Photos row walks the device's DCIM through the same mount-and-resolve leg a
-        // phone rides; a phone itself mounts, resolves and opens the way a share does.
-        else if (entry.kind === "photos") { var photoHost = root.networkHost(); if (photoHost) photoHost.openPhotos(entry.uri, entry.mounted, entry.deviceLabel, root.navigationPane) }
+        // A phone mounts, resolves and opens the way a share does.
         else if (entry.kind === "phone") { var phoneHost = root.networkHost(); if (phoneHost) phoneHost.openShare(entry.uri, entry.mounted, entry.label, false, { origin: root.navigationPane }) }
         else devices.activate(rest - root.networkEntries.length)
     }

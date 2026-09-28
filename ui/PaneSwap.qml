@@ -3,7 +3,6 @@ import "js/Anchor.js" as Anchor
 import "js/DirSizes.js" as DirSizes
 import "js/Nav.js" as Nav
 import "js/Search.js" as Search
-import "js/Photos.js" as Photos
 import "js/Swap.js" as Swap
 import "js/Tabs.js" as Tabs
 import "js/Thumbs.js" as Thumbs
@@ -27,10 +26,9 @@ Item {
     property var last: ({ ms: 0, end: "" })
 
     // ui/js/Nav.js asks for every listing through here; false means nothing is held and it forgets now.
-    // A walk's matches are never held, whichever walk owns them: search's or the photo roll's.
+    // A search's matches are never held.
     function hold(ask) {
-        var walk = root.pane.searchMode.length > 0 ? root.pane.searchMode : root.pane.photosMode
-        root.phase = Swap.begin(root.phase, root.pane.listingState, walk, ask, Date.now())
+        root.phase = Swap.begin(root.phase, root.pane.listingState, root.pane.searchMode, ask, Date.now())
         if (!root.holding)
             return false
         root.holds += 1
@@ -45,8 +43,7 @@ Item {
             root.phase = Swap.kept(root.phase, { total: total, readMs: readMs, sortMs: sortMs, path: path })
             root.pane.listedSeen = true
         } else if (action === Swap.APPLY) {
-            root.phase = Swap.heard(root.phase, root.pane.searchMode === Search.RESULTS
-                                    || root.pane.photosMode === Photos.RESULTS)
+            root.phase = Swap.heard(root.phase, root.pane.searchMode === Search.RESULTS)
             root.applyListed(total, readMs, sortMs, path)
         }
     }
@@ -103,7 +100,7 @@ Item {
         var pane = root.pane
         pane.thumbState = Thumbs.empty()
         pane.dirSizeState = DirSizes.empty()
-        if (!pane.dualMode && !pane.listInFlight && pane.searchMode.length === 0 && pane.photosMode.length === 0) {
+        if (!pane.dualMode && !pane.listInFlight && pane.searchMode.length === 0) {
             ViewState.changeLeaf("sort", { key: pane.backend.sortBy === "mtime" ? "date" : pane.backend.sortBy,
                                          reverse: pane.backend.sortDesc })
             pane.appliedListingPreferences = pane.listingPreferences
@@ -112,14 +109,9 @@ Item {
             pane.listedSeen = true
         }
         pane.total = total
-        // A walk's opening listed line is the walk starting, not a directory that came back empty.
+        // A search's opening listed line is the walk starting, not a directory that came back empty.
         if (pane.searchMode === Search.RESULTS) {
             pane.listingState = Search.listingState(pane, total)
-            pane.stateMessage = ""
-            return
-        }
-        if (pane.photosMode === Photos.RESULTS) {
-            pane.listingState = Photos.listingState(pane, total)
             pane.stateMessage = ""
             return
         }

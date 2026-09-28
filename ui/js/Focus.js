@@ -10,7 +10,6 @@
 .import "RailKeys.js" as RailKeys
 .import "Status.js" as Status
 .import "Search.js" as Search
-.import "Photos.js" as Photos
 .import "Sort.js" as Sort
 .import "Swap.js" as Swap
 .import "Trash.js" as Trash
@@ -99,9 +98,8 @@ function lookup(event, root) {
         return ""
     // A sort ends the running walk in the backend and the search strip hides the mark that would
     // show it happening, so both sort keys go quiet for as long as a search owns the header.
-    // The roll owns no header at all, so they go quiet there too rather than reordering unseen.
     if (action === "sortNext" || action === "sortReverse")
-        return root.searchMode.length === 0 && root.photosMode.length === 0 ? action : ""
+        return root.searchMode.length === 0 ? action : ""
     return action
 }
 
@@ -134,7 +132,6 @@ function act(action, root, menuId, paths) {
     case "escape":
         if (root.filterTyping || root.filterQuery.length > 0) Filter.close(root)
         else if (root.searchMode.length > 0 && root.focusView === LIST) Search.cancel(root)
-        else if (root.photosMode.length > 0 && root.focusView === LIST) Photos.cancel(root)
         else if (root.statusBar && root.statusBar.escapePressed()) return
         else root.escapePressed()
         return

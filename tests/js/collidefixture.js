@@ -40,7 +40,7 @@ function scene(held) {
     var folder = [{ n: "a.txt", d: false }, { n: "b.txt", d: false }, { n: "omarchy", d: true }]
     var p = { path: "/d", backend: backend, statusBar: null, clipboard: { paths: ["/s/a.txt"], moving: true },
               listInFlight: false, renamePending: false, renamingIndex: -1, menuVisible: false, menuActions: { opened: false },
-              filterTyping: false, searchMode: "", photosMode: "", selectionBand: null }
+              filterTyping: false, searchMode: "", selectionBand: null }
     p.rowFor = function (index) { return folder[index] || null }
     p.selectedIndices = function () { return [] }
     p.selectionCount = function () { return 0 }

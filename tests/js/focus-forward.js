@@ -24,7 +24,6 @@ function pane(row, view) {
         focusView: view ? view : "list",
         viewMode: "list",
         searchMode: "",
-        photosMode: "",
         preview: closed(),
         shareBrowser: { active: false },
         rowsRead: [],

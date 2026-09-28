@@ -2162,7 +2162,7 @@ inside the soft budget. `tests/js/nav.js` holds its new locked cases at 299, one
 Eject with a hidden rail raises three recorded ceilings rather than keeping a poller alive.
 `ui/Pane.qml` goes from its recorded 673 to 676 for the `ejectHidden` route into the rail,
 `ui/WindowBody.qml` from its recorded 487 to 497 for the mid-dialog rail-hide guards on the
-network save and the share-browser mount, and `tests/js/focus.js` from its recorded 374 to 403 (404 once the Photos row joined it)
+network save and the share-browser mount, and `tests/js/focus.js` from its recorded 374 to 403
 for the hidden-rail release, completion and not-inside cases. `ui/PaneRail.qml` holds the
 transient one-shot host at 152, inside the soft budget, and `ui/js/Eject.js` stays at 153,
 inside its own. Each count re-derived with `wc -l` at the commit that recorded it.
@@ -2248,24 +2248,12 @@ falls 404 to 402, inside its recorded ceiling), `shelf/Model.js` 655 to 669 for 
 `ui/js/Format.js`, and `src/tui/render.rs` 807 to 822 for the TUI's `grouped` beside `bytes`
 with its three vectors. `src/tui/model.rs` holds every call site and stays at its recorded 1196.
 
-PhonePhotos moves five recorded ceilings, each re-derived with `wc -l`: `src/backend/run.rs` 429
-to 455 for the `photos` and `photoscancel` arms, the shared `end_walks` both walks end through,
-and the `tick_walkers` second walker; `ui/NetworkMounts.qml` 674 to 703 for `openPhotos`, the
-`_photosPending` flag with its clearing on every terminal leg, and the bridge's DCIM routing;
-`ui/Pane.qml` 687 to 699 for the six photos-mode properties and the two guards that keep the
-roll's grid a session view; `ui/Sidebar.qml` 545 to 553 for the Photos row splice and its
-`photosOpened` signal; `ui/js/Focus.js` 336 to 339 for the sort quiet and the Esc arm. The
-walk itself went to the new `src/backend/photos.rs`, 294 lines over the soft budget and under
-the hard cap, with its wire half in `src/backend/photosreq.rs`, its decisions in `ui/js/Photos.js`
-and its suite in `tests/js/photos.js`, each inside both budgets, rather than into
-`src/backend/search.rs`, which keeps the fuzzy walk it reuses the streaming model of.
-
-Fix2-net moves three recorded ceilings, each re-derived with `wc -l`: `ui/NetworkMounts.qml`
-768 to 802 for the peek-first #194 repair with its one bridge start, the flight-carried Photos
-intent, the rail-count poll gate and the own-waiter cancel; `ui/Pane.qml` 730 to 734 for the
-photos device label and the board's display path; `ui/WindowBody.qml` 535 to 556 for the single
-origin router that replaces the per-rail duplicate handling, the dialog's corrected save and
-cancel names, and the roll's display path on both bars. `ui/Sidebar.qml` falls 562 to 557
+Fix2-net moves two recorded ceilings, each re-derived with `wc -l`: `ui/NetworkMounts.qml`
+768 to 802 for the peek-first #194 repair with its one bridge start, the rail-count poll
+gate and the own-waiter cancel; `ui/WindowBody.qml` 535 to 556 for the single
+origin router that replaces the per-rail duplicate handling and the dialog's corrected save and
+cancel names. The Photos-driven `ui/Pane.qml` 730 to 734 growth it also carried left with that
+feature. `ui/Sidebar.qml` falls 562 to 557
 inside its recorded ceiling for the dropped wrappers and the loaded-only bookmark push;
 `ui/PaneRail.qml` falls 174 to 161 inside both budgets for the removed duplicate router.
 
@@ -2555,10 +2543,8 @@ Fix2-photosmove moves two recorded ceilings, each re-derived with `wc -l`:
 `src/backend/copyfile.rs` 404 to 428 for the EXDEV confirm before the remove (`move_cross_device`
 with its `confirm_dest`, which flushes the touched folders or the parent when no context is set
 and answers `DIR_UNCONFIRMED` keeping the source), and `src/backend/copyfile_tests.rs` new at
-411 for the two tests that pin it. `src/backend/photos.rs` stands at 349, over the soft budget
-and under the hard cap, for the entry-bounded tick with its kept `ReadDir`; `src/backend/redo.rs` falls 329 to 327 for
-the single journalled step; `src/backend/photosreq.rs` at 43, `src/backend/proto.rs` at 294 and
-`src/backend/proto_tests.rs` at 298 stay inside their budgets.
+411 for the two tests that pin it. `src/backend/redo.rs` falls 329 to 327 for
+the single journalled step.
 
 Fsinfoearly moves one recorded ceiling, re-derived with `wc -l`: `src/backend/run.rs` 455 to
 470 for the slow-mount hook (the `FsInfo` owner, its `Event::FsInfo` arm, the `list` hook after the
@@ -2701,6 +2687,14 @@ R7src moves two recorded ceilings, each re-derived with `wc -l`:
 and `src/backend/movebatch_tests.rs` 466 to 501 for the vanished-source undo test.
 
 Round 4 of the 0.3.6 review moves 2 ceilings (the errno test seam and the stale-handle test), each re-derived with `wc -l`: `src/backend/movebatch.rs` 456 to 466, `src/backend/movebatch_tests.rs` 501 to 528.
+
+Nophotos pulls the phone Photos rail entry out of 0.3.6 and moves ten recorded ceilings down to
+their re-derived `wc -l`: `src/backend/run.rs` 470 to 444, `src/backend/proto.rs` 466 to 285,
+`ui/NetworkMounts.qml` 867 to 838, `ui/Pane.qml` 741 to 724, `ui/PaneWire.qml` 485 to 462,
+`ui/Backend.qml` 435 to 400, `ui/Sidebar.qml` 576 to 566, `ui/WindowBody.qml` 551 to 546,
+`ui/js/Focus.js` 366 to 359 and `tests/js/focus.js` 407 to 406. The deleted walk backend
+modules, the rail-entry UI module and its suite leave no record behind, and neither do the
+two walk wire requests.
 
 ## The key table is generated
 

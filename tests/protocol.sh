@@ -953,30 +953,6 @@ check "with no zoxide installed its source is empty and nothing else changes" \
   "{\"t\":\"jumped\",\"id\":7,\"favourites\":[\"$D/sub\"],\"zoxide\":[],\"recent\":[\"$D\"],\"frecency\":{}" \
   "$(jump_run "$NO_ZOXIDE")"
 
-# A photos walk streams one DCIM folder's photos and videos newest first, through the
-# same listed/searching/searched lines a search uses. The text file is not a photo, the
-# directory itself is never a row, and every row names its path relative to DCIM.
-PHOTOS="$SB/photos"
-mkdir -p "$PHOTOS/DCIM/sub"
-printf 'a' > "$PHOTOS/DCIM/a.jpg"
-printf 'b' > "$PHOTOS/DCIM/sub/b.mov"
-printf 'notes' > "$PHOTOS/DCIM/notes.txt"
-touch -d "2026-01-01 10:00:00" "$PHOTOS/DCIM/a.jpg"
-touch -d "2026-06-01 10:00:00" "$PHOTOS/DCIM/sub/b.mov"
-out=$(( printf '{"c":"photos","path":"%s/DCIM"}\n' "$PHOTOS"
-  sleep 2
-  printf '{"c":"window","start":0,"count":10}\n'
-  sleep 1
-  printf '{"c":"quit"}\n' ) | $BIN --backend)
-check "a photos walk opens with an empty listed line" "0" "$(echo "$out" | grep '"t":"listed"' | grep -oE '"n":[0-9]+' | cut -d: -f2)"
-check "and ends with a searched line carrying the find" "{\"t\":\"searched\",\"n\":2" "$(echo "$out" | grep -oE '\{"t":"searched","n":[0-9]+' | head -1)"
-check "the walk is not a cancel" "false" "$(echo "$out" | grep '"t":"searched"' | grep -oE '"cancelled":[a-z]+' | cut -d: -f2)"
-check "newest sorts first" "sub/b.mov a.jpg" "$(echo "$out" | grep '"t":"rows"' | tail -1 | grep -oE '"n":"[^"]+"' | cut -d'"' -f4 | tr '\n' ' ' | sed 's/ $//')"
-
-# A photoscancel with no walk running does nothing and answers nothing.
-out=$(printf '{"c":"photoscancel"}\n{"c":"quit"}\n' | $BIN --backend)
-check "a photoscancel with no walk answers nothing" "" "$out"
-
 # No per-key cleanup: the cache is inside the sandbox, so it goes when the sandbox does.
 sandbox_remove "$SB"
 exit $fail

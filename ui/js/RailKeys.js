@@ -2,7 +2,6 @@
 
 .import "Eject.js" as Eject
 .import "Mounts.js" as Mounts
-.import "Photos.js" as Photos
 
 // What the rail does with a key, split out of Focus.js at its 300-line hard cap the same way
 // ui/js/PreviewKeys.js was: Focus.js decides which surface owns a key, and this is the surface.
@@ -18,19 +17,6 @@ function landed(root, sidebar) {
 function openFrom(pane, path, sidebar) {
     if (!pane) { if (sidebar) sidebar.focusOnOpen = false; return }
     pane.open(path)
-    if (sidebar) landed(pane, sidebar)
-}
-
-// A Sidebar photos open: the pane that asked walks the device's DCIM, newest first in
-// the grid the board draws. Guarded like a navigation: no row acts while a listing is out.
-function openPhotosFrom(pane, dcim, sidebar, deviceLabel) {
-    if (!pane) { if (sidebar) sidebar.focusOnOpen = false; return }
-    if (pane.listInFlight) {
-        pane.message("A directory is already loading.", false)
-        if (sidebar) sidebar.focusOnOpen = false
-        return
-    }
-    Photos.run(pane, dcim, deviceLabel)
     if (sidebar) landed(pane, sidebar)
 }
 

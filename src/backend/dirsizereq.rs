@@ -78,8 +78,6 @@ mod tests {
             dirsize_worker: crate::backend::dirsizeworker::Worker::new(events),
             search: None,
             search_reported: Instant::now(),
-            photos: None,
-            photos_reported: Instant::now(),
             generation: 0,
         }
     }

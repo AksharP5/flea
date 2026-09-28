@@ -112,11 +112,8 @@ Rectangle {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: parent.top
-        // The roll draws the board's "<device>/Photos" while it stands, not the FUSE DCIM
-        // path the walk runs on; that path is a display path only, navigation still uses it.
         path: view.currentPane.trash.opened ? "Trash"
-            : view.currentPane.photosMode.length > 0 && view.currentPane.photosDevice.length > 0
-            ? view.currentPane.photosDevice + "/Photos" : view.currentPane.path
+            : view.currentPane.path
         home: view.currentPane.home
         canGoBack: view.currentPane.canGoBack
         canGoUp: view.currentPane.canGoUp
@@ -282,8 +279,7 @@ Rectangle {
         anchors.right: parent.right
         anchors.bottom: parent.bottom
         path: view.currentPane.trash.opened ? "Trash"
-            : view.currentPane.photosMode.length > 0 && view.currentPane.photosDevice.length > 0
-            ? view.currentPane.photosDevice + "/Photos" : view.currentPane.path
+            : view.currentPane.path
         total: view.currentPane.trash.opened ? view.currentPane.trash.total : view.currentPane.total
         listingState: view.currentPane.listingState
         pane: view.currentPane.trash.opened ? null : view.currentPane
@@ -436,7 +432,6 @@ Rectangle {
         }
         function onOpened(path, origin) { if (origin) RailKeys.openFrom(origin, path, origin.sidebar) }
         function onOpenFileRequested(path, origin) { if (origin) origin.openFile(path) }
-        function onPhotosOpened(path, origin, deviceLabel) { if (origin) RailKeys.openPhotosFrom(origin, path, origin.sidebar, deviceLabel) }
         function onMessage(text, isError) {
             var pane = view.currentPane
             if (pane.sidebar) RailKeys.messaged(pane.sidebar, isError)

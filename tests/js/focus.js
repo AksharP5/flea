@@ -12,7 +12,6 @@ function pane(preview, viewMode) {
         viewMode: viewMode ? viewMode : "list",
         chooseView: function (mode) { this.viewMode = mode },
         searchMode: "",
-        photosMode: "",
         preview: preview
     }
 }
@@ -65,7 +64,7 @@ function closed() {
 // answer from the rail as well as the list rather than being swallowed by whichever view has focus.
 function chromePane(view) {
     return {
-        focusView: view, viewMode: "list", searchMode: "", photosMode: "", filterTyping: false,
+        focusView: view, viewMode: "list", searchMode: "", filterTyping: false,
         inputAt: 0, rowsAt: 0, trashArmedAt: 0, asked: 0, copied: 0, said: "", shown: null,
         preview: closed(),
         message: function (text, isError) { this.said = text },

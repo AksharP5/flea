@@ -13,7 +13,6 @@ function pane(viewMode) {
     p.cursorStride = 3
     p.preview = { active: false, isMedia: false, isPdf: false }
     p.searchMode = ""
-    p.photosMode = ""
     p.renameEditor = function () { return null }
     p.message = function () {}
     p.act = function (action) { Focus.act(action, p) }

@@ -18,10 +18,8 @@ use crate::backend::sandbox;
 use crate::backend::scan::{mode_of, scan};
 use crate::backend::listing::Listing;
 use crate::backend::search::Search;
-use crate::backend::photos::Photos;
 use crate::backend::state::{State, Tables};
 use crate::backend::searchreq::{finish_search, step_search};
-use crate::backend::photosreq::{finish_photos, step_photos};
 use crate::backend::ordering;
 use crate::backend::thumbcache::{default_root, Cache};
 use crate::backend::thumbreq::{cancel_row, forget_one, report_done, thumb_rows};
@@ -76,8 +74,8 @@ pub fn run() -> i32 {
     let mut watch = Watch::start(tx);
     loop {
         start_next(&mut st);
-        // Size results wake this receiver; only the walks still need idle ticks.
-        let event = if st.search.is_none() && st.photos.is_none() {
+        // Size results wake this receiver; only search still needs idle ticks.
+        let event = if st.search.is_none() {
             match rx.recv() {
                 Ok(e) => e,
                 Err(_) => break,
@@ -85,9 +83,9 @@ pub fn run() -> i32 {
         } else {
             match rx.try_recv() {
                 Ok(e) => e,
-                // Walks take one bounded step before checking requests again.
+                // Search takes one bounded step before checking requests again.
                 Err(TryRecvError::Empty) => {
-                    tick_walkers(&mut out, &mut st, &pool, &tb);
+                    tick_walkers(&mut out, &mut st, &pool);
                     continue;
                 }
                 Err(TryRecvError::Disconnected) => break,
@@ -169,7 +167,10 @@ fn handle_line(
             ops.trashbrowser.get_or_insert_with(|| super::trashbrowse::TrashBrowser::new(replies)).request(line);
         }
         Request::List { path, first, hidden } => {
-            end_walks(out, st, pool);
+            // A new listing replaces whatever the walk was filling, so the walk ends before the scan starts.
+            if finish_search(out, st, true) {
+                forget_rows(st, pool);
+            }
             // Before the scan, because a change readdir raced is missing from the rows this answers with.
             watch.begin(Path::new(&path));
             match scan(&path, hidden) {
@@ -214,7 +215,9 @@ fn handle_line(
             out.flush().ok();
         }
         Request::Search { path, query, hidden } => {
-            end_walks(out, st, pool);
+            if finish_search(out, st, true) {
+                forget_rows(st, pool);
+            }
             st.base = PathBuf::from(&path);
             st.listing = Listing::new();
             // A walk's matches are not a directory either, so nothing is watched until list asks again.
@@ -231,27 +234,11 @@ fn handle_line(
                 forget_rows(st, pool);
             }
         }
-        Request::Photos { path, hidden } => {
-            end_walks(out, st, pool);
-            st.base = PathBuf::from(&path);
-            st.listing = Listing::new();
-            // A walk's matches are not a directory either, so nothing is watched until list asks again.
-            watch.stop();
-            forget_rows(st, pool);
-            // The client is told at once that its old rows are gone, then the count grows as matches arrive.
-            writeln!(out, "{}", listed_line(0, 0.0, 0.0, dev_of(&st.base), &st.base.to_string_lossy())).ok();
-            st.photos = Some(Photos::new(&path, hidden));
-            st.photos_reported = Instant::now();
-            out.flush().ok();
-        }
-        Request::PhotosCancel => {
-            if finish_photos(out, st, true) {
+        Request::Sort { by, desc: _, anchor } => {
+            // The walk owns the listing sort would reorder, so it ends first rather than racing it.
+            if finish_search(out, st, true) {
                 forget_rows(st, pool);
             }
-        }
-        Request::Sort { by, desc: _, anchor } => {
-            // The walks own the listing sort would reorder, so they end first rather than racing it.
-            end_walks(out, st, pool);
             // A key that names no order is refused by name, so a client's sort mark can only describe the order it got.
             match ordering::request(&mut st.listing, &st.base, &tb.mime, line) {
                 Err(msg) => {
@@ -381,16 +368,6 @@ fn handle_line(
     Control::Continue
 }
 
-// A new listing replaces whatever a walk was filling, so both walks end before the scan starts.
-pub(crate) fn end_walks(out: &mut BufWriter<io::Stdout>, st: &mut State, pool: &Pool) {
-    if finish_search(out, st, true) {
-        forget_rows(st, pool);
-    }
-    if finish_photos(out, st, true) {
-        forget_rows(st, pool);
-    }
-}
-
 // A new row order invalidates every outstanding index, so the queue goes and no result can be reported against the new listing.
 pub fn forget_rows(st: &mut State, pool: &Pool) {
     st.generation += 1;
@@ -415,13 +392,10 @@ pub(crate) fn adopt(out: &mut impl Write, st: &mut State, pool: &Pool, tb: &Tabl
     write_window(out, st, 0, first, tb);
 }
 
-// Walks advance only when the request channel is idle.
-fn tick_walkers(out: &mut BufWriter<io::Stdout>, st: &mut State, pool: &Pool, tb: &Tables) {
+// Search advances only when the request channel is idle.
+fn tick_walkers(out: &mut BufWriter<io::Stdout>, st: &mut State, pool: &Pool) {
     // A finished walk hands back its rows in ranked order, which renames every outstanding index.
     if step_search(out, st) {
-        forget_rows(st, pool);
-    }
-    if step_photos(out, st, &tb.mime) {
         forget_rows(st, pool);
     }
 }

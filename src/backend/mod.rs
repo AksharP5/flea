@@ -27,8 +27,6 @@ pub mod fuzzy;
 pub mod jump;
 pub mod search;
 pub mod searchreq;
-pub mod photos;
-pub mod photosreq;
 pub mod sort;
 pub mod ordering;
 pub mod state;
