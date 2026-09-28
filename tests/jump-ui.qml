@@ -20,6 +20,8 @@ ShellRoot {
     property var entered: []
     property var peeked: []
     property var firstJump: null
+    // Counted on the change, since the settle clears on the next frame and one can land inside keyClickChar.
+    property int settleArms: 0
     property int checks: 0
     property int failures: 0
     property int stepIndex: 0
@@ -90,8 +92,9 @@ ShellRoot {
             root.answer(0)
             // The bar opens on the current path, which lists nothing, so the rows appear with the first name typed.
             root.check("the answer on a path line shows no rows and arms no settle", [chrome.jump.shown, chrome.jump.pointerSettling], [false, false])
+            var armsBefore = root.settleArms
             root.type("o")
-            root.check("the settle arms when rows appear", chrome.jump.pointerSettling, true)
+            root.check("the settle arms when rows appear", root.settleArms > armsBefore, true)
             // No frecency in this answer, so the own-name matches go favourites first, then zoxide, then recent.
             root.check("query o lists one ranked list", root.rows(), [
                 root.home + "/Projects", root.home + "/Documents/claude/omarchy", root.home + "/Documents",
@@ -239,6 +242,11 @@ ShellRoot {
         + "visited=\"2026-09-24T10:00:00Z\"/></xbel>' \"$2\" > \"$1.new\" && mv -- \"$1.new\" \"$1\""
     // Long enough for the change to reach the watcher, which inotify delivers within milliseconds.
     readonly property int settleMs: 300
+    Connections {
+        target: chrome.jump
+        function onPointerSettlingChanged() { if (chrome.jump.pointerSettling) root.settleArms += 1 }
+    }
+
     Process { id: history }
 
     FloatingWindow {
