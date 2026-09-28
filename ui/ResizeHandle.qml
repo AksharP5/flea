@@ -1,9 +1,6 @@
 import QtQuick
 
-// ListColumns040 board: one 9 px grab zone over a column hairline, 4 px either side,
-// with the resize cursor and an accent hairline on hover or drag. Positioned by its
-// caller over the hairline it moves; the drag itself lives in ui/Header.qml, so this
-// owns no state beyond the press it is carrying.
+// ListColumns040 board: one grab zone over a column hairline; the caller centres it, the drag lives in ui/Header.qml.
 Item {
     id: root
 
@@ -15,7 +12,7 @@ Item {
     signal released()
     signal doubleClicked()
 
-    width: 9
+    width: 9 // ui/Header.qml centres each zone with width / 2, so this is the only number.
 
     Rectangle {
         anchors.centerIn: parent

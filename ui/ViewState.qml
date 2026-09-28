@@ -88,21 +88,21 @@ QtObject {
     // ms since the epoch. Rows compare one number and never build a Date.
     property double todayStart: RecentDates.dayStart(Date.now())
 
-    // One one-shot at the next midnight moves the boundary for the whole window, only
-    // while the switch is on; rows never tick. Firing refreshes the start and re-arms.
+    // One timer steps to the next local midnight while the switch is on, in minute steps so a suspend still lands the day within a minute of resume; rows never tick.
     property var midnightTimer: Timer {
-        repeat: false
+        repeat: true
         running: root.highlightToday
-        interval: RecentDates.msUntilMidnight(Date.now())
+        interval: Math.min(60000, RecentDates.msUntilMidnight(Date.now()))
         onTriggered: {
             root.todayStart = RecentDates.dayStart(Date.now())
-            root.midnightTimer.interval = RecentDates.msUntilMidnight(Date.now())
+            root.midnightTimer.interval = Math.min(60000, RecentDates.msUntilMidnight(Date.now()))
             root.midnightTimer.running = root.highlightToday
         }
     }
     onHighlightTodayChanged: {
         root.todayStart = RecentDates.dayStart(Date.now())
-        root.midnightTimer.interval = RecentDates.msUntilMidnight(Date.now())
+        root.midnightTimer.interval = Math.min(60000, RecentDates.msUntilMidnight(Date.now()))
+        root.midnightTimer.running = root.highlightToday
     }
 
     // The listing's view, "view" in src/uischema.rs, which ui/Pane.qml draws for the first frame so

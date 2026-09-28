@@ -2103,6 +2103,11 @@ secondary lane moves ahead of the undo target so esc keeps the 0.3.5 order ahead
 `hintWidth` returns to `hintMetrics.width`, and `clickUndo` passes the rename, search
 typing and selection band gates the z key passes.
 
+F037qml moves three ceilings, each re-derived with `wc -l`: `ui/StatusBar.qml` 451
+to 457 for honouring every centre role instead of collapsing to foreground,
+`ui/TrashView.qml` 474 to 476 for the named press scale, and `ui/Theme.qml` 405 to
+415 for the body-face advance and the clamped stored column widths.
+
 Integrated on the 0.3.6 branch after #194, the hidden-rail eject takes `ui/WindowBody.qml` from 497 to 507, re-derived
 with `wc -l` on the integrated branch.
 

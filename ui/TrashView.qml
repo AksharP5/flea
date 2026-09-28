@@ -31,6 +31,8 @@ FocusScope {
     property int cursor: 0
     property double trashArmedAt: 0
     property int requestId: 0
+    // The pressed shrink every tappable mark in this tree takes; DialogButton.qml takes the same.
+    readonly property real pressScale: 0.96
     property string pendingOp: ""
     property bool operationActive: false
     readonly property bool busy: pendingOp.length > 0
@@ -316,7 +318,7 @@ FocusScope {
                     id: backButton
                     width: Theme.hitMin; height: parent.height; maxSize: Theme.chromeMarkSize
                     name: "arrow-left"; color: Theme.color.foreground
-                    scale: backTap.pressed && !Theme.reducedMotion ? 0.96 : 1
+                    scale: backTap.pressed && !Theme.reducedMotion ? root.pressScale : 1
                     Accessible.role: Accessible.Button
                     Accessible.name: "Back"
                     Accessible.onPressAction: root.close()

@@ -47,11 +47,7 @@ Item {
     readonly property bool thirdReady: root.shownIsDir ? root.answered(root.shownChildPath)
         : (!root.shownHasRow || !ViewState.previewColumn || preview.ready)
 
-    // A third of the view for each of the two fixed columns; the third takes the remainder, so
-    // a width that does not divide by three leaves no gap. shell.qml's empty hero takes it too.
-    // ColumnsWidth board, #167 and #69: the count follows the window width, 2 below 900,
-    // 3 by default, 4 from 1700 and 5 from 2300, capped by Settings View's limit at 5.
-    // Resizing re-lays the columns in one frame and re-reads nothing: only widths move.
+    // One columnWidth per shown column from the window width (ColumnsWidth board #167 and #69); the third column takes the remainder at activeX, and resizing re-lays widths in one frame with no re-read.
     readonly property int columnsLimit: ViewState.state.columnsLimit !== undefined ? ViewState.state.columnsLimit : 5
     readonly property int columnCount: Columns.columnCountForWidth(root.width, root.columnsLimit)
     readonly property int columnWidth: Math.max(1, Math.floor(root.width / Math.max(1, root.columnCount)))
@@ -84,14 +80,14 @@ Item {
         root.pane.backend.peek(path, root.pane.windowSize, root.pane.showHidden)
     }
 
-    // Both neighbours are asked for on every move; ask() is a no-op for one already answered.
-    // Extra ancestors peek the same way, viewport-scoped, so a wide window reads more of the path.
+    // Both neighbours are asked for on every move, hidden ancestors never: visible false stops no model work.
     function refreshNeighbours() {
         if (root.showGreatGrandparent)
             root.ask(root.greatGrandparentPath)
         if (root.showGrandparent)
             root.ask(root.grandparentPath)
-        root.ask(root.parentPath)
+        if (root.showParent)
+            root.ask(root.parentPath)
         root.ask(root.childPath)
         root.askMeta()
         root.askThumb()
@@ -300,7 +296,7 @@ Item {
             visible: root.showGreatGrandparent
             width: root.showGreatGrandparent ? root.columnWidth : 0
             height: parent.height
-            rows: root.rowsFor(root.greatGrandparentPath)
+            rows: root.showGreatGrandparent ? root.rowsFor(root.greatGrandparentPath) : []
             lockedMode: root.deniedMode(root.greatGrandparentPath)
             drawsEmpty: root.answered(root.greatGrandparentPath)
             liftedName: Nav.leafOf(root.grandparentPath)
@@ -315,7 +311,7 @@ Item {
             visible: root.showGrandparent
             width: root.showGrandparent ? root.columnWidth : 0
             height: parent.height
-            rows: root.rowsFor(root.grandparentPath)
+            rows: root.showGrandparent ? root.rowsFor(root.grandparentPath) : []
             lockedMode: root.deniedMode(root.grandparentPath)
             drawsEmpty: root.answered(root.grandparentPath)
             liftedName: Nav.leafOf(root.parentPath)
@@ -332,7 +328,7 @@ Item {
             visible: root.showParent
             width: root.showParent ? root.columnWidth : 0
             height: parent.height
-            rows: root.rowsFor(root.parentPath)
+            rows: root.showParent ? root.rowsFor(root.parentPath) : []
             lockedMode: root.deniedMode(root.parentPath)
             drawsEmpty: root.answered(root.parentPath)
             liftedName: Nav.leafOf(root.pane.path)

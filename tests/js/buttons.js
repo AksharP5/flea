@@ -5,10 +5,9 @@
 // primary per dialog, destructive as error ink in a muted frame, disabled 0.55.
 
 function run(check) {
-    // One geometry for every dialog, card and picker button.
+    // One geometry for every dialog, card and picker button; the label follows Theme.font.body.
     check("every button is 30 tall", Buttons.HEIGHT, 30)
     check("one pad", Buttons.PAD, 9)
-    check("one label size", Buttons.LABEL_SIZE, 14)
     check("one gap", Buttons.GAP, 9)
     check("the ring is its own signal", Buttons.RING, 2)
     check("a disabled control dims", Buttons.DISABLED_OPACITY, 0.55)

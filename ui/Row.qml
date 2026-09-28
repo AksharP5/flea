@@ -58,10 +58,8 @@ Item {
     readonly property string decoratedName: root.displayName + root.linkMark
     readonly property string locationText: root.searching ? Match.location(root.row.n) : ""
     readonly property var nameRun: Match.run(root.displayName, root.searchQuery)
-    // Characters of name slot at the shared monospace advance; the width is anchor-set, so the
-    // budget never feeds back into it. Unmarked names pre-truncate through ui/js/Names.js with
-    // ElideMiddle as the backstop; marked runs keep full text, so their indices still land.
-    readonly property int nameBudget: Theme.glyphAdvance > 0 && name.width > 0 ? Math.floor(name.width / Theme.glyphAdvance) : -1
+    // Characters of name slot at the body advance the name draws at; unmarked names pre-truncate through Names.js, marked runs keep full text.
+    readonly property int nameBudget: Theme.bodyAdvance > 0 && name.width > 0 ? Math.floor(name.width / Theme.bodyAdvance) : -1
     readonly property string elidedName: root.nameRun.start < 0 && root.nameBudget >= 0 ? Names.middleElide(root.decoratedName, root.nameBudget) : root.decoratedName
     // A long name would otherwise hide the location entirely, and the location is what tells two matches apart.
     readonly property real nameShare: 0.66
@@ -213,12 +211,10 @@ Item {
         elideMiddle: true
     }
 
-    // Built only on a clipboard row: the Glyph costs a Shape per instance, so anything else
-    // would put one on every row. The x tracks the rendered text end, capped at the slot,
-    // and the reservation above holds the gap plus the mark clear of the mode cell.
+    // Built only on a clipboard row in list mode: a Glyph per row costs a Shape, and search draws a narrower name.
     Loader {
         id: clipLoader
-        active: root.clipMark.length > 0 && !root.renaming
+        active: root.clipMark.length > 0 && !root.renaming && !root.searching
         width: root.clipPx
         height: root.clipPx
         x: name.x + Math.min(name.implicitWidth, name.width) + Theme.spacing.gap
@@ -284,8 +280,6 @@ Item {
         anchors.rightMargin: root.sizeShown && !root.dualMode ? Theme.spacing.gap : 0
         anchors.verticalCenter: parent.verticalCenter
         modeShown: root.modeShown
-        sizeShown: root.sizeShown
-        dualMode: root.dualMode
         dropTarget: root.dropTarget
         ink: root.cellColor()
         cellText: root.modeShown && root.row ? Format.permissions(root.row.p) : ""
@@ -298,8 +292,6 @@ Item {
         anchors.rightMargin: root.dateShown && !root.dualMode ? Theme.spacing.gap : 0
         anchors.verticalCenter: parent.verticalCenter
         sizeShown: root.sizeShown
-        dateShown: root.dateShown
-        dualMode: root.dualMode
         dropTarget: root.dropTarget
         sizeWidth: root.sizeWidth
         ink: root.cellColor()
@@ -313,7 +305,6 @@ Item {
         anchors.rightMargin: root.kindShown ? Theme.spacing.gap : 0
         anchors.verticalCenter: parent.verticalCenter
         dateShown: root.dateShown
-        kindShown: root.kindShown
         dropTarget: root.dropTarget
         dateWidth: root.dateWidth
         ink: root.cellColor()

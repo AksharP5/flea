@@ -5,6 +5,7 @@ import "js/Density.js" as Density
 import "js/Drag.js" as DragOps
 import "js/Format.js" as Format
 import "js/Icons.js" as Icons
+import "js/Names.js" as Names
 
 // One grid cell: the same mark the list row draws, in a larger slot, with the name under it.
 Item {
@@ -28,7 +29,7 @@ Item {
     readonly property int clipPx: 12
     readonly property string editorText: editor.current
     readonly property Item editorField: editor
-    readonly property real renameExtraHeight: root.renaming ? Math.max(0, editor.implicitHeight - Theme.grid.captionHeight - Theme.spacing.rowPaddingX) : 0
+    readonly property real renameExtraHeight: root.renaming ? Math.max(0, editor.implicitHeight - Theme.grid.captionHeight - Density.gridPadY(Theme.spacing.rowPaddingX, ViewState.density)) : 0
     signal renameCommitted(string newName)
     signal renameAbandoned()
     function commitEditor() { return editor.commit() }
@@ -105,8 +106,9 @@ Item {
 
     HoverHandler { id: hover }
 
-    // corner: a filename is arbitrary text, so PlainText, the same rule every name on this surface follows.
-    // The name draws at bodySmall; the line box stays the caption's, so the board tiles hold.
+    // corner: a filename is arbitrary text, so PlainText; Qt elides wrapped text only with ElideRight, so Names.js keeps the extension visible.
+    readonly property int captionLines: root.dropTarget ? 1 : 2
+    readonly property int captionBudget: Theme.glyphAdvance > 0 && nameLabel.width > 0 ? Math.floor(nameLabel.width / Theme.glyphAdvance) * root.captionLines : -1
     Text {
         id: nameLabel
         visible: !root.renaming
@@ -116,24 +118,22 @@ Item {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.leftMargin: Theme.spacing.gap
-        anchors.rightMargin: Theme.spacing.gap
+        anchors.rightMargin: Theme.spacing.gap + (root.clipMark.length > 0 ? Theme.spacing.gap + root.clipPx : 0)
         height: root.dropTarget ? Theme.grid.captionLineHeight : Theme.grid.captionHeight
         horizontalAlignment: Text.AlignHCenter
-        text: root.row ? root.row.n : ""
+        text: root.row && root.captionBudget >= 0 ? Names.middleElide(root.row.n, root.captionBudget) : (root.row ? root.row.n : "")
         color: Theme.color.foreground
         font.family: Theme.font.family
         font.pixelSize: Theme.font.bodySmall
         textFormat: Text.PlainText
         wrapMode: Text.Wrap
-        maximumLineCount: root.dropTarget ? 1 : 2
+        maximumLineCount: root.captionLines
         lineHeightMode: Text.FixedHeight
         lineHeight: Theme.grid.captionLineHeight
-        elide: Text.ElideMiddle
+        elide: Text.ElideRight
     }
 
-    // Built only on a clipboard tile: the Glyph costs a Shape per instance, so anything else
-    // would put one on every tile. Centred text has no stable text end, so the x tracks the
-    // widest line's end, capped at the caption's own; single-line names land exactly.
+    // Built only on a clipboard tile: a Glyph per tile costs a Shape, and centred text tracks the widest line's end.
     Loader {
         id: clipLoader
         active: root.clipMark.length > 0 && !root.renaming

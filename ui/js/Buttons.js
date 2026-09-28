@@ -8,7 +8,6 @@
 var HEIGHT = 30
 var PAD = 9
 var GAP = 9
-var LABEL_SIZE = 14
 var RING = 2
 var DISABLED_OPACITY = 0.55
 var WASH_HOVER = 0.08

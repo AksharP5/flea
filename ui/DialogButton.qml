@@ -2,9 +2,7 @@ import QtQuick
 import qs.Commons
 import "js/Buttons.js" as Buttons
 
-// Variant A (Buttons040, GM 2026-09-24): the one control every dialog, card and
-// picker button draws. One height, one pad, one label size; the primary is fixed
-// per dialog by the caller and focus is a ring outside the unchanged frame.
+// Variant A (Buttons040, GM 2026-09-24): the one control every dialog, card and picker button draws.
 Item {
     id: root
 
@@ -86,20 +84,19 @@ Item {
         cursorShape: root.available ? Qt.PointingHandCursor : Qt.ArrowCursor
     }
 
-    // A focused button answers Enter exactly as a press does. Dialogs that forward
-    // keys to their own map guard the second arrival (busy, opened), so it lands once.
-    // A key this button does not take stays unaccepted, so it reaches the dialog's
-    // own map exactly as it did before this control answered any key.
+    // A focused button answers Enter exactly as a press does; a handled Tab is accepted here so Qt never moves focus past the form's own stepFocus order.
     Keys.onReturnPressed: function(event) { if (root.available) root.activated(); else event.accepted = false }
     Keys.onEnterPressed: function(event) { if (root.available) root.activated(); else event.accepted = false }
     Keys.onSpacePressed: function(event) { if (root.available) root.activated(); else event.accepted = false }
     Keys.onTabPressed: function(event) {
-        if (root.tabHandle) root.tabbed(root, (event.modifiers & Qt.ShiftModifier) !== 0)
-        event.accepted = false
+        if (!root.tabHandle) { event.accepted = false; return }
+        root.tabbed(root, (event.modifiers & Qt.ShiftModifier) !== 0)
+        event.accepted = true
     }
     Keys.onBacktabPressed: function(event) {
-        if (root.tabHandle) root.tabbed(root, true)
-        event.accepted = false
+        if (!root.tabHandle) { event.accepted = false; return }
+        root.tabbed(root, true)
+        event.accepted = true
     }
 
     TapHandler {

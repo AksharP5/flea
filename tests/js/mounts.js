@@ -196,18 +196,22 @@ function run(check) {
     check("a late answer after the deadline changes nothing visible",
           gate(true, false, 5000, 800).showNetwork === true && gate(true, false, 5000, 800).showDevices === true, true)
 
-    // RailEject: a mounted drive or SMB share draws the 15 px eject mark in the square's
-    // slot; NFS keeps its square, phones keep theirs, and anything unmounted keeps its own.
+    // RailEject with the 2026-09-28 phone ruling: a mounted phone row (gphoto2, afc,
+    // mtp) draws the one-click mark exactly like a drive or SMB share; NFS keeps its square.
     var stick = { label: "128GB", group: "device", kind: "volume", device: "/dev/sda1", path: "/run/media/u/128GB", mounted: true, removable: true }
     var fixedDisk = { label: "Vault", group: "device", kind: "volume", device: "/dev/sdb1", path: "/mnt/vault", mounted: true, removable: false }
     var smb = { label: "NAS", group: "network", kind: "share", uri: "smb://h/data/", mounted: true }
     var nfs = { label: "Archive", group: "network", kind: "share", uri: "nfs://h/archive/", mounted: true }
     var phone = { label: "Pixel", group: "device", kind: "phone", uri: "mtp://x/", path: "/run/user/1000/gvfs/x", mounted: true }
+    var gphoto = { label: "Camera", group: "device", kind: "phone", uri: "gphoto2://x/", path: "/run/user/1000/gvfs/y", mounted: true }
+    var afc = { label: "iPhone", group: "device", kind: "phone", uri: "afc://x/", path: "/run/user/1000/gvfs/z", mounted: true }
     var cloud = { label: "gdrive", group: "network", kind: "cloud", uri: "", path: "/home/u/gdrive", mounted: true }
     check("a mounted removable drive draws the mark", Eject.releasable(stick), true)
     check("a mounted SMB share draws the mark", Eject.releasable(smb), true)
     check("an NFS share keeps its square", Eject.releasable(nfs), false)
-    check("a phone keeps its square", Eject.releasable(phone), false)
+    check("a mounted mtp phone draws the mark", Eject.releasable(phone), true)
+    check("a mounted gphoto2 phone draws the mark", Eject.releasable(gphoto), true)
+    check("a mounted afc phone draws the mark", Eject.releasable(afc), true)
     check("a cloud row keeps its square", Eject.releasable(cloud), false)
     check("a fixed internal volume keeps its square", Eject.releasable(fixedDisk), false)
     check("an unmounted drive keeps its square", Eject.releasable(idle), false)
@@ -218,8 +222,9 @@ function run(check) {
     // share, the same action the menu row and Ctrl+E take.
     check("the mark on a drive is Eject", Eject.releaseAction(stick), "eject")
     check("the mark on a share is Unmount", Eject.releaseAction(smb), "unmount")
+    check("the mark on a phone is its Unmount", Eject.releaseAction(phone), "unmountPhone")
     check("a row with no mark has no click action", Eject.releaseAction(nfs), "")
-    check("and neither does a phone", Eject.releaseAction(phone), "")
+    check("and neither does a cloud row", Eject.releaseAction(cloud), "")
 
     // The five second poll rebuilds only on changed text; see ui/js/Mounts.js pollDecision.
     check("before the first listing nothing rebuilds", Mounts.pollDecision(false, "a", "", "b", ""), "none")

@@ -249,7 +249,13 @@ Item {
         return root.noticeHint.length > 0 ? text.replace(root.noticeHint, "") : text
     }
     // Error ink sits on the surface, so it takes the surface lift and not the background one.
-    function centreColor() { return Status.centreRole(root.slot()) === "error" ? Theme.color.errorOnSurface : Theme.color.foreground }
+    // Any other role centreRole names draws in that role, falling back to foreground.
+    function centreColor() {
+        var role = Status.centreRole(root.slot())
+        if (role === "error")
+            return Theme.color.errorOnSurface
+        return Theme.color[role] !== undefined ? Theme.color[role] : Theme.color.foreground
+    }
 
     Timer { id: clear; interval: root.messageMs; onTriggered: root.notice = "" }
 

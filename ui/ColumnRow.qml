@@ -41,9 +41,8 @@ Item {
     readonly property bool clipCut: root.clipMark === "scissors"
     // The mark's own size: 12 px in the muted role, 9 px after the name, per the board.
     readonly property int clipPx: 12
-    // Characters of name slot at the shared monospace advance; the width is anchor-set,
-    // so the budget never feeds back into it, with ElideMiddle as the backstop.
-    readonly property int nameBudget: Theme.glyphAdvance > 0 && nameText.width > 0 ? Math.floor(nameText.width / Theme.glyphAdvance) : -1
+    // Characters of name slot at the body advance the name draws at, with ElideMiddle as the backstop.
+    readonly property int nameBudget: Theme.bodyAdvance > 0 && nameText.width > 0 ? Math.floor(nameText.width / Theme.bodyAdvance) : -1
 
     // Truthiness, like the two readers below: ui/ColumnPane.qml hands this rows[index] raw, so a
     // listing that shrank leaves a surviving delegate holding undefined, which is not null.
@@ -130,9 +129,7 @@ Item {
         elide: Text.ElideMiddle
     }
 
-    // Built only on a clipboard row: the Glyph costs a Shape per instance, so anything else
-    // would put one on every row. The x tracks the rendered text end, capped at the slot,
-    // and the reservation above holds the gap plus the mark clear of the size cell.
+    // Built only on a clipboard row: a Glyph per row costs a Shape, and the x tracks the rendered text end.
     Loader {
         id: clipLoader
         active: root.clipMark.length > 0

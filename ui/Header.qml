@@ -25,11 +25,12 @@ Item {
     // The pane whose held rows a double click fits, set by ui/Pane.qml. Null in the picker's own
     // header use, where no resize is offered.
     property var pane: null
-    // A drag in flight: the key it moves and the press point in header pixels, so the column
-    // follows the pointer live and lands once, a layout change with no backend traffic.
+    // A drag in flight: the key it moves, the press point in header pixels and the live
+    // preview width, so the hairline follows the pointer and one write lands on release.
     property string dragKey: ""
     property real dragStartX: 0
     property real dragStartWidth: 0
+    property real dragPreview: 0
 
     // A right click over the titles opens the pane's one ContextMenu with the column toggles and
     // the hidden toggle; a left click still sorts, and sortable still gates everything on a search.
@@ -98,7 +99,7 @@ Item {
         anchors.rightMargin: root.cols.size && !root.dualMode ? Theme.spacing.gap : 0
         anchors.verticalCenter: parent.verticalCenter
         visible: root.cols.mode
-        width: root.cols.mode ? Theme.column.mode : 0
+        width: root.cols.mode ? (root.dragKey === "mode" ? root.dragPreview : Theme.column.mode) : 0
         text: root.title("Mode", "mode")
     }
 
@@ -108,7 +109,7 @@ Item {
         anchors.rightMargin: root.cols.date && !root.dualMode ? Theme.spacing.gap : 0
         anchors.verticalCenter: parent.verticalCenter
         visible: root.cols.size
-        width: root.cols.size ? root.sizeWidth : 0
+        width: root.cols.size ? (root.dragKey === "size" ? root.dragPreview : root.sizeWidth) : 0
         text: root.title("Size", "size")
         horizontalAlignment: Text.AlignRight
 
@@ -121,7 +122,7 @@ Item {
         anchors.rightMargin: root.cols.kind ? Theme.spacing.gap : 0
         anchors.verticalCenter: parent.verticalCenter
         visible: root.cols.date
-        width: root.cols.date ? root.dateWidth : 0
+        width: root.cols.date ? (root.dragKey === "date" ? root.dragPreview : root.dateWidth) : 0
         text: root.title("Modified", "mtime")
         horizontalAlignment: Text.AlignRight
         elide: Text.ElideRight
@@ -136,7 +137,7 @@ Item {
         anchors.rightMargin: 2 * Theme.spacing.rowPaddingX
         anchors.verticalCenter: parent.verticalCenter
         visible: root.cols.kind
-        width: root.cols.kind ? Theme.column.kind : 0
+        width: root.cols.kind ? (root.dragKey === "kind" ? root.dragPreview : Theme.column.kind) : 0
         text: root.title("Kind", "kind")
         elide: Text.ElideRight
 
@@ -150,16 +151,12 @@ Item {
         onTapped: function (eventPoint) { root.menuRequested(eventPoint.scenePosition) }
     }
 
-    // ListColumns040 board: each fixed column's left hairline carries a grab zone, with the
-    // resize cursor and an accent hairline on hover or drag. A drag moves only the layout
-    // binding the rows already share, and a double click fits the widest held value through
-    // ui/js/Columns.js, never a directory-wide scan. Hidden while a search owns the strip,
-    // in the dual view, or where the picker reuses this header with no pane.
+    // ListColumns040 board: each fixed column's left hairline carries a grab zone, hidden while a search owns the strip, in dual view, or where the picker reuses this header with no pane.
     Flea.ResizeHandle {
         id: modeHandle
         visible: root.cols.mode && !root.dualMode && root.sortable && root.pane !== null
         anchors.left: headerMode.left
-        anchors.leftMargin: -4
+        anchors.leftMargin: -modeHandle.width / 2
         anchors.top: parent.top
         anchors.bottom: parent.bottom
         z: 3
@@ -175,7 +172,7 @@ Item {
         id: sizeHandle
         visible: root.cols.size && !root.dualMode && root.sortable && root.pane !== null
         anchors.left: headerSize.left
-        anchors.leftMargin: -4
+        anchors.leftMargin: -sizeHandle.width / 2
         anchors.top: parent.top
         anchors.bottom: parent.bottom
         z: 3
@@ -191,7 +188,7 @@ Item {
         id: dateHandle
         visible: root.cols.date && !root.dualMode && root.sortable && root.pane !== null
         anchors.left: headerDate.left
-        anchors.leftMargin: -4
+        anchors.leftMargin: -dateHandle.width / 2
         anchors.top: parent.top
         anchors.bottom: parent.bottom
         z: 3
@@ -207,7 +204,7 @@ Item {
         id: kindHandle
         visible: root.cols.kind && !root.dualMode && root.sortable && root.pane !== null
         anchors.left: headerKind.left
-        anchors.leftMargin: -4
+        anchors.leftMargin: -kindHandle.width / 2
         anchors.top: parent.top
         anchors.bottom: parent.bottom
         z: 3
@@ -263,19 +260,26 @@ Item {
         root.dragKey = key
         root.dragStartX = handle.mapToItem(root, mouse.x, mouse.y).x
         root.dragStartWidth = root.currentWidthOf(key)
+        root.dragPreview = root.dragStartWidth
     }
 
     function moveDrag(key, handle, mouse) {
         if (root.dragKey !== key)
             return
         var x = handle.mapToItem(root, mouse.x, mouse.y).x
-        // A press that never travels is a click, not a drag, and writes nothing.
+        // A press that never travels is a click; the grab zone sits on the column's left hairline of a right-anchored chain, so widening moves it left: start minus dx.
         if (Math.abs(x - root.dragStartX) < 1)
             return
-        root.writeWidth(key, root.dragStartWidth + x - root.dragStartX)
+        root.dragPreview = Columns.clampListWidth(root.dragStartWidth - (x - root.dragStartX))
     }
 
-    function endDrag() { root.dragKey = "" }
+    // One remembered edge, written once on release, so a drag is layout only until it lands.
+    function endDrag() {
+        if (root.dragKey.length === 0)
+            return
+        root.writeWidth(root.dragKey, root.dragPreview)
+        root.dragKey = ""
+    }
 
     // The same strings ui/Row.qml draws, measured in the cells' own caption face over the rows
     // the window holds and nothing else.
@@ -315,8 +319,8 @@ Item {
             if (!root.cols[keys[i]])
                 continue
             var next = root.fittedWidth(keys[i])
-            if (next >= 0 && obj[keys[i]] !== next) {
-                obj[keys[i]] = next
+            if (next >= 0 && obj[keys[i]] !== Columns.clampListWidth(next)) {
+                obj[keys[i]] = Columns.clampListWidth(next)
                 changed = true
             }
         }

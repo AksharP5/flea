@@ -150,7 +150,7 @@ Item {
     // What the editor holds right now, for tests through ui/Ipc.qml's railRenameEditorText.
     readonly property string editorText: renameLoader.item ? renameLoader.item.current : ""
     readonly property bool editorShown: renameLoader.item !== null && renameLoader.item.visible
-    // RailEject: a mounted drive or SMB share draws the eject mark in place of
+    // RailEject: a mounted drive, SMB share or phone draws the eject mark in place of
     // the square, so the label keeps its column; anything else keeps what it drew.
     // A trailing mark, so it takes the caption slot's ink like NETWORK's plus, never the leading icon's size.
     readonly property bool showsEject: Eject.releasable(root.modelData)

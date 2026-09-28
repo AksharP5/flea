@@ -81,7 +81,10 @@ function run(check) {
     check("RowDate builds no Date per row", countRe(rowDate, /new Date/g), 0)
     check("and reads no clock per row", rowDate.indexOf("Date.now") < 0, true)
     check("ViewState owns the one midnight timer", countRe(viewState, /Timer\s*\{/g), 1)
-    check("and that timer is one-shot", viewState.indexOf("repeat: false") >= 0, true)
+    check("and that timer steps in minute stops, so a suspend still lands the day",
+        viewState.indexOf("Math.min(60000") >= 0, true)
+    check("and the switch restarts it outright",
+        viewState.indexOf("root.midnightTimer.running = root.highlightToday") >= 0, true)
     check("the timer re-arms through the same helper",
         viewState.indexOf("msUntilMidnight") >= 0, true)
     check("the switch ships off",

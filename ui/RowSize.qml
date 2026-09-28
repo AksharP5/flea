@@ -1,13 +1,10 @@
 import QtQuick
 
-// One list-row metadata cell: the size column. Root is the Text itself, so replacing
-// ui/Row.qml's inline size Text with RowSize builds the same one object.
+// One list-row metadata cell: the size column.
 Text {
     id: root
 
     property bool sizeShown: false
-    property bool dateShown: false
-    property bool dualMode: false
     property bool dropTarget: false
     property real sizeWidth: Theme.column.size
     property color ink: Theme.color.foreground

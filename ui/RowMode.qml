@@ -1,13 +1,10 @@
 import QtQuick
 
-// One list-row metadata cell: the mode column. Root is the Text itself, so replacing
-// ui/Row.qml's inline mode Text with RowMode builds the same one object.
+// One list-row metadata cell: the mode column.
 Text {
     id: root
 
     property bool modeShown: false
-    property bool sizeShown: false
-    property bool dualMode: false
     property bool dropTarget: false
     property color ink: Theme.color.foreground
     property string cellText: ""
