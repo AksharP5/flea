@@ -138,8 +138,14 @@ Item {
 
     // The window-long poll runs while a rail is loaded: arrival polls once, departure hands
     // the timer back to a flight, if any, and the last listing stands while it is off.
-    Component.onCompleted: { var s = root.navigationPane ? root.navigationPane.ensureNetworkService() : null; if (s) s.railArrived() }
-    Component.onDestruction: { if (root.service) root.service.railLeft() }
+    // Asked once this rail's creation is done, when the pane's overlay parent is bound; before that it answers null.
+    Component.onCompleted: Qt.callLater(root.meetHost)
+    function meetHost() { if (root.navigationPane) root.navigationPane.ensureNetworkService(); root.arrive() }
+    // Arrival counts whenever the service appears, so a host built after this rail still starts the poll.
+    property bool arrived: false
+    function arrive() { if (root.arrived || !root.service) return; root.arrived = true; root.service.railArrived() }
+    onServiceChanged: root.arrive()
+    Component.onDestruction: { if (root.service && root.arrived) root.service.railLeft() }
 
     // The context menu's gate for the two Dropbox rows, so the pane never reaches into the rail.
     readonly property bool dropboxReady: root.service !== null && root.service.dropboxReady

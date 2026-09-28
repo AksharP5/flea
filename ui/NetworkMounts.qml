@@ -216,7 +216,8 @@ Item {
     // How many rails are loaded now; an open or a bridge wait also holds the poll, so a
     // hidden rail costs no gio while a mount in flight still refreshes behind it.
     property int _rails: 0
-    function railArrived() { root._rails++; root.pollMounts() }
+    // The listing's timer polls on start when this arrival activates it, so only an already active one is asked again.
+    function railArrived() { var wasActive = listing.active; root._rails++; if (wasActive) root.pollMounts() }
     function railLeft() { root._rails = Math.max(0, root._rails - 1) }
     MountListing {
         id: listing
