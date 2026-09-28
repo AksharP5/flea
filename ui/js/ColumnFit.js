@@ -2,10 +2,8 @@
 .import "DirSizes.js" as DirSizes
 .import "Format.js" as Format
 
-// ListColumns040 board: the strings an autofit measures, the same ones ui/Row.qml draws.
-// kindNames is the pane's own dictionary and dirSize the DirSizes.sizeFor answer for this
-// held row, so a directory reads its walk size the way the row does. Sample input:
-// ("size", {p: 33188, d: false, s: 18000}) answers "18.0 kB".
+// The strings an autofit measures, the same ones ui/Row.qml draws.
+// Sample input: ("size", {p: 33188, d: false, s: 18000}) answers "18.0 kB".
 var FIT_KEYS = ["mode", "size", "date", "kind"]
 
 function cellText(key, row, kindNames, dirSize) {

@@ -127,13 +127,8 @@ function sentence(v, label, others) {
     return { text: "Could not confirm " + label + " was ejected; do not unplug it yet.", isError: true }
 }
 
-// Which rail rows draw the 15 px eject mark in the status square's 12 px trailing slot.
-// Sample input: rail entries as ui/NetworkMounts.qml and ui/DeviceMounts.qml build them,
-// {label:"NAS", group:"network", kind:"share", uri:"smb://h/data/", mounted:true}.
-// A mounted drive the operator can pull out, a mounted share gio can unmount and a mounted
-// phone (mtp, gphoto2, afc) draw the mark in place of the square, so the label keeps its
-// column. NFS needs root to unmount, a cloud row keeps its own, and anything unmounted
-// keeps its half-strength square.
+// Only a releasable mounted row draws the mark in place of the square.
+// Sample input: {label:"NAS", group:"network", kind:"share", uri:"smb://h/data/", mounted:true}.
 function releasable(entry) {
     if (!entry || entry.mounted !== true)
         return false
@@ -146,8 +141,7 @@ function releasable(entry) {
     return false
 }
 
-// The one-click release the mark fires: Eject for a drive, Unmount for a share and the
-// phone's own Unmount, the same rows Mounts.railMenu offers and release below reaches.
+// The one-click release mirrors the rows Mounts.railMenu offers.
 function releaseAction(entry) {
     if (!releasable(entry))
         return ""

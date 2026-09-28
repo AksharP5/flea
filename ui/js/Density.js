@@ -1,6 +1,5 @@
 .pragma library
 
-// Density040 and GridStops: Tight below Compact, Huge and Largest above Extra large.
 // One job: the numbers every surface draws from, so tests/js/density.js pins them.
 
 // The four stops in the board's own order, Tight first as the opt-in below Compact.

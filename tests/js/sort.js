@@ -140,8 +140,7 @@ function run(check) {
     check("s from an order that is not in the list still lands on name",
           stray.sent.join(","), "sort name asc,window 0 200")
 
-    // A walk's rows are matches, not the folder's: sorting them still sends the sort and the
-    // window, but writes no folder sort for the scope they were walked from.
+    // A walk's rows are matches, so sorting them writes no folder sort.
     for (var mode in { search: "results", photos: "" }) {
         var walk = pane("name", false)
         walk.searchMode = mode === "search" ? "results" : ""

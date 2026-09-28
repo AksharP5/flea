@@ -51,8 +51,7 @@ Item {
     readonly property int columnsLimit: ViewState.state.columnsLimit !== undefined ? ViewState.state.columnsLimit : 5
     readonly property int columnCount: Columns.columnCountForWidth(root.width, root.columnsLimit)
     readonly property int columnWidth: Math.max(1, Math.floor(root.width / Math.max(1, root.columnCount)))
-    // Ancestors shown, oldest first: 2 hides the parent, 3 draws it, 4 adds the
-    // grandparent and 5 the great-grandparent.
+    // Ancestors shown oldest first: 2 hides the parent, 5 adds the great-grandparent.
     readonly property bool showGreatGrandparent: root.columnCount >= 5
     readonly property bool showGrandparent: root.columnCount >= 4
     readonly property bool showParent: root.columnCount >= 3
@@ -289,8 +288,7 @@ Item {
     Row {
         anchors.fill: parent
 
-        // The great-grandparent, only on a window wide enough for five columns. Each column
-        // keeps its own scrollbar lane, and no line sits between columns, as 0.3.4 draws none.
+        // The great-grandparent, only on a window wide enough for five columns.
         Flea.ColumnPane {
             id: greatGrandparentColumn
             visible: root.showGreatGrandparent
@@ -320,9 +318,7 @@ Item {
             onNeighbourMenuRequested: function (name) { root.menuOnNeighbour(root.grandparentPath, name) }
         }
 
-        // The parent, showing where the current directory sits among its own siblings. Its own row
-        // for the current directory is the cursor trail: lifted like a hover, never accented.
-        // Below 900 px the parent hides and the active column takes its slot.
+        // The parent shows the current directory among its siblings; below 900 px it hides.
         Flea.ColumnPane {
             id: parentColumn
             visible: root.showParent

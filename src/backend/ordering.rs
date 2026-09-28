@@ -325,11 +325,7 @@ mod tests {
                         let mut off = pushed();
                         ordered(&mut off, d.path(), &db, by, desc, folders, groups, false).unwrap();
                         let old = names(&off);
-                        // Descending name order without folders first is already dotfiles-last: it is
-                        // the exact reverse of the dotfiles-first ascending order, so the flag is a
-                        // no-op there and off satisfies the partition too. Everywhere else off leaves
-                        // a visible entry behind a dotfile.
-                        // With groups the ranks do not reverse, so the symmetry below needs !groups too.
+                        // Only descending name without folders or groups already reads hidden-last, so only that arm asserts equality.
                         if by == "name" && desc && !folders && !groups {
                             assert_eq!(old, got,
                                 "{by} desc={desc} folders={folders} groups={groups} is symmetric, so off already reads hidden-last: {old:?}");

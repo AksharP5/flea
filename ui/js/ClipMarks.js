@@ -1,6 +1,5 @@
 .pragma library
 
-// A row on the clipboard carries a mark after its name: copy for copied, scissors for cut.
 // The mark follows the pane's own clipboard, so spending a cut clears every mark at once.
 
 // Sample input: { paths: ["/home/gm/Pictures/phone/IMG_4121.jpg"], moving: true }
@@ -26,8 +25,7 @@ function markFor(path, clipboard) {
     return setFor(clipboard)[path] === true ? (clipboard.moving ? "scissors" : "copy") : ""
 }
 
-// One lookup per visible row, and an empty clipboard costs nothing: the
-// paths are never joined and never searched when there is nothing to find.
+// An empty clipboard costs nothing: its paths are never joined or searched.
 function markForRow(pane, name, clipboard) {
     if (!clipboard || !clipboard.paths || clipboard.paths.length === 0 || !name) {
         return ""
@@ -35,9 +33,8 @@ function markForRow(pane, name, clipboard) {
     return markFor(rowPath(pane, name), clipboard)
 }
 
-// The pane's own join, so a search result resolves against the scope the
-// pane is standing on, which Search.run made its path. Sample input:
-// pane { path: "/home/gm/Pictures/phone" }, name "IMG_4121.jpg".
+// The pane's own join, so a search result resolves against the scope Search.run made its path.
+// Sample input: pane { path: "/home/gm/Pictures/phone" }, name "IMG_4121.jpg".
 function rowPath(pane, name) {
     if (!name) {
         return ""

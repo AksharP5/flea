@@ -241,7 +241,6 @@ function sortEntries(hasOwn) {
     var out = []
     for (var i = 0; i < Sort.ORDERS.length; i++)
         out.push({ id: Sort.ORDERS[i], label: SORT_LABELS[Sort.ORDERS[i]] })
-    // Issue 179: the forget row after a separator, present only where the folder has its own sort.
     // The id is the spelling ui/js/Sort.js's forget branch reads, so the two must agree.
     if (hasOwn === true) { out.push({ separator: true }); out.push({ id: "__default__", label: "Use the default sort" }) }
     return out

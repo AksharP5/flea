@@ -91,8 +91,7 @@ Item {
     onSortPreferenceChanged: if (!root.preserveSort || !root.hasListed) root.resetSort()
 
     function resetSort(path) {
-        // Issue 179: the folder's own sort wins while remembering is on, else the default.
-        // Read once per listing, so browsing a folder never writes; only Sort.resort does.
+        // Read once per listing, so browsing never writes; only Sort.resort does.
         var order = FolderSorts.orderFor(ViewState.state.folderSorts, path,
                                          ViewState.state.sort, ViewState.state.rememberSort !== false)
         root.sortBy = order.key === "date" ? "mtime" : order.key
@@ -106,7 +105,7 @@ Item {
 
     // A user sort writes its folder and moves it to the most recent end; past 500 the oldest goes.
     function rememberFolderSort(path, key, desc) {
-        if (ViewState.state.rememberSort === false || !path)
+        if (!FolderSorts.shouldRemember(ViewState.state.rememberSort, path))
             return
         var keyed = key === "mtime" ? "date" : key
         ViewState.changeKey("folderSorts", FolderSorts.set(ViewState.state.folderSorts, path, keyed, desc === true))

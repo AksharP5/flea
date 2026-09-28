@@ -53,17 +53,15 @@ function dualSet(width, t, hidden) {
     return {mode: false, kind: false, size: showSize, date: showDate}
 }
 
-// ColumnsWidth board, #167 and #69: the columns view's count follows the window width,
-// 2 below 900, 3 by default, 4 from 1700 and 5 from 2300, capped by Settings View's
-// Columns view limit, which ships at 5. Sample input: (899, 5) answers 2.
+// The columns view's count follows the window width, capped by Settings View's limit.
+// Sample input: (899, 5) answers 2.
 var COUNT_4_AT = 1700
 var COUNT_5_AT = 2300
 var COUNT_NARROW_AT = 900
 var COUNT_MIN = 2
 var COUNT_MAX = 5
 
-// The limit is the stored segment, so a stored number clamps to 2 to 5 and anything
-// else reads as the shipped 5, the same value Settings shows for it.
+// A stored number clamps to 2 to 5, anything else reads as the shipped 5.
 function cappedLimit(limit) {
     if (typeof limit !== "number")
         return COUNT_MAX

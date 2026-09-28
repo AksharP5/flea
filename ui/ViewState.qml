@@ -80,12 +80,10 @@ QtObject {
     // file that never named them.
     readonly property bool keyHints: root.state.keyHints === true
 
-    // Settings > View > Highlight today's dates, off until switched on: absent reads
-    // off, the way keyHints beside it does. On, a stamp from today draws foreground.
+    // Absent reads off, the way keyHints beside it does.
     readonly property bool highlightToday: root.state.highlightToday === true
 
-    // The window-level local-midnight boundary every date cell compares against, in
-    // ms since the epoch. Rows compare one number and never build a Date.
+    // Rows compare one number and never build a Date.
     property double todayStart: RecentDates.dayStart(Date.now())
 
     // One timer steps to the next local midnight while the switch is on, in minute steps so a suspend still lands the day within a minute of resume; rows never tick.

@@ -25,8 +25,7 @@ Item {
     // The pane whose held rows a double click fits, set by ui/Pane.qml. Null in the picker's own
     // header use, where no resize is offered.
     property var pane: null
-    // A drag in flight: the key it moves, the press point in header pixels and the live
-    // preview width, so the hairline follows the pointer and one write lands on release.
+    // A drag in flight, so the hairline follows the pointer and one write lands on release.
     property string dragKey: ""
     property real dragStartX: 0
     property real dragStartWidth: 0

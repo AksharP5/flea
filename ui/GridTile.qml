@@ -20,8 +20,7 @@ Item {
     property string thumb: ""
     property bool renaming: false
     property var renamePane: null
-    // The clipboard's mark for this tile, "" when it holds none; the grid area derives
-    // it per visible tile through ui/js/ClipMarks.js, so an empty clipboard costs nothing.
+    // The grid area derives it per visible tile, so an empty clipboard costs nothing.
     property string clipMark: ""
     // A cut tile dims to the ClipMarks board's own opacity, content only.
     readonly property bool clipCut: root.clipMark === "scissors"

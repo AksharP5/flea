@@ -196,8 +196,7 @@ function run(check) {
     check("a late answer after the deadline changes nothing visible",
           gate(true, false, 5000, 800).showNetwork === true && gate(true, false, 5000, 800).showDevices === true, true)
 
-    // RailEject with the 2026-09-28 phone ruling: a mounted phone row (gphoto2, afc,
-    // mtp) draws the one-click mark exactly like a drive or SMB share; NFS keeps its square.
+    // A mounted phone row draws the one-click mark like a drive or share; NFS keeps its square.
     var stick = { label: "128GB", group: "device", kind: "volume", device: "/dev/sda1", path: "/run/media/u/128GB", mounted: true, removable: true }
     var fixedDisk = { label: "Vault", group: "device", kind: "volume", device: "/dev/sdb1", path: "/mnt/vault", mounted: true, removable: false }
     var smb = { label: "NAS", group: "network", kind: "share", uri: "smb://h/data/", mounted: true }

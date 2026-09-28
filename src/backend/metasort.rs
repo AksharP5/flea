@@ -111,8 +111,7 @@ mod tests {
         assert_eq!(names(&l), "11 1 3 2");
     }
 
-    // Hidden files last on the stat orders: a dotfile follows every visible entry for size
-    // and mtime in both directions, with folders still first inside each block.
+    // Hidden files last on the stat orders with folders still first inside each block.
     #[test]
     fn hidden_last_keeps_dotfiles_after_visible_for_stat_orders() {
         let d = TestDir::new("sizehidden");

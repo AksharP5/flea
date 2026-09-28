@@ -5,6 +5,14 @@
 .import "../../ui/js/Tabs.js" as Tabs
 .import "tabsfixture.js" as Fixture
 
+// A file of this tree, read the way tests/js/themes.js reads colors.toml; "" when missing.
+function source(path) {
+    var request = new XMLHttpRequest()
+    request.open("GET", Qt.resolvedUrl("../../" + path), false)
+    request.send()
+    return String(request.responseText || "")
+}
+
 // Per-folder sorts (issue 179) and Hidden files last (issue 70): map, Settings rows, flyout forget row, tab-kept sorts.
 function sortPane(path, sorts, remember) {
     var p = {
@@ -22,7 +30,7 @@ function sortPane(path, sorts, remember) {
         sort: function (by, desc) { p.sent.push("sort " + by); this.sortBy = by; this.sortDesc = desc },
         window: function (start, count) { p.sent.push("window") },
         // Sample input: rememberFolderSort("/a", "size", false) records "/a|size:false" while remembering is on.
-        rememberFolderSort: function (folder, key, desc) { if (p.remember === false) return; p.remembered.push(folder + "|" + key + ":" + desc) },
+        rememberFolderSort: function (folder, key, desc) { p.remembered.push(folder + "|" + key + ":" + desc) },
         forgetFolderSort: function (folder) { p.forgotten.push(folder) }
     }
     p.thumbState = {}
@@ -95,8 +103,11 @@ function run(check) {
     check("a changed order writes its folder", changed.remembered.join(","), "/a|size:true")
     var off = sortPane("/a", {}, false)
     Sort.column(off, "size")
-    check("with remembering off a user sort writes nothing", off.remembered.length, 0)
     check("but still sends the sort and the window", off.sent.join(","), "sort size,window")
+    check("with remembering off nothing writes", FolderSorts.shouldRemember(false, "/a"), false)
+    check("with remembering on a folder writes", FolderSorts.shouldRemember(true, "/a"), true)
+    check("an empty path writes nothing", FolderSorts.shouldRemember(true, ""), false)
+    check("Backend gates folder writes through FolderSorts", source("ui/Backend.qml").indexOf("FolderSorts.shouldRemember") >= 0, true)
     var same = sortPane("/a", {}, true)
     Sort.resort(same, "name", false)
     check("asking for the order already shown writes nothing", same.remembered.length, 0)

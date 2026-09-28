@@ -101,8 +101,7 @@ pub fn name_order(a: &[u8], b: &[u8]) -> Ordering {
     }
 }
 
-// A dot-prefixed name is hidden, the same rule scan.rs filters on: the backend sorts what the
-// scan kept, so this is the only spelling of hidden either order needs.
+// Hidden is a leading dot, the same rule scan.rs filters on.
 pub fn is_hidden(name: &str) -> bool {
     name.as_bytes().first() == Some(&b'.')
 }

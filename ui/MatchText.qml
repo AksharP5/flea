@@ -15,9 +15,7 @@ Item {
     property color color: Theme.color.foreground
     property color accent: Theme.color.accent
     property int pixelSize: Theme.font.body
-    // Names040: long names elide in the middle so the extension stays visible. Opt-in,
-    // because only the row surfaces take it; unmarked the run is the whole name, marked
-    // the head keeps its end elision, so the match run keeps its place.
+    // Opt-in middle elision, so the match run keeps its place.
     property bool elideMiddle: false
 
     readonly property bool marked: root.matchStart >= 0 && root.matchLength > 0

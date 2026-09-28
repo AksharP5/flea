@@ -1,9 +1,7 @@
 .pragma library
 
 // Sample input: primaryFor("collide") === "keep", isDestructive("trash", "delete") === true.
-// Variant A (Buttons040, GM 2026-09-24): one control for every dialog, card and
-// picker button. Geometry mirrors Theme (HEIGHT is rowHeight less one rowPaddingY,
-// so 30 at base 14); the fixed primary is the safe or asked-for action Enter takes.
+// Variant A: one control for every dialog button, HEIGHT mirrors Theme and primary is the safe Enter action.
 
 var HEIGHT = 30
 var PAD = 9
@@ -12,6 +10,9 @@ var RING = 2
 var DISABLED_OPACITY = 0.55
 var WASH_HOVER = 0.08
 var WASH_PRESS = 0.14
+// The pressed shrink every tappable mark takes, and how long it eases.
+var PRESS_SCALE = 0.96
+var PRESS_MS = 150
 // The shipped label size at base 14, the fallback when no body text stop is known.
 var LABEL_SIZE = 14
 

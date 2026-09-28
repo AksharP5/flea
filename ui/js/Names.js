@@ -1,14 +1,9 @@
 .pragma library
 
-// A long name elides in the middle so the extension and the end of a version
-// number stay visible. Character-budget truncation in a binding costs a
-// string slice, never a relayout; the Text item's own ElideMiddle is the
-// backstop where rounding leaves one character over. Sample input:
-// "screenshot-2026-08-30-final-review-for-gm-after-the-bench-v3.png", 49.
+// Elides in the middle so the extension stays visible; truncation costs a slice, never a relayout.
+// Sample input: "screenshot-2026-08-30-final-review-for-gm-after-the-bench-v3.png", 49.
 
-// Code points, not UTF-16 units: a length cut must never split a surrogate
-// pair, and this engine's Array.from indexes units rather than iterating
-// points, so the walk below pairs them by hand.
+// The walk pairs surrogates by hand, so a cut never splits a code point.
 function charsOf(text) {
     var out = []
     for (var i = 0; i < text.length; i++) {

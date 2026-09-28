@@ -27,7 +27,7 @@ function run(check) {
     }
     // One Text object per cell file and no other primitive beside it: no wrapper Item, Rectangle, Image, Loader, Glyph or MatchText.
     for (var c = 0; c < CELLS.length; c++) {
-        check(CELLS[c] + " roots one Text", countRe(bodies[c], /^\s*Text\s*\{/gm), 1)
+        check(CELLS[c] + " roots one Text", countRe(bodies[c], /^Text\s*\{/gm), 1)
         check(CELLS[c] + " holds one Text total", countRe(bodies[c], /Text\s*\{/g), 1)
         check(CELLS[c] + " adds no Item wrapper", countRe(bodies[c], /Item\s*\{/g), 0)
         check(CELLS[c] + " adds no Rectangle", countRe(bodies[c], /Rectangle\s*\{/g), 0)

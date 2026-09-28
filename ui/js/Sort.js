@@ -75,8 +75,7 @@ function resort(pane, key, desc) {
     }
     pane.backend.sortBy = key
     pane.backend.sortDesc = desc
-    // Issue 179: the folder remembers the sort its operator chose, once per user sort and never
-    // per browse. A walk's rows are matches, not the folder's, so sorting them writes nothing.
+    // A walk's rows are matches, not the folder's, so sorting them writes nothing.
     if (pane.backend && pane.backend.rememberFolderSort
             && (pane.searchMode || "") === "" && (pane.photosMode || "") === "")
         pane.backend.rememberFolderSort(pane.path, key, desc)

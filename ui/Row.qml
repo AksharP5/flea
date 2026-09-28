@@ -19,8 +19,7 @@ Item {
     property bool hovered: false
     property string thumb: ""
     property bool selected: false
-    // The clipboard's mark for this row, "" when it holds none; List.qml derives it per
-    // visible row through ui/js/ClipMarks.js, so an empty clipboard costs nothing.
+    // List.qml derives it per visible row, so an empty clipboard costs nothing.
     property string clipMark: ""
     // A cut row dims to the ClipMarks board's own opacity, content only, never the state fills.
     readonly property bool clipCut: root.clipMark === "scissors"
@@ -270,9 +269,7 @@ Item {
         }
     }
 
-    // The four metadata cells live in their own files, one Text each, so every 0.3.7
-    // row feature builds on them; each root is the Text itself, so this builds the
-    // same four objects the inline Texts did, with the same anchors and bindings.
+    // Each cell root is the Text itself, so this builds the same four objects the inline Texts did.
     RowMode {
         id: mode
         opacity: root.clipCut ? Theme.disabledOpacity : 1

@@ -34,8 +34,7 @@ Item {
     property bool hovered: false
     property bool dropTarget: false
     property bool dropCopying: false
-    // The clipboard's mark for this row, "" when it holds none; the area derives it per
-    // visible row through ui/js/ClipMarks.js, so an empty clipboard costs nothing.
+    // The area derives it per visible row, so an empty clipboard costs nothing.
     property string clipMark: ""
     // A cut row dims to the ClipMarks board's own opacity, content only.
     readonly property bool clipCut: root.clipMark === "scissors"

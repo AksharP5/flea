@@ -71,8 +71,7 @@ function run(check) {
     check("a clamped handle removes a non-zero origin before mapping", Scroll.handleOffset(49900, 100, 100000, 400, 400, 24), 188)
     check("a clamped handle adds the origin back to a dragged position", Scroll.positionForHandle(188, 100, 100000, 400, 400, 24), 49900)
 
-    // The lane every scrolling listing reserves at its right edge: rowPaddingX wide, whether or
-    // not the bar shows, so rows never reflow and the last column never sits under the bar.
+    // The lane stays reserved, so rows never reflow under the bar.
     check("the lane is the row padding itself", Scroll.lane(14), 14)
     check("the lane scales with text size", Scroll.lane(16), 16)
     check("no padding leaves no lane", Scroll.lane(0), 0)

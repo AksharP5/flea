@@ -15,8 +15,7 @@ function countRe(text, re) {
     return found ? found.length : 0
 }
 
-// The board date, 2026-09-23, built from local components so the suite reads the
-// same boundary whatever timezone it runs in.
+// Built from local components, so the suite reads the same boundary in any timezone.
 function at(y, mo, d, h, mi, s) {
     return new Date(y, mo - 1, d, h || 0, mi || 0, s || 0).getTime()
 }

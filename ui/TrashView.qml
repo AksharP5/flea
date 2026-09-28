@@ -6,6 +6,7 @@ import "js/Format.js" as Format
 import "js/Icons.js" as Icons
 import "js/Keymap.js" as Keymap
 import "js/Ops.js" as Ops
+import "js/Buttons.js" as Buttons
 import "js/Tap.js" as Tap
 import "js/TrashDates.js" as Trash
 import "js/Trash.js" as TrashKeys
@@ -31,8 +32,6 @@ FocusScope {
     property int cursor: 0
     property double trashArmedAt: 0
     property int requestId: 0
-    // The pressed shrink every tappable mark in this tree takes; DialogButton.qml takes the same.
-    readonly property real pressScale: 0.96
     property string pendingOp: ""
     property bool operationActive: false
     readonly property bool busy: pendingOp.length > 0
@@ -318,13 +317,13 @@ FocusScope {
                     id: backButton
                     width: Theme.hitMin; height: parent.height; maxSize: Theme.chromeMarkSize
                     name: "arrow-left"; color: Theme.color.foreground
-                    scale: backTap.pressed && !Theme.reducedMotion ? root.pressScale : 1
+                    scale: backTap.pressed && !Theme.reducedMotion ? Buttons.PRESS_SCALE : 1
                     Accessible.role: Accessible.Button
                     Accessible.name: "Back"
                     Accessible.onPressAction: root.close()
                     Behavior on scale {
                         enabled: !Theme.reducedMotion
-                        NumberAnimation { duration: 150; easing.type: Easing.OutQuad }
+                        NumberAnimation { duration: Buttons.PRESS_MS; easing.type: Easing.OutQuad }
                     }
                     TapHandler { id: backTap; onTapped: root.close() }
                 }

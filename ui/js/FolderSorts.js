@@ -2,9 +2,7 @@
 
 .import "Sort.js" as Sort
 
-// A folder's own sort, issue 179: written only when the operator chooses a sort in that
-// folder, read once per listing, forgotten through the Sort by flyout. The map lives in
-// ui.json as folderSorts, oldest first, at most MAX entries, in Settings' own spelling.
+// Written only on a user sort in that folder, read once per listing, oldest first.
 
 // The cap ui.json holds, oldest first; setting past it drops the folders sorted longest ago.
 var MAX = 500
@@ -56,8 +54,12 @@ function forget(sorts, path) {
     return next
 }
 
-// The order a listing takes: the folder's own while remembering is on, else the default.
-// A stored key no order knows reads as the default, so a newer Flea's key never wedges this one.
+// A user sort writes its folder only while remembering is on.
+function shouldRemember(remember, path) {
+    return remember !== false && !!path
+}
+
+// An unknown stored key reads as the default, so a newer Flea never wedges this one.
 function orderFor(sorts, path, fallback, remember) {
     if (remember !== false) {
         var own = get(sorts, path)

@@ -34,7 +34,7 @@ Item {
     implicitWidth: Math.max(Theme.hitMin, text.implicitWidth + 2 * root.horizontalPadding + 2 * Theme.spacing.hairline)
     implicitHeight: Theme.rowHeight - Theme.spacing.rowPaddingY
     opacity: root.available ? 1 : Buttons.DISABLED_OPACITY
-    scale: tap.pressed && root.available && !Theme.reducedMotion ? 0.96 : 1
+    scale: tap.pressed && root.available && !Theme.reducedMotion ? Buttons.PRESS_SCALE : 1
 
     Accessible.role: Accessible.Button
     Accessible.name: root.label
@@ -42,7 +42,7 @@ Item {
 
     Behavior on scale {
         enabled: !Theme.reducedMotion
-        NumberAnimation { duration: 150; easing.type: Easing.OutQuad }
+        NumberAnimation { duration: Buttons.PRESS_MS; easing.type: Easing.OutQuad }
     }
 
     Rectangle {
