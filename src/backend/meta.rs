@@ -401,7 +401,7 @@ mod tests {
         assert_eq!(stats.iter().map(|s| (s.size, s.mtime)).collect::<Vec<_>>(), [(30, 300), (10, 100), (20, 200)]);
         for by in [crate::backend::sort::SortBy::Size, crate::backend::sort::SortBy::Mtime] {
             let mut l = build();
-            crate::backend::metasort::sort_by_stat(&mut l, d.path(), by, false);
+            crate::backend::metasort::sort_by_stat(&mut l, d.path(), by, false, false);
             assert_eq!((0..l.len()).map(|i| l.name(i)).collect::<Vec<_>>(), ["a.txt", "c.txt", "b.txt"]);
             // The spans moved, so each row's figures must still be its own name's.
             let figures: Vec<(u64, i64)> = (0..l.len()).map(|i| l.gio_for(i).map(|g| (g.size, g.mtime)).unwrap_or_default()).collect();
