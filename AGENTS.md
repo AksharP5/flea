@@ -2533,6 +2533,11 @@ the scan and the `fsinfo` answer that never blocks). The worker is the new
 `src/backend/fsinforeq.rs` at 319, over the soft budget and inside the hard cap; `src/backend/extclass.rs` stands at 219
 with `gvfs_root` and `classify_entry`, and `src/backend/mountinfo.rs` at 142 carries the mount point.
 
+The fsinfo ask gate and the symlink class take `src/backend/fsinforeq.rs` from 319 past the hard
+cap to a recorded 406: the `asked` gate and its test, the resolve that follows the raw mount
+check with its tests, and the one-statfs reader seam, each count re-derived with `wc -l`;
+`src/backend/extclass.rs` stands at 291 with `resolved` and `classify_in`.
+
 ## The key table is generated
 
 `keys.toml` at the repository root is the single source of truth for every binding.

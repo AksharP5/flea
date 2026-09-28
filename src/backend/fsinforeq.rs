@@ -182,7 +182,7 @@ mod tests {
     #[test]
     fn a_client_that_never_asks_for_figures_starts_no_statfs() {
         let (events, _rx) = std::sync::mpsc::channel();
-        let mut fs = FsInfo::with_reader(events, Arc::new(|_: PathBuf| figures(7)));
+        let mut fs = FsInfo::with_reader(events, Arc::new(|_: PathBuf| (figures(7), None)));
         fs.list_arrived(&share_dir("a"));
         assert!(fs.inflight.is_empty(), "the TUI lists a share and never asks for its figures, so no statfs starts");
         let _ = fs.answer(&share_dir("a"));
