@@ -2590,6 +2590,16 @@ its progress reports and the fallback when a filesystem has no range writeback),
 writes and that EINVAL from a range flush is not a failed copy; `src/backend/durable.rs` stands at 347
 for the sync_range wrapper, its syscall declaration and range_unsupported.
 
+Fixr4r1 moves two recorded ceilings, each re-derived with `wc -l`: `src/backend/copyfile.rs` 459 to
+480 for the pipelined writeback (WRITE alone on slice k, then WAIT on k-1 with reports through k-1,
+the final fsync confirming the rest, the EINVAL fallback kept on both legs), and
+`src/backend/durable_tests.rs` 555 to 638 for driving copy_file_at (EINVAL falls back to final-only
+with one fsync and zero waits, a slice failure notes file_failed with one flush and journals the
+partial, mids equal waits); `src/backend/durable.rs` stands at 389 for sync_range_write, the
+RANGE_WAITS counter and the EINVAL seam. tests/colhero.* are deleted: the real ColumnsArea needs
+qs.Commons, Theme/ViewState and Flea children no qml6 harness can load, so any stub rebuild would
+re-declare the wiring it claims to prove; tests/ui.sh views is the gate.
+
 ## The key table is generated
 
 `keys.toml` at the repository root is the single source of truth for every binding.

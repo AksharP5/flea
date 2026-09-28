@@ -82,6 +82,8 @@ fn copy_file_at(src: At, dst: At, total: u64, p: &mut Progress) -> Result<(), Fl
     let mut confirmed: u64 = 0;
     // A filesystem without range writeback (some FUSE mounts answer EINVAL) leaves the verdict to the final fsync.
     let mut slicing = durable;
+    // Offset of the slice whose writeback started but whose wait is still owed.
+    let mut inflight: Option<u64> = None;
     loop {
         if cancelled(p) {
             // The partial file goes with the cancel: a half-written destination is not a result anyone asked for.
@@ -107,11 +109,16 @@ fn copy_file_at(src: At, dst: At, total: u64, p: &mut Progress) -> Result<(), Fl
             };
             (p.on_bytes)(reported, against);
         } else {
-            // Each confirmed slice reports what the drive holds, so the card moves mid-file.
-            while slicing && done - confirmed >= CONFIRM_BYTES {
-                if let Err(e) = crate::backend::durable::sync_range(&w, confirmed, CONFIRM_BYTES) {
+            // Pipelined writeback: slice k starts with WRITE alone, then slice k-1 waits and reports.
+            loop {
+                let next = confirmed + inflight.map(|_| CONFIRM_BYTES).unwrap_or(0);
+                if !slicing || done < next + CONFIRM_BYTES {
+                    break;
+                }
+                if let Err(e) = crate::backend::durable::sync_range_write(&w, next, CONFIRM_BYTES) {
                     if crate::backend::durable::range_unsupported(&e) {
                         slicing = false;
+                        inflight = None;
                         break;
                     }
                     if let Some(durability) = p.durability.as_mut() {
@@ -119,12 +126,26 @@ fn copy_file_at(src: At, dst: At, total: u64, p: &mut Progress) -> Result<(), Fl
                     }
                     return Err(left_half_written(p, dst, &w, from_io("copy", &dst.named.to_string_lossy(), &e)));
                 }
-                confirmed += CONFIRM_BYTES;
-                let (reported, against) = match p.tree {
-                    Some(carried) => (carried + confirmed, 0),
-                    None => (confirmed, total),
-                };
-                (p.on_bytes)(reported, against);
+                if let Some(prev) = inflight {
+                    if let Err(e) = crate::backend::durable::sync_range(&w, prev, CONFIRM_BYTES) {
+                        if crate::backend::durable::range_unsupported(&e) {
+                            slicing = false;
+                            inflight = None;
+                            break;
+                        }
+                        if let Some(durability) = p.durability.as_mut() {
+                            durability.note_file_failed();
+                        }
+                        return Err(left_half_written(p, dst, &w, from_io("copy", &dst.named.to_string_lossy(), &e)));
+                    }
+                    confirmed += CONFIRM_BYTES;
+                    let (reported, against) = match p.tree {
+                        Some(carried) => (carried + confirmed, 0),
+                        None => (confirmed, total),
+                    };
+                    (p.on_bytes)(reported, against);
+                }
+                inflight = Some(next);
             }
         }
     }

@@ -12,6 +12,10 @@ thread_local! {
     static FAIL_DIR: Cell<bool> = const { Cell::new(false) };
     static FILE_FLUSHES: Cell<usize> = const { Cell::new(0) };
     static DIR_FLUSHES: Cell<usize> = const { Cell::new(0) };
+    // A range seam answering EINVAL, so the copy falls back to the final fsync.
+    static FAIL_RANGE: Cell<bool> = const { Cell::new(false) };
+    // Completed slice waits, so a test pins reports against waits.
+    static RANGE_WAITS: Cell<usize> = const { Cell::new(0) };
 }
 
 // Sample input: "fuse.rclone" trues, "fuse.sshfs" falses.
@@ -200,11 +204,35 @@ extern "C" {
     fn sync_file_range(fd: i32, offset: i64, nbytes: i64, flags: u32) -> i32;
 }
 
-// One written slice is confirmed to the drive; a failure refuses the bytes the same way an fsync failure does.
-pub fn sync_range(f: &std::fs::File, offset: u64, len: u64) -> std::io::Result<()> {
+// One written slice starts its writeback without waiting, so the next slice writes while it flies.
+pub fn sync_range_write(f: &std::fs::File, offset: u64, len: u64) -> std::io::Result<()> {
+    #[cfg(test)]
+    if FAIL_RANGE.with(|v| v.get()) {
+        return Err(std::io::Error::from_raw_os_error(22));
+    }
     if seam_flush(false) {
         return Err(std::io::Error::new(std::io::ErrorKind::Other, "simulated fsync failure"));
     }
+    use std::os::unix::io::AsRawFd;
+    let rc = unsafe { sync_file_range(f.as_raw_fd(), offset as i64, len as i64, SYNC_FILE_RANGE_WRITE) };
+    if rc == 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error())
+    }
+}
+
+// One written slice is confirmed to the drive; a failure refuses the bytes the same way an fsync failure does.
+pub fn sync_range(f: &std::fs::File, offset: u64, len: u64) -> std::io::Result<()> {
+    #[cfg(test)]
+    if FAIL_RANGE.with(|v| v.get()) {
+        return Err(std::io::Error::from_raw_os_error(22));
+    }
+    if seam_flush(false) {
+        return Err(std::io::Error::new(std::io::ErrorKind::Other, "simulated fsync failure"));
+    }
+    #[cfg(test)]
+    RANGE_WAITS.with(|v| v.set(v.get() + 1));
     use std::os::unix::io::AsRawFd;
     let flags = SYNC_FILE_RANGE_WAIT_BEFORE | SYNC_FILE_RANGE_WRITE | SYNC_FILE_RANGE_WAIT_AFTER;
     let rc = unsafe { sync_file_range(f.as_raw_fd(), offset as i64, len as i64, flags) };
@@ -306,6 +334,8 @@ pub fn test_reset() {
     FAIL_DIR.with(|v| v.set(false));
     FILE_FLUSHES.with(|v| v.set(0));
     DIR_FLUSHES.with(|v| v.set(0));
+    FAIL_RANGE.with(|v| v.set(false));
+    RANGE_WAITS.with(|v| v.set(0));
 }
 
 #[cfg(test)]
@@ -314,11 +344,23 @@ pub fn test_reset_counts() {
     FAIL_DIR.with(|v| v.set(false));
     FILE_FLUSHES.with(|v| v.set(0));
     DIR_FLUSHES.with(|v| v.set(0));
+    FAIL_RANGE.with(|v| v.set(false));
+    RANGE_WAITS.with(|v| v.set(0));
 }
 
 #[cfg(test)]
 pub fn test_counts() -> (usize, usize) {
     (FILE_FLUSHES.with(|v| v.get()), DIR_FLUSHES.with(|v| v.get()))
+}
+
+#[cfg(test)]
+pub fn test_range_waits() -> usize {
+    RANGE_WAITS.with(|v| v.get())
+}
+
+#[cfg(test)]
+pub fn test_set_fail_range(fail: bool) {
+    FAIL_RANGE.with(|v| v.set(fail));
 }
 
 #[cfg(test)]
