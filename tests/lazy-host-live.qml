@@ -8,6 +8,7 @@ ShellRoot {
     property bool finished: false
     property int failures: 0
     property int orderCount: 0
+    property int orderCountB: 0
     function fail(text) {
         failures += 1
         console.log("LAZY_HOST FAIL " + text)
@@ -55,6 +56,7 @@ ShellRoot {
                 return
             }
             gateA.item.orderRequested.connect(function () { root.orderCount += 1 })
+            gateB.item.orderRequested.connect(function () { root.orderCountB += 1 })
             // Bind like WindowBody does, so a true default would flip false here and order early.
             gateA.item.listInFlight = Qt.binding(function () { return stubPane.inFlight })
             noEarly.restart()
@@ -114,7 +116,7 @@ ShellRoot {
         repeat: false
         onTriggered: {
             if (!gateB.item || !gateB.item.ordered) root.fail("fallback never ordered a listing that never lands")
-            if (root.orderCount !== 1) root.fail("expected exactly one order, got " + root.orderCount)
+            if (root.orderCountB !== 1) root.fail("expected exactly one fallback order, got " + root.orderCountB)
             root.done()
         }
     }

@@ -51,11 +51,12 @@ fn force_copy() -> bool {
 // Test builds only: fail the source re-check, so the unverified-source arm drives without a sick filesystem.
 #[cfg(test)]
 thread_local! {
-    static INSPECT_FAIL: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    static INSPECT_FAIL: std::cell::Cell<i32> = const { std::cell::Cell::new(0) };
 }
+// The errno the re-check answers with; 0 lets the real lstat run.
 #[cfg(test)]
-pub(crate) fn test_set_inspect_fail(fail: bool) {
-    INSPECT_FAIL.with(|v| v.set(fail));
+pub(crate) fn test_set_inspect_fail(errno: i32) {
+    INSPECT_FAIL.with(|v| v.set(errno));
 }
 // Cleared on drop, so a failing test never leaks the failure into the next one on its thread.
 #[cfg(test)]
@@ -63,25 +64,34 @@ pub(crate) struct InspectFailGuard;
 #[cfg(test)]
 impl InspectFailGuard {
     pub(crate) fn hold() -> Self {
-        test_set_inspect_fail(true);
+        Self::hold_errno(EIO_ERRNO)
+    }
+    pub(crate) fn hold_errno(errno: i32) -> Self {
+        test_set_inspect_fail(errno);
         InspectFailGuard
     }
 }
 #[cfg(test)]
 impl Drop for InspectFailGuard {
     fn drop(&mut self) {
-        test_set_inspect_fail(false);
+        test_set_inspect_fail(0);
     }
 }
 
 // ESTALE means the server dropped the handle, so the source is gone the same way ENOENT is.
-const ESTALE: i32 = 116;
+pub(crate) const ESTALE: i32 = 116;
+// EIO, the transient error a sick NFS or SMB mount answers an lstat with.
+#[cfg(test)]
+const EIO_ERRNO: i32 = 5;
 
 // A transient lstat error answers EIO-shaped, the shape a sick NFS or SMB mount gives back.
 fn inspect_source(path: &Path) -> Result<ItemIdentity, std::io::Error> {
     #[cfg(test)]
-    if INSPECT_FAIL.with(|v| v.get()) {
-        return Err(std::io::Error::from_raw_os_error(5));
+    {
+        let injected = INSPECT_FAIL.with(|v| v.get());
+        if injected != 0 {
+            return Err(std::io::Error::from_raw_os_error(injected));
+        }
     }
     path.symlink_metadata().map(|meta| ItemIdentity::record(&meta))
 }

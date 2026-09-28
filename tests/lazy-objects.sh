@@ -8,9 +8,7 @@ for f in ui/NetworkMounts.qml ui/NetworkHostGate.qml ui/Preview.qml ui/WindowBod
 # Upper-case property names never load, so every .qml under ui/ is swept, boot included.
 upper=$(grep -rnE 'property[[:space:]]+[^[:space:]]+[[:space:]]+[A-Z][A-Za-z0-9_]*' "$tree/ui" --include='*.qml' || true)
 [ -z "$upper" ] || { printf 'FAIL upper-case QML property name (must start lower-case):\n%s\n' "$upper"; exit 1; }
-# Static wiring no live probe replaces: the poll's mountinfo read never blocks the
-# GUI thread, the rail pushes bookmarks on every service arrival, and every bridge
-# wait read null-guards through root instead of reading the flow bare.
+# Static wiring no live probe replaces: async mountinfo poll, bookmarks pushed on arrival, null-guarded bridge reads.
 fail() { printf 'FAIL %s\n' "$*"; exit 1; }
 have() { grep -qF "$2" "$tree/$1" || fail "$1 misses $2"; }
 missing() { grep -qF "$2" "$tree/$1" && fail "$1 still carries $2"; }

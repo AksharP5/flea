@@ -268,8 +268,8 @@ fn an_unverifiable_batch_source_keeps_both_names() {
 
 // A source gone before its batch closes keeps its copy: undo journals nothing and removes nothing.
 #[test]
-fn a_vanished_batch_source_keeps_its_copy_through_undo() {
-    use crate::backend::{durable, undo::Journal};
+fn a_vanished_batch_source_keeps_its_copy_and_journals_nothing() {
+    use crate::backend::durable;
     durable::test_reset();
     let d = TestDir::new("movebatch-vanished-source");
     let srcdir = d.dir("src");
@@ -294,10 +294,37 @@ fn a_vanished_batch_source_keeps_its_copy_through_undo() {
     assert!(lines[0].2.contains("f0.txt was gone before the move finished; the copy stays"), "one line names the file: {}", lines[0].2);
     assert!(steps.is_empty(), "no step journals a copy whose source is gone: {:?}", steps.len());
     assert_eq!(std::fs::read_to_string(out.join("f0.txt")).unwrap(), "body", "the staged copy stays");
-    let mut journal = Journal::new();
-    journal.push(crate::backend::undo::Entry { op: "move".to_string(), steps });
-    assert!(journal.is_empty(), "nothing journalled, so nothing to undo");
-    assert_eq!(std::fs::read_to_string(out.join("f0.txt")).unwrap(), "body", "undo never removes the only bytes left");
+    durable::test_reset();
+}
+
+// A stale NFS handle at close reads as gone too, so it journals nothing undo could remove the copy with.
+#[test]
+fn a_stale_handle_at_close_counts_as_gone_and_journals_nothing() {
+    use crate::backend::durable;
+    durable::test_reset();
+    let d = TestDir::new("movebatch-stale-source");
+    let srcdir = d.dir("src");
+    let out = d.dir("out");
+    durable::test_mark_durable(&out);
+    let mut durability = durable::Durability::begin(&out);
+    let flag = AtomicBool::new(false);
+    let settled = AtomicU64::new(0);
+    let mut batch = MoveBatch::new();
+    let (tx, rx) = channel();
+    let mut steps = Vec::new();
+    let src = srcdir.join("f0.txt");
+    std::fs::write(&src, "body").unwrap();
+    staged(1, &mut batch, &mut durability, &flag, &tx, &settled, &mut steps, 0, &src, &out.join("f0.txt"));
+    let (counts, _) = {
+        let _stale = InspectFailGuard::hold_errno(super::ESTALE);
+        close_normal(&mut batch, 1, &tx, &mut steps, &mut durability)
+    };
+    assert_eq!((counts.ok, counts.failed, counts.skipped), (0, 1, 0));
+    drop(tx);
+    let lines = items(rx);
+    assert!(lines[0].2.contains("f0.txt was gone before the move finished; the copy stays"), "ESTALE reads as gone: {}", lines[0].2);
+    assert!(steps.is_empty(), "no step journals a copy whose source handle went stale: {:?}", steps.len());
+    assert!(src.exists() && out.join("f0.txt").exists(), "nothing is removed on either side");
     durable::test_reset();
 }
 

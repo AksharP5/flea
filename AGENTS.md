@@ -2689,6 +2689,8 @@ R7src moves two recorded ceilings, each re-derived with `wc -l`:
 `src/backend/movebatch.rs` 428 to 456 for the gone-source arm that journals no step,
 and `src/backend/movebatch_tests.rs` 466 to 501 for the vanished-source undo test.
 
+Round 4 of the 0.3.6 review moves 2 ceilings (the errno test seam and the stale-handle test), each re-derived with `wc -l`: `src/backend/movebatch.rs` 456 to 466, `src/backend/movebatch_tests.rs` 501 to 528.
+
 ## The key table is generated
 
 `keys.toml` at the repository root is the single source of truth for every binding.
