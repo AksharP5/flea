@@ -81,6 +81,7 @@ function run(check) {
     var openTabSpec = Menu.INVENTORY.filter(function (r) { return r[0] === "openTab" })[0]
     var shelfSpec = Menu.INVENTORY.filter(function (r) { return r[0] === "shelf" })[0]
     check("New tab keeps its own label", openTabSpec[1], "New tab")
+    check("Add to shelf keeps its label and the shelf's own glyph", shelfSpec[1] + "|" + shelfSpec[2], "Add to shelf|shelf")
     check("New tab's mark is real, not the silent file fallback",
           Icons.pathFor(openTabSpec[2]) === Icons.pathFor("file"), false)
     check("Add to shelf draws the shelf's own cut glyph, not the file fallback",

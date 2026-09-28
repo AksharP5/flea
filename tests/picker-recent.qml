@@ -3,8 +3,7 @@ import Quickshell
 import Quickshell.Io
 import "flea" as Flea
 
-// An absent history answers no rows with no warning on either read, a directory answers no
-// rows with one warning; the log check is tests/picker-recent.sh.
+// Absent history: no rows, no warning on either read; a directory: no rows, one warning (checked in picker-recent.sh).
 ShellRoot {
     id: root
     readonly property string home: Quickshell.env("HOME")

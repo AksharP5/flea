@@ -47,8 +47,7 @@ QtObject {
     property XmlListModel historyModel: XmlListModel {
         id: history
         query: "/xbel/bookmark"
-        // An absent, empty or unreadable history answers Ready with no rows, and a truncated one
-        // answers with the bookmarks it did read: either way the rail draws what is really there.
+        // Never on the construction-time Null: that answered refreshed with no rows, and the path jump takes the first answer.
         onStatusChanged: if (status === XmlListModel.Ready || status === XmlListModel.Error) root.rebuild()
         XmlListModelRole { name: "href"; attributeName: "href" }
         XmlListModelRole { name: "visited"; attributeName: "visited" }

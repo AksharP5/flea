@@ -174,6 +174,7 @@ function run(check) {
     var bothVolume = { path: "/run/media/gm/128GB", label: "128GB", group: "device", kind: "volume", device: "/dev/sda1", mounted: true, removable: true, volumeMenu: true }
     function entries(rows) { return rows.map(function (r) { return r.separator ? "-" : r.label }).join("|") }
     check("a volume offering both releases draws Open, Unmount and Eject", entries(Mounts.rowMenu(bothVolume)), "Open|-|Unmount|Eject")
+    check("railMenu offers Ctrl+E those same rows", entries(Mounts.railMenu(bothVolume)), "Open|-|Unmount|Eject")
     check("and Ctrl+E picks eject over unmountVolume", Eject.releaseFromRows(Mounts.railMenu(bothVolume)), "eject")
     check("a favourite offers INVENTORY's own Remove from Favorites", labels(Mounts.rowMenu(favourite)), "Remove from Favorites")
     check("no entry at all offers nothing rather than throwing", Mounts.rowMenu(null).length, 0)
