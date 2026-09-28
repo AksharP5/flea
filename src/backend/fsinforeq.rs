@@ -47,7 +47,7 @@ impl FsInfo {
         FsInfo { events, reader, known: HashMap::new(), inflight: HashMap::new(), waiting: HashSet::new(), seq: 0 }
     }
 
-    // Before the scan, so a share's statfs runs beside its gio listing; a kernel mount waits for fsinfo, keeping local lists free of a mountinfo read.
+    // After a share's rows are out, so the statfs never competes with its gio listing; a kernel mount waits for fsinfo.
     pub fn list_arrived(&mut self, path: &Path) {
         if let Some(root) = gvfs_root(path) {
             self.refresh(root, path.to_path_buf());

@@ -170,8 +170,6 @@ fn handle_line(
         }
         Request::List { path, first, hidden } => {
             end_walks(out, st, pool);
-            // Before the scan, so a slow statfs runs beside the gio listing instead of behind it.
-            fsinfo.list_arrived(Path::new(&path));
             // Before the scan, because a change readdir raced is missing from the rows this answers with.
             watch.begin(Path::new(&path));
             match scan(&path, hidden) {
@@ -191,6 +189,9 @@ fn handle_line(
                         eprintln!("flea: {} will not follow outside changes, inotify refused a watch on it", path);
                     }
                     adopt(out, st, pool, tb, &path, l, (read_ms + pass_ms, sort_ms), &sized, first);
+                    out.flush().ok();
+                    // After the rows, because a statfs beside gio's own listing slows it on the share.
+                    fsinfo.list_arrived(Path::new(&path));
                 }
                 Err(e) => {
                     // The listing did not move, so neither does its watch.
