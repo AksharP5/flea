@@ -611,8 +611,8 @@ Example: `{"c":"transfercancel","id":12}`
 
 Cancels the running transfer or archive `extract` if `id` names it, and does nothing otherwise, so a
 cancel aimed at an operation that already finished can never reach the one after it. A compress
-has no operator cancel; its flag is never set, so a `transfercancel` naming a compress `id`
-does nothing and the compress runs to its end. There is no
+or a convert has no operator cancel, so a `transfercancel` naming either `id` does nothing and the
+job runs to its end. There is no
 response line of its own: a transfer answers with its own `transferdone` carrying `cancelled` true, and
 an extract answers its own `archivedone` with `ok` false and an `err` of `cancelled`.
 
@@ -626,10 +626,10 @@ folder is left in place rather than deleted under a live writer, and the `err` n
 
 A `quit`, or stdin closing, cancels a running operation the same way and waits for its terminal line
 before the process exits, so shutting down mid-copy also leaves nothing half-written behind. A
-running compress is the exception on both halves. No cancel reaches its flag, so it runs to
-its end, and the drain watches only the slot operation and the thumbnail queue, so a quit does
-not wait for it. The process exits, the compress dies with it by `--die-with-parent`, and its
-`.flea-work-arc-*` staging beside the destination is left behind.
+quit sets each detached compress and convert flag too and waits past the cancel drain bound,
+so each job's `Work` cleanup runs before the process exits and no `.flea-work-*` folder is
+left beside the destination. A job still running past that bound keeps its folder in place
+and its terminal `err` names it.
 
 ### trash
 

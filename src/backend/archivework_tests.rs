@@ -194,7 +194,7 @@ fn the_compressor_shares_the_extracts_uncapped_jail() {
     d.dir("src");
     d.file("src/a.txt", "body");
     let dest = d.join("out.zip");
-    compress(&formats, d.path(), &["src".to_string()], "zip", &dest).expect("a small compress publishes");
+    compress(&formats, d.path(), &["src".to_string()], "zip", &dest, &AtomicBool::new(false)).expect("a small compress publishes");
     assert!(dest.is_file(), "and its destination really landed");
 }
 
@@ -229,7 +229,7 @@ fn compress_itself_runs_outside_any_cpu_cap() {
     if crate::backend::sandboxprobe::skipped() { return; }
     let d = TestDir::new("archcompressprobe");
     let dest = d.join("out.zip");
-    compress(&Formats::test_probe(), d.path(), &["src".to_string()], "zip", &dest)
+    compress(&Formats::test_probe(), d.path(), &["src".to_string()], "zip", &dest, &AtomicBool::new(false))
         .expect("compress() itself must run outside any CPU cap");
     assert!(dest.is_file(), "and its destination really landed");
 }
@@ -289,12 +289,15 @@ fn a_cancel_past_the_drain_bound_keeps_naming_the_work_folder() {
     let began = Instant::now();
     let result = run_boxed_cancellable_observed("archive", inner, d.path(), &mut work, &cancel, &started);
     set_reader_hold_ms(0);
-    set_drain_secs(10);
+    set_drain_secs(CANCEL_DRAIN_SECS);
     let error = result.unwrap_err();
     notifier.join().expect("the cancellation notifier finished");
     assert_eq!(error.msg, format!("cancelled; the archive tool did not exit, so its work folder {name} was left in place"));
     assert!(began.elapsed() < Duration::from_secs(2), "a cancelled job waited past its bound");
-    assert!(work.dir.is_dir(), "the kept folder was removed under a live writer");
+    // The folder outlives the guard: asserting while work is still in scope cannot tell keep from leak.
+    let kept = work.dir.clone();
+    drop(work);
+    assert!(kept.is_dir(), "the kept folder was removed under a live writer");
 }
 
 // keep() disarms the cleanup: the directory stands after its own drop, for the caller to remove.

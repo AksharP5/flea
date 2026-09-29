@@ -2749,7 +2749,7 @@ the start and the stamp at 32 lines, `ui/Row.qml` hands them down at 412 of its 
 
 On the 0.3.7 branch, today dates join the clipboard marks in `ui/Row.qml`, which goes from 453 to 456, re-derived with `wc -l` on the integrated branch. Later work leaves it at 444.
 
-Density040 and GridStops move one recorded ceiling, re-derived with `wc -l`: `ui/js/Settings.js` 427 to 428 for the Tight density row with its hint and the Huge and Largest thumbnail stops. The maths went to the new `ui/js/Density.js`, 46 lines inside both budgets, rather than into `Theme.qml`, which stands at 400 at the hard cap; `ui/js/GridGeometry.js` takes the cell height at 22, `ui/GridTile.qml` at 203, `ui/GridArea.qml` at 277, `ui/ViewState.qml` at 395 and `src/uischema.rs` at 408, the last inside its recorded ceiling rather than any soft budget. Later work leaves `ui/js/Density.js` at 44, `ui/js/GridGeometry.js` at 21, `ui/GridArea.qml` at 279 and `ui/ViewState.qml` at 398, each re-derived with `wc -l`.
+Density040 and GridStops move one recorded ceiling, re-derived with `wc -l`: `ui/js/Settings.js` 427 to 428 for the Tight density row with its hint and the Huge and Largest thumbnail stops. The maths went to the new `ui/js/Density.js`, 46 lines inside both budgets, rather than into `Theme.qml`, which stands at 400 at the hard cap; `ui/js/GridGeometry.js` takes the cell height at 22, `ui/GridTile.qml` at 203, `ui/GridArea.qml` at 277, `ui/ViewState.qml` at 395 and `src/uischema.rs` keeps its recorded 408 rather than any soft budget. Later work leaves `ui/js/Density.js` at 44, `ui/js/GridGeometry.js` at 21, `ui/GridArea.qml` at 279 and `ui/ViewState.qml` at 398, each re-derived with `wc -l`.
 
 Buttons040 variant A moves four recorded ceilings, each re-derived with `wc -l` at the commit that
 recorded it. `ui/OpenWithDialog.qml` 588 to 592 for the fixed Open primary, the search field's focus
@@ -2800,6 +2800,8 @@ f037movefix moves six ceilings, each re-derived with `wc -l`: `src/backend/durab
 f037cancel moves two ceilings, each re-derived with `wc -l`: `src/backend/metareq.rs` 423 to 424 for the sandbox-pid watchdog kill beside the group kill, and `src/backend/thumbs.rs` 441 to 442 for the status-fd argv on the exec path; the kill tree itself is the new `src/backend/jail.rs` at 192, inside both budgets, `src/backend/sandbox.rs` keeps 300 inside the hard cap for the status-fd argv helper, and `src/backend/archivework.rs`, `src/backend/child.rs`, `src/backend/mediaprobe.rs`, `src/backend/workerlink.rs` and `src/tui/job.rs` stay inside their budgets.
 
 f037cancelfix moves three ceilings, each re-derived with `wc -l`: `src/backend/jail.rs` 192 to 387 for the CLOEXEC status pipe, the owned-pid kill gate with its tests, the pre-kill bounded wait with the EOF 0-store and the named reader and gone bounds; `src/backend/metareq.rs` 424 to 416 for routing both sandbox kills through that gate and collapsing two stacked comments; and `src/backend/mediaprobe.rs` 219 to 216 for routing its watchdog kill through the same gate. `src/backend/sandbox.rs` keeps 300 and `src/backend/child.rs` keeps 272, both re-derived, over the soft budget and under the hard cap. The sentinel naming leaves `src/backend/jail.rs` at 389. Later work, the #211 archive jail split then U3, leaves `src/backend/sandbox.rs` at 365.
+
+f037u11 moves three ceilings, each re-derived with `wc -l`: `src/backend/run.rs` 444 to 461 for the quit drain setting each detached flag and waiting past the cancel drain bound beside the slot and the thumbnail queue, `src/backend/opsdispatch.rs` 536 to 538 for the detached registry field and its init, and `src/backend/opsreq/tests.rs` 460 to 461 for the convert call's two new arguments. The tracker itself went to `src/backend/opscancel.rs`, 87 to 134 inside both budgets beside `Live`, the flag threading keeps `src/backend/archivereq.rs` at 373 and `src/backend/archivework.rs` at 380 over the soft budget and under the hard cap, the archive tests moved out of line the way `opsreq/tests.rs` already was, leaving `src/backend/archiveops.rs` at 140 with its tests in the new `src/backend/archiveops_tests.rs` at 262, and the quit tests went to the new `src/backend/archivequit_tests.rs` at 164 inside both budgets rather than into either file. Round 2 widens the registry to converts, which keep their CPU cap on the cancellable runner and get no UI cancel, and pins the quit wait past the cancel drain bound.
 
 ## The key table is generated
 
@@ -5013,8 +5015,9 @@ the transfer's are, or a menu's captured selection.
 `trash` or `duplicate` while one is live answers an `error` line rather than queueing. The reason is the
 surface, not the backend: the operations design gives transfers the status bar's single transient slot,
 so a second concurrent operation would have nowhere to report itself. `rename` and `mkdir` are exempt because
-neither spawns at all. An `archive` or a `convert` never claims the slot either: `Ops::claim_id` numbers them
-and they run alongside by design, so the cap was never one write of any kind.
+neither spawns at all. An `archive` extract takes the transfer slot, so a copy, move or second extract
+is refused busy while one runs; a compress and a convert never claim it: `Ops::claim_id` numbers them
+and they run alongside by design, tracked in the detached registry a quit cancels, so the cap was never one write of any kind.
 
 **`rename` and `mkdir` run on the loop's thread, the other three spawn.** Both normally take one
 syscall, but neither compatibility path below is one: an rclone directory rename copies the whole
@@ -5210,10 +5213,11 @@ cancel flag between chunks and unlinks what it had written. The operations desig
 item finishes; it does not here, because a cancel that waits out a multi-gigabyte copy is not a cancel
 and a half-written file is not a result anyone asked for. A `quit` or a closed stdin cancels the same
 way and waits for the terminal line, so shutting down mid-copy leaves nothing half-written either.
-A running compress is the exception on both halves. No cancel reaches its flag, so it runs to
-its end, and the drain watches only the slot operation and the thumbnail queue, so a quit does
-not wait for it. The process exits, the compress dies with it by `--die-with-parent`, and its
-`.flea-work-arc-*` staging beside the destination is left behind.
+A `transfercancel` naming a compress or convert id still does nothing, there is no UI cancel for
+either, but a quit or a closed stdin sets each detached flag and waits past the cancel drain bound,
+so each compress and convert `Work` cleanup runs before the process exits and no `.flea-work-*`
+folder is left behind. A job still running past that bound keeps its folder in place and its
+terminal `err` names it.
 
 **Testing them is `tests/ops.sh`**, which drives the real binary over a FIFO rather than a pipe: an
 operation answers asynchronously, so a piped script would send `undo` before the operation it meant to

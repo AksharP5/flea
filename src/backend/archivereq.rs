@@ -17,6 +17,7 @@ use std::sync::Arc;
 use std::thread;
 use super::menu_actions::{validate_sources, Selected};
 use super::opsdispatch::menu_sources;
+use crate::backend::opscancel::DetachedJobs;
 
 
 pub fn archivestarted_line(id: usize) -> String {
@@ -71,19 +72,22 @@ fn extractstarted_line(id: usize) -> String {
 
 pub(crate) fn run_archive(id: usize, compressing: bool, paths: Vec<String>, format: String,
                    archive: PathBuf, dest: PathBuf, formats: &Formats, tx: Sender<OpMsg>, selection: Option<Vec<Selected>>,
-                   cancel: Arc<AtomicBool>) {
+                   cancel: Arc<AtomicBool>, jobs: Option<Arc<DetachedJobs>>) {
     let sources: Vec<PathBuf> = if compressing { paths.iter().map(PathBuf::from).collect() } else { vec![archive.clone()] };
     let result = if let Err(error) = validate_sources(selection.as_deref(), &sources) {
         Err(op_err("archive", "", &error))
     } else if compressing {
         // A compress has nothing to verify against: it writes the archive rather than reading one.
         match split_paths(&paths) {
-            Some((parent, names)) => compress(formats, &parent, &names, &format, &dest).map(|()| true),
+            Some((parent, names)) => compress(formats, &parent, &names, &format, &dest, &cancel).map(|()| true),
             None => Err(op_err("archive", "", "a compress takes absolute paths from one directory")),
         }
     } else {
         extract(formats, &archive, &dest, &cancel)
     };
+    if let Some(tracked) = jobs {
+        tracked.remove(id);
+    }
     let line = match result {
         Ok(verified) => archivedone_line(id, true, verified, ""),
         Err(e) => archivedone_line(id, false, true, &e.msg),
@@ -93,10 +97,14 @@ pub(crate) fn run_archive(id: usize, compressing: bool, paths: Vec<String>, form
     let _ = tx.send(message);
 }
 
-pub(crate) fn run_convert(id: usize, request_id: usize, input: PathBuf, dest: PathBuf, strip: bool, tx: Sender<OpMsg>, selection: Option<Vec<Selected>>) {
+pub(crate) fn run_convert(id: usize, request_id: usize, input: PathBuf, dest: PathBuf, strip: bool, tx: Sender<OpMsg>, selection: Option<Vec<Selected>>,
+                   cancel: Arc<AtomicBool>, jobs: Option<Arc<DetachedJobs>>) {
     let result = validate_sources(selection.as_deref(), std::slice::from_ref(&input))
         .map_err(|error| op_err("convert", &input.to_string_lossy(), &error))
-        .and_then(|()| convert_one(&input, &dest, strip));
+        .and_then(|()| convert_one(&input, &dest, strip, &cancel));
+    if let Some(tracked) = jobs {
+        tracked.remove(id);
+    }
     let line = match result {
         Ok(()) => convertdone_line(id, request_id, &input.to_string_lossy(), true, &dest.to_string_lossy(), "", false),
         Err(e) => {
@@ -137,8 +145,14 @@ pub fn start_archive(
         out.flush().ok();
         return;
     }
-    // A compress carries a flag nothing sets; only an extract's is ever claimed.
+    // A compress runs alongside by design, so its flag is tracked for a quit to set.
     let (id, cancel) = if compressing { (ops.claim_id(), Arc::new(AtomicBool::new(false))) } else { ops.claim_transfer() };
+    let jobs = if compressing {
+        ops.detached.insert(id, &cancel);
+        Some(Arc::clone(&ops.detached))
+    } else {
+        None
+    };
     writeln!(out, "{}", archivestarted_line(id)).ok();
     if !compressing {
         let name = archive.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
@@ -149,7 +163,7 @@ pub fn start_archive(
     out.flush().ok();
     let tx = ops.tx.clone();
     thread::spawn(move || {
-        run_archive(id, compressing, paths, format, archive, dest, &formats, tx, selection, cancel)
+        run_archive(id, compressing, paths, format, archive, dest, &formats, tx, selection, cancel, jobs)
     });
 }
 
@@ -175,10 +189,14 @@ pub fn start_convert(out: &mut impl Write, ops: &mut Ops, input: PathBuf, dest: 
         out.flush().ok();
         return;
     }
+    // A convert runs alongside by design, so its flag is tracked for a quit to set.
+    let cancel = Arc::new(AtomicBool::new(false));
+    ops.detached.insert(id, &cancel);
+    let jobs = Arc::clone(&ops.detached);
     writeln!(out, "{}", convertstarted_line(id, request_id, &input.to_string_lossy())).ok();
     out.flush().ok();
     let tx = ops.tx.clone();
-    thread::spawn(move || run_convert(id, request_id, input, dest, strip, tx, selection.unwrap()));
+    thread::spawn(move || run_convert(id, request_id, input, dest, strip, tx, selection.unwrap(), cancel, Some(jobs)));
 }
 
 #[cfg(test)]
@@ -229,7 +247,7 @@ mod tests {
         let d = TestDir::new("archrefuse");
         let f = Formats::from_tools(true, true);
         d.file("out.zip", "already here");
-        let e = compress(&f, d.path(), &["a.txt".to_string()], "zip", &d.join("out.zip")).unwrap_err();
+        let e = compress(&f, d.path(), &["a.txt".to_string()], "zip", &d.join("out.zip"), &AtomicBool::new(false)).unwrap_err();
         assert!(e.msg.contains("already exists"));
         assert_eq!(std::fs::read_to_string(d.join("out.zip")).unwrap(), "already here");
 
@@ -242,7 +260,7 @@ mod tests {
     fn a_format_no_tool_offers_is_a_named_error_rather_than_a_silent_failure() {
         let d = TestDir::new("archnotool");
         let none = Formats::from_tools(false, false);
-        let e = compress(&none, d.path(), &["a.txt".to_string()], "zip", &d.join("out.zip")).unwrap_err();
+        let e = compress(&none, d.path(), &["a.txt".to_string()], "zip", &d.join("out.zip"), &AtomicBool::new(false)).unwrap_err();
         assert!(e.msg.contains("no tool"), "got {}", e.msg);
     }
 
@@ -250,7 +268,7 @@ mod tests {
     fn a_convert_never_writes_over_the_file_it_was_given() {
         let d = TestDir::new("cvtrefuse");
         let src = d.file("shot.png", "pixels");
-        let e = convert_one(&src, &src, false).unwrap_err();
+        let e = convert_one(&src, &src, false, &AtomicBool::new(false)).unwrap_err();
         assert!(e.msg.contains("already exists"));
         assert_eq!(std::fs::read_to_string(&src).unwrap(), "pixels");
     }
@@ -349,3 +367,7 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "archivequit_tests.rs"]
+mod quit_tests;

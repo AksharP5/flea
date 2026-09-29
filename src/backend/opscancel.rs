@@ -42,6 +42,36 @@ impl Live {
     }
 }
 
+// Detached jobs, keyed by id, so a quit sets each flag; extracts use Live.
+pub(crate) struct DetachedJobs(std::sync::Mutex<std::collections::HashMap<usize, Arc<AtomicBool>>>);
+
+impl DetachedJobs {
+    pub fn new() -> DetachedJobs {
+        DetachedJobs(std::sync::Mutex::new(std::collections::HashMap::new()))
+    }
+    pub fn insert(&self, id: usize, cancel: &Arc<AtomicBool>) {
+        if let Ok(mut held) = self.0.lock() {
+            held.insert(id, Arc::clone(cancel));
+        }
+    }
+    pub fn remove(&self, id: usize) {
+        if let Ok(mut held) = self.0.lock() {
+            held.remove(&id);
+        }
+    }
+    // A quit sets every detached flag, so each job's Work cleanup runs.
+    pub fn cancel_all(&self) {
+        if let Ok(held) = self.0.lock() {
+            for flag in held.values() {
+                flag.store(true, Ordering::Relaxed);
+            }
+        }
+    }
+    pub fn is_empty(&self) -> bool {
+        self.0.lock().map(|held| held.is_empty()).unwrap_or(true)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -83,5 +113,22 @@ mod tests {
         assert!(!flag.load(Ordering::Relaxed), "a cancel with nothing running reaches the flag Live held");
         live.claim(1, &flag);
         assert!(!flag.load(Ordering::Relaxed), "and it does not carry over to the next claim of that id");
+    }
+
+    #[test]
+    fn a_quit_cancel_reaches_every_detached_job_and_none_finished() {
+        let jobs = DetachedJobs::new();
+        assert!(jobs.is_empty());
+        let first = Arc::new(AtomicBool::new(false));
+        let second = Arc::new(AtomicBool::new(false));
+        jobs.insert(11, &first);
+        jobs.insert(12, &second);
+        assert!(!jobs.is_empty());
+        jobs.cancel_all();
+        assert!(first.load(Ordering::Relaxed) && second.load(Ordering::Relaxed));
+        jobs.remove(11);
+        assert!(!jobs.is_empty());
+        jobs.remove(12);
+        assert!(jobs.is_empty());
     }
 }

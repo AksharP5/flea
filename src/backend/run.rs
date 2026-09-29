@@ -38,6 +38,9 @@ use std::time::{Duration, Instant};
 const THUMB_WORKERS: usize = 6;
 // The whole shutdown budget: a running job is killed at the pool's own 20 s deadline, so waiting longer than that can never cut one short.
 const DRAIN_LIMIT: Duration = Duration::from_secs(25);
+// A cancelled detached job needs the cancel drain bound to kill, reap and drain its reader, plus a second for its terminal line to cross the channel.
+pub(crate) const DETACHED_WAIT: Duration =
+    Duration::from_secs(crate::backend::archivework::CANCEL_DRAIN_SECS + 1);
 
 // The loop stops on Quit; every other request continues it, because errors are responses.
 #[derive(PartialEq)]
@@ -409,13 +412,15 @@ fn drain(
     pool: &Pool,
     cache: &Cache,
 ) {
-    let deadline = Instant::now() + DRAIN_LIMIT;
-    // A clean shutdown cancels the operation rather than abandoning it: a cancelled copy removes its own
-    // partial destination, a file by copy_file and a tree by copy_dir, so quitting leaves nothing behind.
+    let start = Instant::now();
+    // A clean shutdown cancels the slot operation, so a cancelled copy removes its partial destination.
     if let Some(id) = ops.live.running() {
         ops.live.cancel(id);
     }
-    while st.outstanding > 0 || ops.live.running().is_some() {
+    // A quit sets each detached flag and waits past the cancel drain bound, so each Work cleanup runs.
+    drain_detached(out, ops, rx, start + DETACHED_WAIT);
+    let deadline = Instant::now() + DRAIN_LIMIT;
+    while st.outstanding > 0 || ops.live.running().is_some() || !ops.detached.is_empty() {
         match rx.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
             Ok(Event::Thumb(d)) => report_done(out, st, d),
             Ok(Event::Op(m)) => report_op(out, ops, m),
@@ -433,6 +438,18 @@ fn drain(
         writeln!(out, "{}", thumbed_line(row, "", 0.0)).ok();
     }
     out.flush().ok();
+}
+
+// Cancelling the detached jobs and pumping their terminal lines is this helper's whole job.
+pub(crate) fn drain_detached(out: &mut impl Write, ops: &mut Ops, rx: &Receiver<Event>, end: Instant) {
+    ops.detached.cancel_all();
+    while !ops.detached.is_empty() {
+        match rx.recv_timeout(end.saturating_duration_since(Instant::now())) {
+            Ok(Event::Op(m)) => report_op(out, ops, m),
+            Ok(_) => {}
+            Err(_) => break,
+        }
+    }
 }
 
 pub fn write_window(out: &mut impl Write, st: &State, start: usize, count: usize, tb: &Tables) {

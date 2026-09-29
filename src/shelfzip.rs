@@ -76,7 +76,7 @@ pub fn zip(rest: &[String]) -> i32 {
     // The archive tool stages beside its sources and renames the result into place, so the archive is
     // written there first and relocated after: a pile on another filesystem cannot be renamed home.
     let staged = parent.join(format!(".flea-shelf-{}-{}.zip", std::process::id(), date));
-    if let Err(e) = compress(&Formats::probe(), &parent, &names, "zip", &staged) {
+    if let Err(e) = compress(&Formats::probe(), &parent, &names, "zip", &staged, &std::sync::atomic::AtomicBool::new(false)) {
         eprintln!("flea: {}", error_line(&e));
         let _ = std::fs::remove_file(&staged);
         return 2;
