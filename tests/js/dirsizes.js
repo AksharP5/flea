@@ -51,4 +51,14 @@ function run(check) {
     check("including its partial flag", DirSizes.sizeFor(capped, 4).partial, true)
 
     check("each empty state is its own", DirSizes.empty() === DirSizes.empty(), false)
+
+    // f037sizes: folder sizes are computed only where a size is drawn, never on network/phone.
+    check("grid draws no size so it wants none", DirSizes.wantsSizes("grid", [], "", true), false)
+    check("a hidden Size column wants none", DirSizes.wantsSizes("list", ["size"], "", true), false)
+    check("a network folder wants none", DirSizes.wantsSizes("list", [], "network", true), false)
+    check("a phone folder wants none", DirSizes.wantsSizes("list", [], "phone", true), false)
+    check("an unknown class holds until fsinfo names it", DirSizes.wantsSizes("list", [], "", false), false)
+    check("a visible Size column on a local folder still wants sizes", DirSizes.wantsSizes("list", [], "", true), true)
+    check("the columns view on a local folder still wants sizes", DirSizes.wantsSizes("columns", [], "", true), true)
+    check("usb keeps sizing", DirSizes.wantsSizes("list", [], "usb", true), true)
 }

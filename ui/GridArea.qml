@@ -268,6 +268,9 @@ GridView {
     function requestDirSizes() {
         if (!root.visible || root.pane.shownTotal === 0 || root.pane.listInFlight)
             return
+        // A tile draws no size, so the grid never asks, whatever rows are visible.
+        if (!DirSizes.wantsSizes("grid", ViewState.hiddenCols, root.pane.storageClass, root.pane.storageKnown))
+            return
         var range = root.visibleRange()
         var span = Filter.span(root.pane.shown, range.first, range.last)
         var ask = Filter.keep(DirSizes.plan(root.pane.dirSizeState, root.pane.rows, root.pane.held, span.first, span.last), root.pane.shown)

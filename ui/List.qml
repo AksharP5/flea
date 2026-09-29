@@ -200,6 +200,8 @@ ListView {
     Connections {
         target: ViewState
         function onThumbnailModeChanged() { if (root.visible) settle.restart() }
+        // A hidden-then-shown Size column asks for the visible rows at that moment.
+        function onHiddenColsChanged() { if (root.visible) settle.restart() }
     }
 
     Timer {
@@ -246,6 +248,9 @@ ListView {
     // Same idiom as requestThumbs, minus a cancel: onContentYChanged already sent it, see above.
     function requestDirSizes() {
         if (!root.visible || root.pane.shownTotal === 0 || root.pane.listInFlight)
+            return
+        // A hidden Size column or a network or phone folder draws no size, so it asks for no walk.
+        if (!DirSizes.wantsSizes("list", ViewState.hiddenCols, root.pane.storageClass, root.pane.storageKnown))
             return
         // Thumbs.viewport() is reused: it takes no thumb-specific state, only geometry.
         var view = root.visibleRange()

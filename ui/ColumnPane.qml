@@ -102,6 +102,9 @@ Item {
     function requestDirSizes() {
         if (root.pane === null || !root.visible || root.pane.total === 0 || root.pane.listInFlight)
             return
+        // The active column always draws its size, so only the class gate applies here.
+        if (!DirSizes.wantsSizes("columns", [], root.pane.storageClass, root.pane.storageKnown))
+            return
         var range = root.visibleRange()
         var span = Filter.span(root.pane.shown, range.first, range.last)
         var ask = Filter.keep(DirSizes.plan(root.pane.dirSizeState, root.pane.rows, root.pane.held,
