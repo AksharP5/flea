@@ -59,15 +59,40 @@ fn a_cancel_during_jail_startup_still_ends_the_tool_promptly() {
     const ROUNDS: usize = 5;
     let d = TestDir::new("archworkstartcancel");
     set_spawn_hold_us(STARTUP_HOLD_US);
-    for _ in 0..ROUNDS {
+    for round in 0..ROUNDS {
         let mut work = Work::new(d.path(), "ext").expect("work");
         let cancel = AtomicBool::new(true);
+        // A per-round argument names this round's tool, so a survivor is found by its own cmdline.
+        let marker = format!("30.{}{}", std::process::id(), round);
         let began = Instant::now();
-        let e = run_boxed_cancellable("archive", vec!["/usr/bin/sleep".to_string(), format!("30.{}", std::process::id())],
+        let e = run_boxed_cancellable("archive", vec!["/usr/bin/sleep".to_string(), marker.clone()],
                                       d.path(), &mut work, &cancel).unwrap_err();
         assert!(began.elapsed() < Duration::from_secs(10), "a cancel during jail startup waited out the tool: {}", e.msg);
+        assert_eq!(e.msg, "cancelled", "a cancel during jail startup left the tool's folder behind");
+        assert!(tool_gone(&marker, Duration::from_secs(2)), "a cancel during jail startup left `sleep {marker}` running");
     }
     set_spawn_hold_us(0);
+}
+
+// True once no process of this uid carries the marker argument; the jail's pid namespace still shows in the host /proc.
+// Sample input: /proc/4242/cmdline is "/usr/bin/sleep\030.1234560\0".
+fn tool_gone(marker: &str, bound: Duration) -> bool {
+    let uid = crate::backend::manifestdir::current_uid();
+    let start = Instant::now();
+    loop {
+        let alive = std::fs::read_dir("/proc").map(|entries| entries.flatten().any(|entry| {
+            let owned = std::fs::metadata(entry.path()).map(|m| std::os::unix::fs::MetadataExt::uid(&m) == uid).unwrap_or(false);
+            let cmdline = std::fs::read(entry.path().join("cmdline")).unwrap_or_default();
+            owned && cmdline.split(|b| *b == 0).any(|arg| arg == marker.as_bytes())
+        })).unwrap_or(true);
+        if !alive {
+            return true;
+        }
+        if start.elapsed() > bound {
+            return false;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
 }
 
 // Issue #211: a kernel kill arrives as exit 128+n through bwrap or a real signal, never the old fallback.
