@@ -52,7 +52,7 @@ case_railpointer() {
     rail_total=$(ipc railCount)
     [[ "$rail_total" =~ ^[0-9]+$ ]] || fail "railpointer: the revealed rail has no numeric count (railCount=$rail_total railState=$(ipc railState))"
     (( rail_total >= 2 )) || fail "railpointer: the revealed rail has $rail_total rows, need two for the landed-press proof (railState=$(ipc railState))"
-    # Off row 0 by keyboard before the hide, so the move itself is keyboard-driven.
+    # Rail j still steps before the pointer path.
     if [[ "$(ipc railCursor)" == "0" ]]; then
         key j >/dev/null
         settle

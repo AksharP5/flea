@@ -50,6 +50,7 @@ tests/js/focus.js 406
 tests/js/mounts.js 383
 tests/js/network.js 306
 tests/js/ops.js 390
+tests/columnrow-geom.qml 410
 tests/columnscost.qml 416
 tests/js/status.js 354
 ui/Backend.qml 431

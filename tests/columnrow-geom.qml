@@ -260,8 +260,12 @@ ShellRoot {
 
     // The budget is the largest that fits: one more cell would overflow the slot.
     function checkTight(pane, label, name, budget, index) {
+        if (budget + 1 >= name.length) {
+            root.fail(label + " fixture name too short for width " + budget)
+            return
+        }
         var delegate = null
-        try { delegate = pane.itemAtIndex(index === undefined ? 0 : index) } catch (e) {
+        try { delegate = pane.itemAtIndex(index) } catch (e) {
             root.fail(label + " delegate read threw " + e)
             return
         }
@@ -326,6 +330,16 @@ ShellRoot {
             root.checkTight(peekWide, "a peek column at 853", root.longName, peekWide.nameBudgetPlain, 0)
             var chev = [[activeNarrow, "a chevron row at 366"], [activeWide, "a chevron row at 853"], [peekNarrow, "a chevron peek at 366"], [peekWide, "a chevron peek at 853"]]
             for (var c = 0; c < chev.length; c++) { root.checkPaneRow(chev[c][0], chev[c][1], 2, root.longName, false, chev[c][0].nameBudgetChevron); root.checkTight(chev[c][0], chev[c][1], root.longName, chev[c][0].nameBudgetChevron, 2) }
+            // Only a cursor or lifted directory takes the chevron: a file under it and a directory off it keep the full width.
+            activeNarrow.selectedIndex = 0
+            root.checkPaneRow(activeNarrow, "a file under the cursor at 366", 0, root.longName, false, activeNarrow.nameBudgetPlain)
+            root.checkTight(activeNarrow, "a file under the cursor at 366", root.longName, activeNarrow.nameBudgetPlain, 0)
+            activeNarrow.selectedIndex = 1
+            root.checkPaneRow(activeNarrow, "a directory off the cursor at 366", 2, root.longName, false, activeNarrow.nameBudgetPlain)
+            root.checkTight(activeNarrow, "a directory off the cursor at 366", root.longName, activeNarrow.nameBudgetPlain, 2)
+            activeNarrow.liftedName = root.longName
+            root.checkPaneRow(activeNarrow, "a lifted directory at 366", 2, root.longName, false, activeNarrow.nameBudgetChevron)
+            root.checkTight(activeNarrow, "a lifted directory at 366", root.longName, activeNarrow.nameBudgetChevron, 2)
             var shortDelegate = null
             try { shortDelegate = activeNarrow.itemAtIndex(1) } catch (e) {
                 root.fail("a short name delegate read threw " + e)

@@ -227,7 +227,7 @@ Item {
             lifted: root.liftedName.length > 0 && row !== null && row.n === root.liftedName
             dim: root.dim && !lifted
             // The column's own budget, so no row measures its own text to elide it.
-            nameBudget: (cell.row && cell.row.d === true && (cell.cursor || cell.lifted)) ? root.nameBudgetChevron : root.nameBudgetPlain
+            nameBudget: cell.showChevron ? root.nameBudgetChevron : root.nameBudgetPlain
 
             TapHandler {
                 id: tap
