@@ -471,6 +471,7 @@ FocusScope {
         anchors.right: parent.right
         // The held rows a double click fits and F4 fits whole; ListColumns040 never scans the directory.
         pane: root
+        viewMode: root.viewMode
         sortBy: root.backend.sortBy
         sortDesc: root.backend.sortDesc
         dualMode: root.dualMode

@@ -64,7 +64,7 @@ ui/Ipc.qml 818
 ui/NetworkDialog.qml 449
 ui/NetworkMounts.qml 838
 ui/OpenWithDialog.qml 592
-ui/Pane.qml 728
+ui/Pane.qml 729
 ui/PaneMenuActions.qml 404
 ui/PaneWire.qml 462
 ui/PermissionsDialog.qml 432

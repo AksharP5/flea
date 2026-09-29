@@ -24,6 +24,8 @@ Item {
 
     // The pane whose held rows a double click fits; null where the picker reuses this header.
     property var pane: null
+    // Only the list view heads columns; Pane wires its viewMode so other views build no handles.
+    property string viewMode: "list"
     // A drag in flight, so the hairline follows the pointer and one write lands on release.
     property string dragKey: ""
     property real dragStartX: 0
@@ -147,69 +149,70 @@ Item {
         onTapped: function (eventPoint) { root.menuRequested(eventPoint.scenePosition) }
     }
 
-    // ListColumns040 board: each fixed column's left hairline carries a grab zone, hidden while a search owns the strip, in dual view, or where the picker reuses this header with no pane.
-    Flea.ResizeHandle {
-        id: modeHandle
-        visible: root.cols.mode && !root.dualMode && root.sortable && root.pane !== null
-        anchors.left: headerMode.left
-        anchors.leftMargin: -Math.floor(modeHandle.width / 2)
-        anchors.top: parent.top
-        anchors.bottom: parent.bottom
-        z: 3
-        columnKey: "mode"
-        hot: root.dragKey === "mode"
-        onPressed: function (mouse) { root.beginDrag("mode", modeHandle, mouse) }
-        onMoved: function (mouse) { root.moveDrag("mode", modeHandle, mouse) }
-        onReleased: root.endDrag()
-        onDoubleClicked: root.autofitColumn("mode")
-    }
-
-    Flea.ResizeHandle {
-        id: sizeHandle
-        visible: root.cols.size && !root.dualMode && root.sortable && root.pane !== null
-        anchors.left: headerSize.left
-        anchors.leftMargin: -Math.floor(sizeHandle.width / 2)
-        anchors.top: parent.top
-        anchors.bottom: parent.bottom
-        z: 3
-        columnKey: "size"
-        hot: root.dragKey === "size"
-        onPressed: function (mouse) { root.beginDrag("size", sizeHandle, mouse) }
-        onMoved: function (mouse) { root.moveDrag("size", sizeHandle, mouse) }
-        onReleased: root.endDrag()
-        onDoubleClicked: root.autofitColumn("size")
-    }
-
-    Flea.ResizeHandle {
-        id: dateHandle
-        visible: root.cols.date && !root.dualMode && root.sortable && root.pane !== null
-        anchors.left: headerDate.left
-        anchors.leftMargin: -Math.floor(dateHandle.width / 2)
-        anchors.top: parent.top
-        anchors.bottom: parent.bottom
-        z: 3
-        columnKey: "date"
-        hot: root.dragKey === "date"
-        onPressed: function (mouse) { root.beginDrag("date", dateHandle, mouse) }
-        onMoved: function (mouse) { root.moveDrag("date", dateHandle, mouse) }
-        onReleased: root.endDrag()
-        onDoubleClicked: root.autofitColumn("date")
-    }
-
-    Flea.ResizeHandle {
-        id: kindHandle
-        visible: root.cols.kind && !root.dualMode && root.sortable && root.pane !== null
-        anchors.left: headerKind.left
-        anchors.leftMargin: -Math.floor(kindHandle.width / 2)
-        anchors.top: parent.top
-        anchors.bottom: parent.bottom
-        z: 3
-        columnKey: "kind"
-        hot: root.dragKey === "kind"
-        onPressed: function (mouse) { root.beginDrag("kind", kindHandle, mouse) }
-        onMoved: function (mouse) { root.moveDrag("kind", kindHandle, mouse) }
-        onReleased: root.endDrag()
-        onDoubleClicked: root.autofitColumn("kind")
+    // ListColumns040: build edges only where usable; cells outside the Loader require x placement.
+    Loader {
+        id: handlesLoader
+        anchors.fill: parent
+        active: root.viewMode === "list" && root.visible && !root.dualMode && root.sortable && root.pane !== null
+        sourceComponent: Item {
+            anchors.fill: parent
+            Flea.ResizeHandle {
+                id: modeHandle
+                visible: root.cols.mode
+                x: headerMode.x - Math.floor(width / 2)
+                anchors.top: parent.top
+                anchors.bottom: parent.bottom
+                z: 3
+                columnKey: "mode"
+                hot: root.dragKey === "mode"
+                onPressed: function (mouse) { root.beginDrag("mode", modeHandle, mouse) }
+                onMoved: function (mouse) { root.moveDrag("mode", modeHandle, mouse) }
+                onReleased: root.endDrag()
+                onDoubleClicked: root.autofitColumn("mode")
+            }
+            Flea.ResizeHandle {
+                id: sizeHandle
+                visible: root.cols.size
+                x: headerSize.x - Math.floor(width / 2)
+                anchors.top: parent.top
+                anchors.bottom: parent.bottom
+                z: 3
+                columnKey: "size"
+                hot: root.dragKey === "size"
+                onPressed: function (mouse) { root.beginDrag("size", sizeHandle, mouse) }
+                onMoved: function (mouse) { root.moveDrag("size", sizeHandle, mouse) }
+                onReleased: root.endDrag()
+                onDoubleClicked: root.autofitColumn("size")
+            }
+            Flea.ResizeHandle {
+                id: dateHandle
+                visible: root.cols.date
+                x: headerDate.x - Math.floor(width / 2)
+                anchors.top: parent.top
+                anchors.bottom: parent.bottom
+                z: 3
+                columnKey: "date"
+                hot: root.dragKey === "date"
+                onPressed: function (mouse) { root.beginDrag("date", dateHandle, mouse) }
+                onMoved: function (mouse) { root.moveDrag("date", dateHandle, mouse) }
+                onReleased: root.endDrag()
+                onDoubleClicked: root.autofitColumn("date")
+            }
+            Flea.ResizeHandle {
+                id: kindHandle
+                visible: root.cols.kind
+                x: headerKind.x - Math.floor(width / 2)
+                anchors.top: parent.top
+                anchors.bottom: parent.bottom
+                z: 3
+                columnKey: "kind"
+                hot: root.dragKey === "kind"
+                onPressed: function (mouse) { root.beginDrag("kind", kindHandle, mouse) }
+                onMoved: function (mouse) { root.moveDrag("kind", kindHandle, mouse) }
+                onReleased: root.endDrag()
+                onDoubleClicked: root.autofitColumn("kind")
+            }
+        }
     }
 
     // Built only while a fit measures, in the cells' own caption face, so rest carries no metrics object.
