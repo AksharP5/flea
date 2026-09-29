@@ -68,12 +68,21 @@ function handleLength(trackLength, contentLength, viewportLength, minimumLength)
 var KNOB_REST_PX = 6
 var KNOB_WIDE_PX = 10
 var KNOB_INSET_PX = 2
-// Alphas of the theme's foreground: the knob at rest, with the pointer in the lane, pressed; the track and its inner hairline.
+// Alphas of the theme's foreground: the knob at rest, with the pointer in the lane, pressed; the track fill.
 var KNOB_ALPHA = 0.5
 var KNOB_HOVER_ALPHA = 0.6
 var KNOB_PRESSED_ALPHA = 0.7
 var TRACK_ALPHA = 0.05
-var TRACK_LINE_ALPHA = 0.12
+
+// The thumb's pill follows Hyprland rounding: square at 0, clamped at half the thinner side.
+// Sample input: knobRadius(8, 6, 100) is 3, the 6 px knob rounding to its own half.
+function knobRadius(cornerRadius, width, height) {
+    var rounding = Number(cornerRadius) || 0
+    if (rounding <= 0)
+        return 0
+    var half = Math.min(Math.max(0, Number(width) || 0), Math.max(0, Number(height) || 0)) / 2
+    return Math.min(rounding, half)
+}
 // Finder's timing: shown this long after the view stops, then faded out over FADE_MS.
 var HOLD_MS = 1000
 var FADE_MS = 300

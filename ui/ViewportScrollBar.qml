@@ -1,4 +1,5 @@
 import QtQuick
+import qs.Commons
 import "." as Flea
 import "js/Scroll.js" as Scroll
 
@@ -107,7 +108,7 @@ Item {
             NumberAnimation { duration: Scroll.FADE_MS }
         }
 
-        // The track fills the lane with the pointer in it, with a hairline on the content side.
+        // The track fills the lane with the pointer in it, never a line along it.
         Rectangle {
             visible: root.wide
             x: 0
@@ -115,11 +116,6 @@ Item {
             width: root.vertical ? root.width : root.trackLength
             height: root.vertical ? root.trackLength : root.height
             color: Qt.rgba(Theme.color.foreground.r, Theme.color.foreground.g, Theme.color.foreground.b, Scroll.TRACK_ALPHA)
-            Rectangle {
-                width: root.vertical ? Theme.spacing.hairline : parent.width
-                height: root.vertical ? parent.height : Theme.spacing.hairline
-                color: Qt.rgba(Theme.color.foreground.r, Theme.color.foreground.g, Theme.color.foreground.b, Scroll.TRACK_LINE_ALPHA)
-            }
         }
 
         Rectangle {
@@ -128,7 +124,7 @@ Item {
             y: root.vertical ? root.handleOffset : root.height - root.knobInset - height
             width: root.vertical ? root.knobWidth : root.handleLength
             height: root.vertical ? root.handleLength : root.knobWidth
-            radius: Math.min(width, height) / 2
+            radius: Scroll.knobRadius(Style.cornerRadius, width, height)
             color: Qt.rgba(Theme.color.foreground.r, Theme.color.foreground.g, Theme.color.foreground.b, root.knobAlpha)
         }
     }
