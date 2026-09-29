@@ -249,12 +249,13 @@ owned_trash_monitors() {
 }
 
 kill_flea() {
-    local pid pids found waited ownership deadline=$((SECONDS + drain_wait_s))
+    local pid pids found waited ownership deadline=$((SECONDS + drain_wait_s)) dead_pids=""
     [[ "$run_root" == /* && -f "$run_root/.flea-test-sandbox" ]] || fail "native process ownership root is missing"
     pids=$(flea_pids) || fail "cannot enumerate native windows for teardown"
     for pid in $pids; do
         [[ " $foreign_pids " == *" $pid "* ]] && continue
         if flea_process_owned "$pid"; then
+            dead_pids+=" $pid"
             kill "$pid" || {
                 [[ ! -d "$(flea_process_dir "$pid")" ]] || fail "could not stop owned native window $pid"
             }
@@ -285,10 +286,27 @@ kill_flea() {
         [[ -z "$pids" ]] || found=1
         pids=$(owned_trash_monitors) || fail "cannot inspect Trash monitor ownership while draining"
         [[ -z "$pids" ]] || found=1
-        [[ "$found" -eq 0 ]] && return
+        [[ "$found" -eq 0 ]] && break
         sleep 0.05
     done
-    fail "an owned backend or Trash monitor survived for $drain_wait_s s after its window closed"
+    (( found == 0 )) || fail "an owned backend or Trash monitor survived for $drain_wait_s s after its window closed"
+    # qs's cmdline empties at exit but Hyprland lists the dead window 100 to 150 ms longer, and the
+    # next launch's wait window would match it; wait, bounded, until no client carries a dead pid.
+    deadline=$((SECONDS + drain_wait_s))
+    local hclients still
+    while :; do
+        still=""
+        hclients=$(hyprctl clients -j 2>/dev/null) || fail "cannot inspect Hyprland clients while draining"
+        for pid in $dead_pids; do
+            [[ -n "$pid" ]] || continue
+            if jq -e --argjson pid "$pid" '[.[] | select(.pid == $pid)] | length > 0' <<< "$hclients" >/dev/null; then
+                still+=" $pid"
+            fi
+        done
+        [[ -z "${still// /}" ]] && return
+        (( SECONDS < deadline )) || fail "Hyprland still lists dead Flea window${still} after $drain_wait_s s; fixtures kept"
+        sleep 0.05
+    done
 }
 
 # The four roots carry the markers; every per-case directory inside them is a scratch, so a listing
@@ -1338,7 +1356,7 @@ case_scrolllane() {
         export HOME="$fixture_home"
         launch "$dir"
         export HOME="$real_home"
-        wait_listing 30
+        wait_listing 200
         settle
         [[ "$(ipc viewMode)" == list ]] || fail "scrolllane: base $base opened in $(ipc viewMode), not the seeded list"
         # Sample input: metrics prints "14 12 14 37", field 3 is rowPaddingX.
@@ -4530,12 +4548,15 @@ case_columnresize() {
     IFS='|' read -r _x before_w <<< "$(ipc headerCellRect size)"
     [[ "$before_w" =~ ^[0-9]+$ ]] || fail "columnresize: the size header has no width, got $before_w"
 
-    # The hairline is the cell's left edge and follows the pointer, so dragging it left widens the column.
-    local cx cy cell_w edge_x wx wy ww wh
+    # The handle sits on the cell's left edge (Header.qml anchors each ResizeHandle there), not on the painted text centre, which misses the 9 px handle on a right-aligned cell.
+    local cx cy cell_x cell_w edge_x header_left wx wy ww wh
     read -r cx cy <<< "$(ipc headerCellCentre size)"
     [[ -n "$cx" && -n "$cy" ]] || fail "columnresize: the size header has no centre"
-    IFS='|' read -r _x cell_w <<< "$(ipc headerCellRect size)"
-    edge_x=$(( cx - cell_w / 2 ))
+    IFS='|' read -r cell_x cell_w <<< "$(ipc headerCellRect size)"
+    [[ "$cell_x" =~ ^-?[0-9]+$ ]] || fail "columnresize: the size header has no left edge, got $cell_x"
+    header_left=$(ipc headerLeft)
+    [[ "$header_left" =~ ^-?[0-9]+$ ]] || fail "columnresize: the header has no left edge, got $header_left"
+    edge_x=$(( header_left + cell_x ))
     read -r wx wy ww wh < <(window_box) || fail "native window coordinates unavailable"
     omarchy-drive move "$(( wx + edge_x ))" "$(( wy + cy ))" >/dev/null
     YDOTOOL_SOCKET="$XDG_RUNTIME_DIR/.ydotool_socket" ydotool click 0x40 >/dev/null 2>&1 \
@@ -4568,8 +4589,11 @@ case_columnresize() {
 
     # To the floor: a rightward drag shrinks to the 48 rail, and six steps past it still read 48.
     read -r cx cy <<< "$(ipc headerCellCentre size)"
-    IFS='|' read -r _x cell_w <<< "$(ipc headerCellRect size)"
-    edge_x=$(( cx - cell_w / 2 ))
+    IFS='|' read -r cell_x cell_w <<< "$(ipc headerCellRect size)"
+    [[ "$cell_x" =~ ^-?[0-9]+$ ]] || fail "columnresize: the size header has no left edge on the floor pass, got $cell_x"
+    header_left=$(ipc headerLeft)
+    [[ "$header_left" =~ ^-?[0-9]+$ ]] || fail "columnresize: the header has no left edge on the floor pass, got $header_left"
+    edge_x=$(( header_left + cell_x ))
     omarchy-drive move "$(( wx + edge_x ))" "$(( wy + cy ))" >/dev/null
     YDOTOOL_SOCKET="$XDG_RUNTIME_DIR/.ydotool_socket" ydotool click 0x40 >/dev/null 2>&1 \
         || fail "columnresize: the floor press failed"
@@ -4615,11 +4639,14 @@ case_columnautofit() {
     IFS='|' read -r _x before_w <<< "$(ipc headerCellRect kind)"
     [[ "$before_w" == "200" ]] || fail "columnautofit: kind did not take its seeded 200, got $before_w"
 
-    local cx cy cell_w edge_x wx wy ww wh
+    local cx cy cell_x cell_w edge_x header_left wx wy ww wh
     read -r cx cy <<< "$(ipc headerCellCentre kind)"
     [[ -n "$cx" && -n "$cy" ]] || fail "columnautofit: the kind header has no centre"
-    IFS='|' read -r _x cell_w <<< "$(ipc headerCellRect kind)"
-    edge_x=$(( cx - cell_w / 2 ))
+    IFS='|' read -r cell_x cell_w <<< "$(ipc headerCellRect kind)"
+    [[ "$cell_x" =~ ^-?[0-9]+$ ]] || fail "columnautofit: the kind header has no left edge, got $cell_x"
+    header_left=$(ipc headerLeft)
+    [[ "$header_left" =~ ^-?[0-9]+$ ]] || fail "columnautofit: the header has no left edge, got $header_left"
+    edge_x=$(( header_left + cell_x ))
     read -r wx wy ww wh < <(window_box) || fail "native window coordinates unavailable"
     omarchy-drive click "$(( wx + edge_x ))" "$(( wy + cy ))" left --double >/dev/null
     settle
@@ -4645,11 +4672,13 @@ case_columnautofit() {
     # The fit follows the held window: fitting size on the first screenful ignores the off-screen wide file, and fitting it again after G widens.
     read -r cx cy <<< "$(ipc headerCellCentre size)"
     [[ -n "$cx" && -n "$cy" ]] || fail "columnautofit: the size header has no centre"
-    IFS='|' read -r _x cell_w <<< "$(ipc headerCellRect size)"
+    IFS='|' read -r cell_x cell_w <<< "$(ipc headerCellRect size)"
     [[ "$cell_w" =~ ^[0-9]+$ ]] \
         || fail "columnautofit: the size header answered '$cell_w' before the first fit"
+    [[ "$cell_x" =~ ^-?[0-9]+$ ]] \
+        || fail "columnautofit: the size header has no left edge before the first fit, got $cell_x"
     local size_before="$cell_w"
-    edge_x=$(( cx - cell_w / 2 ))
+    edge_x=$(( header_left + cell_x ))
     omarchy-drive click "$(( wx + edge_x ))" "$(( wy + cy ))" left --double >/dev/null
     settle
     local narrow_w narrow_stored
@@ -4682,8 +4711,9 @@ case_columnautofit() {
     [[ "$held_before" =~ ^[0-9]+$ && "$held_after" =~ ^[0-9]+$ && "$held_after" != "$held_before" ]] \
         || fail "columnautofit: the held window never left the first screenful, held is $held_after from $held_before"
     read -r cx cy <<< "$(ipc headerCellCentre size)"
-    IFS='|' read -r _x cell_w <<< "$(ipc headerCellRect size)"
-    edge_x=$(( cx - cell_w / 2 ))
+    IFS='|' read -r cell_x cell_w <<< "$(ipc headerCellRect size)"
+    [[ "$cell_x" =~ ^-?[0-9]+$ ]] || fail "columnautofit: the size header has no left edge after G, got $cell_x"
+    edge_x=$(( header_left + cell_x ))
     omarchy-drive click "$(( wx + edge_x ))" "$(( wy + cy ))" left --double >/dev/null
     settle
     local wide_w

@@ -95,14 +95,17 @@ marquee_to() {
 }
 
 marquee_begin_below() {
-    local last="$1" ctrl="${2:-false}" last_only="${3:-false}" ax ay aw ah rx ry rw rh cx cy
+    local last="$1" ctrl="${2:-false}" last_only="${3:-false}" ax ay aw ah rx ry rw rh cx cy pad
     local wx wy ww wh pointer_x pointer_y
     read -r ax ay aw ah <<< "$(ipc listAreaRect)"
     read -r rx ry rw rh <<< "$(ipc rowRect "$last")"
     [[ "$ax $ay $aw $ah $rx $ry $rw $rh" =~ ^[0-9]+(\ [0-9]+){7}$ ]] || fail "marquee: listing/row geometry unavailable"
     if [[ "$(ipc viewMode)" == columns ]]; then ax=$rx; aw=$rw; fi
     (( rh > 0 && ry + rh < ay + ah )) || fail "marquee: no empty space below the last row"
-    cx=$((ax + aw - 12)); cy=$(((ry + rh + ay + ah) / 2))
+    # ScrollLane040 reserves rowPaddingX at the view's right edge; aw-12 lands inside it.
+    pad=$(ipc metrics | cut -d' ' -f3)
+    [[ "$pad" =~ ^[0-9]+$ ]] || fail "marquee: listing metrics unavailable"
+    cx=$((ax + aw - pad - 12)); cy=$(((ry + rh + ay + ah) / 2))
     [[ "$last_only" == true ]] && cx=$((rx + rw * 3 / 4))
     read -r wx wy ww wh < <(window_box) || fail "marquee: owned window is unavailable"
     marquee_glide "$((wx + cx))" "$((wy + cy))" 1

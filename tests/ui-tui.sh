@@ -499,7 +499,7 @@ class Native:
         self.snapshot("parent-navigation", lambda text: "1 listing" in text and "5 items" in text)
         self.key("-k", "Home")
         self.key("-k", "Right" if self.preset == "mac" else "Return")
-        self.snapshot("nested-navigation", lambda text: "1 amber" in text and "nested-proof.txt" in text and "1 items" in text)
+        self.snapshot("nested-navigation", lambda text: "1 amber" in text and "nested-proof.txt" in text and "1 item" in text)
         self.key("-k", "BackSpace")
         self.snapshot("listing-restored", lambda text: "1 listing" in text and "5 items" in text)
         self.key("-k", "Home")
