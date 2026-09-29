@@ -2803,7 +2803,7 @@ f037cancelfix moves three ceilings, each re-derived with `wc -l`: `src/backend/j
 
 f037u11 moves three ceilings, each re-derived with `wc -l`: `src/backend/run.rs` 444 to 453 for the quit drain cancelling the slot and each detached job under one shutdown budget on a 50 ms re-check tick beside the thumbnail queue, `src/backend/opsdispatch.rs` 536 to 538 for the detached registry field and its init, and `src/backend/opsreq/tests.rs` 460 to 461 for the convert call's two new arguments. The tracker itself went to `src/backend/opscancel.rs`, 87 to 134 inside both budgets beside `Live`, the flag threading keeps `src/backend/archivereq.rs` at 375 and `src/backend/archivework.rs` at 353 over the soft budget and under the hard cap, the archive tests moved out of line the way `opsreq/tests.rs` already was, leaving `src/backend/archiveops.rs` at 140 with its tests in the new `src/backend/archiveops_tests.rs` at 264, and the quit tests went to the new `src/backend/archivequit_tests.rs` at 350, over the soft budget and under the hard cap. Round 2 widens the registry to converts, which keep their CPU cap on the cancellable runner and get no UI cancel. Round 3 removes the dead blocking runner convert vacated and re-drives the cap pin through the runner convert uses, with a burner that counts its own CPU time. Round 4 keeps the one 25 s budget under the UI's 30 s quit deadline, sends each terminal line before its registry removal, re-reads the registry on a 50 ms tick so an id that leaves just after its line cannot stall the drain, and pins convert's cap.
 
-u13 moves two ceilings, each re-derived with `wc -l`: `src/uischema.rs` 421 to 429 for the shipped columns default 3 with its fresh-install test, and `tests/js/columns.js` 310 to 313 for the default-at-2560, stored-5 and narrow-window checks. `src/uistate.rs` keeps 625, `ui/js/Settings.js` keeps 432, `ui/ColumnsArea.qml` keeps 400 and `ui/js/Columns.js` keeps 185, each re-derived, for the in-place fallback edits; `docs/protocol.md` states no shipped limit, so nothing there moves.
+u13 moves one ceiling, re-derived with `wc -l`: `tests/js/columns.js` 310 to 313 for the default-at-2560, stored-5 and narrow-window checks. `src/uischema.rs` keeps 421, `src/uistate.rs` keeps 625, `ui/js/Settings.js` keeps 432 and `ui/ColumnsArea.qml` keeps 400, each re-derived for the in-place fallback edits, and `ui/js/Columns.js` goes 183 to 185 for the default constant and its comment, inside its budgets; `docs/protocol.md` states no shipped limit, so nothing there moves.
 
 ## The key table is generated
 
@@ -2976,7 +2976,7 @@ waits for its consumer.
   0.1.4 lanes until it was restored. **A guard answers "is there a binary", never "is it this
   commit's binary"**, which is the defect `39e1737` and `8eec5fc` were both written to close, so the
   unconditional build is the contract and the per-suite `-x` guards exist only for a suite invoked
-  directly. Eleven suites drive the debug binary and `thumbs.sh` the release one. It runs every suite that
+  directly. The suites that drive the debug binary use `target/debug/flea` and `thumbs.sh` the release one. It runs every suite that
   needs nothing but a shell, and reads each suite's OWN exit code, never a pipeline's.
   Its own `headless=` list is the inventory of those and its own `not_run` list is the inventory of
   the rest with what each needs, so this paragraph carries neither a count nor a membership for
@@ -3358,7 +3358,7 @@ waits for its consumer.
   dotfiles, so a bare `ls` cannot see them: the operator's cache showed 94 by `ls` and 104 by
   `ls -A`, and the count check alone stays green against a temp that was present both before and
   after, which is why the explicit `.flea-` check is a separate assertion and not a rewording.
-- `./tests/js.sh` runs the pure JavaScript suites through `qml6`: 87 suites from 86 files under `tests/js/` (90 files on disk, 4 are fixtures). The thumbs suite is 66 lines against a
+- `./tests/js.sh` runs the pure JavaScript suites through `qml6`: every suite under `tests/js/` (the fixture files there are not suites; run the script for the current list). The thumbs suite is 66 lines against a
   77-line helper and pins the four properties the request policy rests on: `plan` names only
   visible rows carrying `t`, it never re-asks a row the map already holds in any of its three
   states, it drops only rows that are still waiting when they leave the viewport, and
@@ -3375,11 +3375,11 @@ waits for its consumer.
   reported. Without `ViewState`'s `onRunningChanged` arm the first three checks go red and the
   second run stays green, which is the exact shape of the defect it was written for.
 - `./tests/ui.sh` drives the real window through `omarchy-drive` and takes a case name to run
-  one of the `case_*` functions; the file's own usage line lists the entry points and
-  `grep -c '^case_[a-z]*()' tests/ui.sh` counts 71 defined in that file (129 across ui.sh and its
-  sourced ui-*.sh libraries). With no argument it runs the 76-name wanted list and
+  one of the `case_*` functions, defined in the file or in a sourced `tests/ui-*.sh` library (a
+  later definition wins, which is how `renamelife` reaches `tests/ui-rename-design.sh`); the file's
+  own usage line lists the entry points. With no argument it runs its `wanted` list and
   then three whole-run checks, a backend drain, a log grep and a cache count, so a clean run
-  prints `0 of N checks failed`, with N three more than that count. Neither the list nor either
+  prints `0 of N checks failed`, with N three more than the length of that list. Neither the list nor either
   number is written out here: both went stale the first time a case was added.
   - `open` replaced the old `symlink` case. It puts a stub opener on `PATH`, named from
     `src/open.rs`'s own `Command::new` target the way `tests/modes.sh` names its own, which

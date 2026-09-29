@@ -13,8 +13,8 @@
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 1
 
-# Both profiles unconditionally, eleven suites driving the debug binary and thumbs.sh the release one: an `[ ! -x <path> ]` guard is satisfied by a stale binary from an older commit, and measured on 2026-09-05 the debug and release hashes were unchanged across a whole run-all over edited source.
-printf 'run-all: building target/debug/flea, eleven suites need it\n'
+# Both profiles unconditionally, the debug binary for the suites that drive it and the release one for thumbs.sh: an `[ ! -x <path> ]` guard is satisfied by a stale binary from an older commit, and measured on 2026-09-05 the debug and release hashes were unchanged across a whole run-all over edited source.
+printf 'run-all: building target/debug/flea, the debug-binary suites need it\n'
 cargo build -q || { printf 'run-all: cargo build failed, nothing else was run\n' >&2; exit 1; }
 printf 'run-all: building target/release/flea, thumbs.sh needs it\n'
 cargo build -q --release || { printf 'run-all: release build failed, nothing else was run\n' >&2; exit 1; }
