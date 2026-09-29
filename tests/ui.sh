@@ -3590,9 +3590,14 @@ case_reclick() {
         key -k Escape >/dev/null; settle
         [[ "$(ipc focusView)" == "list" ]] || fail "reclick: Escape did not leave the rail, focus is $(ipc focusView)"
     fi
+    # Escape must not clear the row 40 mark, or the later unchanged-selection read compares empty to empty.
+    [[ "$(ipc selectedIndices)" == "40" ]] || fail "reclick: Escape cleared the selection, got $(ipc selectedIndices)"
     local req cur sel cy
     req=$(ipc listRequests); cur=$(ipc cursor); sel=$(ipc selectedIndices); cy=$(ipc listContentY)
     (( cy > 0 )) || fail "reclick: row 40 left contentY at $cy, so the scroll assertion is vacuous"
+    # Leaving the rail moves focus only, so the Home step above survives it; re-read here or the reach poll below is vacuous.
+    rail_before=$(ipc railCursor)
+    [[ "$rail_before" != "$here_target" ]] || fail "reclick: the rail cursor is back on row $here_target before the tap, so the reach control stays vacuous"
     click_rail_row "$here_target" left
     deadline=$(( $(date +%s%3N) + tap_signal_timeout_s * 1000 ))
     while (( $(date +%s%3N) < deadline )); do
@@ -3601,6 +3606,8 @@ case_reclick() {
     done
     [[ "$(ipc railCursor)" == "$here_target" ]] \
         || fail "reclick: the rail tap never reached the rail, cursor is $(ipc railCursor)"
+    # One turn for the tap's activate to run before the no-op reads.
+    settle
     [[ "$(ipc path)" == "$dir" ]] || fail "reclick: a rail click on the shown folder left $dir for $(ipc path)"
     [[ "$(ipc listRequests)" == "$req" ]] || fail "reclick: a rail click on the shown folder re-listed, $req then $(ipc listRequests)"
     [[ "$(ipc cursor)" == "$cur" ]] || fail "reclick: a rail click on the shown folder moved the cursor to $(ipc cursor)"
@@ -3625,6 +3632,7 @@ case_reclick() {
     key -k Tab >/dev/null; settle
     [[ "$(ipc focusView)" == "rail" ]] || fail "reclick: Tab did not reach the rail, focus is $(ipc focusView)"
     local fx fy wx wy
+    # The focus witness below fires on any pane press, so the row-1 sibling tap proves the same seam and offsets land on rows.
     read -r fx fy <<< "$(ipc columnParentRowCentre 0)"
     [[ -n "$fy" ]] || fail "reclick: the parent column shows no row 0 for the lit aaa row"
     read -r wx wy _ww _wh < <(window_box) || fail "native window coordinates unavailable"
