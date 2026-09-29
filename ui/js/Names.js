@@ -16,22 +16,27 @@ function charsOf(text) {
                 continue
             }
         }
+        // A combining mark rides with the char before it, so an NFD accent never orphans.
+        if (lead >= 0x0300 && lead <= 0x036F && out.length > 0) {
+            out[out.length - 1] += text.charAt(i)
+            continue
+        }
         out.push(text.charAt(i))
     }
     return out
 }
 
-function middleElide(name, maxChars) {
+function middleElide(name, maxCells) {
     var chars = charsOf(String(name))
-    var max = Math.max(0, Math.floor(maxChars))
-    if (chars.length <= max) {
+    var max = Math.max(0, Math.floor(maxCells))
+    if (cellsOf(chars) <= max) {
         return String(name)
     }
-    // The head takes the odd character, so a 49-wide board keeps 24 and 24.
+    // The head takes the odd cell, so a 49-wide board keeps 24 and 24.
     var head = Math.ceil((max - 1) / 2)
     var tail = Math.floor((max - 1) / 2)
-    return chars.slice(0, head).join("") + "…"
-        + (tail > 0 ? chars.slice(chars.length - tail).join("") : "")
+    return headByCells(chars, head).join("") + "…"
+        + (tail > 0 ? tailByCells(chars, tail).join("") : "")
 }
 
 // A caption break stays behind a separator, so a word is never split when a break fits.

@@ -33,7 +33,13 @@ function run(check) {
           Names.middleElide("", 20), "")
     check("a multi-byte name never splits a surrogate pair",
           Names.middleElide("photo-📷-2026-08-30-final-review-v3.png", 20),
-          "photo-📷-20…ew-v3.png")
+          "photo-📷-2…ew-v3.png")
+    check("a CJK name elides to its cell budget",
+          Names.cellsOf(Names.charsOf(Names.middleElide("写".repeat(30) + ".jpg", 20))) <= 20, true)
+    check("a pair straddling the cut stays whole",
+          Names.middleElide("ab📷cdefghij", 6), "ab…ij")
+    check("a combining mark rides with its base through the cut",
+          Names.elideChars(Names.charsOf("abcde\u0301x"), 5, 16).join(""), "ab…e\u0301x")
     check("a tiny width keeps one character each side",
           Names.middleElide("abcdefghij", 3), "a…j")
     check("a two-wide budget keeps the head and the mark",
@@ -90,6 +96,7 @@ function runGridCaption(check) {
           linesOf(cjk)[linesOf(cjk).length - 1].slice(-4), ".pdf")
     check("no CJK line exceeds its cells", fits(cjk, 16), true)
     check("a wide glyph counts two cells", Names.cellWidthOf("🎉"), 2)
+    check("a CJK glyph counts two cells", Names.cellWidthOf("中"), 2)
     check("a narrow glyph counts one cell", Names.cellWidthOf("a"), 1)
     check("the last line counts its cells, not its chars",
           Names.lastLineCells("ab\nc🎉"), 3)

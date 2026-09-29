@@ -141,7 +141,7 @@ Item {
         height: root.clipPx
         // One gap past the centred last line's own right end, capped at the strip the margin reserves.
         x: Math.min(nameLabel.x + (nameLabel.width + Names.lastLineCells(nameLabel.text) * Theme.bodySmallAdvance) / 2 + Theme.spacing.gap, nameLabel.x + nameLabel.width + Theme.spacing.gap)
-        y: nameLabel.y + nameLabel.height - (Theme.grid.captionLineHeight + root.clipPx) / 2 - 1
+        y: nameLabel.y + Math.min(nameLabel.text.split("\n").length, root.captionLines) * Theme.grid.captionLineHeight - (Theme.grid.captionLineHeight + root.clipPx) / 2 - 1
         sourceComponent: Flea.Glyph {
             width: root.clipPx
             height: root.clipPx

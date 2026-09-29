@@ -90,8 +90,8 @@ Item {
         }
     }
 
-    // Both neighbours are asked for on every move, hidden ancestors never: visible false stops no model work.
-    function refreshNeighbours() {
+    // Hidden view asks nothing; every move while visible asks both neighbours.
+    function refreshNeighbours() { if (!root.visible) return
         if (root.showGreatGrandparent)
             root.ask(root.greatGrandparentPath)
         if (root.showGrandparent)

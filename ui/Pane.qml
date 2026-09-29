@@ -661,7 +661,7 @@ FocusScope {
         // ExtThumbs: the class the background menu's thumbnail row is present for, "" locally.
         storageClass: root.storageClass
         // Issue 179: the Sort by flyout offers its forget row only where this folder has its own sort.
-        hasFolderSort: root.backend ? root.backend.folderHasSort(root.path) : false
+        hasFolderSort: root.searchMode.length === 0 && root.backend ? root.backend.folderHasSort(root.path) : false
         // The Locked tile's folder and mode while one is drawn; ui/ContextMenu.qml routes a
         // background right click to that folder's own menu through them.
         tileTarget: root.lockedTarget

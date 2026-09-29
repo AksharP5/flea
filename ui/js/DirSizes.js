@@ -87,7 +87,7 @@ function wantsSizes(viewMode, hiddenCols, storageClass, storageKnown) {
     return true
 }
 
-// null covers both "never asked" and "asked and still waiting": the Size cell renders both as "-".
+// null covers both "never asked" and "asked and still waiting": the Size cell renders both as the middle dot.
 function sizeFor(state, row) {
     var value = state.file[row]
     return value && typeof value === "object" ? value : null
