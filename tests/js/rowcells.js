@@ -45,7 +45,7 @@ function run(check) {
     check("the name still ends at the mode cell", row.indexOf("anchors.right: mode.left") >= 0, true)
     // Only the date cell may lift today to the foreground role, through the window's own switch and start.
     check("the date keeps the today lift",
-        row.indexOf("RecentDates.isRecent(ViewState.highlightToday") >= 0, true)
+        row.indexOf("highlightToday &&") >= 0 && row.indexOf("RecentDates.isRecent(true,") >= 0, true)
     check("and only the date lifts it", countRe(row, /RecentDates\.isRecent/g), 1)
     // The pixels are the same tokens: caption type, right elide, plain text, right-aligned numerics, and the by-key cell() lookup.
     var cells = ["mode", "size", "modified", "kind"]

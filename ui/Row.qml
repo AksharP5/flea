@@ -313,7 +313,8 @@ Item {
         visible: root.dateShown && !root.dropTarget
         width: root.dateShown ? root.dateWidth : 0
         text: root.dateShown ? root.dateText() : ""
-        color: RecentDates.isRecent(ViewState.highlightToday, root.row ? root.row.m : null, ViewState.todayStart) ? Theme.color.foreground : root.cellInk
+        // Short-circuit on the switch first, so a dimmed row never enters the library.
+        color: (ViewState.highlightToday && RecentDates.isRecent(true, root.row ? root.row.m : null, ViewState.todayStart)) ? Theme.color.foreground : root.cellInk
         font.family: Theme.font.family
         font.pixelSize: Theme.font.caption
         horizontalAlignment: Text.AlignRight

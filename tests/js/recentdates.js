@@ -64,6 +64,9 @@ function run(check) {
     check("Row compares against the window start",
         row.indexOf("todayStart") >= 0, true)
     check("Row reads the switch", row.indexOf("highlightToday") >= 0, true)
+    // The off path costs no today work: the binding short-circuits on the switch, so a dimmed row never enters the library.
+    check("the off path never enters the library",
+        row.indexOf("highlightToday &&") >= 0 && row.indexOf("isRecent(true,") >= 0, true)
     check("Row hands no mtime down", row.indexOf("mtime: root.row") < 0, true)
     check("Row holds no timer of its own", countRe(row, /Timer\s*\{/g), 0)
     check("Row builds no Date per row", countRe(row, /new Date/g), 0)
