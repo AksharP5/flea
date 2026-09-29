@@ -2782,6 +2782,8 @@ f037hasvk moves two ceilings, each re-derived with `wc -l`: `src/vulkan.rs` 620 
 
 f037move moves five ceilings, each re-derived with `wc -l`: `src/backend/durable.rs` 439 to 574 for batch_syncfs with held descriptors, scoped release, syncfs_dir and its seams, `src/backend/copyfile.rs` 491 to 534 for the held success path and the batch-aware single-item confirm, `src/backend/movebatch.rs` 466 to 478 for the release plus syncfs confirm and the test-only remove log, `src/backend/durable_tests.rs` 766 to 830 for the mountinfo classification, large-file hold and finish-drain pins, and `src/backend/movebatch_tests.rs` 528 to 709 for the 64-file order log, failed-syncfs, cancel, copy-error and non-block pins; `src/backend/mountinfo.rs` 168 to 170 stays inside the soft budget for the entry source, `src/backend/opsreq.rs` keeps 512 inside its recorded 513 for the mut finish.
 
+f037movefix moves five ceilings, each re-derived with `wc -l`: `src/backend/durable.rs` 574 to 630 for the settle_held primitive every confirm calls, the hold-at-cap syncfs with its sticky unsettled flag and the success-only syncfs count, `src/backend/copyfile.rs` 534 to 525 for the primitive-owned single-item confirm, `src/backend/movebatch.rs` 478 to 470 for the primitive-owned batch confirm, `src/backend/durable_tests.rs` 830 to 999 for the hold-at-cap, settle-order, rename, redo, failed-syncfs and failed-cap-finish pins, and `src/backend/copyfile_tests.rs` 412 to 460 for the batch move_cross_device pins; `src/backend/movebatch_tests.rs` 709 to 751 for the failed-cap 64-file pin, `src/backend/mountinfo.rs` keeps 170 inside the soft budget, and `src/backend/opsreq.rs` keeps 512 inside its recorded 513.
+
 ## The key table is generated
 
 `keys.toml` at the repository root is the single source of truth for every binding.
@@ -5072,16 +5074,19 @@ because removing it on a transient error would destroy data, and `copyfile.rs` r
 corner: a copy is not snapshot-isolated, so a concurrent write into a recorded path that keeps its identity goes with the tree; only identity mismatch keeps a path.
 
 **A cross-device move of many items confirms its folders once per batch instead of once per item.**
-`src/backend/movebatch.rs` stages each copy with its durable file fsync as today and only removes a
-batch's sources after one confirm of the folders that batch filled (`Durability::flush_dirs_for_many`,
-or each filled parent once with no durability context). A batch closes after `BATCH_ITEMS` (64, which
-bounds one unconfirmed batch to one folder fsync while keeping a cancel's cleanup cheap), when the
-destination folder changes, on cancel, on the first failure, and at the end. A failed confirm keeps
-every source of that batch whole and journals each copy as a partial exactly as the single-item failure
-does; a cancel completes the landed items as moves and abandons only the in-flight one; a same-filesystem rename and a
-replace never stage and run exactly as before, and `move_any` keeps its single-item contract for redo.
-A batch's item lines go out when the batch closes rather than when each copy landed, so an early item's
-`ok` waits for the batch behind it; progress lines still stream per item while it copies.
+`src/backend/movebatch.rs` stages each copy and only removes a batch's sources after one confirm.
+On a block vfat stick each copy holds its file and skips its own fsync.
+Elsewhere each copy fsyncs its file as today.
+A confirm releases held files, then runs one syncfs when anything was held, then one folder fsync.
+`Durability::flush_dirs_for_many` is that confirm, or each filled parent once with no durability context.
+A batch closes after `BATCH_ITEMS` (64, which bounds one unconfirmed batch to one folder fsync while keeping a cancel's cleanup cheap).
+It also closes when the destination folder changes, on cancel, on the first failure, and at the end.
+A failed confirm keeps every source of that batch whole and journals each copy as a partial exactly as the single-item failure does.
+A cancel completes the landed items as moves and abandons only the in-flight one.
+A same-filesystem rename and a replace never stage and run exactly as before, and `move_any` keeps its single-item contract for redo.
+A single-item move, a duplicate, a fallback rename and a redo confirm through the same `flush_dirs` primitive, so none removes a source before its bytes are on the drive.
+A batch's item lines go out when the batch closes rather than when each copy landed, so an early item's `ok` waits for the batch behind it.
+Progress lines still stream per item while it copies.
 
 **A paste or a drop onto names that exist asks once, and the answer covers only what was asked.**
 Before it sends a transfer, `ui/CollideHost.qml` sends `collisions`, which `collide.rs` `ask_beside` serves

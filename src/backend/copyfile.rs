@@ -475,18 +475,9 @@ pub(crate) fn move_cross_device(src: &Path, dst: &Path, p: &mut Progress) -> Res
 }
 
 // The folders copy_any touched, or the parent with no context; a failure keeps the source.
+// flush_dirs_for settles held files with its syncfs first, so the source goes only after the bytes.
 fn confirm_dest(p: &mut Progress, dst: &Path) -> Result<(), FleaError> {
-    // A batch_syncfs single-item move closes its held file and confirms before the source goes.
-    if p.durability.as_ref().is_some_and(|d| d.batch_syncfs) {
-        if let Some(durability) = p.durability.as_mut() {
-            durability.release_held();
-        }
-        let anchor = dst.parent().unwrap_or(dst);
-        if crate::backend::durable::syncfs_dir(anchor).is_err() {
-            return Err(unconfirmed(dst));
-        }
-    }
-    let failed = match p.durability.as_ref() {
+    let failed = match p.durability.as_mut() {
         Some(durability) => durability.flush_dirs_for(dst).is_err(),
         None => dst
             .parent()

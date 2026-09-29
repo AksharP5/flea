@@ -4,10 +4,12 @@ use std::cell::{Cell, RefCell};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-// Test builds only: forced-durable paths, fsync fault flags, flush counts; a release build has none of it.
+// Test builds only: forced-durable paths, forced batch_syncfs, fsync fault flags, flush counts; a release build has none of it.
 #[cfg(test)]
 thread_local! {
     static FORCE: RefCell<Vec<PathBuf>> = const { RefCell::new(Vec::new()) };
+    // Sample input: true forces batch_syncfs on a durable target, so copy_then_remove and redo drive it without two mounts.
+    static FORCE_BATCH: Cell<bool> = const { Cell::new(false) };
     static FAIL_FILE: Cell<bool> = const { Cell::new(false) };
     static FAIL_DIR: Cell<bool> = const { Cell::new(false) };
     static FILE_FLUSHES: Cell<usize> = const { Cell::new(0) };
@@ -147,6 +149,8 @@ pub struct Durability {
     pub rclone: bool,
     pub file_failed: bool,
     pub batch_syncfs: bool,
+    // A failed settle stays failed, so later confirms keep every source.
+    unsettled: bool,
     held: Vec<std::fs::File>,
     touched: HashSet<PathBuf>,
     last: Option<PathBuf>,
@@ -157,20 +161,53 @@ impl Durability {
     pub fn begin(dest: &Path) -> Durability {
         let rclone = dest_is_rclone(dest);
         let durable = !rclone && dest_is_durable(dest);
+        #[cfg(test)]
+        if FORCE_BATCH.with(|v| v.get()) && durable && !rclone {
+            return Durability { durable, rclone, file_failed: false, batch_syncfs: true, unsettled: false, held: Vec::new(),
+                touched: HashSet::new(), last: None };
+        }
         let batch_syncfs = match std::fs::read_to_string("/proc/self/mountinfo") {
             Ok(body) => batch_syncfs_for(dest, &body, durable, rclone),
             Err(_) => false,
         };
-        Durability { durable, rclone, file_failed: false, batch_syncfs, held: Vec::new(),
+        Durability { durable, rclone, file_failed: false, batch_syncfs, unsettled: false, held: Vec::new(),
             touched: HashSet::new(), last: None }
     }
 
-    // A landed file stays open until its batch confirms, so 64 closes land at once.
+    // A landed file stays open until its batch confirms, so 64 closes land with one syncfs.
     pub fn hold(&mut self, file: std::fs::File) {
         self.held.push(file);
         if self.held.len() >= HELD_CAP {
-            self.release_held();
+            // Never more than one batch ahead of the drive; a failed settle stays sticky inside settle_held.
+            let anchor = self.last.clone();
+            let _ = self.settle_held(anchor.as_deref());
         }
+    }
+
+    // A confirm settles what the copy held: closes land first, then one syncfs confirms them.
+    fn settle_held(&mut self, anchor: Option<&Path>) -> std::io::Result<()> {
+        // A failed settle stays failed, so every later confirm keeps its sources too.
+        if self.unsettled {
+            return Err(std::io::Error::new(std::io::ErrorKind::Other, "unconfirmed batch"));
+        }
+        if self.held.is_empty() {
+            return Ok(());
+        }
+        self.release_held();
+        if !self.batch_syncfs {
+            return Ok(());
+        }
+        // The anchor rides the destination; without one the first touched folder is on the same filesystem.
+        let path = anchor.map(|p| p.to_path_buf()).or_else(|| self.ordered().first().cloned());
+        let result = match path {
+            Some(p) => syncfs_dir(&p),
+            None => Ok(()),
+        };
+        // Held files are already released, so only the sticky flag stops the next confirm.
+        if result.is_err() {
+            self.unsettled = true;
+        }
+        result
     }
 
     // Each held close runs on its own scoped thread, so one 100 ms vfat close never waits on another.
@@ -229,7 +266,10 @@ impl Durability {
     }
 
     // Only the touched folders a copy to dst filled, so a move confirms its destination without the source side.
-    pub fn flush_dirs_for(&self, dst: &Path) -> std::io::Result<()> {
+    // Settles held files first, so no caller can remove a source before its bytes are on the drive.
+    pub fn flush_dirs_for(&mut self, dst: &Path) -> std::io::Result<()> {
+        let anchor = dst.parent().unwrap_or(dst).to_path_buf();
+        self.settle_held(Some(&anchor))?;
         let mut first: Option<std::io::Error> = None;
         for dir in self.ordered() {
             if dir.starts_with(dst) || Some(dir.as_path()) == dst.parent() {
@@ -245,7 +285,10 @@ impl Durability {
     }
 
     // One confirm for a whole move batch: every touched folder any of its items filled, flushed once.
-    pub fn flush_dirs_for_many(&self, dsts: &[PathBuf]) -> std::io::Result<()> {
+    // Settles held files first, so no caller can remove a source before its bytes are on the drive.
+    pub fn flush_dirs_for_many(&mut self, dsts: &[PathBuf]) -> std::io::Result<()> {
+        let anchor = dsts.first().and_then(|dst| dst.parent()).unwrap_or(Path::new("/")).to_path_buf();
+        self.settle_held(Some(&anchor))?;
         let mut first: Option<std::io::Error> = None;
         for dir in self.ordered() {
             let wanted = dsts.iter().any(|dst| dir.starts_with(dst) || Some(dir.as_path()) == dst.parent());
@@ -262,7 +305,11 @@ impl Durability {
     }
 
     // Every touched directory, best effort per directory: one bad folder never skips the rest.
-    pub fn flush_dirs(&self) -> std::io::Result<()> {
+    // Settles held files first, so no caller can remove a source before its bytes are on the drive.
+    pub fn flush_dirs(&mut self) -> std::io::Result<()> {
+        // The anchor is a touched folder on the destination filesystem, never a source side.
+        let anchor = self.ordered().first().cloned();
+        self.settle_held(anchor.as_deref())?;
         let mut first: Option<std::io::Error> = None;
         for dir in self.ordered() {
             if let Err(e) = fsync_dir(&dir) {
@@ -365,22 +412,24 @@ pub fn fsync_dir(path: &Path) -> std::io::Result<()> {
 
 // One filesystem-wide confirm after a batch's closes, so vfat's per-close flush never runs.
 pub fn syncfs_dir(path: &Path) -> std::io::Result<()> {
+    // Refused before counting, so a failed confirm never reads as confirmed.
     #[cfg(test)]
-    {
-        SYNCFS_FLUSHES.with(|v| v.set(v.get() + 1));
-        ORDER_LOG.with(|v| v.borrow_mut().push("syncfs".to_string()));
-        if FAIL_SYNCFS.with(|v| v.get()) {
-            return Err(std::io::Error::new(std::io::ErrorKind::Other, "simulated syncfs failure"));
-        }
+    if FAIL_SYNCFS.with(|v| v.get()) {
+        return Err(std::io::Error::new(std::io::ErrorKind::Other, "simulated syncfs failure"));
     }
     use std::os::unix::io::AsRawFd;
     let file = std::fs::File::open(path)?;
     let rc = unsafe { syncfs(file.as_raw_fd()) };
-    if rc == 0 {
-        Ok(())
-    } else {
-        Err(std::io::Error::last_os_error())
+    if rc != 0 {
+        return Err(std::io::Error::last_os_error());
     }
+    // Counted and logged only after the seam and the syscall succeed, like fsync_dir.
+    #[cfg(test)]
+    {
+        SYNCFS_FLUSHES.with(|v| v.set(v.get() + 1));
+        ORDER_LOG.with(|v| v.borrow_mut().push("syncfs".to_string()));
+    }
+    Ok(())
 }
 
 // Sample input: "smb-share:server=nas,share=media" answers "media".
@@ -430,28 +479,28 @@ pub struct Finish {
     pub note: String,
 }
 
-// After the last landed file: one writing line, then the batch syncfs, then every touched directory.
+// After the last landed file: one writing line, then the settled batch syncfs, then every touched directory.
 pub fn finish(id: usize, tx: &std::sync::mpsc::Sender<crate::backend::opsreq::OpMsg>, durability: &mut Durability, dest: &Path, landed: usize) -> Finish {
-    if durability.batch_syncfs {
-        durability.release_held();
-    }
+    // Nothing to confirm drains held descriptors without a syncfs, so an eject never waits on one.
     if landed == 0 {
+        durability.release_held();
         return Finish { ok: false, note: String::new() };
     }
     if durability.rclone {
+        durability.release_held();
         return Finish { ok: false, note: RCLONE_NOTE.to_string() };
     }
     if !durability.durable {
+        durability.release_held();
         return Finish { ok: false, note: String::new() };
     }
     let _ = tx.send(crate::backend::opsreq::OpMsg::Meta { line: writing_line(id, &drive_name(dest)) });
     if durability.file_failed {
+        durability.release_held();
         return Finish { ok: false, note: String::new() };
     }
     // No destination fd stays open at transferdone, so an eject right after never waits on one.
-    if durability.batch_syncfs && syncfs_dir(dest).is_err() {
-        return Finish { ok: false, note: DIR_UNCONFIRMED.to_string() };
-    }
+    // flush_dirs settles held files with its syncfs before the folder fsync.
     match durability.flush_dirs() {
         Ok(()) => Finish { ok: true, note: String::new() },
         Err(_) => Finish { ok: false, note: DIR_UNCONFIRMED.to_string() },
@@ -461,6 +510,7 @@ pub fn finish(id: usize, tx: &std::sync::mpsc::Sender<crate::backend::opsreq::Op
 #[cfg(test)]
 pub fn test_reset() {
     FORCE.with(|v| v.borrow_mut().clear());
+    FORCE_BATCH.with(|v| v.set(false));
     FAIL_FILE.with(|v| v.set(false));
     FAIL_DIR.with(|v| v.set(false));
     FILE_FLUSHES.with(|v| v.set(0));
@@ -562,6 +612,12 @@ pub fn test_set_fail_files(fail: bool) {
 #[cfg(test)]
 pub fn test_set_fail_syncfs(fail: bool) {
     FAIL_SYNCFS.with(|v| v.set(fail));
+}
+
+// A durable target batches with one syncfs, so copy_then_remove and redo drive it without two mounts.
+#[cfg(test)]
+pub fn test_set_force_batch(force: bool) {
+    FORCE_BATCH.with(|v| v.set(force));
 }
 
 #[cfg(test)]

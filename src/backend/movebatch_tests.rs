@@ -707,3 +707,45 @@ fn a_non_block_durable_batch_keeps_per_file_fsyncs_and_no_syncfs() {
     assert_eq!(items(rx).len(), 4);
     durable::test_reset();
 }
+
+// A syncfs failing at the 64th hold keeps all 64 sources, so unconfirmed bytes never lose a source.
+#[test]
+fn a_failed_cap_syncfs_keeps_all_sixty_four_sources_and_journals_partials() {
+    use crate::backend::durable;
+    durable::test_reset();
+    let d = TestDir::new("movebatch-cap-fail");
+    let srcdir = d.dir("src");
+    let out = d.dir("out");
+    durable::test_mark_durable(&out);
+    let mut durability = durable::Durability::begin(&out);
+    durability.batch_syncfs = true;
+    let flag = AtomicBool::new(false);
+    let settled = AtomicU64::new(0);
+    let mut batch = MoveBatch::new();
+    let (tx, rx) = channel();
+    let mut steps = Vec::new();
+    for n in 0..63 {
+        let src = srcdir.join(format!("f{n}.txt"));
+        std::fs::write(&src, "body").unwrap();
+        staged(1, &mut batch, &mut durability, &flag, &tx, &settled, &mut steps, n, &src, &out.join(format!("f{n}.txt")));
+    }
+    // Only the cap settle fails; the 64th copy still lands, then every confirm must fail sticky.
+    durable::test_set_fail_syncfs(true);
+    let src = srcdir.join("f63.txt");
+    std::fs::write(&src, "body").unwrap();
+    staged(1, &mut batch, &mut durability, &flag, &tx, &settled, &mut steps, 63, &src, &out.join("f63.txt"));
+    durable::test_set_fail_syncfs(false);
+    let (counts, retry) = close_normal(&mut batch, 1, &tx, &mut steps, &mut durability);
+    assert_eq!((counts.ok, counts.failed), (0, 64), "every source stays when the cap syncfs failed");
+    assert_eq!(retry.len(), 64, "every unconfirmed source is offered again");
+    assert_eq!(steps.len(), 64, "each landed copy journals as a partial: {:?}", steps.len());
+    assert!(steps.iter().all(|s| matches!(s, Step::Copied { .. })), "partials, never moves");
+    drop(tx);
+    let lines = items(rx);
+    assert_eq!(lines.len(), 64);
+    for n in 0..64 {
+        assert!(srcdir.join(format!("f{n}.txt")).exists(), "no source is removed on an unconfirmed batch");
+        assert!(out.join(format!("f{n}.txt")).exists(), "the landed copy stays beside it");
+    }
+    durable::test_reset();
+}

@@ -410,3 +410,51 @@ fn a_cancel_removes_a_tree_holding_a_directory_the_copy_made_unwritable() {
     assert_eq!(e.msg, "cancelled");
     assert!(!clone.exists(), "a half-copied tree goes, even when the copy left it unwritable");
 }
+
+// A batch single-item move settles its held file before removing its source.
+#[test]
+fn a_batch_cross_device_move_settles_before_removing_its_source() {
+    let d = TestDir::new("movexdevbatch");
+    let src = d.file("moving.txt", "body");
+    let dst = d.join("moved.txt");
+    crate::backend::durable::test_reset();
+    crate::backend::durable::test_mark_durable(d.path());
+    let flag = AtomicBool::new(false);
+    let mut sink = |_: u64, _: u64| {};
+    let mut durability = crate::backend::durable::Durability::begin(&dst);
+    durability.batch_syncfs = true;
+    let mut p = Progress { cancel: &flag, on_bytes: &mut sink, partial: None, tree: None, manifest: None, durability: Some(&mut durability) };
+    move_cross_device(&src, &dst, &mut p).expect("a batch move confirms");
+    let order = crate::backend::durable::test_order();
+    let syncfs_at = order.iter().position(|s| s == "syncfs").expect("one syncfs in the order");
+    let dir_at = order.iter().position(|s| s == "dir").expect("one folder fsync in the order");
+    assert!(order.iter().take(syncfs_at).any(|s| s == "release"), "release first: {:?}", order);
+    assert!(syncfs_at < dir_at, "release, syncfs, folder fsync, then the source removal: {:?}", order);
+    assert!(!src.exists(), "the source goes only after the confirm");
+    assert_eq!(std::fs::read_to_string(&dst).unwrap(), "body");
+    crate::backend::durable::test_reset();
+}
+
+// A failing batch syncfs keeps the source of a single-item move, so a crash never loses the file.
+#[test]
+fn a_batch_cross_device_move_keeps_its_source_when_syncfs_fails() {
+    let d = TestDir::new("movexdevbatchfail");
+    let src = d.file("moving.txt", "body");
+    let dst = d.join("moved.txt");
+    crate::backend::durable::test_reset();
+    crate::backend::durable::test_mark_durable(d.path());
+    let flag = AtomicBool::new(false);
+    let mut sink = |_: u64, _: u64| {};
+    let mut durability = crate::backend::durable::Durability::begin(&dst);
+    durability.batch_syncfs = true;
+    let mut p = Progress { cancel: &flag, on_bytes: &mut sink, partial: None, tree: None, manifest: None, durability: Some(&mut durability) };
+    crate::backend::durable::test_set_fail_syncfs(true);
+    let error = move_cross_device(&src, &dst, &mut p).expect_err("an unconfirmed batch move keeps its source");
+    crate::backend::durable::test_set_fail_syncfs(false);
+    assert_eq!(error.msg, crate::backend::durable::DIR_UNCONFIRMED);
+    assert!(src.exists(), "the source stays: {:?}", error.msg);
+    assert!(dst.exists(), "the landed copy stays beside it");
+    assert_eq!(p.partial.as_deref(), Some(dst.as_path()), "the unconfirmed copy is handed to the caller to journal");
+    assert_eq!(crate::backend::durable::test_syncfs_count(), 0, "a failed syncfs never counts: {:?}", crate::backend::durable::test_order());
+    crate::backend::durable::test_reset();
+}

@@ -359,7 +359,7 @@ fn a_copy_onto_rclone_says_it_uploads_in_the_background_and_never_claims_the_dri
     test_reset();
     let d = TestDir::new("durable-rclone-note");
     let out = d.dir("out");
-    let mut durability = Durability { durable: false, rclone: true, file_failed: false, batch_syncfs: false,
+    let mut durability = Durability { durable: false, rclone: true, file_failed: false, batch_syncfs: false, unsettled: false,
         held: Vec::new(), touched: std::collections::HashSet::new(), last: None };
     let (tx, rx) = channel();
     let done = finish(9, &tx, &mut durability, &out, 1);
@@ -406,7 +406,7 @@ fn finish_with_nothing_landed_on_rclone_says_nothing() {
     test_reset();
     let d = TestDir::new("durable-rclone-empty");
     let out = d.dir("out");
-    let mut durability = Durability { durable: false, rclone: true, file_failed: false, batch_syncfs: false,
+    let mut durability = Durability { durable: false, rclone: true, file_failed: false, batch_syncfs: false, unsettled: false,
         held: Vec::new(), touched: std::collections::HashSet::new(), last: None };
     let (tx, rx) = channel();
     let done = finish(12, &tx, &mut durability, &out, 0);
@@ -744,7 +744,8 @@ fn slices_start_with_write_alone_before_the_previous_waits() {
 
 // The first progress lands after the first ramp slice, so a large copy reports in milliseconds.
 #[test]
-fn first_confirmed_slice_is_first_confirm_bytes() {    test_reset();
+fn first_confirmed_slice_is_first_confirm_bytes() {
+    test_reset();
     let d = TestDir::new("durable-ramp-first");
     let out = d.dir("out");
     test_mark_durable(&out);
@@ -826,5 +827,173 @@ fn finish_on_a_batch_target_leaves_nothing_held() {
     assert!(done.ok, "a batch finish confirms: {:?}", done.note);
     assert_eq!(durability.held_len(), 0, "no descriptor stays open at transferdone");
     assert_eq!(test_syncfs_count(), 1, "one syncfs for the batch: {:?}", test_order());
+    test_reset();
+}
+
+// The 64th hold settles with its syncfs, so a copy never runs more than one batch ahead of the drive.
+#[test]
+fn hold_at_cap_settles_with_one_syncfs() {
+    test_reset();
+    let d = TestDir::new("durable-hold-cap");
+    let srcdir = d.dir("src");
+    let out = d.dir("out");
+    test_mark_durable(&out);
+    let mut durability = Durability::begin(&out);
+    durability.batch_syncfs = true;
+    let flag = std::sync::atomic::AtomicBool::new(false);
+    let mut sink = |_: u64, _: u64| {};
+    for n in 0..64 {
+        let src = srcdir.join(format!("f{n}.txt"));
+        std::fs::write(&src, "body").unwrap();
+        let mut p = quiet(&flag, &mut sink, &mut durability);
+        crate::backend::copyfile::copy_any(&src, &out.join(format!("f{n}.txt")), &mut p).expect("copy");
+        drop(p);
+    }
+    assert_eq!(durability.held_len(), 0, "the 64th hold released the batch");
+    assert_eq!(test_releases(), 64, "64 closes on scoped threads: {:?}", test_order());
+    assert_eq!(test_syncfs_count(), 1, "one syncfs at the cap, so the rate stays the drive's: {:?}", test_order());
+    test_reset();
+}
+
+// A confirm settles held files before its folder fsync, so no caller removes a source early.
+#[test]
+fn flush_dirs_settles_held_before_its_folder_fsync() {
+    test_reset();
+    let d = TestDir::new("durable-flush-settle");
+    let src = d.file("a.txt", "body");
+    let out = d.dir("out");
+    test_mark_durable(&out);
+    let mut durability = Durability::begin(&out);
+    durability.batch_syncfs = true;
+    let flag = std::sync::atomic::AtomicBool::new(false);
+    let mut sink = |_: u64, _: u64| {};
+    let mut p = quiet(&flag, &mut sink, &mut durability);
+    crate::backend::copyfile::copy_any(&src, &out.join("a.txt"), &mut p).expect("copy");
+    drop(p);
+    assert_eq!(durability.held_len(), 1, "one file held");
+    durability.flush_dirs().expect("confirm");
+    let order = test_order();
+    let syncfs_at = order.iter().position(|s| s == "syncfs").expect("one syncfs in the order");
+    let dir_at = order.iter().position(|s| s == "dir").expect("one folder fsync in the order");
+    assert!(order.iter().take(syncfs_at).any(|s| s == "release"), "release first: {:?}", order);
+    assert!(syncfs_at < dir_at, "release, syncfs, folder fsync: {:?}", order);
+    assert_eq!(durability.held_len(), 0, "nothing stays held past the confirm");
+    test_reset();
+}
+
+// A failed syncfs counts nothing and logs nothing, so it never reads as confirmed.
+#[test]
+fn a_failed_syncfs_counts_nothing_and_logs_nothing() {
+    test_reset();
+    let d = TestDir::new("durable-syncfs-fail-count");
+    let out = d.dir("out");
+    test_set_fail_syncfs(true);
+    let err = super::syncfs_dir(&out).expect_err("a failed syncfs is a failed confirm");
+    assert_eq!(test_syncfs_count(), 0, "a failed syncfs never counts");
+    assert!(!test_order().contains(&"syncfs".to_string()), "a failed syncfs never logs: {:?}", test_order());
+    test_set_fail_syncfs(false);
+    super::syncfs_dir(&out).expect("a good syncfs confirms");
+    assert_eq!(test_syncfs_count(), 1, "one syncfs after the failure: {:?}", err);
+    test_reset();
+}
+
+// copy_then_remove on a forced batch target settles before removing its source.
+#[test]
+fn copy_then_remove_on_a_batch_target_settles_before_removing_its_source() {
+    test_reset();
+    let d = TestDir::new("durable-rename-batch");
+    let from = d.file("source.txt", "body");
+    let to = d.join("target.txt");
+    test_mark_durable(d.path());
+    super::test_set_force_batch(true);
+    crate::backend::renamecompat::copy_then_remove(&from, &to).expect("rename by exclusive copy");
+    super::test_set_force_batch(false);
+    let order = test_order();
+    let syncfs_at = order.iter().position(|s| s == "syncfs").expect("one syncfs in the order");
+    let dir_at = order.iter().position(|s| s == "dir").expect("one folder fsync in the order");
+    assert!(order.iter().take(syncfs_at).any(|s| s == "release"), "release first: {:?}", order);
+    assert!(syncfs_at < dir_at, "release, syncfs, folder fsync, then the source removal: {:?}", order);
+    assert!(!from.exists(), "the source goes only after the confirm");
+    assert_eq!(std::fs::read_to_string(&to).unwrap(), "body");
+    test_reset();
+}
+
+// A failing syncfs keeps the source of a batch rename, so a crash never loses the file.
+#[test]
+fn copy_then_remove_on_a_batch_target_keeps_its_source_when_syncfs_fails() {
+    test_reset();
+    let d = TestDir::new("durable-rename-batch-fail");
+    let from = d.file("source.txt", "body");
+    let to = d.join("target.txt");
+    test_mark_durable(d.path());
+    super::test_set_force_batch(true);
+    test_set_fail_syncfs(true);
+    let err = crate::backend::renamecompat::copy_then_remove(&from, &to).expect_err("an unconfirmed rename keeps its source");
+    test_set_fail_syncfs(false);
+    super::test_set_force_batch(false);
+    assert!(from.exists(), "the source stays: {:?}", err.msg);
+    assert!(!to.exists(), "the unconfirmed copy goes back");
+    assert_eq!(test_syncfs_count(), 0, "a failed syncfs never counts: {:?}", test_order());
+    test_reset();
+}
+
+// Redo of a copy on a forced batch target settles before it confirms.
+#[test]
+fn redo_of_a_copy_on_a_batch_target_settles_before_it_confirms() {
+    use crate::backend::undo::{Entry, Journal};
+    test_reset();
+    let d = TestDir::new("durable-redo-batch");
+    let src = d.file("a.txt", "body");
+    test_mark_durable(d.path());
+    let (outcome, steps) = crate::backend::ops::duplicate(&src);
+    let copy = outcome.expect("duplicate");
+    let mut journal = Journal::new();
+    journal.push(Entry { op: "copy".into(), steps });
+    journal.undo().expect("undo removes the copy");
+    assert!(!copy.exists());
+    test_reset_counts();
+    super::test_set_force_batch(true);
+    let (tx, _rx) = std::sync::mpsc::channel();
+    journal.redo(1, &std::sync::atomic::AtomicBool::new(false), &tx).expect("redo");
+    super::test_set_force_batch(false);
+    let order = test_order();
+    let syncfs_at = order.iter().position(|s| s == "syncfs").expect("one syncfs in the order");
+    let dir_at = order.iter().position(|s| s == "dir").expect("one folder fsync in the order");
+    assert!(syncfs_at < dir_at, "release, syncfs, folder fsync: {:?}", order);
+    assert!(copy.exists(), "redo put the copy back");
+    test_reset();
+}
+
+// A cap settle that failed makes finish report unconfirmed, not a silent non-durable done.
+#[test]
+fn finish_after_a_failed_cap_settle_reports_unconfirmed() {
+    use std::sync::mpsc::channel;
+    test_reset();
+    let d = TestDir::new("durable-finish-cap-fail");
+    let srcdir = d.dir("src");
+    let out = d.dir("out");
+    test_mark_durable(&out);
+    let mut durability = Durability::begin(&out);
+    durability.batch_syncfs = true;
+    let flag = std::sync::atomic::AtomicBool::new(false);
+    let mut sink = |_: u64, _: u64| {};
+    for n in 0..63 {
+        let src = srcdir.join(format!("f{n}.txt"));
+        std::fs::write(&src, "body").unwrap();
+        let mut p = quiet(&flag, &mut sink, &mut durability);
+        crate::backend::copyfile::copy_any(&src, &out.join(format!("f{n}.txt")), &mut p).expect("copy");
+        drop(p);
+    }
+    test_set_fail_syncfs(true);
+    let src = srcdir.join("f63.txt");
+    std::fs::write(&src, "body").unwrap();
+    let mut p = quiet(&flag, &mut sink, &mut durability);
+    crate::backend::copyfile::copy_any(&src, &out.join("f63.txt"), &mut p).expect("the 64th copy still lands");
+    drop(p);
+    test_set_fail_syncfs(false);
+    let (tx, _rx) = channel();
+    let done = finish(31, &tx, &mut durability, &out, 64);
+    assert!(!done.ok, "an unconfirmed batch never claims the drive");
+    assert_eq!(done.note, DIR_UNCONFIRMED, "the note names the unconfirmed folder: {:?}", done.note);
     test_reset();
 }
