@@ -48,6 +48,16 @@ case_railpointer() {
     settle
     [[ "$(ipc focusView)" == "rail" ]] || fail "railpointer: auto-hide Tab did not reach the rail"
     wait_rail 1
+    # The Tab above already revealed the rail, so hide again to prove the pointer reveals it.
+    key -k Tab >/dev/null
+    settle
+    local hid=false hid_json
+    for _attempt in $(seq 1 60); do
+        hid_json=$(ipc railState)
+        [[ "$(jq -r '.hidden' 2>/dev/null <<< "$hid_json")" == "true" ]] && { hid=true; break; }
+        sleep 0.05
+    done
+    [[ "$hid" == true ]] || fail "railpointer: the rail never hid before the reveal (railState=$hid_json)"
     # Without these the reveal gesture below is silent, and the rail assertions after it are vacuous.
     command -v ydotool >/dev/null || fail "railpointer: no ydotool on PATH, so the auto-hide rail cannot be revealed"
     [[ -S "${XDG_RUNTIME_DIR:-}/.ydotool_socket" ]] || fail "railpointer: no ydotool socket at ${XDG_RUNTIME_DIR:-}/.ydotool_socket, so the auto-hide rail cannot be revealed"
@@ -67,11 +77,14 @@ case_railpointer() {
     # Off row 0 first, so a cursor back on row 0 below proves the press landed.
     local rail_total
     rail_total=$(ipc railCount)
-    if [[ "$rail_total" =~ ^[0-9]+$ && "$rail_total" -gt 1 && "$(ipc railCursor)" == "0" ]]; then
+    [[ "$rail_total" =~ ^[0-9]+$ ]] || fail "railpointer: the revealed rail has no numeric count (railCount=$rail_total railState=$(ipc railState))"
+    (( rail_total >= 2 )) || fail "railpointer: the revealed rail has $rail_total rows, need two for the landed-press proof (railState=$(ipc railState))"
+    if [[ "$(ipc railCursor)" == "0" ]]; then
         key j >/dev/null
         settle
         [[ "$(ipc railCursor)" != "0" ]] || fail "railpointer: j never left rail row 0 (railCount=$rail_total)"
     fi
+    [[ "$(ipc railCursor)" != "0" ]] || fail "railpointer: rail cursor still on row 0 before the press, so row 0 after proves nothing (railCount=$rail_total)"
     [[ -n "$(ipc railRowCentre 0)" ]] || fail "railpointer: rail row 0 has no on-screen centre while revealed, so the press has no target"
     click_rail_row 0 left
     settle
@@ -97,7 +110,7 @@ case_railpointer() {
     key -k Tab >/dev/null
     settle
     ipc dualState | jq -e '.focused == 1' >/dev/null || fail "railpointer: dual Tab did not switch panes"
-    # .folder is pane 0's own row 0, so its rect centre is a pinned row and never pane chrome.
+    # .folder is pane 0 row 0 (l01.txt), so its rect centre is a pinned row and never pane chrome.
     local geo
     geo=$(ipc dragPaneGeometry 0 0) || fail "railpointer: dual geometry read failed for pane 0 row 0"
     rect=$(jq -er '.folder.rect' <<< "$geo") || fail "railpointer: pane 0 row 0 has no rect (geometry=$geo)"
@@ -105,7 +118,7 @@ case_railpointer() {
     read -r rx ry rw rh <<< "$rect"
     [[ "$rx" =~ ^-?[0-9]+$ && "$ry" =~ ^-?[0-9]+$ && "$rw" =~ ^-?[0-9]+$ && "$rh" =~ ^-?[0-9]+$ ]] || fail "railpointer: pane 0 row 0 read no four numbers (rect=$rect)"
     (( rw > 0 && rh > 0 )) || fail "railpointer: pane 0 row 0 read an empty rect (rect=$rect)"
-    [[ -n "$(jq -er '.folder.name' <<< "$geo")" ]] || fail "railpointer: pane 0 row 0 has no name (geometry=$geo)"
+    [[ "$(jq -er '.folder.name' <<< "$geo")" == "l01.txt" ]] || fail "railpointer: pane 0 row 0 names $(jq -r '.folder.name' <<< "$geo"), want l01.txt, so the click is not pinned to a row (geometry=$geo)"
     read -r wx wy ww hh < <(window_box) || fail "railpointer: native window coordinates unavailable"
     omarchy-drive click "$((wx + rx + rw / 2))" "$((wy + ry + rh / 2))" left >/dev/null || fail "railpointer: the click on pane 0 row 0 failed"
     settle

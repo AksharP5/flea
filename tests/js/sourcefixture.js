@@ -5,8 +5,6 @@ function slice(src, fromMarker, toMarker) {
     var from = text.indexOf(fromMarker)
     if (from < 0)
         throw new Error("sourcefixture: missing marker " + fromMarker)
-    if (toMarker === undefined)
-        return text.substring(from)
     var end = text.indexOf(toMarker, from + fromMarker.length)
     if (end < 0 && text.indexOf(toMarker) >= 0)
         throw new Error("sourcefixture: out-of-order markers " + fromMarker + " before " + toMarker)
