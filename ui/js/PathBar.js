@@ -194,6 +194,20 @@ function complete(text, names) {
     return { text: parts.head + tail, matches: matched.length }
 }
 
+// Sample input: shouldNavigate("/etc", "/etc", true) is false, the settled no-op.
+// Whether a committed target lists again. The settled same-path no-op keeps the selection.
+function shouldNavigate(target, current, showing) {
+    // An empty line closes the bar and navigates nowhere, the rule commitEdit already kept.
+    if (String(target).length === 0) {
+        return false
+    }
+    // The same path re-lists only when the pane is not settled on it, so an error retries.
+    if (String(target) === String(current) && showing) {
+        return false
+    }
+    return true
+}
+
 // A line that named something and still resolved to nothing, which is only ever a file:// URI on
 // another host: the bar owes that a sentence, where an empty line owes silence.
 function refused(text) {

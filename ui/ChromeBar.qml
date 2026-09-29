@@ -11,6 +11,8 @@ Item {
     id: root
 
     property string path: ""
+    // True while the pane is settled on path, so typing it again is a no-op and an error retries.
+    property bool showingPath: false
     property string home: ""
     property bool canGoBack: false
     property bool canGoUp: false
@@ -107,7 +109,7 @@ Item {
         root.closeEdit()
         // An empty line closes the bar and nothing else, and so does the path already being shown:
         // re-listing the directory under the cursor would drop the selection for no navigation.
-        if (target.length > 0 && target !== root.path) {
+        if (PathBar.shouldNavigate(target, root.path, root.showingPath)) {
             root.pathEntered(target)
             return
         }
@@ -402,7 +404,7 @@ Item {
             function onRequested(id, favourites, recent) { root.jumpRequested(id, favourites, recent) }
             function onDeclined() { root.commitEdit() }
             function onDismissed() { root.closeEdit() }
-            function onChosen(path) { root.closeEdit(); if (path !== root.path) root.pathEntered(path) }
+            function onChosen(path) { root.closeEdit(); if (PathBar.shouldNavigate(path, root.path, root.showingPath)) root.pathEntered(path) }
         }
     }
 

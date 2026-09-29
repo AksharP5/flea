@@ -52,7 +52,7 @@ tests/js/network.js 306
 tests/js/ops.js 390
 tests/js/status.js 354
 ui/Backend.qml 431
-ui/ChromeBar.qml 477
+ui/ChromeBar.qml 479
 ui/ColumnsArea.qml 410
 ui/ContextMenu.qml 579
 ui/ConvertDialog.qml 440
@@ -74,7 +74,7 @@ ui/Sidebar.qml 566
 ui/StatusBar.qml 456
 ui/Theme.qml 415
 ui/TrashView.qml 475
-ui/WindowBody.qml 546
+ui/WindowBody.qml 547
 ui/js/Filter.js 253
 ui/js/Focus.js 365
 ui/js/Keymap.js 314

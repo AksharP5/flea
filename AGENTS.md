@@ -2843,6 +2843,8 @@ w8 colroot moves two ceilings, each re-derived with `wc -l`: `ui/ColumnsArea.qml
 
 ddtarget moves one ceiling, re-derived with `wc -l`: `ui/js/Focus.js` 364 to 365 for the Marks import carrying the lone-selection follow on the eight plain-move cases, each call appended to its case's own line so the import is the only added line. `ui/js/Marks.js` 66 to 76 for follow, `ui/js/Selection.js` 50 to 58 for the lone flag with follows, `ui/js/Tabs.js` 292 to 299 for the snapshot follows with the only() restore, `ui/js/Grid.js` 32 to 33 and `ui/js/PreviewKeys.js` 85 to 86 for their follow calls, each inside its budget; the suite is the new `tests/js/ddtarget.js` at 166, inside both budgets, registered in `tests/js/harness.qml` at 170.
 
+pathretry moves two ceilings, each re-derived with `wc -l`: `ui/ChromeBar.qml` 477 to 479 for the `showingPath` bool and the `shouldNavigate` gates on `commitEdit` and the jump's `onChosen`, and `ui/WindowBody.qml` 546 to 547 for the `Nav.showing` binding on the one ChromeBar the window owns. The decision itself went to the new `ui/js/PathBar.js` `shouldNavigate`, 228 lines over the soft budget and under the hard cap, rather than into `ui/js/Nav.js`, which keeps 271 over soft; `tests/js/pathbar.js` takes the ten checks at 231 over soft.
+
 ## The key table is generated
 
 `keys.toml` at the repository root is the single source of truth for every binding.

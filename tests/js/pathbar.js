@@ -1,4 +1,5 @@
 .import "../../ui/js/Focus.js" as Focus
+.import "../../ui/js/Nav.js" as Nav
 .import "../../ui/js/PathBar.js" as PathBar
 .import "sourcefixture.js" as Source
 
@@ -34,6 +35,12 @@ function names(list) {
         out.push(list[i])
     }
     return out
+}
+
+// A stub pane for Nav.showing, which is what backs ChromeBar's showingPath binding.
+function showingPane(path, state, inFlight) {
+    return { path: path, listInFlight: inFlight, searchMode: "",
+             trash: { opened: false }, listingState: state }
 }
 
 function run(check) {
@@ -105,6 +112,24 @@ function run(check) {
     check("and says it was refused rather than empty", PathBar.refused("file://otherbox/etc"), true)
     check("an empty line is not a refusal, so it stays silent", PathBar.refused("   "), false)
     check("an ordinary path is not a refusal either", PathBar.refused("/etc"), false)
+
+    // The re-typed-folder rule, wired as ChromeBar binds it: Nav.showing feeds shouldNavigate.
+    check("an error state is not shown", Nav.showing(showingPane(HOME, "error", false), HOME), false)
+    check("a ready state is shown", Nav.showing(showingPane(HOME, "ready", false), HOME), true)
+    check("an empty state is shown", Nav.showing(showingPane(HOME, "empty", false), HOME), true)
+    check("a listing in flight is not shown", Nav.showing(showingPane(HOME, "ready", true), HOME), false)
+    check("an error state on the same path navigates",
+          PathBar.shouldNavigate(HOME, HOME, Nav.showing(showingPane(HOME, "error", false), HOME)), true)
+    check("a ready listing on the same path is a no-op",
+          PathBar.shouldNavigate(HOME, HOME, Nav.showing(showingPane(HOME, "ready", false), HOME)), false)
+    check("an empty listing on the same path is a no-op",
+          PathBar.shouldNavigate("/etc", "/etc", Nav.showing(showingPane("/etc", "empty", false), "/etc")), false)
+    check("a listing in flight navigates to Nav.open, which refuses it",
+          PathBar.shouldNavigate(HOME, HOME, Nav.showing(showingPane(HOME, "ready", true), HOME)), true)
+    check("another path navigates settled or not",
+          PathBar.shouldNavigate("/etc", HOME, true) && PathBar.shouldNavigate("/etc", HOME, false), true)
+    check("an empty line closes only",
+          PathBar.shouldNavigate("", HOME, true) || PathBar.shouldNavigate("", HOME, false), false)
 
     // Where a completion reads, which is the head of the line and never the half-typed leaf.
     check("the completion directory is the head of the line",
