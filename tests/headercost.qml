@@ -29,6 +29,7 @@ ShellRoot {
         }
     }
 
+    // Sample input: String(o) is "QQuickRectangle(0x55d0...)" for a built-in type and "ResizeHandle_QMLTYPE_7(0x...)" for a file type.
     function isType(o, name) { var s = String(o); return s.indexOf(name) === 0 || s.indexOf("QQuick" + name) === 0 }
 
     function handles() {
@@ -150,7 +151,8 @@ ShellRoot {
                 if (Math.abs(accent.width - hairline) > 0.001)
                     failures.push("hot accent is " + accent.width + " px wide, not the " + hairline + " px hairline")
                 var mid = accent.mapToItem(sizeHandle, accent.width / 2, 0).x
-                if (Math.abs(mid - sizeHandle.width / 2) > 0.001)
+                // Qt rounds a centred item to a whole pixel, so the centre holds to half a pixel.
+                if (Math.abs(mid - sizeHandle.width / 2) > 0.5)
                     failures.push("hot accent sits at " + mid + ", not the handle centre " + sizeHandle.width / 2)
             }
         }
@@ -166,6 +168,9 @@ ShellRoot {
             failures.push("fittedWidth measured " + first + " px for a size cell")
         if (first !== second)
             failures.push("two fits disagree, " + first + " against " + second)
+        // autofitColumn returns early unless the header is sortable with a size column, so a release check would pass unexercised.
+        if (!probeHeader.sortable || probeHeader.dualMode || !probeHeader.cols.size)
+            failures.push("the probe header cannot autofit, so the release checks below would prove nothing")
         try {
             probeHeader.autofitColumn("size")
         } catch (e) {

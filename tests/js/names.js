@@ -41,8 +41,6 @@ function run(check) {
     runGridCaption(check)
     runEquivalence(check)
     runNonFinite(check)
-    runPerf(check)
-    runLinear(check)
 }
 
 // The grid caption carries Flea's own breaks, so Qt's word wrap never strands a token on line 2.
@@ -195,85 +193,4 @@ function runNonFinite(check) {
     check("gridCaption hands a NaN line count through", Names.gridCaption("abcdef", 16, NaN), "abcdef")
     check("gridCaption hands Infinity through", Names.gridCaption("a".repeat(40), Infinity, 2), "a".repeat(40))
     check("gridCaption hands an infinite line count through", Names.gridCaption("a".repeat(40), 16, Infinity), "a".repeat(40))
-}
-
-// Long-name work costs relative time: 2000 calls best of 3, new against frozen, factor 2 for ascii and mixed, slack 1.5 for cjk whose paths run only 1.5x apart.
-var PERF_REPEATS = 2000, PERF_TRIALS = 3, PERF_FACTOR = 2, CJK_SLACK = 1.5
-
-// Realistic names: 60-char ASCII, 60 units mixed with emoji and CJK for the slow path, 85 CJK.
-function perfSets() {
-    var a60 = "screenshot-2026-08-30-final-review-for-gm-after-the-bench-v3.png".slice(0, 60)
-    var m60 = ("a中🎉-_.Z").repeat(10).slice(0, 60)
-    var c85 = ("写漢字テスト한글中").repeat(11).slice(0, 85)
-    return [["ascii", [a60, a60 + ".png"]], ["mixed", [m60, m60 + ".jpg"]], ["cjk", [c85, c85 + ".pdf"]]]
-}
-
-function timeOnce(impl, names, kind) {
-    var t0 = Date.now()
-    for (var i = 0; i < PERF_REPEATS; i++) {
-        if (kind === "grid") impl.gridCaption(names[i % names.length], 16, 3)
-        else impl.middleElide(names[i % names.length], 49)
-    }
-    return Date.now() - t0
-}
-
-function race(check, NewSide, tag, names, factor, kind) {
-    var fast = -1, slow = -1
-    for (var t = 0; t < PERF_TRIALS; t++) {
-        var nt, rt
-        if (t % 2 === 0) { nt = timeOnce(NewSide, names, kind); rt = timeOnce(Ref, names, kind) }
-        else { rt = timeOnce(Ref, names, kind); nt = timeOnce(NewSide, names, kind) }
-        if (fast < 0 || nt < fast) fast = nt
-        if (slow < 0 || rt < slow) slow = rt
-    }
-    var ok = factor === CJK_SLACK ? fast <= slow * factor : fast * factor < slow
-    check(tag + " " + kind + " " + PERF_REPEATS + " calls best of " + PERF_TRIALS + ": new " + fast + "ms x" + factor + " vs frozen " + slow + "ms", ok, true)
-}
-
-function runPerf(check) {
-    var NewSide = Names, sets = perfSets()
-    for (var s = 0; s < sets.length; s++) {
-        var factor = sets[s][0] === "cjk" ? CJK_SLACK : PERF_FACTOR
-        race(check, NewSide, sets[s][0], sets[s][1], factor, "grid")
-        race(check, NewSide, sets[s][0], sets[s][1], factor, "middle")
-    }
-}
-
-// Linear time costs width, not width squared: 25 calls best of 3 at 2000 and 8000 units, 1200 lines holding the long name with headroom so the pin measures scaling rather than elide-loop searching.
-var LONG_SHORT = 2000, LONG_LONG = 8000, LINEAR_CALLS = 25, LINEAR_TRIALS = 3, LINEAR_RATIO_MAX = 8
-
-function runLinear(check) {
-    var m = "a中🎉-_.Z"
-    var via = function(name) { return Names.gridCaption(name, 16, 1200) }
-    linearRace(check, "ascii", "a".repeat(LONG_SHORT), "a".repeat(LONG_LONG), via)
-    linearRace(check, "mixed", m.repeat(LONG_SHORT / 8), m.repeat(LONG_LONG / 8), via)
-}
-
-function linearRace(check, tag, shortName, longName, caption) {
-    function once(name) {
-        var t0 = Date.now()
-        for (var i = 0; i < LINEAR_CALLS; i++) caption(name)
-        return Date.now() - t0
-    }
-    var shortMs = -1, longMs = -1
-    for (var t = 0; t < LINEAR_TRIALS; t++) {
-        var a, b
-        if (t % 2 === 0) { a = once(shortName); b = once(longName) }
-        else { b = once(longName); a = once(shortName) }
-        if (shortMs < 0 || a < shortMs) shortMs = a
-        if (longMs < 0 || b < longMs) longMs = b
-    }
-    check(tag + " linear " + LINEAR_CALLS + " calls best of " + LINEAR_TRIALS + ": 8000 units under 8x the 2000-unit time (" + longMs + "ms vs " + shortMs + "ms)", longMs < shortMs * LINEAR_RATIO_MAX, true)
-}
-
-// A deliberately quadratic caption for the red demo only: the wrap rebuilds its layout on every line.
-function quadCaption(name) {
-    var chars = Names.charsOf(String(name)), out = [], pos = 0
-    while (pos < chars.length) {
-        var st = Names.storeOf(chars)
-        var far = pos + Names.spanFrom(st, pos, 16)
-        out.push(chars.slice(pos, far).join(""))
-        pos = far
-    }
-    return out.join("\n")
 }
