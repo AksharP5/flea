@@ -10,8 +10,7 @@ import "flea" as Flea
 ShellRoot {
     id: root
 
-    // One ColumnPane signature: drawsEmpty, lockedMode and liftedName with itemAtIndex.
-    // Nothing else in the area carries all four, so the count is the built panes.
+    // A ColumnPane is the only item carrying drawsEmpty, lockedMode, liftedName and itemAtIndex, so this counts built panes.
     function isColumnPane(o) {
         return o !== null && o.drawsEmpty !== undefined && o.lockedMode !== undefined
             && o.liftedName !== undefined && typeof o.itemAtIndex === "function"
