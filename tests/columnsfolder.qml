@@ -84,10 +84,17 @@ ShellRoot {
     property var fileA: ({ n: "a.txt", d: false, k: 0, p: 420, s: 13, m: 7, t: false, i: "text-x-generic" })
     property var fileB: ({ n: "b.txt", d: false, k: 0, p: 420, s: 15, m: 8, t: false, i: "text-x-generic" })
     property var folderSub: ({ n: "sub", d: true, k: 0, p: 493, s: 0, m: 9, t: false, i: "folder" })
+    property var folderLate: ({ n: "late", d: true, k: 0, p: 493, s: 0, m: 11, t: false, i: "folder" })
     property var kidRow: ({ n: "kid.txt", d: false, k: 0, p: 420, s: 1, m: 10, t: false, i: "text-x-generic" })
 
     function fail(text) { root.failures.push(text) }
-    function childPath() { return root.stubPane.join(root.stubPane.path, "sub") }
+    // The asked path follows the cursor folder, so phase b names a folder phase a never answered.
+    function childPath() {
+        var row = root.stubPane.rowFor(root.stubPane.cursorIndex)
+        if (row && row.d === true) return root.stubPane.join(root.stubPane.path, row.n)
+        return root.stubPane.join(root.stubPane.path, "sub")
+    }
+    function latePath() { return root.stubPane.join(root.stubPane.path, "late") }
     function swap() { return area.swapState() }
     function preview() { return area.previewColumn }
 
@@ -172,7 +179,7 @@ ShellRoot {
                 root.fail("d) a data-held empty landing leaves its entrance off")
         }
         if (root.failures.length > 0) { root.report(); return }
-        root.stubPane.rows = [root.fileA, root.fileB, root.folderSub]
+        root.stubPane.rows = [root.fileA, root.fileB, root.folderLate]
         root.stubPane.cursorIndex = 0
         fileTimer.start()
     }
@@ -195,6 +202,9 @@ ShellRoot {
         var s = root.swap()
         if (!s.holding && !s.capturing)
             root.fail("b) a file move holds no picture, want a live hold for the folder's wait")
+        // The tested folder is still unanswered, or the wait below is answered already.
+        if (area.answered(root.latePath()) !== false)
+            root.fail("b) late answers before the move, want it unanswered")
         root.stubPane.cursorIndex = 2
         cancelledTimer.start()
     }
@@ -206,8 +216,13 @@ ShellRoot {
             root.fail("b) j onto an unanswered folder clears a.txt, want the old preview kept")
         if (area.shownIsDir !== false)
             root.fail("b) an unanswered folder shows at once, want the old column kept")
+        if (area.answered(area.childPath) !== false)
+            root.fail("b) the waiting folder answers before its peek, want it unanswered")
         if (root.failures.length > 0) { root.report(); return }
         root.answerPeek([root.kidRow])
+        // The reply just sent is the delivery this phase waits for.
+        if (area.answered(area.childPath) !== true)
+            root.fail("b) a landed peek leaves late unanswered, want it answered")
         folderShownTimer.start()
     }
 
