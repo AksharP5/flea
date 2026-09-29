@@ -84,14 +84,15 @@ function run(check) {
     check("a view narrower than its lane holds nothing", Scroll.contentWidth(9, 14), 0)
     check("garbage holds nothing", Scroll.contentWidth("x", "y"), 0)
 
-    // The thumb is a pill following Hyprland rounding: square at 0, clamped at half the thinner side.
-    // Sample input: knobRadius(8, 6, 100) is 3, the 6 px knob rounding to its own half.
+    // The thumb follows Hyprland rounding: square at 0, clamped at half the thinner side.
     check("square corners stay square", Scroll.knobRadius(0, 6, 100), 0)
     check("rounding clamps at half the thinner side", Scroll.knobRadius(8, 6, 100), 3)
-    check("rounding holds below the clamp", Scroll.knobRadius(8, 10, 100), 5)
-    check("a wide rounding holds the knob's own radius", Scroll.knobRadius(3, 10, 100), 3)
+    check("a rounding past half the knob clamps to the knob's own half", Scroll.knobRadius(8, 10, 100), 5)
+    check("a rounding below the clamp holds as it is", Scroll.knobRadius(3, 10, 100), 3)
     check("garbage rounding stays square", Scroll.knobRadius("x", 6, 100), 0)
     // GM 2026-09-29: no line or border along the lane in any state, only the space itself.
+    check("the bar binds its thumb to Hyprland rounding",
+          Source.source("ui/ViewportScrollBar.qml").indexOf("Scroll.knobRadius(Style.cornerRadius, width, height)") >= 0, true)
     check("no track-line constant survives in Scroll.js",
           Source.source("ui/js/Scroll.js").indexOf("TRACK_LINE"), -1)
     check("no track-line reader survives in the bar",

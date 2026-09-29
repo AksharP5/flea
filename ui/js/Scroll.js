@@ -74,8 +74,7 @@ var KNOB_HOVER_ALPHA = 0.6
 var KNOB_PRESSED_ALPHA = 0.7
 var TRACK_ALPHA = 0.05
 
-// The thumb's pill follows Hyprland rounding: square at 0, clamped at half the thinner side.
-// Sample input: knobRadius(8, 6, 100) is 3, the 6 px knob rounding to its own half.
+// The thumb follows Hyprland rounding: square at 0, clamped at half the thinner side.
 function knobRadius(cornerRadius, width, height) {
     var rounding = Number(cornerRadius) || 0
     if (rounding <= 0)
