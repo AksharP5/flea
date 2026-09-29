@@ -27,7 +27,8 @@ Item {
     onPageCountChanged: Qt.callLater(root.focusInitialControl)
     Keys.onPressed: function(event) {
         var action = Keymap.lookup(event.key, event.text, event.modifiers, "pdf")
-        if (action === "escape" || action === "focusPreview") root.closed()
+        // 2026-09-11 ruling: Space closes every kind, Enter still activates the focused control.
+        if (action === "escape" || action === "focusPreview" || action === "preview") root.closed()
         else PreviewKeys.pdfAction(action, root)
         event.accepted = true
     }
