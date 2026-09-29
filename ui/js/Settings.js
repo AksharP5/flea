@@ -323,7 +323,7 @@ function viewRows(state) {
                ["Path", "Breadcrumb"], data.addressBar || "breadcrumb"),
         // ColumnsWidth board, #167 and #69: the count follows the window width, capped here.
         choice("columnsLimit", "Columns view limit", "columns", [2, 3, 4, 5],
-               ["2", "3", "4", "5"], data.columnsLimit || 5),
+               ["2", "3", "4", "5"], data.columnsLimit || 3),
         { kind: "check", id: "highlightToday", label: "Highlight today's dates", glyph: "history",
           on: data.highlightToday === true },
         { kind: "group", label: "Sorting" },

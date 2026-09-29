@@ -517,7 +517,7 @@ mod tests {
         }
         // A file carrying one costs that key its own default, and the key beside it still stands.
         let read = from_file(r#"{"columnsLimit":9,"columnWidths":{"size":10},"density":"comfortable"}"#);
-        assert_eq!(read.get("columnsLimit").and_then(Json::as_f64), Some(5.0));
+        assert_eq!(read.get("columnsLimit").and_then(Json::as_f64), Some(3.0));
         assert_eq!(read.get("columnWidths").and_then(Json::as_object).map(<[(String, Json)]>::len), Some(0));
         assert_eq!(read.get("density").and_then(Json::as_str), Some("comfortable"));
     }

@@ -47,8 +47,8 @@ Item {
     readonly property bool thirdReady: root.shownIsDir ? root.answered(root.shownChildPath)
         : (!root.shownHasRow || !ViewState.previewColumn || preview.ready)
 
-    // The raw stored value, so cappedLimit reads a hand-edited false or "" as the shipped 5 instead of the 0 an int property coerces.
-    readonly property var columnsLimit: ViewState.state.columnsLimit !== undefined ? ViewState.state.columnsLimit : 5
+    // The raw stored value, so cappedLimit reads a hand-edited false or "" as the shipped 3 instead of the 0 an int property coerces.
+    readonly property var columnsLimit: ViewState.state.columnsLimit !== undefined ? ViewState.state.columnsLimit : 3
     readonly property int columnCount: Columns.columnCountForWidth(root.width, root.columnsLimit)
     // One columnWidth per shown column from the window width (ColumnsWidth board #167 and #69); the third column takes the remainder at activeX, and resizing re-lays widths in one frame with no re-read.
     readonly property int columnWidth: Math.max(1, Math.floor(root.width / Math.max(1, root.columnCount)))

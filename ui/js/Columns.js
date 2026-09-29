@@ -98,14 +98,16 @@ var COUNT_5_AT = 2300
 var COUNT_NARROW_AT = 900
 var COUNT_MIN = 2
 var COUNT_MAX = 5
+// The shipped View limit, so a default install holds 3 columns on any width.
+var COUNT_DEFAULT = 3
 
-// A stored number clamps to 2 to 5, anything else reads as the shipped 5.
+// A stored number clamps to 2 to 5, anything else reads as the shipped default.
 function cappedLimit(limit) {
     if (typeof limit !== "number")
-        return COUNT_MAX
+        return COUNT_DEFAULT
     var n = Math.floor(limit)
     if (!(n >= COUNT_MIN) && !(n <= COUNT_MAX))
-        return COUNT_MAX
+        return COUNT_DEFAULT
     if (n < COUNT_MIN)
         return COUNT_MIN
     if (n > COUNT_MAX)

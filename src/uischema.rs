@@ -6,7 +6,7 @@ pub const DEFAULTS: &str = r#"{
   "view": "list",
   "density": "compact",
   "columns": ["name", "size", "date"],
-  "columnsLimit": 5,
+  "columnsLimit": 3,
   "columnWidths": {},
   "addressBar": "breadcrumb",
   "sort": { "key": "name", "reverse": false },
@@ -156,7 +156,7 @@ pub const SCHEMA: &[(&str, Rule)] = &[
     ("view", Rule::Word(&["list", "columns", "grid", "dual"])),
     ("density", Rule::Word(&["tight", "compact", "normal", "comfortable"])),
     ("columns", Rule::Columns),
-    // ColumnsWidth board: 2 to 5 columns from the window width, capped here, shipping at 5.
+    // ColumnsWidth board: 2 to 5 columns from the window width, capped here, shipping at 3.
     ("columnsLimit", Rule::Count(2.0, 5.0)),
     ("columnWidths", Rule::ColumnWidths),
     ("addressBar", Rule::Word(&["path", "breadcrumb"])),
@@ -273,8 +273,8 @@ mod tests {
         assert_eq!(d.get("trashSweptOn").and_then(Json::as_f64), Some(0.0));
         let cols: Vec<&str> = d.get("columns").and_then(Json::as_array).expect("columns").iter().filter_map(Json::as_str).collect();
         assert_eq!(cols, ["name", "size", "date"]);
-        // ColumnsWidth ships at 5, so width alone decides; ListColumns040 remembers nothing yet.
-        assert_eq!(d.get("columnsLimit").and_then(Json::as_f64), Some(5.0));
+        // ColumnsWidth ships at 3, so a default install holds 3 columns on any width.
+        assert_eq!(d.get("columnsLimit").and_then(Json::as_f64), Some(3.0));
         assert_eq!(d.get("columnWidths").and_then(Json::as_object).map(<[(String, Json)]>::len), Some(0));
         assert_eq!(d.get("sort").and_then(|s| s.get("key")).and_then(Json::as_str), Some("name"));
         assert_eq!(d.get("sort").and_then(|s| s.get("reverse")).and_then(Json::as_bool), Some(false));
@@ -312,6 +312,14 @@ mod tests {
         let menu: Vec<&str> = d.get("menu").and_then(Json::as_object).expect("menu").iter().map(|(k, _)| k.as_str()).collect();
         assert_eq!(menu, ["hidden"], "the master row is derived from menu.hidden, not stored beside it");
         assert_eq!(d.get("updates").and_then(|u| u.get("autoCheck")).and_then(Json::as_bool), Some(true));
+    }
+
+    // GM's 0.3.7 ruling: a fresh install opens compact rows and 3 columns on any width.
+    #[test]
+    fn fresh_install_ships_compact_rows_and_three_columns() {
+        let d = defaults();
+        assert_eq!(d.get("density").and_then(Json::as_str), Some("compact"));
+        assert_eq!(d.get("columnsLimit").and_then(Json::as_f64), Some(3.0));
     }
 
     // menu.hidden stores what is hidden, so an action added later is visible without a migration.

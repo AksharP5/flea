@@ -124,8 +124,11 @@ function run(check) {
     runColumnsLimitWire(check)
 }
 
-// ColumnsWidth board (#167, #69): the columns count follows the window width, 2 below 900 up to 5 from 2300, capped by the View limit at 5.
+// ColumnsWidth board (#167, #69): the columns count follows the window width, 2 below 900 up to 5 from 2300, capped by the View limit shipping at 3.
 function runColumnCount(check) {
+    check("a default install at 2560 px shows 3 columns", Columns.columnCountForWidth(2560), 3)
+    check("a stored 5 still opens 5 on a wide window", Columns.columnCountForWidth(2560, 5), 5)
+    check("a narrow window still shows 2 on the shipped default", Columns.columnCountForWidth(800), 2)
     check("below 900 px the view draws 2 columns", Columns.columnCountForWidth(899, 5), 2)
     check("at 900 px the view draws 3 columns", Columns.columnCountForWidth(900, 5), 3)
     check("at 1700 px the view draws 4 columns", Columns.columnCountForWidth(1700, 5), 4)
@@ -135,9 +138,9 @@ function runColumnCount(check) {
     check("the limit caps a wide window", Columns.columnCountForWidth(2300, 3), 3)
     check("the limit caps a narrow window too", Columns.columnCountForWidth(1200, 2), 2)
     check("a limit below the floor still draws 2", Columns.columnCountForWidth(2300, 1), 2)
-    check("a missing limit reads as the shipped 5", Columns.columnCountForWidth(2300), 5)
-    check("an empty limit reads as the shipped 5, not the floor", Columns.cappedLimit(""), 5)
-    check("a false limit reads as the shipped 5, not the floor", Columns.cappedLimit(false), 5)
+    check("a missing limit reads as the shipped 3", Columns.columnCountForWidth(2300), 3)
+    check("an empty limit reads as the shipped 3, not the floor", Columns.cappedLimit(""), 3)
+    check("a false limit reads as the shipped 3, not the floor", Columns.cappedLimit(false), 3)
     check("2 columns need no ancestor", Columns.ancestorsForCount(2), 0)
     check("3 columns read one ancestor", Columns.ancestorsForCount(3), 1)
     check("4 columns read two ancestors", Columns.ancestorsForCount(4), 2)

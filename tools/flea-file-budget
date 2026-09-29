@@ -41,11 +41,11 @@ src/tui/actions.rs 1021
 src/tui/input.rs 449
 src/tui/model.rs 1247
 src/tui/render.rs 889
-src/uischema.rs 421
+src/uischema.rs 429
 src/uistate.rs 625
 src/uistore.rs 483
 src/vulkan.rs 728
-tests/js/columns.js 310
+tests/js/columns.js 313
 tests/js/focus.js 406
 tests/js/mounts.js 383
 tests/js/network.js 306
