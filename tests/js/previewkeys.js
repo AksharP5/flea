@@ -62,6 +62,6 @@ function run(check) {
     check("p does nothing to a still preview", still.played + still.closed, 0)
     check("space maps to preview in the pdf context", Keymap.lookupFor("default", Qt.Key_Space, " ", Qt.NoModifier, "pdf", "gui"), "preview")
     var viewerSrc = Source.source("ui/PdfViewer.qml")
-    var keysAt = viewerSrc.indexOf("Keys.onPressed")
-    check("the pdf viewer closes on the preview action", viewerSrc.substring(keysAt, keysAt + 500).indexOf('|| action === "preview"') >= 0, true)
+    var keysBody = Source.slice(viewerSrc, "Keys.onPressed", "readonly property int page")
+    check("the pdf viewer closes on the preview action", keysBody.indexOf('|| action === "preview") root.closed()') >= 0, true)
 }

@@ -73,7 +73,6 @@ function run(check) {
     Nav.openPlace(empty, "/home/gm/Work")
     check("an empty folder shown is kept", empty.sent.join("|"), "")
     var area = Source.source("ui/ColumnsArea.qml")
-    var actAt = area.indexOf("function activateNeighbour")
-    var actBody = area.substring(actAt, area.indexOf("function askThumb", actAt))
+    var actBody = Source.slice(area, "function activateNeighbour", "function askThumb")
     check("a neighbour folder opens through the no-op route", actBody.indexOf("Nav.openPlace(root.pane, target)") >= 0, true)
 }

@@ -219,11 +219,9 @@ function runPeekPending(check) {
     check("and stores only a reply it asked for", area.indexOf("if (!Columns.hasAsk(root.pending, sent)) return") >= 0, true)
     check("and drops the ask it stored", area.indexOf("Columns.dropAsk(root.pending, sent)") >= 0, true)
     check("and forgets every ask with the listing", area.indexOf("root.pending = ({})") >= 0, true)
-    var orderAt = area.indexOf("onPeekOrderChanged")
-    var orderBody = orderAt >= 0 ? area.substring(orderAt, orderAt + 200) : ""
+    var orderBody = Source.slice(area, "onPeekOrderChanged", "onChildPathChanged")
     check("and re-asks the shown ancestors under the new key", orderBody.indexOf("refreshNeighbours") >= 0, true)
-    var peekAt = area.indexOf("readonly property string peekOrder")
-    var peekBody = peekAt >= 0 ? area.substring(peekAt, peekAt + 300) : ""
+    var peekBody = Source.slice(area, "readonly property string peekOrder", "onPeekOrderChanged")
     check("and the order it watches carries both flags",
         peekBody.indexOf("showHidden") >= 0 && peekBody.indexOf("hiddenLast") >= 0, true)
 }
@@ -231,17 +229,16 @@ function runPeekPending(check) {
 // The header drag writes once on release after a real move, so a click pins nothing and a fit survives its own release.
 function runHeaderDrag(check) {
     var header = Source.source("ui/Header.qml")
-    var beginBody = header.substring(header.indexOf("function beginDrag"), header.indexOf("}", header.indexOf("function beginDrag")))
+    var beginBody = Source.slice(header, "function beginDrag", "function moveDrag")
     check("a press that never travels marks nothing to write",
         beginBody.indexOf("root.dragMoved = false") >= 0, true)
-    var moveBody = header.substring(header.indexOf("function moveDrag"), header.indexOf("}", header.indexOf("function moveDrag")))
+    var moveBody = Source.slice(header, "function moveDrag", "function endDrag")
     var guardAt = moveBody.indexOf("Math.abs(x - root.dragStartX) < 1"), armAt = moveBody.indexOf("root.dragMoved = true")
     check("only a travelled pointer arms the write",
         guardAt >= 0 && armAt > guardAt, true)
     check("and the release writes only when armed",
-        header.substring(header.indexOf("function endDrag"), header.indexOf("}", header.indexOf("function endDrag"))).indexOf("if (root.dragMoved)") >= 0, true)
-    var fitAt = header.indexOf("function autofitColumn")
-    var fitBody = header.substring(fitAt, header.indexOf("}", header.indexOf("{", fitAt)))
+        Source.slice(header, "function endDrag", "function fittedWidth").indexOf("if (root.dragMoved)") >= 0, true)
+    var fitBody = Source.slice(header, "function autofitColumn", "function autofitAll")
     check("a fit ends the drag so its release writes nothing",
         fitBody.indexOf('root.dragKey = ""') >= 0, true)
 }
@@ -319,17 +316,17 @@ function runColRoot(check) {
     check("left at / opens nothing", atRoot.opened.length, 0)
     check("and plants no select on the climb that did not happen", atRoot.pendingSelect, "kept")
     var area = Source.source("ui/ColumnsArea.qml")
-    var refreshBody = area.substring(area.indexOf("function refreshNeighbours"), area.indexOf("function askMeta"))
+    var refreshBody = Source.slice(area, "function refreshNeighbours", "function askMeta")
     check("refresh asks the parent only while its ancestor shows", refreshBody.indexOf("root.showParent && root.parentShown") >= 0, true)
     check("refresh asks the grandparent only while its ancestor shows", refreshBody.indexOf("root.showGrandparent && root.grandparentShown") >= 0, true)
     check("refresh asks the great-grandparent only while its ancestor shows", refreshBody.indexOf("root.showGreatGrandparent && root.greatGrandparentShown") >= 0, true)
-    var greatBody = area.substring(area.indexOf("id: greatGrandparentLoader"), area.indexOf("id: grandparentLoader"))
+    var greatBody = Source.slice(area, "id: greatGrandparentLoader", "id: grandparentLoader")
     check("great-grandparent draws rows only while its ancestor shows", greatBody.indexOf("root.greatGrandparentShown ? root.rowsFor(root.greatGrandparentPath)") >= 0, true)
-    var grandBody = area.substring(area.indexOf("id: grandparentLoader"), area.indexOf("id: parentColumn"))
+    var grandBody = Source.slice(area, "id: grandparentLoader", "id: parentColumn")
     check("grandparent draws rows only while its ancestor shows", grandBody.indexOf("root.grandparentShown ? root.rowsFor(root.grandparentPath)") >= 0, true)
-    var parentBody = area.substring(area.indexOf("id: parentColumn"), area.indexOf("id: active"))
+    var parentBody = Source.slice(area, "id: parentColumn", "id: active\n")
     check("parent draws rows only while its ancestor shows", parentBody.indexOf("(root.showParent && root.parentShown) ? root.rowsFor(root.parentPath)") >= 0, true)
-    var readerBody = area.substring(area.indexOf("function parentItemAt"), area.indexOf("function grandparentItemAt"))
+    var readerBody = Source.slice(area, "function parentItemAt", "function grandparentItemAt")
     check("parent reader answers null while its ancestor is hidden", readerBody.indexOf("(root.showParent && root.parentShown) ? parentColumn.itemAtIndex(index) : null") >= 0, true)
 }
 

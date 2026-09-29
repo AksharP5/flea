@@ -26,8 +26,10 @@ case_railpointer() {
         [[ "$after" != "$before" ]] || fail "railpointer: $mode: j after a row click stayed on $before"
         key -k Tab >/dev/null
         settle
+        [[ "$(ipc focusView)" == "rail" ]] || fail "railpointer: $mode: the second Tab did not reach the rail (focusView=$(ipc focusView))"
         click_row 8 right
         settle
+        [[ "$(ipc focusView)" == "list" ]] || fail "railpointer: $mode: a right click left the keyboard on $(ipc focusView) instead of returning it to the list"
         key -k Escape >/dev/null
         settle
         [[ "$(ipc focusView)" == "list" ]] || fail "railpointer: $mode: a right click plus Escape left the keyboard on the rail (focusView=$(ipc focusView))"
@@ -46,13 +48,34 @@ case_railpointer() {
     settle
     [[ "$(ipc focusView)" == "rail" ]] || fail "railpointer: auto-hide Tab did not reach the rail"
     wait_rail 1
+    # Without these the reveal gesture below is silent, and the rail assertions after it are vacuous.
+    command -v ydotool >/dev/null || fail "railpointer: no ydotool on PATH, so the auto-hide rail cannot be revealed"
+    [[ -S "${XDG_RUNTIME_DIR:-}/.ydotool_socket" ]] || fail "railpointer: no ydotool socket at ${XDG_RUNTIME_DIR:-}/.ydotool_socket, so the auto-hide rail cannot be revealed"
     local wx wy wh
     read -r wx wy _ww wh < <(window_box) || fail "railpointer: native window coordinates unavailable"
-    omarchy-drive move "$((wx + 1))" "$((wy + wh / 2))" >/dev/null
-    YDOTOOL_SOCKET="$XDG_RUNTIME_DIR/.ydotool_socket" ydotool mousemove -x 1 -y 0 >/dev/null 2>&1
+    omarchy-drive move "$((wx + 1))" "$((wy + wh / 2))" >/dev/null || fail "railpointer: the pointer move to the left edge failed, so the rail never revealed"
+    YDOTOOL_SOCKET="$XDG_RUNTIME_DIR/.ydotool_socket" ydotool mousemove -x 1 -y 0 >/dev/null || fail "railpointer: ydotool mousemove failed, so the rail never revealed"
     settle
+    # The rail Loader unloads while hidden, so a polled hidden=false proves the reveal happened.
+    local revealed=false rail_json
+    for _attempt in $(seq 1 60); do
+        rail_json=$(ipc railState)
+        [[ "$(jq -r '.hidden' 2>/dev/null <<< "$rail_json")" == "false" ]] && { revealed=true; break; }
+        sleep 0.05
+    done
+    [[ "$revealed" == true ]] || fail "railpointer: the auto-hide rail never revealed (railState=$rail_json)"
+    # Off row 0 first, so a cursor back on row 0 below proves the press landed.
+    local rail_total
+    rail_total=$(ipc railCount)
+    if [[ "$rail_total" =~ ^[0-9]+$ && "$rail_total" -gt 1 && "$(ipc railCursor)" == "0" ]]; then
+        key j >/dev/null
+        settle
+        [[ "$(ipc railCursor)" != "0" ]] || fail "railpointer: j never left rail row 0 (railCount=$rail_total)"
+    fi
+    [[ -n "$(ipc railRowCentre 0)" ]] || fail "railpointer: rail row 0 has no on-screen centre while revealed, so the press has no target"
     click_rail_row 0 left
     settle
+    [[ "$(ipc railCursor)" == "0" ]] || fail "railpointer: a press on revealed rail row 0 left the rail cursor on $(ipc railCursor)"
     [[ "$(ipc focusView)" == "rail" ]] || fail "railpointer: a press on the revealed rail left the keyboard on $(ipc focusView)"
     printf 'RAILPOINTER autohide=ok\n'
     # In dual view Tab still switches panes, and a row click focuses that pane with the list keyboard.
@@ -62,19 +85,29 @@ case_railpointer() {
     for i in $(seq -w 1 6); do : > "$dual/left/l$i.txt"; : > "$dual/right/r$i.txt"; done
     seed_ui_state "$dstate" "$(jq -cn --arg l "$dual/left" --arg r "$dual/right" '{view:"dual",dual:{paths:[$l,$r],focus:0}}')"
     launch "$dual/left"
+    # An empty panes array reads as not-loading, so the wait requires a pane to exist first.
+    local dual_ready=false
     for _attempt in $(seq 1 100); do
         dual_json=$(ipc dualState)
-        [[ "$(jq -r '[.panes[].loading] | any' <<< "$dual_json")" == false ]] && break
+        [[ "$(jq -r '(.panes | length > 0) and ([.panes[].loading] | any | not)' 2>/dev/null <<< "$dual_json")" == "true" ]] && { dual_ready=true; break; }
         sleep 0.05
     done
+    [[ "$dual_ready" == true ]] || fail "railpointer: dual panes still loading after 5 s (dualState=$dual_json)"
     ipc dualState | jq -e '.active and .focused == 0' >/dev/null || fail "railpointer: dual did not open focused on pane 0"
     key -k Tab >/dev/null
     settle
     ipc dualState | jq -e '.focused == 1' >/dev/null || fail "railpointer: dual Tab did not switch panes"
-    rect=$(ipc dragPaneGeometry 0 0 | jq -er '.folder.rect')
+    # .folder is pane 0's own row 0, so its rect centre is a pinned row and never pane chrome.
+    local geo
+    geo=$(ipc dragPaneGeometry 0 0) || fail "railpointer: dual geometry read failed for pane 0 row 0"
+    rect=$(jq -er '.folder.rect' <<< "$geo") || fail "railpointer: pane 0 row 0 has no rect (geometry=$geo)"
+    [[ -n "$rect" ]] || fail "railpointer: pane 0 row 0 read an empty rect (geometry=$geo)"
     read -r rx ry rw rh <<< "$rect"
+    [[ "$rx" =~ ^-?[0-9]+$ && "$ry" =~ ^-?[0-9]+$ && "$rw" =~ ^-?[0-9]+$ && "$rh" =~ ^-?[0-9]+$ ]] || fail "railpointer: pane 0 row 0 read no four numbers (rect=$rect)"
+    (( rw > 0 && rh > 0 )) || fail "railpointer: pane 0 row 0 read an empty rect (rect=$rect)"
+    [[ -n "$(jq -er '.folder.name' <<< "$geo")" ]] || fail "railpointer: pane 0 row 0 has no name (geometry=$geo)"
     read -r wx wy ww hh < <(window_box) || fail "railpointer: native window coordinates unavailable"
-    omarchy-drive click "$((wx + rx + rw / 2))" "$((wy + ry + rh / 2))" left >/dev/null
+    omarchy-drive click "$((wx + rx + rw / 2))" "$((wy + ry + rh / 2))" left >/dev/null || fail "railpointer: the click on pane 0 row 0 failed"
     settle
     ipc dualState | jq -e '.focused == 0' >/dev/null || fail "railpointer: a row click on the other pane left focus on pane $(ipc dualState | jq -r '.focused')"
     [[ "$(ipc focusView)" == "list" ]] || fail "railpointer: a row click on the other pane left the keyboard on $(ipc focusView)"
