@@ -137,8 +137,12 @@ function run(check) {
     check("a landed entry clears out of the map",
           JSON.stringify(UiState.acknowledged(twoOwed, '{"folderSorts":{"/a":{"key":"size","reverse":true}}}')),
           '{"folderSorts":{"/b":{"key":"name","reverse":false}}}')
-    check("a landed forget clears too",
-          JSON.stringify(UiState.acknowledged({ folderSorts: { "/a": null } }, '{"folderSorts":{"/a":null}}')), "{}")
+    // Backend.forgetFolderSort owes leaf[path] = null through ViewState.changeMapEntries, so the forget is driven through that same withGroup call.
+    var forgetOwed = UiState.withGroup({}, "folderSorts", { "/a": null })
+    check("a forget owes its null entry alone",
+          JSON.stringify(forgetOwed), '{"folderSorts":{"/a":null}}')
+    check("and a landed forget clears too",
+          JSON.stringify(UiState.acknowledged(forgetOwed, '{"folderSorts":{"/a":null}}')), "{}")
     check("a width owes its edge alone",
           JSON.stringify(UiState.withGroup({}, "columnWidths", { size: 120 })), '{"columnWidths":{"size":120}}')
 

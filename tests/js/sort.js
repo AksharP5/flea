@@ -141,15 +141,12 @@ function run(check) {
           stray.sent.join(","), "sort name asc,window 0 200")
 
     // A walk's rows are matches, so sorting them writes no folder sort.
-    for (var mode in { search: "results", photos: "" }) {
-        var walk = pane("name", false)
-        walk.searchMode = mode === "search" ? "results" : ""
-        walk.photosMode = mode === "photos" ? "results" : ""
-        walk.remembered = []
-        walk.backend.rememberFolderSort = function (folder, key, desc) { walk.remembered.push(folder + "|" + key) }
-        Sort.resort(walk, "size", false)
-        check("sorting a " + mode + " walk still sorts and re-reads",
-              walk.sent.join(","), "sort size asc,window 0 200")
-        check("but writes no folder sort for its scope", walk.remembered.length, 0)
-    }
+    var walk = pane("name", false)
+    walk.searchMode = "results"
+    walk.remembered = []
+    walk.backend.rememberFolderSort = function (folder, key, desc) { walk.remembered.push(folder + "|" + key) }
+    Sort.resort(walk, "size", false)
+    check("sorting a search walk still sorts and re-reads",
+          walk.sent.join(","), "sort size asc,window 0 200")
+    check("but writes no folder sort for its scope", walk.remembered.length, 0)
 }

@@ -75,7 +75,7 @@ function resort(pane, key, desc) {
     pane.backend.sortDesc = desc
     // A walk's rows are matches, not the folder's, so sorting them writes nothing.
     if (pane.backend && pane.backend.rememberFolderSort
-            && (pane.searchMode || "") === "" && (pane.photosMode || "") === "")
+            && (pane.searchMode || "") === "")
         pane.backend.rememberFolderSort(pane.path, key, desc)
     // A reorder moves every row, so the caches keyed by a row index are as stale as a new listing's,
     // and a selection of row indices would silently come to name different files.

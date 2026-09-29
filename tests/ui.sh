@@ -4523,87 +4523,153 @@ case_columnautofit() {
     [[ "$(ipc sortMark)" == "$before_mark" ]] \
         || fail "columnautofit: fitting size sorted, mark is $(ipc sortMark)"
 
-    # F4 fits every drawn column in one write. ViewState reads ui.json once at startup, so the
-    # seed is written while no window runs and the window is relaunched onto it; the seed width is
-    # a share of the measured list area, so all four drawn columns still fit at the fixture window.
+    # F4 is proved in two phases with no guessed seed: fit once and read W, reseed above W, relaunch and fit back to W.
+    # Sample input: "$(ipc listAreaRect)" prints "0 100 732 500".
     read -r _f4_ax _f4_ay _f4_aw _f4_ah <<< "$(ipc listAreaRect)"
     [[ "$_f4_aw" =~ ^[0-9]+$ && "$_f4_aw" -ge 600 ]] \
-        || fail "columnautofit: the list area answered '$_f4_ax $_f4_ay $_f4_aw $_f4_ah', so no fitting seed can be derived"
-    local _f4_seed=$(( _f4_aw / 8 ))
-    (( _f4_seed >= 49 && _f4_seed <= 480 )) \
-        || fail "columnautofit: the derived seed $_f4_seed is outside the stored width range"
+        || fail "columnautofit: the list area answered '$_f4_ax $_f4_ay $_f4_aw $_f4_ah', so the two-phase F4 has no fixture window"
+    local _f4key _drawn _have _want _stored _seed_ok _f4j_ok
+    for _f4key in mode size date kind; do
+        # Sample input: "$(ipc headerCellRect "$_f4key")" prints "602|70".
+        IFS='|' read -r _x _drawn <<< "$(ipc headerCellRect "$_f4key")"
+        [[ "$_drawn" =~ ^[0-9]+$ && "$_drawn" != "0" ]] \
+            || fail "columnautofit: $_f4key draws nothing to fit first, widths $(ipc columnWidths)"
+    done
+    # Sample input: "$(ipc columnWidths)" prints '{"mode":90,"size":120,"date":140,"kind":200}'.
+    local _f4b_all _f4w_all
+    _f4b_all=$(ipc columnWidths)
+    key -k F4 >/dev/null
+    settle
+    # Sample input: "$(ipc sortMark)" prints "size:asc".
+    [[ "$(ipc sortMark)" == "$before_mark" ]] \
+        || fail "columnautofit: the first F4 sorted, mark is $(ipc sortMark)"
+    # Sample input: "$(ipc columnWidths)" prints '{"mode":95,"size":125,"date":140,"kind":105}' once the first F4 lands.
+    _f4w_all=$(ipc columnWidths)
+    local _f4w_mode _f4w_size _f4w_date _f4w_kind _f4b_mode _f4b_size _f4b_date _f4b_kind
+    # Sample input: jq -r '.mode // empty' over '{"mode":95,"size":125}' answers "95".
+    _f4w_mode=$(jq -r '.mode // empty' <<< "$_f4w_all")
+    _f4w_size=$(jq -r '.size // empty' <<< "$_f4w_all")
+    _f4w_date=$(jq -r '.date // empty' <<< "$_f4w_all")
+    _f4w_kind=$(jq -r '.kind // empty' <<< "$_f4w_all")
+    _f4b_mode=$(jq -r '.mode // empty' <<< "$_f4b_all")
+    _f4b_size=$(jq -r '.size // empty' <<< "$_f4b_all")
+    _f4b_date=$(jq -r '.date // empty' <<< "$_f4b_all")
+    _f4b_kind=$(jq -r '.kind // empty' <<< "$_f4b_all")
+    [[ "$_f4w_mode" =~ ^[0-9]+$ && "$_f4w_size" =~ ^[0-9]+$ && "$_f4w_date" =~ ^[0-9]+$ && "$_f4w_kind" =~ ^[0-9]+$ ]] \
+        || fail "columnautofit: the first F4 left mode=$_f4w_mode size=$_f4w_size date=$_f4w_date kind=$_f4w_kind, want a fitted width for every drawn key"
+    # autofitAll writes only a column whose fit moved, so ui.json is owed only the keys the first F4 changed.
+    _f4j_ok=0
+    for _attempt in $(seq 1 60); do
+        _f4j_ok=1
+        # Sample input: jq -er '.columnWidths.size // empty' over ui.json answers "125".
+        [[ "$_f4w_mode" == "$_f4b_mode" || "$(jq -er '.columnWidths.mode // empty' "$XDG_STATE_HOME/flea/ui.json" 2>/dev/null || true)" == "$_f4w_mode" ]] || _f4j_ok=0
+        [[ "$_f4w_size" == "$_f4b_size" || "$(jq -er '.columnWidths.size // empty' "$XDG_STATE_HOME/flea/ui.json" 2>/dev/null || true)" == "$_f4w_size" ]] || _f4j_ok=0
+        [[ "$_f4w_date" == "$_f4b_date" || "$(jq -er '.columnWidths.date // empty' "$XDG_STATE_HOME/flea/ui.json" 2>/dev/null || true)" == "$_f4w_date" ]] || _f4j_ok=0
+        [[ "$_f4w_kind" == "$_f4b_kind" || "$(jq -er '.columnWidths.kind // empty' "$XDG_STATE_HOME/flea/ui.json" 2>/dev/null || true)" == "$_f4w_kind" ]] || _f4j_ok=0
+        (( _f4j_ok == 1 )) && break
+        sleep 0.05
+    done
+    (( _f4j_ok == 1 )) \
+        || fail "columnautofit: the first F4 never reached ui.json, want $_f4w_mode $_f4w_size $_f4w_date $_f4w_kind in $(cat "$XDG_STATE_HOME/flea/ui.json" 2>/dev/null)"
+    # Seeds sit one offset above their own fits, so no seed can equal the fit the second F4 must return to.
+    local SEED_OFFSET=23
+    local _f4s_mode _f4s_size _f4s_date _f4s_kind
+    _f4s_mode=$((_f4w_mode + SEED_OFFSET))
+    _f4s_size=$((_f4w_size + SEED_OFFSET))
+    _f4s_date=$((_f4w_date + SEED_OFFSET))
+    _f4s_kind=$((_f4w_kind + SEED_OFFSET))
+    # The name's floor, ui/Theme.qml's 20 characters at about 8 px each, so the seeded row must leave it room.
+    local _f4_name_min=160
+    (( _f4s_mode + _f4s_size + _f4s_date + _f4s_kind + _f4_name_min <= _f4_aw )) \
+        || fail "columnautofit: seeded widths $_f4s_mode+$_f4s_size+$_f4s_date+$_f4s_kind plus name minimum $_f4_name_min do not fit list area $_f4_aw"
+    local _f4seeds _f4wants
+    _f4seeds=$(printf '{"mode":%s,"size":%s,"date":%s,"kind":%s}' "$_f4s_mode" "$_f4s_size" "$_f4s_date" "$_f4s_kind")
+    _f4wants=$(printf '{"mode":%s,"size":%s,"date":%s,"kind":%s}' "$_f4w_mode" "$_f4w_size" "$_f4w_date" "$_f4w_kind")
     kill_flea
-    "$flea_bin" --ui-state "{\"columnWidths\":{\"mode\":$_f4_seed,\"size\":$_f4_seed,\"date\":$_f4_seed,\"kind\":$_f4_seed}}" >/dev/null \
-        || fail "columnautofit: could not seed stored widths to the fitting width $_f4_seed"
+    "$flea_bin" --ui-state "{\"columnWidths\":$_f4seeds}" >/dev/null \
+        || fail "columnautofit: could not seed stored widths to $_f4seeds"
     launch "$dir"
     wait_listing 405
     settle
-    local _seed_ok=0
+    # The relaunch opens at the top while W was fitted at the bottom, so G returns to the fitted window first.
+    # Sample input: ipc listingWindowState | jq -r '.held' answers "12".
+    local _f4_held_before _f4_held_after
+    _f4_held_before=$(ipc listingWindowState | jq -r '.held')
+    [[ "$_f4_held_before" =~ ^[0-9]+$ ]] \
+        || fail "columnautofit: the held window answered '$_f4_held_before' after relaunch, not a row"
+    key G >/dev/null
+    settle
+    for _attempt in $(seq 1 60); do
+        # Sample input: ipc listingWindowState | jq -r '.held' answers "12".
+        _f4_held_after=$(ipc listingWindowState | jq -r '.held')
+        [[ "$_f4_held_after" =~ ^[0-9]+$ && "$_f4_held_after" != "$_f4_held_before" ]] && break
+        sleep 0.05
+    done
+    [[ "$_f4_held_before" =~ ^[0-9]+$ && "$_f4_held_after" =~ ^[0-9]+$ && "$_f4_held_after" != "$_f4_held_before" ]] \
+        || fail "columnautofit: the held window never left the first screenful after relaunch, held is $_f4_held_after from $_f4_held_before"
+    local drawn_before=""
+    _seed_ok=0
     for _attempt in $(seq 1 60); do
         _seed_ok=1
+        drawn_before=""
         for _f4key in mode size date kind; do
-            # Sample input: "$(ipc headerCellRect size)" prints "400|125" once the seed draws.
+            # Sample input: "$(ipc headerCellRect "$_f4key")" prints "602|118".
             IFS='|' read -r _x _drawn <<< "$(ipc headerCellRect "$_f4key")"
-            [[ "$_drawn" =~ ^[0-9]+$ && "$_drawn" != "0" ]] || continue
-            [[ "$_drawn" == "$_f4_seed" ]] || _seed_ok=0
+            # Sample input: jq -r --arg k "size" '.[$k] // empty' over '{"size":148}' answers "148".
+            _want=$(jq -r --arg k "$_f4key" '.[$k] // empty' <<< "$_f4seeds")
+            [[ "$_drawn" == "$_want" ]] || _seed_ok=0
+            [[ "$_drawn" =~ ^[0-9]+$ && "$_drawn" != "0" ]] && drawn_before="$drawn_before $_f4key"
         done
         (( _seed_ok == 1 )) && break
         sleep 0.05
     done
     (( _seed_ok == 1 )) \
-        || fail "columnautofit: seeding stored widths to $_f4_seed did not draw, widths $(ipc columnWidths)"
-    local widths_before widths_once widths_twice drawn_before drawn_after
-    widths_before=$(ipc columnWidths)
-    drawn_before=""
-    for _f4key in mode size date kind; do
-        IFS='|' read -r _x _drawn <<< "$(ipc headerCellRect "$_f4key")"
-        [[ "$_drawn" =~ ^[0-9]+$ && "$_drawn" != "0" ]] || continue
-        drawn_before="$drawn_before $_f4key"
-    done
-    [[ -n "$drawn_before" ]] \
-        || fail "columnautofit: no drawn column to fit, widths $widths_before"
+        || fail "columnautofit: seeding stored widths to $_f4seeds did not draw, widths $(ipc columnWidths)"
     key -k F4 >/dev/null
     settle
+    # Sample input: "$(ipc columnWidths)" prints '{"mode":95,"size":125,"date":140,"kind":105}' once the second F4 lands.
+    local widths_once
     widths_once=$(ipc columnWidths)
     printf 'COLUMNAUTOFIT f4=%s\n' "$widths_once"
     shot columnautofit-f4
-    drawn_after=""
+    local drawn_after=""
     for _f4key in mode size date kind; do
+        # Sample input: "$(ipc headerCellRect "$_f4key")" prints "602|70".
         IFS='|' read -r _x _drawn <<< "$(ipc headerCellRect "$_f4key")"
         [[ "$_drawn" =~ ^[0-9]+$ && "$_drawn" != "0" ]] || continue
         drawn_after="$drawn_after $_f4key"
     done
     [[ "$drawn_after" == "$drawn_before" ]] \
         || fail "columnautofit: F4 changed the drawn column set from [$drawn_before ] to [$drawn_after ]"
-    local _f4key _drawn _have _was _stored _fitted_n=0
     for _f4key in mode size date kind; do
         # Sample input: "$(ipc headerCellRect "$_f4key")" prints "602|70".
         IFS='|' read -r _x _drawn <<< "$(ipc headerCellRect "$_f4key")"
-        [[ "$_drawn" =~ ^[0-9]+$ && "$_drawn" != "0" ]] || continue
-        # Sample input: jq -r --arg k "size" '.[$k] // empty' over {"size":70} answers "70".
+        # Sample input: jq -r --arg k "size" '.[$k] // empty' over '{"size":125}' answers "125".
+        _want=$(jq -r --arg k "$_f4key" '.[$k] // empty' <<< "$_f4wants")
+        [[ "$_drawn" == "$_want" ]] \
+            || fail "columnautofit: F4 drew $_f4key at $_drawn, want the fitted $_want"
         _have=$(jq -r --arg k "$_f4key" '.[$k] // empty' <<< "$widths_once")
-        _was=$(jq -r --arg k "$_f4key" '.[$k] // empty' <<< "$widths_before")
-        [[ "$_have" == "$_drawn" ]] \
-            || fail "columnautofit: F4 left $_f4key stored as '$_have' while the header draws $_drawn"
-        _stored=""
-        for _attempt in $(seq 1 60); do
-            _stored=$(jq -er --arg k "$_f4key" '.columnWidths[$k] // empty' "$XDG_STATE_HOME/flea/ui.json" 2>/dev/null || true)
-            [[ "$_stored" == "$_have" ]] && break
-            sleep 0.05
-        done
-        [[ "$_stored" == "$_have" ]] \
-            || fail "columnautofit: F4 left $_f4key stored as '$_have' in the window, ui.json remembers '$_stored'"
-        [[ "$_have" != "$_was" ]] \
-            || fail "columnautofit: F4 left $_f4key at its seeded '$_was', so it fitted nothing there"
-        _fitted_n=$((_fitted_n + 1))
+        [[ "$_have" == "$_want" ]] \
+            || fail "columnautofit: F4 stored $_f4key as '$_have', want the fitted $_want"
     done
-    (( _fitted_n >= 1 )) \
-        || fail "columnautofit: F4 fitted no drawn column, before $widths_before after $widths_once"
-    key -k F4 >/dev/null
-    settle
-    widths_twice=$(ipc columnWidths)
-    [[ "$widths_twice" == "$widths_once" ]] \
-        || fail "columnautofit: a second F4 moved $widths_once to $widths_twice"
+    [[ "$(ipc sortMark)" == "$before_mark" ]] \
+        || fail "columnautofit: the second F4 sorted, mark is $(ipc sortMark)"
+    _stored=""
+    _f4j_ok=0
+    for _attempt in $(seq 1 60); do
+        _stored=""
+        _f4j_ok=1
+        for _f4key in mode size date kind; do
+            # Sample input: jq -er --arg k "size" '.columnWidths[$k] // empty' over ui.json answers "125".
+            _have=$(jq -er --arg k "$_f4key" '.columnWidths[$k] // empty' "$XDG_STATE_HOME/flea/ui.json" 2>/dev/null || true)
+            _want=$(jq -r --arg k "$_f4key" '.[$k] // empty' <<< "$_f4wants")
+            [[ "$_have" == "$_want" ]] || _f4j_ok=0
+        done
+        (( _f4j_ok == 1 )) && break
+        sleep 0.05
+    done
+    (( _f4j_ok == 1 )) \
+        || fail "columnautofit: the second F4 never reached ui.json, widths $(ipc columnWidths)"
 
     kill_flea
 }
