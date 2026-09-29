@@ -103,10 +103,9 @@ Flea.PreviewColumn {
         root.pending = true
     }
 
-    // Any change of what the cursor row is: the old preview goes, under the swap's picture where there is one.
-    // A folder shows no preview, so it clears without a picture hold that no load would cap.
+    // A folder or null row keeps the old preview: ColumnsArea holds the old column by data until the peek lands.
     function replace() {
-        if (!Columns.isFileRow(root.pane ? root.pane.rowFor(root.pane.cursorIndex) : null)) { root.clear(); return }
+        if (!Columns.isFileRow(root.pane ? root.pane.rowFor(root.pane.cursorIndex) : null)) { settle.stop(); return }
         if (root.swap && ViewState.previewAutomatic && root.canRead) {
             root.armSettle()
             root.swap.hold(root.clearForMove, root.swapKey())
@@ -143,8 +142,8 @@ Flea.PreviewColumn {
         var hold = ExtThumbs.manualHold(root.pane.storageClass, ViewState.preview)
         if (root.loadedDirectory === root.pane.path && root.loadedIndex === root.pane.cursorIndex
                 && root.loadedIdentity === root.identity(candidate) && root.manualHold === hold) return
-        // A folder shows no preview, so it clears without a picture hold that no load would cap.
-        if (!Columns.isFileRow(candidate)) { root.clear(); return }
+        // A folder or null row keeps the old preview until its peek lands; clearing here would blank the held column.
+        if (!Columns.isFileRow(candidate)) { settle.stop(); return }
         // An off class holds the frame on the listing's own facts until Ctrl+Space loads it; nothing loads, so no swap.
         if (hold) { root.clear(); root.holdSelection(candidate); return }
         root.replace()
@@ -170,6 +169,7 @@ Flea.PreviewColumn {
     // Ctrl+Space calls this directly; automatic selection reaches it only after selection settles.
     function loadSelection() {
         if (!root.canRead) return
+        if (!Columns.isFileRow(root.pane.rowFor(root.pane.cursorIndex))) { settle.stop(); return }
         if (root.swap) root.swap.hold(root.load, root.swapKey(), true)
         else root.load()
     }
@@ -179,8 +179,8 @@ Flea.PreviewColumn {
         if (!root.canRead) return
         var pane = root.pane
         var current = pane.rowFor(pane.cursorIndex)
+        if (!Columns.isFileRow(current)) { settle.stop(); root.startSwap(false); return }
         root.clear()
-        if (!current) { root.startSwap(false); return }
         root.loadedIndex = pane.cursorIndex
         root.loadedDirectory = pane.path
         root.loadedIdentity = root.identity(current)
@@ -189,7 +189,7 @@ Flea.PreviewColumn {
         root.kindName = pane.kindNames[current.k] || ""
         root.selectionCount = pane.selectionCount()
         root.selectedRows = pane.selectedIndices().map(function (index) { return pane.rowFor(index) }).filter(function (row) { return row !== null })
-        if (current.d || root.selectionCount > 1) { root.startSwap(false); return }
+        if (root.selectionCount > 1) { root.startSwap(false); return }
         var kind = Facts.state(current, 1, false, "", root.kindName)
         root.startSwap(kind === Facts.PDF)
         root.pendingToken = pane.backend.askMeta(root.loadedIndex, kind === Facts.TEXT || kind === Facts.CODE,

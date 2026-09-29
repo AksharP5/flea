@@ -120,8 +120,7 @@ Item {
         root.shownChildPath = root.childPath
     }
 
-    // An unanswered folder shows its pending state at the cap, the picture cap's own fallback.
-    // A live picture ends here, or it would cover the pending column with no cap.
+    // An unanswered folder shows its pending state at the cap; a live picture ends before that wait starts.
     Timer {
         id: folderFallback
         interval: Swap.HOLD_MS
@@ -308,8 +307,7 @@ Item {
                 root.denials = locked
             }
             root.peekVersion += 1
-            // The waiting folder lands with its rows in the same pass, so no frame is mid-built.
-            // A live picture ends here, or it would cover the landed rows with no cap.
+            // A landed peek shows the waiting folder whole; a live picture ends before those rows do.
             if (Columns.showFolderOnPeek(root.childPath, root.shownChildPath, root.answered(root.childPath))) {
                 thirdSwap.cancel()
                 root.showCursorRow()

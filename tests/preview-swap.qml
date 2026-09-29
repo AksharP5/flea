@@ -3,16 +3,9 @@
 import Quickshell
 import QtQuick
 
-// tests/preview-swap.sh's harness: the real ui/PreviewSwap.qml holds one preview's
-// picture while the next one builds under it on the column surface (burstEnds true),
-// and the real ui/QuickLookSwap.qml does the same on the Quick Look surface
-// (burstEnds false), capturing the eager panes beside it as ui/Preview.qml wires it.
-// Moves run the same call sequence the product runs: ColumnsArea.moveThird plus
-// SelectionPreview.replace/armSettle/load, or Preview.follow/load for Quick Look.
-// Sample input: PREVIEW_SWAP_SURFACE=column PREVIEW_SWAP_DIRECT=1 skips the hold and
-// mutates directly, which is the v0.3.4 shape and the control that proves the harness
-// can see the defect it guards against.
-// The column folder's data-hold ordering is product code: tests/js/previewswap.js pins moveThird's arm, so this harness only simulates the wait.
+// File-hold harness: the real PreviewSwap holds one file preview's picture while the next builds under it.
+// Sample input: PREVIEW_SWAP_SURFACE=column PREVIEW_SWAP_DIRECT=1 mutates without a hold, the v0.3.4 defect control.
+// Folder data-hold order is simulated here; tests/columnsfolder.qml drives the real ColumnsArea for it.
 ShellRoot {
     id: shell
 

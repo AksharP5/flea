@@ -74,6 +74,7 @@ function run(check) {
 }
 
 // The body of one QML function by brace count, so each check reads the arm it names and not a copy elsewhere.
+// Sample input: bodyOf("f() { return 1 }", "f") is "{ return 1 }".
 function bodyOf(src, name) {
     var text = String(src)
     var at = text.indexOf(name + "(")
@@ -138,8 +139,7 @@ function runFolderDataHold(check) {
         && peeked.indexOf("markItem.settle()") > peeked.indexOf("Columns.shouldSettleHero("), true)
 }
 
-// A launch or a move onto an unanswered folder must never leave the third-column picture up:
-// every path that shows the cursor folder ends any live hold, and only a real file row takes one.
+// A launch or folder move must never leave the third-column picture up: only a real file row takes one.
 function fileRowSafe(row) {
     return typeof Columns.isFileRow === "function" ? Columns.isFileRow(row) : "missing"
 }
@@ -170,4 +170,27 @@ function runPictureHoldLeak(check) {
         preview.indexOf('import "js/Columns.js" as Columns') >= 0, true)
     check("the preview never holds a picture for a folder cursor",
         preview.indexOf("Columns.isFileRow") >= 0, true)
+    var replaceArm = squashed(bodyOf(preview, "replace"))
+    var replaceGuard = replaceArm.indexOf("Columns.isFileRow(")
+    var replaceReturn = replaceArm.indexOf("return", replaceGuard)
+    var replaceSlice = replaceGuard >= 0 ? replaceArm.substring(replaceGuard, replaceReturn) : ""
+    check("a folder move keeps the old preview instead of clearing it",
+        replaceGuard >= 0 && replaceSlice.indexOf("settle.stop()") >= 0 && replaceSlice.indexOf("root.clear()") < 0, true)
+    var followArm = squashed(bodyOf(preview, "followSelection"))
+    var followGuard = followArm.indexOf("Columns.isFileRow(candidate)")
+    var followReturn = followArm.indexOf("return", followGuard)
+    var followSlice = followGuard >= 0 ? followArm.substring(followGuard, followReturn) : ""
+    check("a folder selection keeps the old preview instead of clearing it",
+        followGuard >= 0 && followSlice.indexOf("settle.stop()") >= 0 && followSlice.indexOf("root.clear()") < 0, true)
+    var selAt = preview.indexOf("function loadSelection()")
+    var loadAt = preview.indexOf("function load()", selAt)
+    var selBody = squashed(preview.substring(selAt, loadAt))
+    var selGuard = selBody.indexOf("Columns.isFileRow(")
+    check("a folder cursor takes no load hold and keeps the old preview",
+        selGuard >= 0 && selBody.indexOf("settle.stop()") > selGuard
+        && selBody.indexOf("settle.stop()") < selBody.indexOf("root.swap.hold("), true)
+    var loadBody = squashed(preview.substring(loadAt, preview.indexOf("function startSwap", loadAt)))
+    var loadGuard = loadBody.indexOf("Columns.isFileRow(current)")
+    check("a folder load keeps the old preview instead of clearing it",
+        loadGuard >= 0 && loadBody.indexOf("root.clear()") > loadGuard, true)
 }

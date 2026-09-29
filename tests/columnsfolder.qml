@@ -1,0 +1,250 @@
+//@ pragma ShellId flea-columnsfolder-test
+
+import QtQuick
+import Quickshell
+import "flea" as Flea
+
+// w24 folder data hold through the real ColumnsArea over a stub pane: an unanswered folder waits by
+// data, j cancels a live hold onto one, back reshows the file, and empty lands settled with no entrance.
+ShellRoot {
+    id: root
+
+    Component {
+        id: backendStub
+        QtObject {
+            signal peeked(string path, bool hidden, int total, var rows, bool readFailed, int mode, bool hiddenLast, int first)
+            signal metaResult(var message)
+            property int dirDev: 0
+            property int metaSeq: 0
+            property var peekLog: []
+            function peek(path, size, hidden) { peekLog.push(String(path)) }
+            function askMeta(index, wantLines, wantMedia, wantArchive) { metaSeq += 1; return metaSeq }
+            function thumb(rows, cacheOnly) {}
+            function thumbcancel(rows) {}
+            function dirsize(rows) {}
+            function dirsizecancel() {}
+            function window(start, count) {}
+        }
+    }
+
+    Component {
+        id: paneStub
+        QtObject {
+            property string path: "/probe/studio"
+            property var rows: []
+            property int cursorIndex: 0
+            property bool showHidden: false
+            property int windowSize: 35
+            property bool listInFlight: false
+            property string listingState: "ready"
+            property string searchMode: ""
+            property var thumbState: ({ file: {}, order: [] })
+            property var dirSizeState: ({ file: {}, order: [] })
+            property var kindNames: ["text-x-generic"]
+            property bool storageKnown: true
+            property string storageClass: "local"
+            property int firstSettleMs: 70
+            property int settleMs: 120
+            property int coalesceMs: 16
+            property int refetchMargin: 25
+            property int buffer: 150
+            property var backend: null
+            function join(base, name) { return String(base) + "/" + String(name) }
+            function rowFor(index) { return (index >= 0 && index < rows.length) ? rows[index] : null }
+            function isSelected(index) { return false }
+            function selectedIndices() { return [] }
+            function selectionCount() { return 0 }
+            function thumbFor(index) { return "" }
+            function open(path) {}
+            function openFile(path) {}
+            function focusRequested() {}
+        }
+    }
+
+    Component {
+        id: menuStub
+        QtObject {
+            function close() {}
+            function openBackground(point) {}
+        }
+    }
+
+    property var stubBackend: backendStub.createObject(root)
+    property var stubPane: paneStub.createObject(root, { backend: root.stubBackend })
+    property var failures: []
+
+    Flea.ColumnsArea {
+        id: area
+        width: 1200
+        height: 600
+        pane: root.stubPane
+        menu: menuStub.createObject(root)
+    }
+
+    property var fileA: ({ n: "a.txt", d: false, k: 0, p: 420, s: 13, m: 7, t: false, i: "text-x-generic" })
+    property var fileB: ({ n: "b.txt", d: false, k: 0, p: 420, s: 15, m: 8, t: false, i: "text-x-generic" })
+    property var folderSub: ({ n: "sub", d: true, k: 0, p: 493, s: 0, m: 9, t: false, i: "folder" })
+    property var kidRow: ({ n: "kid.txt", d: false, k: 0, p: 420, s: 1, m: 10, t: false, i: "text-x-generic" })
+
+    function fail(text) { root.failures.push(text) }
+    function childPath() { return root.stubPane.join(root.stubPane.path, "sub") }
+    function swap() { return area.swapState() }
+    function preview() { return area.previewColumn }
+
+    // One peek answer on the real signal path, so onPeeked lands the waiting folder itself.
+    function answerPeek(rows) {
+        var path = root.childPath()
+        root.stubBackend.peeked(path, false, rows.length, rows, false, 0, false, root.stubPane.windowSize)
+    }
+
+    // One meta answer for the file load in flight, so its hold lands instead of falling back.
+    function answerMeta() {
+        var token = root.preview().pendingToken
+        if (!token) { root.fail("meta has no token to answer"); return }
+        root.stubBackend.metaResult({ token: token, w: 0, h: 0, ms: 0, rate: 0, entries: 0,
+            unpacked: 0, afailed: false, names: [], lines: 3, partial: false, lfailed: false,
+            target: "", targetdir: "", owner: "", orient: 1 })
+    }
+
+    function assertIdle(label) {
+        var s = root.swap()
+        if (s.holding || s.capturing)
+            root.fail(label + " leaves the third swap holding, want idle")
+    }
+
+    Timer {
+        interval: 800
+        running: true
+        repeat: false
+        onTriggered: root.phaseNull()
+    }
+    Timer { id: answerEmptyTimer; interval: 300; repeat: false; onTriggered: root.phaseEmptyLands() }
+    Timer { id: fileTimer; interval: 450; repeat: false; onTriggered: root.phaseFileMeta() }
+    Timer { id: fileReadyTimer; interval: 400; repeat: false; onTriggered: root.phaseFileReady() }
+    Timer { id: liveTimer; interval: 60; repeat: false; onTriggered: root.phaseLive() }
+    Timer { id: cancelledTimer; interval: 120; repeat: false; onTriggered: root.phaseCancelled() }
+    Timer { id: folderShownTimer; interval: 250; repeat: false; onTriggered: root.phaseFolderShown() }
+    Timer { id: backMetaTimer; interval: 400; repeat: false; onTriggered: root.phaseBackMeta() }
+    Timer { id: backReadyTimer; interval: 400; repeat: false; onTriggered: root.phaseBackReady() }
+
+    // a) launch-shaped null first show, then the cursor lands on an unanswered folder.
+    function phaseNull() {
+        if (area.shownHasRow !== false)
+            root.fail("a) a null first show holds a row, want none")
+        if (root.preview().row !== null)
+            root.fail("a) a null first show holds a preview, want none")
+        root.assertIdle("a) a null first show")
+        root.stubPane.rows = [root.folderSub]
+        if (area.shownHasRow !== false)
+            root.fail("a) an unanswered folder shows at once, want the old column kept")
+        if (area.shownIsDir !== false)
+            root.fail("a) an unanswered folder marks dir, want the old column kept")
+        if (root.preview().row !== null)
+            root.fail("a) an unanswered folder previews, want nothing held and nothing cleared")
+        root.assertIdle("a) an unanswered folder wait")
+        if (root.failures.length > 0) { root.report(); return }
+        answerEmptyTimer.start()
+    }
+
+    // a) the peek lands: shown whole, never holding; d) the empty landing settles with no entrance.
+    function phaseEmptyLands() {
+        root.answerPeek([])
+        if (area.shownIsDir !== true)
+            root.fail("a) a landed peek keeps the old column, want the folder")
+        if (area.shownChildPath !== root.childPath())
+            root.fail("a) a landed peek shows " + area.shownChildPath + ", want " + root.childPath())
+        root.assertIdle("a) a landed peek")
+        var empty = area.childEmptyItem()
+        if (!empty)
+            root.fail("d) an empty folder draws no empty tile")
+        else {
+            if (empty.markItem.settled !== true)
+                root.fail("d) a data-held empty landing runs its entrance, want it settled")
+            if (empty.markItem.opacity !== 1)
+                root.fail("d) a data-held empty landing marks at " + empty.markItem.opacity + ", want 1")
+            if (empty.animateEntrance !== true)
+                root.fail("d) a data-held empty landing leaves its entrance off")
+        }
+        if (root.failures.length > 0) { root.report(); return }
+        root.stubPane.rows = [root.fileA, root.fileB, root.folderSub]
+        root.stubPane.cursorIndex = 0
+        fileTimer.start()
+    }
+
+    function phaseFileMeta() { root.answerMeta(); fileReadyTimer.start() }
+
+    function phaseFileReady() {
+        var preview = root.preview()
+        if (!preview.row || preview.row.n !== "a.txt")
+            root.fail("file setup loads a.txt, got " + (preview.row ? preview.row.n : "nothing"))
+        if (area.shownIsDir !== false)
+            root.fail("file setup shows a folder, want the file")
+        if (root.failures.length > 0) { root.report(); return }
+        root.stubPane.cursorIndex = 1
+        liveTimer.start()
+    }
+
+    // b) a file move holds a live picture; the next step cancels it with j onto the folder.
+    function phaseLive() {
+        var s = root.swap()
+        if (!s.holding && !s.capturing)
+            root.fail("b) a file move holds no picture, want a live hold to cancel")
+        root.stubPane.cursorIndex = 2
+        cancelledTimer.start()
+    }
+
+    function phaseCancelled() {
+        root.assertIdle("b) j onto an unanswered folder")
+        var preview = root.preview()
+        if (!preview.row || preview.row.n !== "a.txt")
+            root.fail("b) j onto an unanswered folder clears a.txt, want the old preview kept")
+        if (area.shownIsDir !== false)
+            root.fail("b) an unanswered folder shows at once, want the old column kept")
+        if (root.failures.length > 0) { root.report(); return }
+        root.answerPeek([root.kidRow])
+        folderShownTimer.start()
+    }
+
+    function phaseFolderShown() {
+        if (area.shownIsDir !== true)
+            root.fail("b) a landed folder peek keeps the old column, want the folder")
+        if (area.shownChildPath !== root.childPath())
+            root.fail("b) a landed folder peek shows " + area.shownChildPath + ", want " + root.childPath())
+        var preview = root.preview()
+        if (!preview.row || preview.row.n !== "a.txt")
+            root.fail("b) a landed folder clears a.txt, want the old preview kept under it")
+        root.assertIdle("b) a landed folder peek")
+        if (root.failures.length > 0) { root.report(); return }
+        root.stubPane.cursorIndex = 0
+        if (!root.preview().row || root.preview().row.n !== "a.txt")
+            root.fail("c) back on the file clears a.txt, want the kept preview drawn again")
+        backMetaTimer.start()
+    }
+
+    function phaseBackMeta() { root.answerMeta(); backReadyTimer.start() }
+
+    function phaseBackReady() {
+        var preview = root.preview()
+        if (!preview.row || preview.row.n !== "a.txt")
+            root.fail("c) back on the file shows " + (preview.row ? preview.row.n : "nothing") + ", want a.txt")
+        if (area.shownIsDir !== false)
+            root.fail("c) back on the file keeps the folder, want the file")
+        if (root.failures.length === 0)
+            console.log("COLUMNSFOLDER PASS folder=data-held preview=kept file=reshown empty=settled")
+        root.reportFailures()
+    }
+
+    function report() {
+        for (var f = 0; f < root.failures.length; f++)
+            console.log("COLUMNSFOLDER FAIL " + root.failures[f])
+        Quickshell.execDetached(["kill", String(Quickshell.processId)])
+    }
+
+    function reportFailures() {
+        if (root.failures.length === 0) {
+            Quickshell.execDetached(["kill", String(Quickshell.processId)])
+            return
+        }
+        root.report()
+    }
+}

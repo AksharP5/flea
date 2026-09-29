@@ -489,8 +489,9 @@ its meta, and symlink, audio, unsupported and multi for the facts alone; a folde
 `answered(shownChildPath)`. `lookReady` waits for `status` not loading, and a PDF also for
 `shownPage >= 0` or failure. `tests/js/previewswap.js` drives the moves, the cap, the frame kinds and
 every ready rule; mutating `columnReady` reddens it. `tests/preview-swap.sh` grabs the swap item
-headless over folder, jpg, mp4, pdf, txt, rs, odt, ttf, zip and png on both surfaces and asserts 0 mid
-frames. `tests/ui-noblank.sh` reads `previewSwapState` (holds, fallbacks, midFrames) live.
+headless over the file kinds and asserts 0 mid frames on those holds; its one folder step is a
+simulated wait, and the real folder data hold is driven by `tests/columnsfolder.sh` through the
+real `ColumnsArea`. `tests/ui-noblank.sh` reads `previewSwapState` (holds, fallbacks, midFrames) live.
 
 **// corner: the move to the PNG keeps 2 mid frames by design.** At full-resolution grabs the sharper
 original replacing the cache file draws twice between the settled frames. It is the decode finishing,

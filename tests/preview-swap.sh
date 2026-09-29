@@ -90,8 +90,8 @@ judge() {
     # The column holds 17 file moves by picture and 1 folder move by data; Quick Look holds all 18.
     if [ "$surface" == column ]; then wanted=17; else wanted=18; fi
     [ "${holds:-0}" -eq "$wanted" ] || { bad "$surface: took $holds hold(s), expected $wanted (folder moves take none)"; return; }
-    if [ "${mid:-1}" -eq 0 ]; then ok "$surface: 18 moves drew no half-built frame";
-    else bad "$surface: 18 moves drew $mid half-built frame(s)"; fi
+    if [ "${mid:-1}" -eq 0 ]; then ok "$surface: file moves drew no half-built frame (folder step simulated, real proof in columnsfolder)";
+    else bad "$surface: file moves drew $mid half-built frame(s)"; fi
     if [ "${fallbacks:-1}" -eq 0 ]; then ok "$surface: no hold ran past the cap";
     else bad "$surface: $fallbacks hold(s) fell back on fast decodes"; fi
     [ -f "$out/settled.png" ] || bad "$surface: the settled grab never landed"
