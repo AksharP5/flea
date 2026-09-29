@@ -6,13 +6,14 @@ import "flea" as Flea
 // The same resolved URL ui/List.qml imports, so this is the list's own library instance and not a copy.
 import "flea/js/ClipMarks.js" as ClipMarks
 
-// e34r2 listcost: a real ui/List.qml over a stub pane hoists its shared values and frees its lookup.
-// tests/listcost.sh drives it offscreen; the controller pins the counts.
+// e34r2 listcost: a real ui/List.qml over a stub pane hoists its shared values and frees its lookup; tests/listcost.sh drives it offscreen.
 ShellRoot {
     id: root
 
     property var failures: []
     property int markedCalls: 0
+    // The follow value the hoist probe writes through list.rowWidth, so a per-row recompute stays behind it.
+    property real hoistProbe: -1
 
     property var sampleRows: [
         { n: "a.txt", d: false, i: "text-x-generic", p: 420, s: 13, m: 1758835200, t: false, k: 0, v: 0 },
@@ -127,6 +128,13 @@ ShellRoot {
         onTriggered: root.measureDual()
     }
 
+    Timer {
+        id: hoistTimer
+        interval: 600
+        repeat: false
+        onTriggered: root.measureHoist()
+    }
+
     function fail(text) { root.failures.push(text) }
 
     function delegateAt(i) { return list.itemAtIndex(i) }
@@ -208,6 +216,22 @@ ShellRoot {
             if (d.width !== list.rowWidth)
                 root.fail("dual widths " + d.width + ", want the hoisted " + list.rowWidth)
         }
+        if (root.failures.length > 0) { root.report(); return }
+        // A per-row Scroll.contentWidth matches numerically, so the hoist is proved by following: only a delegate bound to rowWidth moves with it.
+        root.hoistProbe = Math.max(1, list.rowWidth - 17)
+        list.rowWidth = root.hoistProbe
+        hoistTimer.start()
+    }
+
+    function measureHoist() {
+        for (var i = 0; i < root.sampleRows.length; i++) {
+            var d = root.delegateAt(i)
+            if (d === null) continue
+            if (d.width !== root.hoistProbe)
+                root.fail("delegate recomputes its width instead of reading the hoisted rowWidth; got " + d.width + ", want " + root.hoistProbe)
+        }
+        if (list.rowWidth !== root.hoistProbe)
+            root.fail("list lost its hoisted rowWidth")
         if (root.failures.length === 0)
             console.log("LISTCOST PASS delegates=" + root.sampleRows.length + " calls=" + ClipMarks.markCalls)
         root.report()

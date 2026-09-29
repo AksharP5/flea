@@ -102,6 +102,15 @@ function squashed(s) {
     return String(s).replace(/\s+/g, " ")
 }
 
+function runShowCursorRow(check, area) {
+    var show = squashed(bodyOf(area, "showCursorRow"))
+    check("source: showCursorRow guards a stale show with the strict force-and-data-hold early return",
+        show.indexOf("if (force !== true && Columns.folderDataHold(root.cursorIsDir, root.answered(root.childPath))) return") >= 0, true)
+    var retAt = show.indexOf("return")
+    check("source: that early return stands before the shown assignments",
+        retAt >= 0 && show.indexOf("shownHasRow") > retAt && show.indexOf("shownIsDir") > retAt && show.indexOf("shownChildPath") > retAt, true)
+}
+
 // A folder peek in Columns holds by data: an unanswered folder keeps the old column, and the landed peek shows it with its rows in one pass.
 function runFolderDataHold(check) {
     check("an unanswered folder defers by data", Columns.folderDataHold(true, false), true)
@@ -132,9 +141,7 @@ function runFolderDataHold(check) {
         && peeked.indexOf("root.showCursorRow()") > peeked.indexOf("Columns.showFolderOnPeek("), true)
     check("the fallback is a single shot at the listing swap cap", area.indexOf("interval: Swap.HOLD_MS") >= 0, true)
     check("and shows the pending column when the peek is late", area.indexOf("onTriggered: if (root.cursorIsDir && !root.answered(root.childPath)) { thirdSwap.cancel(); root.showCursorRow(true) }") >= 0, true)
-    var show = squashed(bodyOf(area, "showCursorRow"))
-    check("a stale queued show never draws an unanswered folder",
-        show.indexOf("Columns.folderDataHold(") >= 0 && show.indexOf("force") >= 0, true)
+    runShowCursorRow(check, area)
     check("a data-held empty hero skips its entrance", Source.source("ui/EmptyState.qml").indexOf("animateEntrance") >= 0, true)
     check("its mark can settle at once", Source.source("ui/FleaMark.qml").indexOf("function settle()") >= 0, true)
     check("a landed empty peek settles its hero whole", peeked.indexOf("Columns.shouldSettleHero(") >= 0
