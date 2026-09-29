@@ -92,7 +92,7 @@ function run(check) {
     check("garbage rounding stays square", Scroll.knobRadius("x", 6, 100), 0)
     // GM 2026-09-29: no line or border along the lane in any state, only the space itself.
     check("the bar binds its thumb to Hyprland rounding",
-          Source.source("ui/ViewportScrollBar.qml").indexOf("Scroll.knobRadius(Style.cornerRadius, width, height)") >= 0, true)
+          Source.source("ui/ViewportScrollBar.qml").indexOf("radius: Scroll.knobRadius(Style.cornerRadius, width, height)") >= 0, true)
     check("no track-line constant survives in Scroll.js",
           Source.source("ui/js/Scroll.js").indexOf("TRACK_LINE"), -1)
     check("no track-line reader survives in the bar",
