@@ -107,8 +107,7 @@ Item {
         var typed = field.text
         var target = PathBar.resolve(typed, root.path, root.home)
         root.closeEdit()
-        // An empty line closes the bar, and a settled path stays a no-op: re-listing it would
-        // drop the selection for no navigation, while a failed one retries through pathFailed.
+        // An empty line closes the bar, and a settled path stays a no-op to keep the selection, while a failed or locked one retries.
         if (PathBar.shouldNavigate(target, root.path, root.pathFailed)) {
             root.pathEntered(target)
             return

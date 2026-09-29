@@ -4026,11 +4026,12 @@ case_dd() {
 # it trashes the cursor row and not the clicked one: list, then grid, each asserting the clicked
 # file is still in the fixture and the cursor row is in this case's own Trash, case_dd's pattern.
 case_ddclick() {
-    local view dir count cur want
+    local view dir count cur want stride
     for view in list grid; do
         dir="$fixture_root/ddclick-$view"
         sandbox_scratch "$dir"
-        if [[ "$view" == grid ]]; then count=9; else count=2; fi
+        # The grid leg holds two full strides plus one, so Down from 0 lands mid-list and cannot clamp to a short last row.
+        if [[ "$view" == grid ]]; then count=61; else count=2; fi
         local i
         for i in $(seq 0 $((count - 1))); do printf 'body\n' > "$dir/f$i.txt"; done
         export XDG_DATA_HOME="$fixture_root/ddclick-$view-data"
@@ -4042,6 +4043,9 @@ case_ddclick() {
             click_chrome grid
             settle
             [[ "$(ipc viewMode)" == grid ]] || fail "ddclick: the chrome did not switch to the grid"
+            stride="$(ipc gridColumns)"
+            [[ "$stride" =~ ^[0-9]+$ && "$stride" -ge 2 ]] || fail "ddclick (grid): gridColumns answered '$stride'"
+            (( count >= 2 * stride + 1 )) || fail "ddclick (grid): $count files hold fewer than 2*$stride+1, so Down could clamp"
         fi
 
         click_row 0 left
@@ -4052,7 +4056,7 @@ case_ddclick() {
         settle
         cur="$(ipc cursor)"
         if [[ "$view" == grid ]]; then
-            (( cur >= 2 && cur < count )) || fail "ddclick (grid): Down left the cursor on $cur, not a full stride below 0"
+            [[ "$cur" == "$stride" ]] || fail "ddclick (grid): Down left the cursor on $cur, not one stride ($stride) below 0"
         else
             [[ "$cur" == "1" ]] || fail "ddclick ($view): Down left the cursor on $cur, not 1"
         fi

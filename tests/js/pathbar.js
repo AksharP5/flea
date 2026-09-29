@@ -115,6 +115,7 @@ function run(check) {
 
     // The re-typed-folder rule, wired as ChromeBar binds it: Nav.pathFailed feeds shouldNavigate.
     check("an error listing failed", Nav.pathFailed(showingPane(HOME, "error", false)), true)
+    check("a locked listing failed", Nav.pathFailed(showingPane(HOME, "locked", false)), true)
     check("a ready listing did not fail", Nav.pathFailed(showingPane(HOME, "ready", false)), false)
     check("an empty listing did not fail", Nav.pathFailed(showingPane(HOME, "empty", false)), false)
     check("a listing in flight did not fail", Nav.pathFailed(showingPane(HOME, "error", true)), false)
@@ -122,6 +123,8 @@ function run(check) {
     check("a search never retries", Nav.pathFailed(showingPane(HOME, "error", false, false, "query")), false)
     check("an error on the same path navigates",
           PathBar.shouldNavigate(HOME, HOME, Nav.pathFailed(showingPane(HOME, "error", false))), true)
+    check("a locked listing on the same path navigates",
+          PathBar.shouldNavigate(HOME, HOME, Nav.pathFailed(showingPane(HOME, "locked", false))), true)
     check("a ready listing on the same path is a no-op",
           PathBar.shouldNavigate(HOME, HOME, Nav.pathFailed(showingPane(HOME, "ready", false))), false)
     check("an empty listing on the same path is a no-op",

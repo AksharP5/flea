@@ -56,8 +56,7 @@ function pane(query, held) {
         return offset < 0 || offset >= p.rows.length ? null : p.rows[offset]
     }
     p.showRow = function (view) { p.scrolled = view }
-    // Mirrors ui/js/Selection.js: only() arms the lone row a plain move carries, and every
-    // deliberate mark drops it, so suites driving Focus.act see the production follow rule.
+    // Mirrors ui/js/Selection.js: only() arms the lone row a plain move carries and every deliberate mark drops it.
     var lone = false
     p.selection = {
         has: function (i) { return p.picked[i] === true },

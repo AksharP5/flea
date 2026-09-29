@@ -10,9 +10,7 @@
 .import "../../ui/js/Tabs.js" as Tabs
 .import "../../ui/js/PreviewKeys.js" as PreviewKeys
 
-// A lone selection the pane made follows a plain cursor move, so dd trashes the cursor row.
-// Its pane mirrors ui/Pane.qml's selection functions; moves go through the production route
-// (Tap for the click, Focus.act or Grid.arrow for the step, Ops.trash for the dd).
+// A lone selection the pane made follows a plain move so dd trashes the cursor row; its pane mirrors ui/Pane.qml and moves go through Tap, Focus.act or Grid.arrow, and Ops.trash.
 function pane(rows, viewMode, stride) {
     var p = {
         rows: rows, held: 0, total: rows.length, shown: null, shownTotal: rows.length,
@@ -169,16 +167,16 @@ function run(check, label) {
     Ops.trash(tabDst)
     check(label + " tab-switch click Down dd trashes the cursor row", tabDst.sent.join(";"), "trash 1")
 
-    // A lone row follows a plain move under a filter, so dd trashes the drawn cursor row.
-    var filt = pane([{ n: "aa.txt", d: false }, { n: "ab.txt", d: false }, { n: "b.txt", d: false }])
+    // A lone row follows a plain move under a filter, so dd trashes the drawn cursor row; shown [1,2] tells a view index from a row index, since a follow naming the view would select 1.
+    var filt = pane([{ n: "b.txt", d: false }, { n: "aa.txt", d: false }, { n: "ab.txt", d: false }])
     filt.filterQuery = "a"
     filt.shown = Filter.shown(filt.rows, filt.held, filt.filterQuery)
     filt.shownTotal = filt.shown.length
-    Tap.tapped(0, 1, none, filt)
+    Tap.tapped(1, 1, none, filt)
     down(filt)
-    check(label + " filtered follow selects the drawn cursor row", filt.selectedIndices().join(","), "1")
+    check(label + " filtered follow selects the drawn cursor row", filt.selectedIndices().join(","), "2")
     Ops.trash(filt)
-    check(label + " filtered tap-j-dd trashes the drawn cursor row", filt.sent.join(";"), "trash 1")
+    check(label + " filtered tap-j-dd trashes the drawn cursor row", filt.sent.join(";"), "trash 2")
 
     // The follow shape: f1 selected after the move, and deliberate marks still span.
     var shape = pane(files(6))

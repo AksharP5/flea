@@ -263,12 +263,12 @@ function showing(pane, path) {
     return pane.listingState === "ready" || pane.listingState === "empty"
 }
 
-// Same-path Enter re-lists only a failed listing; Trash, search and in-flight stay a no-op.
+// Same-path Enter re-lists only a failed or locked listing; Trash, search and in-flight stay a no-op.
 function pathFailed(pane) {
     if (!pane || pane.listInFlight) return false
     if ((pane.searchMode || "").length > 0) return false
     if (!pane.trash || pane.trash.opened) return false
-    return pane.listingState === "error"
+    return pane.listingState === "error" || pane.listingState === "locked"
 }
 
 // The rail's and the columns view's route in: the shown folder returns false and lists nothing.

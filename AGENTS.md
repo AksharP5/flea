@@ -2855,6 +2855,8 @@ e18 moves one ceiling, re-derived with `wc -l`: `ui/ColumnsArea.qml` 425 to 431 
 
 The hairline merged onto the Columns row unit records one ceiling, re-derived with `wc -l`: `tests/columnscost.qml` crosses the hard cap at 416 as the arithmetic of the two units, the row unit's layout-count probe and the hairline's N-1 divider checks, recorded rather than split because both pin the same Columns delegate cost.
 
+e19 round 2 moves one recorded ceiling down, each count re-derived with `wc -l`: `ui/ChromeBar.qml` 479 to 478 for the one-line `shouldNavigate` gate comment (a settled same path stays a no-op to keep the selection, a failed or locked one retries). `ui/js/Nav.js` keeps 279 with `pathFailed` answering true for `locked` beside `error` under the same guards, so a folder fixed through the Locked tile retries on same-path Enter. `tests/js/pathbar.js` 251 to 254 for the two locked retry checks, `tests/js/ddtarget.js` 223 to 221 for the hidden-first filtered follow case (shown [1,2]) and its one-line header, `tests/js/filterfixture.js` 107 to 106 and `ui/js/Marks.js` 83 to 82 for their one-line mirror comments, and `tests/ui.sh` carries the stride-exact grid leg of case_ddclick (61 files, cursor equals `gridColumns`).
+
 ## The key table is generated
 
 `keys.toml` at the repository root is the single source of truth for every binding.
