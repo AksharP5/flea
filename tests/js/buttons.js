@@ -13,6 +13,14 @@ function run(check) {
         said = String((e && e.message) || e)
     }
     check("a missing file throws naming it", said.indexOf("ui/NoSuchFile-qml") >= 0, true)
+    // An omitted marker would otherwise search for the literal string "undefined".
+    var usage = ""
+    try {
+        Source.slice("ab function f() {} function g() {}", "function f")
+    } catch (e) {
+        usage = String((e && e.message) || e)
+    }
+    check("slice without both markers throws its usage", usage.indexOf("slice") >= 0, true)
     // One geometry for every dialog, card and picker button; the label follows Theme.font.body.
     check("one pad", Buttons.PAD, 9)
     check("one gap", Buttons.GAP, 9)

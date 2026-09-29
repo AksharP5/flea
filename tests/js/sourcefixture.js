@@ -1,6 +1,9 @@
 // A source slice between two markers, so a renamed or reordered function fails loudly.
 // Sample input: slice("ab function f() {} function g() {}", "function f", "function g").
 function slice(src, fromMarker, toMarker) {
+    // indexOf coerces undefined to "undefined", so guard before any search.
+    if (typeof fromMarker !== "string" || fromMarker.length === 0 || typeof toMarker !== "string" || toMarker.length === 0)
+        throw new Error("sourcefixture: slice needs non-empty fromMarker and toMarker")
     var text = String(src)
     var from = text.indexOf(fromMarker)
     if (from < 0)

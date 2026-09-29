@@ -74,6 +74,10 @@ case_railpointer() {
         sleep 0.05
     done
     [[ "$revealed" == true ]] || fail "railpointer: the auto-hide rail never revealed (railState=$rail_json)"
+    # The hide left the keyboard in the list, so Tab back to the rail before stepping it.
+    key -k Tab >/dev/null
+    settle
+    [[ "$(ipc focusView)" == "rail" ]] || fail "railpointer: Tab after the pointer reveal left the keyboard on $(ipc focusView) instead of the rail"
     # Off row 0 first, so a cursor back on row 0 below proves the press landed.
     local rail_total
     rail_total=$(ipc railCount)
