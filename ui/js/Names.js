@@ -37,8 +37,9 @@ function isFastText(text) {
 }
 
 function middleElide(name, maxCells) {
-    var text = String(name)
-    var max = Math.max(0, Math.floor(maxCells))
+    var text = String(name), max = Math.max(0, Math.floor(maxCells))
+    // A non-finite budget names no width, so the name goes through untouched.
+    if (!isFinite(max)) return text
     var st = isFastText(text) ? fastStoreOf(text) : storeOf(charsOf(text))
     if (rangeCells(st, 0, st.n) <= max) return text
     // The head takes the odd cell, so a 49-wide board keeps 24 and 24.
@@ -229,10 +230,9 @@ function wrapCore(st, perLine, count) {
 // The caption Flea hands to Text already holds its line breaks, so Qt never wraps.
 // Sample input: gridCaption("screenshot-2026-08-30-final-review-for-gm-after-the-bench-v3.png", 16, 2) answers "screenshot-2026-\n…he-bench-v3.png".
 function gridCaption(name, perLine, lines) {
-    var text = String(name)
-    var per = Math.floor(perLine), count = Math.floor(lines)
-    // A dead width budgets nothing: hand Qt the whole name and let ElideRight say so.
-    if (!(per >= 1) || !(count >= 1)) return text
+    var text = String(name), per = Math.floor(perLine), count = Math.floor(lines)
+    // A dead or non-finite width budgets nothing: hand Qt the whole name and let ElideRight say so.
+    if (!isFinite(per) || !isFinite(count) || !(per >= 1) || !(count >= 1)) return text
     var st = isFastText(text) ? fastStoreOf(text) : storeOf(charsOf(text))
     if (st.n === 0) return text
     // A wide glyph never straddles a line and wastes a cell, so elide until Flea's own wrap holds every char.

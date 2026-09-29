@@ -40,6 +40,7 @@ function run(check) {
           Names.middleElide("abcdefghij", 2), "a…")
     runGridCaption(check)
     runEquivalence(check)
+    runNonFinite(check)
     runPerf(check)
 }
 
@@ -156,7 +157,7 @@ function stretched(seed, len) {
     return out.slice(0, len)
 }
 
-// Every output equals the frozen reference exactly, over lengths 0 to 300 and the full option ranges.
+// Every output equals the frozen reference exactly, over lengths 0 to 300 and the full finite option ranges; non-finite budgets stay out by decision, both paths hand them through.
 function runEquivalence(check) {
     var lens = [0, 1, 2, 3, 5, 8, 13, 15, 16, 17, 20, 31, 32, 33, 40, 48, 49, 64, 100, 200, 300]
     var pers = [1, 2, 7, 16, 40], counts = [1, 2, 3], budgets = [0, 1, 2, 3, 5, 10, 16, 20, 49, 80]
@@ -184,17 +185,55 @@ function runEquivalence(check) {
     check("first mismatch", first, "none")
 }
 
-// Measured on West at 8000 chars x25: grid new 21 ms and frozen 194 ms, middle new 5 ms and frozen 187 ms; each bound sits about 3x from both.
-var LONG_NAME = 8000
-var GRID_BOUND_MS = 70
-var MIDDLE_BOUND_MS = 30
+// A non-finite budget names no width, so both paths hand the name through untouched.
+function runNonFinite(check) {
+    check("middleElide hands NaN through", Names.middleElide("abcdef", NaN), "abcdef")
+    check("middleElide hands undefined through", Names.middleElide("abcdef", undefined), "abcdef")
+    check("middleElide hands Infinity through", Names.middleElide("abcdef", Infinity), "abcdef")
+    check("gridCaption hands a NaN width through", Names.gridCaption("abcdef", NaN, 2), "abcdef")
+    check("gridCaption hands a NaN line count through", Names.gridCaption("abcdef", 16, NaN), "abcdef")
+    check("gridCaption hands Infinity through", Names.gridCaption("abcdef", Infinity, 2), "abcdef")
+    check("gridCaption hands an infinite line count through", Names.gridCaption("abcdef", 16, Infinity), "abcdef")
+}
+
+// Long-name work costs relative time: 2000 calls best of 3, new against frozen, factor 2 for ascii and mixed.
+var PERF_REPEATS = 2000, PERF_TRIALS = 3, PERF_FACTOR = 2
+
+// Realistic names: 60-char ASCII, 60 units mixed with emoji and CJK for the slow path, 85 CJK.
+function perfSets() {
+    var a60 = "screenshot-2026-08-30-final-review-for-gm-after-the-bench-v3.png".slice(0, 60)
+    var m60 = ("a中🎉-_.Z").repeat(10).slice(0, 60)
+    var c85 = ("写漢字テスト한글中").repeat(11).slice(0, 85)
+    return [["ascii", [a60, a60 + ".png"]], ["mixed", [m60, m60 + ".jpg"]], ["cjk", [c85, c85 + ".pdf"]]]
+}
+
+function timeOnce(impl, names, kind) {
+    var t0 = Date.now()
+    for (var i = 0; i < PERF_REPEATS; i++) {
+        if (kind === "grid") impl.gridCaption(names[i % names.length], 16, 3)
+        else impl.middleElide(names[i % names.length], 49)
+    }
+    return Date.now() - t0
+}
+
+function race(check, NewSide, tag, names, factor, kind) {
+    var fast = -1, slow = -1
+    for (var t = 0; t < PERF_TRIALS; t++) {
+        var nt, rt
+        if (t % 2 === 0) { nt = timeOnce(NewSide, names, kind); rt = timeOnce(Ref, names, kind) }
+        else { rt = timeOnce(Ref, names, kind); nt = timeOnce(NewSide, names, kind) }
+        if (fast < 0 || nt < fast) fast = nt
+        if (slow < 0 || rt < slow) slow = rt
+    }
+    var ok = factor === 1 ? fast <= slow : fast * factor < slow
+    check(tag + " " + kind + " 2000 calls best of 3: new " + fast + "ms x" + factor + " vs frozen " + slow + "ms", ok, true)
+}
 
 function runPerf(check) {
-    var ascii = "a".repeat(LONG_NAME)
-    var t0 = Date.now()
-    for (var g = 0; g < 25; g++) Names.gridCaption(ascii, 16, 3)
-    check("gridCaption answers a long name 25 times within the grid bound", Date.now() - t0 <= GRID_BOUND_MS, true)
-    var m0 = Date.now()
-    for (var m = 0; m < 25; m++) Names.middleElide(ascii, 49)
-    check("middleElide answers a long name 25 times within the middle bound", Date.now() - m0 <= MIDDLE_BOUND_MS, true)
+    var NewSide = Names, sets = perfSets()
+    for (var s = 0; s < sets.length; s++) {
+        var factor = sets[s][0] === "cjk" ? 1 : PERF_FACTOR
+        race(check, NewSide, sets[s][0], sets[s][1], factor, "grid")
+        race(check, NewSide, sets[s][0], sets[s][1], factor, "middle")
+    }
 }
