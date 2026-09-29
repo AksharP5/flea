@@ -56,8 +56,12 @@ Item {
     readonly property string decoratedName: root.displayName + root.linkMark
     readonly property string locationText: root.searching ? Match.location(root.row.n) : ""
     readonly property var nameRun: Match.run(root.displayName, root.searchQuery)
-    // Characters of name slot at the body advance the name draws at; unmarked names pre-truncate through Names.js, marked runs keep full text.
-    readonly property int nameBudget: Theme.bodyAdvance > 0 && name.width > 0 ? Math.floor(name.width / Theme.bodyAdvance) : -1
+    // Assigned by List.qml's shared budgets; -2 keeps the local geometry default for PickerList and drop-target rows.
+    property int assignedNameBudget: -2
+    // Local measured geometry for PickerList, drop targets and unlaid rows; a function so ordinary rows pay no floor.
+    function localNameBudget() { return Theme.bodyAdvance > 0 && name.width > 0 ? Math.floor(name.width / Theme.bodyAdvance) : -1 }
+    // Ordinary List rows share; drop targets keep local measured geometry with the label's own reserve.
+    readonly property int nameBudget: root.dropTarget ? root.localNameBudget() : (root.assignedNameBudget > -2 ? root.assignedNameBudget : root.localNameBudget())
     readonly property string elidedName: root.nameRun.start < 0 && root.nameBudget >= 0 ? Names.middleElide(root.decoratedName, root.nameBudget) : root.decoratedName
     // A long name would otherwise hide the location entirely, and the location is what tells two matches apart.
     readonly property real nameShare: 0.66

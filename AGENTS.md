@@ -2893,6 +2893,10 @@ w28 moves two ceilings, re-derived with `wc -l`: `src/uistore.rs` 483 to 540 for
 
 e39 moves one ceiling, re-derived with `wc -l`: `tests/js/columns.js` 356 to 367 for the neighbour-gate pins (`neighbourAsks` narrow/wide/empty/root checks, the fresh-list source pins and the folder-wait `stopCap` pin) and the runColRoot refresh-gate reword. `ui/js/Columns.js` 255 to 263 for `neighbourAsks`, `ui/ColumnsArea.qml` 438 to 435 for the fresh-gate refresh and the folder-wait `stopCap`, `ui/PreviewSwap.qml` 242 to 245 for `stopCap`, all inside their budgets; `tests/columnsfolder.qml` 271 to 393 for the windowed capture-gated holds, the IMAGE-stubborn file rows, the wait-pinned keptName (identity holds only across unanswered waits; a landing or fallback hides the preview and clears its data by onCanReadChanged design) with peeked-rows checks, and the w25 kept-landed-bounded phases; the new `tests/columnspeekgate.qml` at 189 carries the windowed width/path/root/hidden first-peek pins and is registered in `tests/run-all.sh`.
 
+w34 moves one ceiling, re-derived with `wc -l`: `ui/Row.qml` 468 to 472 for the assignable shared name budget (assigned plus local fallback for PickerList and drop targets, ordinary rows share List plain and clip budgets, local is a function so ordinary rows pay no per-row floor binding); `ui/List.qml` 300 to 320 inside the hard cap for the shared plain and clip slots with exact drawn geometry; `tests/listnamebudget.qml` at 280 over soft for the real List probe over resize, dual, hidden and stored widths, pinned-20 text size, tight density, clipboard and filter with Picker and drop fallbacks.
+
+w34-r2 holds those ceilings with comment joins only and no logic change; the fixture builds its pinned-20 mode through TextSize.nearest with a baseSize 20 assert, switches density tight with density and densityRatio asserts, and escapes the wide-glyph codepoint instead of emitting it.
+
 ## The key table is generated
 
 `keys.toml` at the repository root is the single source of truth for every binding.

@@ -19,6 +19,24 @@ ListView {
     property real rowWidth: Scroll.contentWidth(root.width, Theme.spacing.rowPaddingX)
     // Dual mode hides mode and kind on top of the stored set; one array, never one per row.
     property var rowHiddenCols: root.pane && root.pane.dualMode ? ["mode", "kind"].concat(ViewState.hiddenCols) : ViewState.hiddenCols
+    // Shared name budgets remove the per-row floor; Row keeps its local default for PickerList and drop targets.
+    readonly property bool listDual: root.pane && root.pane.dualMode ? true : false
+    readonly property real listMarkSlot: root.listDual ? Theme.markSize : Theme.iconSize
+    readonly property real listSizeWidth: root.listDual ? Theme.dualColumn.size : Theme.column.size
+    readonly property real listDateWidth: root.listDual ? Theme.dualColumn.date : Theme.column.date
+    // The same set Row.cols resolves, from the same width and hidden array, so the two cannot drift.
+    readonly property var listCols: root.listDual ? Theme.dualColumns(root.rowWidth, root.rowHiddenCols) : Theme.columns(root.rowWidth, root.rowHiddenCols, root.listDateWidth)
+    readonly property bool listModeShown: root.listCols ? !!root.listCols.mode : false
+    readonly property bool listSizeShown: root.listCols ? !!root.listCols.size : false
+    readonly property bool listDateShown: root.listCols ? !!root.listCols.date : false
+    readonly property bool listKindShown: root.listCols ? !!root.listCols.kind : false
+    // Matches Row.clipPx; the reserve keeps the glyph readable.
+    readonly property int listClipPx: 12
+    // Exact drawn geometry: the row less padding, mark, gap, columns, gaps and name-to-mode gap, in pixels then floored.
+    readonly property real nameSlotPlainPx: Math.max(0, root.rowWidth - 2 * Theme.spacing.rowPaddingX - root.listMarkSlot - Theme.spacing.gap - (root.listModeShown ? Theme.column.mode : 0) - (root.listSizeShown ? root.listSizeWidth : 0) - (root.listDateShown ? root.listDateWidth : 0) - (root.listKindShown ? Theme.column.kind : 0) - (root.listKindShown ? Theme.spacing.gap : 0) - ((root.listDateShown && !root.listDual) ? Theme.spacing.gap : 0) - ((root.listSizeShown && !root.listDual) ? Theme.spacing.gap : 0) - (root.listModeShown ? Theme.spacing.gap : 0))
+    readonly property real nameSlotClipPx: Math.max(0, root.nameSlotPlainPx - Theme.spacing.gap - root.listClipPx)
+    readonly property int nameBudgetPlain: Theme.bodyAdvance > 0 && root.nameSlotPlainPx > 0 ? Math.floor(root.nameSlotPlainPx / Theme.bodyAdvance) : -1
+    readonly property int nameBudgetClip: Theme.bodyAdvance > 0 && root.nameSlotClipPx > 0 ? Math.floor(root.nameSlotClipPx / Theme.bodyAdvance) : -1
     property bool clipEmpty: ClipMarks.isEmpty(root.pane ? root.pane.clipboard : null)
     // The short-circuit below is the only release while empty, so a cut of a large directory frees its lookup here.
     onClipEmptyChanged: { if (root.clipEmpty) ClipMarks.release() }
@@ -81,6 +99,8 @@ ListView {
         selected: root.pane.isSelected(listingIndex)
         // Empty short-circuits before the library, so no row calls it while the clipboard is empty.
         clipMark: root.clipEmpty ? "" : ClipMarks.markForRow(root.pane, cell.row ? cell.row.n : "", root.pane.clipboard)
+        // Shared budgets: one floor per List state, not per row; drop rows keep local measured geometry in Row.
+        assignedNameBudget: cell.clipMark.length > 0 ? root.nameBudgetClip : root.nameBudgetPlain
         kindNames: root.pane.kindNames
         dirSize: root.dirSizeFor(listingIndex)
         // A filter paints its run the same way a search does; filtering below is what keeps the
