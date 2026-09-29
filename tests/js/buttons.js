@@ -5,6 +5,14 @@
 // Variant A (Buttons040, GM 2026-09-24): one control at Theme.rowHeight minus its padding, fixed primary per dialog, destructive as error ink, disabled 0.55.
 
 function run(check) {
+    // The reader itself: a missing file throws naming it, so a renamed tree file fails loudly.
+    var said = ""
+    try {
+        Source.source("ui/NoSuchFile-qml")
+    } catch (e) {
+        said = String((e && e.message) || e)
+    }
+    check("a missing file throws naming it", said.indexOf("ui/NoSuchFile-qml") >= 0, true)
     // One geometry for every dialog, card and picker button; the label follows Theme.font.body.
     check("one pad", Buttons.PAD, 9)
     check("one gap", Buttons.GAP, 9)

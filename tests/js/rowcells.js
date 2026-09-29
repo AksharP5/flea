@@ -10,14 +10,8 @@ var CELLS = ["ui/RowMode.qml", "ui/RowSize.qml", "ui/RowDate.qml", "ui/RowKind.q
 
 function run(check) {
     var row = Source.source("ui/Row.qml")
-    // Red on the base: these files do not exist there, so every check below fails there first.
+    // A missing cell file throws in Source.source, so every check below fails there first.
     var bodies = CELLS.map(function (path) { return Source.source(path) })
-    for (var i = 0; i < CELLS.length; i++) {
-        check(CELLS[i] + " exists", bodies[i].length > 0, true)
-    }
-    if (bodies.some(function (body) { return body.length === 0 })) {
-        return
-    }
     // One Text object per cell file and no other primitive beside it: no wrapper Item, Rectangle, Image, Loader, Glyph or MatchText.
     for (var c = 0; c < CELLS.length; c++) {
         check(CELLS[c] + " roots one Text", countRe(bodies[c], /^Text\s*\{/gm), 1)
