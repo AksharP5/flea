@@ -111,14 +111,31 @@ Item {
         color: root.paneFocused ? Theme.color.accent : Theme.color.muted
     }
 
-    // The drop frame: the board's hairline of accent inset in the row over a faint accent wash, the
-    // wash at the hover rung's alpha because the token wins over the mock's own 0.07.
-    Rectangle {
-        visible: root.dropTarget
+    // The drop frame and the drop label share one Loader, so both build only on the one row under a drag.
+    Loader {
+        active: root.dropTarget
         anchors.fill: parent
-        color: Util.alpha(Theme.color.accent, Style.hoverFillAlpha)
-        border.width: Theme.spacing.hairline
-        border.color: Theme.color.accent
+        sourceComponent: Item {
+            anchors.fill: parent
+            // The board's accent hairline over a faint wash at the hover rung's alpha: the token wins over the mock's own 0.07.
+            Rectangle {
+                anchors.fill: parent
+                color: Util.alpha(Theme.color.accent, Style.hoverFillAlpha)
+                border.width: Theme.spacing.hairline
+                border.color: Theme.color.accent
+            }
+            // The board's own words in the columns' place: caption type in the accent, against the row padding.
+            Text {
+                anchors.right: parent.right
+                anchors.rightMargin: Theme.spacing.rowPaddingX
+                anchors.verticalCenter: parent.verticalCenter
+                text: DragOps.label(root.dropCopying)
+                color: Theme.color.accent
+                font.family: Theme.font.family
+                font.pixelSize: Theme.font.caption
+                textFormat: Text.PlainText
+            }
+        }
     }
 
     // A thumbnail is a decoded image and stays one; the icon beside it is a native mark. The two
@@ -335,22 +352,6 @@ Item {
         font.pixelSize: Theme.font.caption
         elide: Text.ElideRight
         textFormat: Text.PlainText
-    }
-
-    // The board's own words in the columns' place: caption type in the accent, against the row padding.
-    // Built only on the one row under a drag.
-    Loader {
-        active: root.dropTarget
-        anchors.right: parent.right
-        anchors.rightMargin: Theme.spacing.rowPaddingX
-        anchors.verticalCenter: parent.verticalCenter
-        sourceComponent: Text {
-            text: DragOps.label(root.dropCopying)
-            color: Theme.color.accent
-            font.family: Theme.font.family
-            font.pixelSize: Theme.font.caption
-            textFormat: Text.PlainText
-        }
     }
 
     // A row not yet fetched is dimmed rather than blank, so scrolling reads as loading.

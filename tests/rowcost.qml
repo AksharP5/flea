@@ -10,8 +10,8 @@ ShellRoot {
 
     property var sampleRow: ({ n: "rowcost.txt", i: "text-x-generic", p: 420, d: false, s: 13, m: 1758835200, t: false, k: 0, v: 0 })
     property var failures: []
-    // Measured in flea-ci at 89115b45 (ROWCOST PASS row=19 grid=14); one more object per delegate is a regression.
-    readonly property int rowMax: 19
+    // Tied to 0.3.6 98404bc7 (row=18 grid=14); one more object per delegate is a regression.
+    readonly property int rowMax: 18
     readonly property int gridMax: 14
 
     Flea.Row {
