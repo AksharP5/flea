@@ -121,11 +121,12 @@ Item {
     }
 
     // An unanswered folder shows its pending state at the cap, the picture cap's own fallback.
+    // A live picture ends here, or it would cover the pending column with no cap.
     Timer {
         id: folderFallback
         interval: Swap.HOLD_MS
         repeat: false
-        onTriggered: if (root.cursorIsDir && !root.answered(root.childPath)) root.showCursorRow()
+        onTriggered: if (root.cursorIsDir && !root.answered(root.childPath)) { thirdSwap.cancel(); root.showCursorRow() }
     }
 
     // Only a file load takes a hold and an unanswered folder waits by data; a manual load, a hidden preview column or a held frame lands at once, or the cap would never arm and the frozen picture would block the pointer.
@@ -137,7 +138,8 @@ Item {
         // Unknown is never held: the class has not named its verdict yet, so a file waits
         // for it the way a load does and onStorageKnownChanged decides when it lands.
         var held = ExtThumbs.manualHold(root.pane.storageClass, ViewState.preview)
-        var fileLoad = !root.cursorIsDir && ViewState.previewColumn && ViewState.previewAutomatic && !held
+        // A null row is never a file load: the rows have not landed yet, so a hold here would show the folder with no cap.
+        var fileLoad = Columns.isFileRow(root.cursorRow) && ViewState.previewColumn && ViewState.previewAutomatic && !held
         // An unanswered folder waits by data: a live hold is cancelled first, or its queued show draws the folder with no rows.
         if (Columns.folderDataHold(root.cursorIsDir, root.answered(root.childPath))) {
             if (!idle)
@@ -307,8 +309,11 @@ Item {
             }
             root.peekVersion += 1
             // The waiting folder lands with its rows in the same pass, so no frame is mid-built.
-            if (Columns.showFolderOnPeek(root.childPath, root.shownChildPath, root.answered(root.childPath)))
+            // A live picture ends here, or it would cover the landed rows with no cap.
+            if (Columns.showFolderOnPeek(root.childPath, root.shownChildPath, root.answered(root.childPath))) {
+                thirdSwap.cancel()
                 root.showCursorRow()
+            }
             if (heroSettles) { childColumn.emptyItem.markItem.settle(); childColumn.emptyItem.animateEntrance = true }
             if (root.answered(root.childPath))
                 folderFallback.stop()

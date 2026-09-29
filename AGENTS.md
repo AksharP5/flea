@@ -2865,6 +2865,8 @@ e24 moves one ceiling, re-derived with `wc -l`: `ui/Row.qml` 452 to 453 for the 
 The drop-frame merge records one ceiling, re-derived with `wc -l`: `ui/Row.qml` 453 to 454, the frame and label now one Loader (a row at rest builds 18 objects, the 0.3.6 count, pinned in tests/rowcost.qml) and the two one-line comments that keep the frame token and the label placement.
 w037w20 moves one ceiling, re-derived with `wc -l`: `ui/ColumnsArea.qml` 431 to 435 for settling the data-held empty hero (the `shouldSettleHero` gate with its entrance skip and mark settle in `onPeeked`); `ui/EmptyState.qml` 129 to 131 for the `animateEntrance` gate, `ui/FleaMark.qml` 86 to 89 for `settle`, `ui/js/Columns.js` 239 to 249 for `shouldSettleHero` over the soft budget and under the hard cap, and `tests/js/previewswap.js` 129 to 138 inside both budgets.
 
+w037w23 moves one ceiling, re-derived with `wc -l`: `ui/ColumnsArea.qml` 435 to 440 for ending the leaked picture hold (the `isFileRow` file-load guard, the `thirdSwap.cancel` in the `folderFallback` trigger and in the `showFolderOnPeek` landing); `ui/js/Columns.js` 249 to 255 for `isFileRow` over the soft budget and under the hard cap, `ui/SelectionPreview.qml` 257 to 262 for the folder guards, and `tests/js/previewswap.js` 138 to 173 inside both budgets. w20's entrance skip stays: a data-held empty landing still appears async after a wait, so its entrance would animate a late arrival.
+
 ## The key table is generated
 
 `keys.toml` at the repository root is the single source of truth for every binding.

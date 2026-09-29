@@ -232,6 +232,12 @@ function folderDataHold(cursorIsDir, answered) {
     return cursorIsDir === true && answered !== true
 }
 
+// A file load needs a real file row: null never loads and a folder waits by data.
+// Sample input: isFileRow({d: false}) is true.
+function isFileRow(row) {
+    return row !== null && row !== undefined && row.d !== true
+}
+
 // A landed peek shows the cursor folder while it is still the one waiting.
 // Sample input: showFolderOnPeek("/a", "/b", true) is true.
 function showFolderOnPeek(childPath, shownChildPath, answered) {

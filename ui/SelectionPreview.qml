@@ -1,5 +1,6 @@
 import QtQuick
 import "." as Flea
+import "js/Columns.js" as Columns
 import "js/Facts.js" as Facts
 import "js/Thumbs.js" as Thumbs
 import "js/ExtThumbs.js" as ExtThumbs
@@ -103,7 +104,9 @@ Flea.PreviewColumn {
     }
 
     // Any change of what the cursor row is: the old preview goes, under the swap's picture where there is one.
+    // A folder shows no preview, so it clears without a picture hold that no load would cap.
     function replace() {
+        if (!Columns.isFileRow(root.pane ? root.pane.rowFor(root.pane.cursorIndex) : null)) { root.clear(); return }
         if (root.swap && ViewState.previewAutomatic && root.canRead) {
             root.armSettle()
             root.swap.hold(root.clearForMove, root.swapKey())
@@ -140,6 +143,8 @@ Flea.PreviewColumn {
         var hold = ExtThumbs.manualHold(root.pane.storageClass, ViewState.preview)
         if (root.loadedDirectory === root.pane.path && root.loadedIndex === root.pane.cursorIndex
                 && root.loadedIdentity === root.identity(candidate) && root.manualHold === hold) return
+        // A folder shows no preview, so it clears without a picture hold that no load would cap.
+        if (!Columns.isFileRow(candidate)) { root.clear(); return }
         // An off class holds the frame on the listing's own facts until Ctrl+Space loads it; nothing loads, so no swap.
         if (hold) { root.clear(); root.holdSelection(candidate); return }
         root.replace()

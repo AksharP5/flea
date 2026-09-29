@@ -70,6 +70,7 @@ function run(check) {
     check("or once the document is refused", PreviewSwap.lookReady("This file could not be read.", true, false, true), true)
     check("anything else not loading is whole", PreviewSwap.lookReady("image", false, false, false), true)
     runFolderDataHold(check)
+    runPictureHoldLeak(check)
 }
 
 // The body of one QML function by brace count, so each check reads the arm it names and not a copy elsewhere.
@@ -130,9 +131,43 @@ function runFolderDataHold(check) {
     check("a landed peek shows the folder it waited for", peeked.indexOf("Columns.showFolderOnPeek(") >= 0
         && peeked.indexOf("root.showCursorRow()") > peeked.indexOf("Columns.showFolderOnPeek("), true)
     check("the fallback is a single shot at the listing swap cap", area.indexOf("interval: Swap.HOLD_MS") >= 0, true)
-    check("and shows the pending column when the peek is late", area.indexOf("onTriggered: if (root.cursorIsDir && !root.answered(root.childPath)) root.showCursorRow()") >= 0, true)
+    check("and shows the pending column when the peek is late", area.indexOf("onTriggered: if (root.cursorIsDir && !root.answered(root.childPath)) { thirdSwap.cancel(); root.showCursorRow() }") >= 0, true)
     check("a data-held empty hero skips its entrance", Source.source("ui/EmptyState.qml").indexOf("animateEntrance") >= 0, true)
     check("its mark can settle at once", Source.source("ui/FleaMark.qml").indexOf("function settle()") >= 0, true)
     check("a landed empty peek settles its hero whole", peeked.indexOf("Columns.shouldSettleHero(") >= 0
         && peeked.indexOf("markItem.settle()") > peeked.indexOf("Columns.shouldSettleHero("), true)
+}
+
+// A launch or a move onto an unanswered folder must never leave the third-column picture up:
+// every path that shows the cursor folder ends any live hold, and only a real file row takes one.
+function fileRowSafe(row) {
+    return typeof Columns.isFileRow === "function" ? Columns.isFileRow(row) : "missing"
+}
+
+function runPictureHoldLeak(check) {
+    check("the file-row rule exists", typeof Columns.isFileRow === "function", true)
+    check("a null row never takes a file load", fileRowSafe(null), false)
+    check("an undefined row never takes a file load", fileRowSafe(undefined), false)
+    check("a folder never takes a file load", fileRowSafe({d: true}), false)
+    check("a file takes a file load", fileRowSafe({d: false}), true)
+    var area = Source.source("ui/ColumnsArea.qml")
+    var move = squashed(bodyOf(area, "moveThird"))
+    check("a move takes a file hold only for a real file row",
+        move.indexOf("Columns.isFileRow(root.cursorRow)") >= 0, true)
+    var peeked = squashed(bodyOf(area, "onPeeked"))
+    var landAt = peeked.indexOf("showFolderOnPeek(")
+    var shownAt = peeked.indexOf("root.showCursorRow()", landAt)
+    var cancelAt = peeked.indexOf("thirdSwap.cancel()", landAt)
+    check("a landed peek ends a live picture before showing",
+        landAt >= 0 && shownAt > landAt && cancelAt >= 0 && cancelAt < shownAt, true)
+    var fallbackAt = area.indexOf("id: folderFallback")
+    var triggerAt = area.indexOf("onTriggered:", fallbackAt)
+    var trigger = area.substring(triggerAt, area.indexOf("\n", triggerAt))
+    check("the fallback ends a live picture before showing",
+        trigger.indexOf("thirdSwap.cancel()") >= 0 && trigger.indexOf("root.showCursorRow()") >= 0, true)
+    var preview = Source.source("ui/SelectionPreview.qml")
+    check("the preview imports the file-row rule",
+        preview.indexOf('import "js/Columns.js" as Columns') >= 0, true)
+    check("the preview never holds a picture for a folder cursor",
+        preview.indexOf("Columns.isFileRow") >= 0, true)
 }
