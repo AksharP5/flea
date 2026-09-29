@@ -10,7 +10,10 @@ function countRe(text, re) {
 // Sample input: "    Text {\n        id: size\n        ...\n    }\n".
 function cellBlock(row, id) {
     var start = row.indexOf("id: " + id + "\n")
-    return start < 0 ? "" : row.slice(start, row.indexOf("\n    }\n", start))
+    var end = start < 0 ? -1 : row.indexOf("\n    }\n", start)
+    // A missing closer, or one past the next sibling's own Text, reads as no cell rather than as a sibling's lines.
+    var next = start < 0 ? -1 : row.indexOf("\n    Text {", start)
+    return start < 0 || end < 0 || (next >= 0 && next < end) ? "" : row.slice(start, end)
 }
 
 function run(check) {
