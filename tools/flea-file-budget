@@ -52,7 +52,7 @@ tests/js/network.js 306
 tests/js/ops.js 390
 tests/js/status.js 354
 ui/Backend.qml 426
-ui/ChromeBar.qml 477
+ui/ChromeBar.qml 478
 ui/ContextMenu.qml 579
 ui/ConvertDialog.qml 440
 ui/Ipc.qml 818

@@ -310,7 +310,8 @@ Item {
             visible: root.editing
             anchors.fill: parent
             anchors.topMargin: Theme.spacing.hairline * 2
-            anchors.bottomMargin: Theme.spacing.hairline * 2
+            // One below against two above centres the field in the strip, which is the flush dropdown the Jump board draws.
+            anchors.bottomMargin: Theme.spacing.hairline
             color: Theme.color.background
             radius: Style.cornerRadius
             border.width: Theme.spacing.hairline

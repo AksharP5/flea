@@ -2765,6 +2765,8 @@ list columns each added their tokens.
 
 The 0.3.7 replay onto the 0.3.6 head moves 8 ceilings, each re-derived with `wc -l`: `ui/ContextMenu.qml` 578 to 579, `ui/Ipc.qml` 813 to 818, `ui/Pane.qml` 724 to 728, `ui/js/Settings.js` 431 to 432, `ui/js/Menu.js` 335 to 338, `ui/js/Focus.js` 359 to 365, `ui/ChromeBar.qml` 468 to 477, `ui/Theme.qml` 401 to 405.
 
+f037jump moves one ceiling, re-derived with `wc -l`: `ui/ChromeBar.qml` 477 to 478 for the one-line comment on the editor frame's single-hairline bottom inset, which centres the field in the strip so the folder-jump dropdown sits flush under it the way the Jump board draws it.
+
 f037logic moves three ceilings, each re-derived with `wc -l`: `src/uistate.rs` 518 to 554 for the per-entry folderSorts healing on read, the whole-pixel width rule and the tests pinning both, `ui/Backend.qml` 425 to 426 for the `hiddenLast` the peek request carries, and `src/backend/proto.rs` 285 to 287, under the hard cap, for the same field parsed off the wire.
 
 f037r6 records one ceiling, re-derived with `wc -l`: `tests/js/columns.js` 298 to 317 for the first-echo peek key and the scoped re-ask checks, crossing the 300 hard cap and recorded rather than split; `ui/js/Names.js` 125 to 199 and `tests/js/names.js` 106 to 128 stay inside their budgets, `src/backend/peek.rs` 217 to 230 stays inside the soft budget, `ui/js/Columns.js` 178 to 184 stays inside its budget, `ui/Backend.qml` falls 426 to 424 inside its recorded 426, `ui/ColumnsArea.qml` keeps 400 at the hard cap and `ui/GridTile.qml` keeps 203.
