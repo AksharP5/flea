@@ -283,7 +283,7 @@ mod tests {
     #[test]
     fn a_network_entry_classifies_without_a_statfs() {
         crate::backend::fsinfo::test_reset_statfs();
-        let entry = MountEntry { mount: PathBuf::from("/media/nas"), fstype: "smb3".to_string(), majmin: "0:27".to_string() };
+        let entry = MountEntry { mount: PathBuf::from("/media/nas"), fstype: "smb3".to_string(), majmin: "0:27".to_string(), source: "//nas/media".to_string() };
         assert_eq!(classify_entry(Path::new("/media/nas/photos"), Some(&entry)), "network");
         assert_eq!(crate::backend::fsinfo::statfs_calls(), 0, "classify_entry itself decides on the fstype");
     }

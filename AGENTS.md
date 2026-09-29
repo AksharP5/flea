@@ -2780,6 +2780,8 @@ f037r6 records one ceiling, re-derived with `wc -l`: `tests/js/columns.js` 298 t
 
 f037hasvk moves two ceilings, each re-derived with `wc -l`: `src/vulkan.rs` 620 to 722 for the hasvk-only decision (`is_hasvk_library`, `is_hasvk_intel`, `hasvk_only`) with its sysfs-fixture tests, and `src/gui.rs` 432 to 485 for the automatic-arm `LaunchRenderer` with its four probe tests; the file keeps one subject, what the launcher hands `qs`, and the decision adds no probe and no sysfs read to the launch.
 
+f037move moves five ceilings, each re-derived with `wc -l`: `src/backend/durable.rs` 439 to 574 for batch_syncfs with held descriptors, scoped release, syncfs_dir and its seams, `src/backend/copyfile.rs` 491 to 534 for the held success path and the batch-aware single-item confirm, `src/backend/movebatch.rs` 466 to 478 for the release plus syncfs confirm and the test-only remove log, `src/backend/durable_tests.rs` 766 to 830 for the mountinfo classification, large-file hold and finish-drain pins, and `src/backend/movebatch_tests.rs` 528 to 709 for the 64-file order log, failed-syncfs, cancel, copy-error and non-block pins; `src/backend/mountinfo.rs` 168 to 170 stays inside the soft budget for the entry source, `src/backend/opsreq.rs` keeps 512 inside its recorded 513 for the mut finish.
+
 ## The key table is generated
 
 `keys.toml` at the repository root is the single source of truth for every binding.

@@ -62,6 +62,7 @@ fn a_batch_of_sixty_four_confirms_its_folder_once() {
     assert!(retry.is_empty());
     assert_eq!(steps.len(), 64, "one Moved step per item, the journal redo already reads");
     assert_eq!(durable::test_counts(), (64, 1), "one file fsync per file, one folder confirm: {:?}", durable::test_counts());
+    assert_eq!(durable::test_syncfs_count(), 0, "no syncfs off a block stick");
     drop(tx);
     let lines = items(rx);
     assert_eq!(lines.len(), 64);
@@ -525,4 +526,184 @@ fn non_regular_items_close_the_batch_and_move_alone() {
         _ => panic!("every batched move journals Moved: {step:?}"),
     }).collect();
     assert_eq!(order, vec!["a.txt", "tree", "link.txt", "b.txt"], "and the steps journal in input order");
+}
+
+// A 64-file batch on a batch_syncfs stick skips every file fsync for one syncfs and one folder fsync.
+#[test]
+fn a_sixty_four_batch_on_a_block_vfat_stick_skips_file_fsyncs() {
+    use crate::backend::durable;
+    durable::test_reset();
+    let d = TestDir::new("movebatch-syncfs");
+    let srcdir = d.dir("src");
+    let out = d.dir("out");
+    durable::test_mark_durable(&out);
+    let mut durability = durable::Durability::begin(&out);
+    durability.batch_syncfs = true;
+    let flag = AtomicBool::new(false);
+    let settled = AtomicU64::new(0);
+    let mut batch = MoveBatch::new();
+    let (tx, rx) = channel();
+    let mut steps = Vec::new();
+    for n in 0..64 {
+        let src = srcdir.join(format!("f{n}.txt"));
+        std::fs::write(&src, "body").unwrap();
+        staged(1, &mut batch, &mut durability, &flag, &tx, &settled, &mut steps, n, &src, &out.join(format!("f{n}.txt")));
+    }
+    assert_eq!(durability.held_len(), 0, "the 64th hold already released the batch");
+    assert_eq!(durable::test_releases(), 64, "64 closes on scoped threads: {:?}", durable::test_order());
+    let (counts, retry) = close_normal(&mut batch, 1, &tx, &mut steps, &mut durability);
+    assert_eq!((counts.ok, counts.failed, counts.skipped), (64, 0, 0));
+    assert!(retry.is_empty());
+    assert_eq!(durable::test_counts().0, 0, "no file fsync on a batch stick: {:?}", durable::test_counts());
+    assert_eq!(durable::test_syncfs_count(), 1, "one syncfs for the batch");
+    assert_eq!(durable::test_counts().1, 1, "one folder fsync: {:?}", durable::test_counts());
+    let order = durable::test_order();
+    let syncfs_at = order.iter().position(|s| s == "syncfs").expect("one syncfs in the order");
+    let dir_at = order.iter().position(|s| s == "dir").expect("one folder fsync in the order");
+    let first_remove = order.iter().position(|s| s == "remove").expect("removals are logged");
+    assert!(order.iter().take(syncfs_at).filter(|s| *s == "release").count() == 64, "64 releases first: {:?}", order);
+    assert!(syncfs_at < dir_at && dir_at < first_remove, "release, syncfs, folder, first removal: {:?}", order);
+    assert_eq!(durability.held_len(), 0, "nothing stays held past the confirm");
+    drop(tx);
+    let lines = items(rx);
+    assert_eq!(lines.len(), 64);
+    for n in 0..64 {
+        assert!(!srcdir.join(format!("f{n}.txt")).exists(), "no source survives its batch's syncfs");
+        assert_eq!(std::fs::read_to_string(out.join(format!("f{n}.txt"))).unwrap(), "body");
+    }
+    durable::test_reset();
+}
+
+// A failed syncfs keeps every source and journals each landed copy as a partial.
+#[test]
+fn a_failed_syncfs_keeps_every_source_and_journals_partials() {
+    use crate::backend::durable;
+    durable::test_reset();
+    let d = TestDir::new("movebatch-syncfs-fail");
+    let srcdir = d.dir("src");
+    let out = d.dir("out");
+    durable::test_mark_durable(&out);
+    let mut durability = durable::Durability::begin(&out);
+    durability.batch_syncfs = true;
+    let flag = AtomicBool::new(false);
+    let settled = AtomicU64::new(0);
+    let mut batch = MoveBatch::new();
+    let (tx, rx) = channel();
+    let mut steps = Vec::new();
+    for n in 0..4 {
+        let src = srcdir.join(format!("f{n}.txt"));
+        std::fs::write(&src, "body").unwrap();
+        staged(1, &mut batch, &mut durability, &flag, &tx, &settled, &mut steps, n, &src, &out.join(format!("f{n}.txt")));
+    }
+    durable::test_set_fail_syncfs(true);
+    let (counts, retry) = close_normal(&mut batch, 1, &tx, &mut steps, &mut durability);
+    durable::test_set_fail_syncfs(false);
+    assert_eq!((counts.ok, counts.failed), (0, 4));
+    assert_eq!(retry.len(), 4, "every unconfirmed source is offered again");
+    assert!(matches!(&steps[..], [Step::Copied { .. }, Step::Copied { .. }, Step::Copied { .. }, Step::Copied { .. }]), "partials, as a failed confirm journals");
+    assert_eq!(durability.held_len(), 0, "a failed syncfs still drains the held set");
+    drop(tx);
+    let lines = items(rx);
+    assert_eq!(lines.len(), 4);
+    for n in 0..4 {
+        assert!(lines.iter().any(|(index, ok, err)| *index == n && !ok && err == durable::DIR_UNCONFIRMED));
+        assert!(srcdir.join(format!("f{n}.txt")).exists(), "the source stays whole");
+        assert!(out.join(format!("f{n}.txt")).exists(), "the landed copy stays beside it");
+    }
+    durable::test_reset();
+}
+
+// A cancelled batch_syncfs close still drains the held set.
+#[test]
+fn a_cancelled_batch_syncfs_close_leaves_nothing_held() {
+    use crate::backend::durable;
+    durable::test_reset();
+    let d = TestDir::new("movebatch-syncfs-cancel");
+    let srcdir = d.dir("src");
+    let out = d.dir("out");
+    durable::test_mark_durable(&out);
+    let mut durability = durable::Durability::begin(&out);
+    durability.batch_syncfs = true;
+    let flag = AtomicBool::new(false);
+    let settled = AtomicU64::new(0);
+    let mut batch = MoveBatch::new();
+    let (tx, _rx) = channel();
+    let mut steps = Vec::new();
+    for n in 0..2 {
+        let src = srcdir.join(format!("f{n}.txt"));
+        std::fs::write(&src, "body").unwrap();
+        staged(1, &mut batch, &mut durability, &flag, &tx, &settled, &mut steps, n, &src, &out.join(format!("f{n}.txt")));
+    }
+    assert_eq!(durability.held_len(), 2, "two small files held");
+    let (counts, _) = close_cancelled(&mut batch, 1, &tx, &mut steps, &mut durability);
+    assert_eq!((counts.ok, counts.failed), (2, 0));
+    assert_eq!(durability.held_len(), 0, "a cancelled close drains the held set");
+    durable::test_reset();
+}
+
+// A copy error mid-batch leaves the batch closable with nothing held.
+#[test]
+fn a_copy_error_mid_batch_still_closes_with_nothing_held() {
+    use crate::backend::durable;
+    durable::test_reset();
+    let d = TestDir::new("movebatch-syncfs-copyerr");
+    let srcdir = d.dir("src");
+    let out = d.dir("out");
+    durable::test_mark_durable(&out);
+    let mut durability = durable::Durability::begin(&out);
+    durability.batch_syncfs = true;
+    let flag = AtomicBool::new(false);
+    let settled = AtomicU64::new(0);
+    let mut batch = MoveBatch::new();
+    let (tx, _rx) = channel();
+    let mut steps = Vec::new();
+    let first = srcdir.join("f0.txt");
+    std::fs::write(&first, "body").unwrap();
+    staged(1, &mut batch, &mut durability, &flag, &tx, &settled, &mut steps, 0, &first, &out.join("f0.txt"));
+    assert_eq!(durability.held_len(), 1, "one file held");
+    // A destination already taken refuses the second copy before it holds anything.
+    let second = srcdir.join("f1.txt");
+    std::fs::write(&second, "body").unwrap();
+    std::fs::write(out.join("f1.txt"), "taken").unwrap();
+    let source = ItemIdentity::inspect(&second).expect("source recorded");
+    match stage_copy(1, 1, "f1.txt", &second, &out.join("f1.txt"), source, &flag, &tx, &settled, &mut steps, &mut durability, &mut batch) {
+        MoveOutcome::Done(Err(_)) => {}
+        _ => panic!("a taken destination must refuse"),
+    }
+    let (counts, _) = close_normal(&mut batch, 1, &tx, &mut steps, &mut durability);
+    assert_eq!(counts.ok, 1, "the good item still moves");
+    assert_eq!(durability.held_len(), 0, "the error never strands a held descriptor");
+    assert!(!first.exists() && out.join("f0.txt").exists());
+    assert!(second.exists(), "the refused source stays");
+    durable::test_reset();
+}
+
+// A non-block durable batch keeps today's counts and never calls syncfs.
+#[test]
+fn a_non_block_durable_batch_keeps_per_file_fsyncs_and_no_syncfs() {
+    use crate::backend::durable;
+    durable::test_reset();
+    let d = TestDir::new("movebatch-no-syncfs");
+    let srcdir = d.dir("src");
+    let out = d.dir("out");
+    durable::test_mark_durable(&out);
+    let mut durability = durable::Durability::begin(&out);
+    assert!(!durability.batch_syncfs, "a testdir mount is not a block vfat stick");
+    let flag = AtomicBool::new(false);
+    let settled = AtomicU64::new(0);
+    let mut batch = MoveBatch::new();
+    let (tx, rx) = channel();
+    let mut steps = Vec::new();
+    for n in 0..4 {
+        let src = srcdir.join(format!("f{n}.txt"));
+        std::fs::write(&src, "body").unwrap();
+        staged(1, &mut batch, &mut durability, &flag, &tx, &settled, &mut steps, n, &src, &out.join(format!("f{n}.txt")));
+    }
+    let (counts, _) = close_normal(&mut batch, 1, &tx, &mut steps, &mut durability);
+    assert_eq!((counts.ok, counts.failed), (4, 0));
+    assert_eq!(durable::test_counts(), (4, 1), "one file fsync per file, one folder: {:?}", durable::test_counts());
+    assert_eq!(durable::test_syncfs_count(), 0, "no syncfs off a block stick");
+    drop(tx);
+    assert_eq!(items(rx).len(), 4);
+    durable::test_reset();
 }

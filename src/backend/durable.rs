@@ -20,6 +20,14 @@ thread_local! {
     static RANGE_WAITS: Cell<usize> = const { Cell::new(0) };
     // Range calls in order, so a test pins the pipelined sequence.
     static RANGE_LOG: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+    // The syncfs leg answering failure, so a batch confirm keeps every source.
+    static FAIL_SYNCFS: Cell<bool> = const { Cell::new(false) };
+    // Completed syncfs calls, so a batch pins one per confirm.
+    static SYNCFS_FLUSHES: Cell<usize> = const { Cell::new(0) };
+    // Files released on the calling thread, so scoped closes still count.
+    static RELEASES: Cell<usize> = const { Cell::new(0) };
+    // Release, syncfs, folder and removal steps in order, so a batch pins its sequence.
+    static ORDER_LOG: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
 }
 
 // errno 22 means no range writeback, not a lost byte; errno 5 is a drive refusing bytes.
@@ -108,8 +116,27 @@ pub fn dest_is_durable(dest: &Path) -> bool {
     false
 }
 
+// Sample input: "/dev/sda1" trues, "remote:" falses.
+fn source_is_block(source: &str) -> bool {
+    source.starts_with("/dev/")
+}
+
+// Sample input: ("/media/stick", "vfat /dev/sda1") trues, ("cifs //nas/media") falses.
+pub(crate) fn batch_syncfs_for(dest: &Path, body: &str, durable: bool, rclone: bool) -> bool {
+    if !durable || rclone {
+        return false;
+    }
+    match crate::backend::mountinfo::mount_entry_in(dest, body) {
+        Some(e) => source_is_block(&e.source) && fat_name_is_durable(&e.fstype),
+        None => false,
+    }
+}
+
 // The done line's own words for a folder the drive would not confirm, printable as-is.
 pub const DIR_UNCONFIRMED: &str = "copied, but the drive did not confirm the folder";
+
+// 64 held files bound one unconfirmed batch, the same bound movebatch closes on.
+const HELD_CAP: usize = 64;
 
 // The done line's own words for a copy onto rclone, printable as-is.
 pub const RCLONE_NOTE: &str = "rclone uploads them in the background";
@@ -119,6 +146,8 @@ pub struct Durability {
     pub durable: bool,
     pub rclone: bool,
     pub file_failed: bool,
+    pub batch_syncfs: bool,
+    held: Vec<std::fs::File>,
     touched: HashSet<PathBuf>,
     last: Option<PathBuf>,
 }
@@ -127,8 +156,45 @@ impl Durability {
     // Classified once per operation, never per file; rclone stays non-durable to keep its upload in the background.
     pub fn begin(dest: &Path) -> Durability {
         let rclone = dest_is_rclone(dest);
-        Durability { durable: !rclone && dest_is_durable(dest), rclone, file_failed: false,
+        let durable = !rclone && dest_is_durable(dest);
+        let batch_syncfs = match std::fs::read_to_string("/proc/self/mountinfo") {
+            Ok(body) => batch_syncfs_for(dest, &body, durable, rclone),
+            Err(_) => false,
+        };
+        Durability { durable, rclone, file_failed: false, batch_syncfs, held: Vec::new(),
             touched: HashSet::new(), last: None }
+    }
+
+    // A landed file stays open until its batch confirms, so 64 closes land at once.
+    pub fn hold(&mut self, file: std::fs::File) {
+        self.held.push(file);
+        if self.held.len() >= HELD_CAP {
+            self.release_held();
+        }
+    }
+
+    // Each held close runs on its own scoped thread, so one 100 ms vfat close never waits on another.
+    pub fn release_held(&mut self) {
+        if self.held.is_empty() {
+            return;
+        }
+        let files: Vec<std::fs::File> = std::mem::take(&mut self.held);
+        #[cfg(test)]
+        {
+            RELEASES.with(|v| v.set(v.get() + files.len()));
+            ORDER_LOG.with(|v| v.borrow_mut().extend(files.iter().map(|_| "release".to_string())));
+        }
+        std::thread::scope(|s| {
+            for file in files {
+                s.spawn(move || drop(file));
+            }
+        });
+    }
+
+    // A test pins the held count without touching the descriptors.
+    #[cfg(test)]
+    pub(crate) fn held_len(&self) -> usize {
+        self.held.len()
     }
 
     // One entry per directory however many files land in it, covering a tree that revisits a parent.
@@ -230,6 +296,7 @@ const SYNC_FILE_RANGE_WAIT_AFTER: u32 = 4;
 // std already links the system libc, so the one symbol is declared here rather than taking a crate.
 extern "C" {
     fn sync_file_range(fd: i32, offset: i64, nbytes: i64, flags: u32) -> i32;
+    fn syncfs(fd: i32) -> i32;
 }
 
 // One written slice starts its writeback without waiting, so the next slice writes while it flies.
@@ -290,7 +357,30 @@ pub fn fsync_dir(path: &Path) -> std::io::Result<()> {
     if seam_flush(true) {
         return Err(std::io::Error::new(std::io::ErrorKind::Other, "simulated fsync failure"));
     }
+    // Logged after the counting seam, so a failed flush never reads as confirmed.
+    #[cfg(test)]
+    ORDER_LOG.with(|v| v.borrow_mut().push("dir".to_string()));
     std::fs::File::open(path)?.sync_all()
+}
+
+// One filesystem-wide confirm after a batch's closes, so vfat's per-close flush never runs.
+pub fn syncfs_dir(path: &Path) -> std::io::Result<()> {
+    #[cfg(test)]
+    {
+        SYNCFS_FLUSHES.with(|v| v.set(v.get() + 1));
+        ORDER_LOG.with(|v| v.borrow_mut().push("syncfs".to_string()));
+        if FAIL_SYNCFS.with(|v| v.get()) {
+            return Err(std::io::Error::new(std::io::ErrorKind::Other, "simulated syncfs failure"));
+        }
+    }
+    use std::os::unix::io::AsRawFd;
+    let file = std::fs::File::open(path)?;
+    let rc = unsafe { syncfs(file.as_raw_fd()) };
+    if rc == 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error())
+    }
 }
 
 // Sample input: "smb-share:server=nas,share=media" answers "media".
@@ -340,8 +430,11 @@ pub struct Finish {
     pub note: String,
 }
 
-// After the last landed file: one writing line, then every touched directory.
-pub fn finish(id: usize, tx: &std::sync::mpsc::Sender<crate::backend::opsreq::OpMsg>, durability: &Durability, dest: &Path, landed: usize) -> Finish {
+// After the last landed file: one writing line, then the batch syncfs, then every touched directory.
+pub fn finish(id: usize, tx: &std::sync::mpsc::Sender<crate::backend::opsreq::OpMsg>, durability: &mut Durability, dest: &Path, landed: usize) -> Finish {
+    if durability.batch_syncfs {
+        durability.release_held();
+    }
     if landed == 0 {
         return Finish { ok: false, note: String::new() };
     }
@@ -354,6 +447,10 @@ pub fn finish(id: usize, tx: &std::sync::mpsc::Sender<crate::backend::opsreq::Op
     let _ = tx.send(crate::backend::opsreq::OpMsg::Meta { line: writing_line(id, &drive_name(dest)) });
     if durability.file_failed {
         return Finish { ok: false, note: String::new() };
+    }
+    // No destination fd stays open at transferdone, so an eject right after never waits on one.
+    if durability.batch_syncfs && syncfs_dir(dest).is_err() {
+        return Finish { ok: false, note: DIR_UNCONFIRMED.to_string() };
     }
     match durability.flush_dirs() {
         Ok(()) => Finish { ok: true, note: String::new() },
@@ -372,6 +469,10 @@ pub fn test_reset() {
     FAIL_RANGE_WAIT.with(|v| v.set(0));
     RANGE_WAITS.with(|v| v.set(0));
     RANGE_LOG.with(|v| v.borrow_mut().clear());
+    FAIL_SYNCFS.with(|v| v.set(false));
+    SYNCFS_FLUSHES.with(|v| v.set(0));
+    RELEASES.with(|v| v.set(0));
+    ORDER_LOG.with(|v| v.borrow_mut().clear());
 }
 
 #[cfg(test)]
@@ -384,11 +485,39 @@ pub fn test_reset_counts() {
     FAIL_RANGE_WAIT.with(|v| v.set(0));
     RANGE_WAITS.with(|v| v.set(0));
     RANGE_LOG.with(|v| v.borrow_mut().clear());
+    FAIL_SYNCFS.with(|v| v.set(false));
+    SYNCFS_FLUSHES.with(|v| v.set(0));
+    RELEASES.with(|v| v.set(0));
+    ORDER_LOG.with(|v| v.borrow_mut().clear());
 }
 
 #[cfg(test)]
 pub fn test_counts() -> (usize, usize) {
     (FILE_FLUSHES.with(|v| v.get()), DIR_FLUSHES.with(|v| v.get()))
+}
+
+// A batch_syncfs confirm counts one syncfs beside its file and folder counts.
+#[cfg(test)]
+pub fn test_syncfs_count() -> usize {
+    SYNCFS_FLUSHES.with(|v| v.get())
+}
+
+// Closes counted on the calling thread, so scoped threads never hide one.
+#[cfg(test)]
+pub fn test_releases() -> usize {
+    RELEASES.with(|v| v.get())
+}
+
+// Release, syncfs, folder and removal steps in the order they ran.
+#[cfg(test)]
+pub fn test_order() -> Vec<String> {
+    ORDER_LOG.with(|v| v.borrow().clone())
+}
+
+// One ordered step from outside this module, so a batch pins a removal after its folder.
+#[cfg(test)]
+pub(crate) fn test_log(step: &str) {
+    ORDER_LOG.with(|v| v.borrow_mut().push(step.to_string()));
 }
 
 #[cfg(test)]
@@ -427,6 +556,12 @@ pub fn test_set_fail_dirs(fail: bool) {
 #[cfg(test)]
 pub fn test_set_fail_files(fail: bool) {
     FAIL_FILE.with(|v| v.set(fail));
+}
+
+// The syncfs leg answers failure, so a batch keeps every source.
+#[cfg(test)]
+pub fn test_set_fail_syncfs(fail: bool) {
+    FAIL_SYNCFS.with(|v| v.set(fail));
 }
 
 #[cfg(test)]

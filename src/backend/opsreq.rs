@@ -417,7 +417,7 @@ pub(crate) fn run_transfer_checked(
         }
     }
     let entry = Entry { op: if moving { "move".to_string() } else { "copy".to_string() }, steps };
-    let finished = crate::backend::durable::finish(id, &tx, &durability, &dest, ok);
+    let finished = crate::backend::durable::finish(id, &tx, &mut durability, &dest, ok);
     let _ = tx.send(OpMsg::TransferDone { id, ok, failed, skipped, cancelled: was_cancelled, entry, retry, durable: finished.ok, note: finished.note });
 }
 

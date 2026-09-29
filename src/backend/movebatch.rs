@@ -176,6 +176,15 @@ fn journal_partial(
 
 // The folders a batch filled, confirmed once instead of once per item; a failure keeps every source.
 fn confirm_batch(durability: &mut Durability, dsts: &[PathBuf]) -> Result<(), FleaError> {
+    // A batch_syncfs stick closes 64 files at once, then one syncfs, then the folder fsync vfat needs.
+    if durability.batch_syncfs {
+        durability.release_held();
+        let anchor = dsts.first().and_then(|dst| dst.parent()).unwrap_or(Path::new("/"));
+        if crate::backend::durable::syncfs_dir(anchor).is_err() {
+            let first = dsts.first().map(|dst| dst.to_string_lossy().to_string()).unwrap_or_default();
+            return Err(FleaError { where_: "move".to_string(), path: first, msg: DIR_UNCONFIRMED.to_string() });
+        }
+    }
     let failed = if durability.durable {
         durability.flush_dirs_for_many(dsts).is_err()
     } else {
@@ -392,6 +401,9 @@ fn finish_item(
     };
     match remove_any(&item.src) {
         Ok(()) => {
+            // Logged in test builds, so a batch pins its first removal after its folder fsync.
+            #[cfg(test)]
+            crate::backend::durable::test_log("remove");
             if let Some(parent) = item.src.parent() {
                 durability.touch(parent);
             }

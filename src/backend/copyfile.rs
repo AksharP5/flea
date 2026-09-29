@@ -164,6 +164,34 @@ fn copy_file_at(src: At, dst: At, total: u64, p: &mut Progress) -> Result<(), Fl
         return Err(left_half_written(p, dst, &w, from_io("copy", &dst.named.to_string_lossy(), &e)));
     }
     if durable {
+        // A batch_syncfs stick confirms 64 files with one syncfs, so a small file skips its own fsync.
+        if p.durability.as_ref().is_some_and(|d| d.batch_syncfs) {
+            if inflight.is_some() {
+                if let Err(e) = crate::backend::durable::fsync_file(&w) {
+                    if let Some(durability) = p.durability.as_mut() {
+                        durability.note_file_failed();
+                    }
+                    return Err(left_half_written(p, dst, &w, from_io("copy", &dst.named.to_string_lossy(), &e)));
+                }
+            }
+            // The bytes count when written, at most one batch ahead of the drive's own syncfs.
+            let (reported, against) = match p.tree {
+                Some(carried) => (carried + done, 0),
+                None => (done, total),
+            };
+            (p.on_bytes)(reported, against);
+            if let Some(parent) = dst.named.parent() {
+                touch(p, parent);
+            }
+            if let Some(carried) = p.tree.as_mut() {
+                *carried += done;
+            }
+            record_open(p, dst.named, &w);
+            if let Some(durability) = p.durability.as_mut() {
+                durability.hold(w);
+            }
+            return Ok(());
+        }
         // The bytes count only once the drive confirms them, so the rate is the drive's real rate.
         if let Err(e) = crate::backend::durable::fsync_file(&w) {
             if let Some(durability) = p.durability.as_mut() {
@@ -447,7 +475,17 @@ pub(crate) fn move_cross_device(src: &Path, dst: &Path, p: &mut Progress) -> Res
 }
 
 // The folders copy_any touched, or the parent with no context; a failure keeps the source.
-fn confirm_dest(p: &Progress, dst: &Path) -> Result<(), FleaError> {
+fn confirm_dest(p: &mut Progress, dst: &Path) -> Result<(), FleaError> {
+    // A batch_syncfs single-item move closes its held file and confirms before the source goes.
+    if p.durability.as_ref().is_some_and(|d| d.batch_syncfs) {
+        if let Some(durability) = p.durability.as_mut() {
+            durability.release_held();
+        }
+        let anchor = dst.parent().unwrap_or(dst);
+        if crate::backend::durable::syncfs_dir(anchor).is_err() {
+            return Err(unconfirmed(dst));
+        }
+    }
     let failed = match p.durability.as_ref() {
         Some(durability) => durability.flush_dirs_for(dst).is_err(),
         None => dst
@@ -457,13 +495,18 @@ fn confirm_dest(p: &Progress, dst: &Path) -> Result<(), FleaError> {
             .is_err(),
     };
     if failed {
-        return Err(FleaError {
-            where_: "move".to_string(),
-            path: dst.to_string_lossy().to_string(),
-            msg: crate::backend::durable::DIR_UNCONFIRMED.to_string(),
-        });
+        return Err(unconfirmed(dst));
     }
     Ok(())
+}
+
+// One unconfirmed copy keeps its source, so a crash never loses the file.
+fn unconfirmed(dst: &Path) -> FleaError {
+    FleaError {
+        where_: "move".to_string(),
+        path: dst.to_string_lossy().to_string(),
+        msg: crate::backend::durable::DIR_UNCONFIRMED.to_string(),
+    }
 }
 
 pub fn remove_any(path: &Path) -> Result<(), FleaError> {

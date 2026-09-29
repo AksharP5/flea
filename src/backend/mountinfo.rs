@@ -18,26 +18,27 @@ fn dev_majmin(dev: u64) -> String {
 // Sample input: dev 0x811 against a line carrying "8:17 ... - vfat ..." answers Some("vfat").
 pub(crate) fn fstype_for_dev(dev: u64, body: &str) -> Option<String> {
     let want = dev_majmin(dev);
-    body.lines().filter_map(parse_line).find(|(_, _, majmin)| *majmin == want).map(|(_, fstype, _)| fstype)
+    body.lines().filter_map(parse_line).find(|(_, _, majmin, _)| *majmin == want).map(|(_, fstype, _, _)| fstype)
 }
 
-// The mount that owns a path: its mount point, its filesystem type and its device numbers.
+// The mount that owns a path: its mount point, its filesystem type, its device numbers and its source.
 pub(crate) struct MountEntry {
     pub mount: PathBuf,
     pub fstype: String,
     pub majmin: String,
+    pub source: String,
 }
 
 // Sample: the line above answers mount "/home/pi/My Drive", fstype "fuse.rclone" and majmin "0:9".
 pub(crate) fn mount_entry_in(path: &Path, body: &str) -> Option<MountEntry> {
     let mut best: Option<(usize, MountEntry)> = None;
-    for (mount, fstype, majmin) in body.lines().filter_map(parse_line) {
+    for (mount, fstype, majmin, source) in body.lines().filter_map(parse_line) {
         if !path.starts_with(&mount) {
             continue;
         }
         let depth = mount.components().count();
         if best.as_ref().map(|(old, _)| depth >= *old).unwrap_or(true) {
-            best = Some((depth, MountEntry { mount, fstype, majmin }));
+            best = Some((depth, MountEntry { mount, fstype, majmin, source }));
         }
     }
     best.map(|(_, entry)| entry)
@@ -45,7 +46,7 @@ pub(crate) fn mount_entry_in(path: &Path, body: &str) -> Option<MountEntry> {
 
 // Every mount point and its filesystem type, in file order, read once for a caller that asks about many paths.
 pub(crate) fn mounts_in(body: &str) -> Vec<(PathBuf, String)> {
-    body.lines().filter_map(parse_line).map(|(mount, fstype, _)| (mount, fstype)).collect()
+    body.lines().filter_map(parse_line).map(|(mount, fstype, _, _)| (mount, fstype)).collect()
 }
 
 // The deepest mount holding path, the later line winning a tie as the kernel's own stacking order does.
@@ -63,14 +64,14 @@ pub(crate) fn enclosing<'a>(path: &Path, mounts: &'a [(PathBuf, String)]) -> Opt
     best.map(|(_, mount)| mount)
 }
 
-// Sample line as above: mount point, fstype and major:minor, or None for a line with no "-" or too few fields.
-fn parse_line(line: &str) -> Option<(PathBuf, String, String)> {
+// Sample line as above: mount point, fstype, major:minor and source, or None for a line with no "-" or too few fields.
+fn parse_line(line: &str) -> Option<(PathBuf, String, String, String)> {
     let fields: Vec<&str> = line.split_whitespace().collect();
     let split = fields.iter().position(|field| *field == "-")?;
-    if fields.len() <= split + 1 || fields.len() < 5 {
+    if fields.len() <= split + 2 || fields.len() < 5 {
         return None;
     }
-    Some((PathBuf::from(OsString::from_vec(unescape(fields[4]))), fields[split + 1].to_string(), fields[2].to_string()))
+    Some((PathBuf::from(OsString::from_vec(unescape(fields[4]))), fields[split + 1].to_string(), fields[2].to_string(), fields[split + 2].to_string()))
 }
 
 fn unescape(field: &str) -> Vec<u8> {
@@ -152,6 +153,7 @@ mod tests {
         let entry = mount_entry_in(Path::new("/media/stick/photo.jpg"), info).expect("the stick owns its files");
         assert_eq!(entry.fstype, "vfat");
         assert_eq!(entry.majmin, "8:17");
+        assert_eq!(entry.source, "/dev/sdb1", "the source rides the entry for the batch gate");
         let root = mount_entry_in(Path::new("/elsewhere"), info).expect("the root owns the rest");
         assert_eq!((root.fstype.as_str(), root.majmin.as_str()), ("ext4", "8:1"));
         assert!(mount_entry_in(Path::new("/home/pi"), "junk\n").is_none());
