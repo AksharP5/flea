@@ -26,17 +26,24 @@ function charsOf(text) {
     return out
 }
 
+// Every fast unit sits below U+0300, so a fast name holds no surrogate, no combining mark and no wide glyph.
+var FAST_LIMIT = 0x0300
+
+// True when every UTF-16 unit is fast: each char paints one cell and slices never split a point.
+function isFastText(text) {
+    for (var i = 0; i < text.length; i++)
+        if (text.charCodeAt(i) >= FAST_LIMIT) return false
+    return true
+}
+
 function middleElide(name, maxCells) {
-    var chars = charsOf(String(name))
+    var text = String(name)
     var max = Math.max(0, Math.floor(maxCells))
-    if (cellsOf(chars) <= max) {
-        return String(name)
-    }
+    var st = isFastText(text) ? fastStoreOf(text) : storeOf(charsOf(text))
+    if (rangeCells(st, 0, st.n) <= max) return text
     // The head takes the odd cell, so a 49-wide board keeps 24 and 24.
-    var head = Math.ceil((max - 1) / 2)
-    var tail = Math.floor((max - 1) / 2)
-    return headByCells(chars, head).join("") + "…"
-        + (tail > 0 ? tailByCells(chars, tail).join("") : "")
+    var h = spanFrom(st, 0, Math.ceil((max - 1) / 2)), t = tailSpan(st, Math.floor((max - 1) / 2))
+    return pieceOf(st, 0, h) + "…" + pieceOf(st, st.n - t, st.n)
 }
 
 // A caption break stays behind a separator, so a word is never split when a break fits.
@@ -53,6 +60,8 @@ function isBreakAfter(ch) {
 
 // True when a code point paints two columns rather than one.
 function isWideCode(cp) {
+    // Every wide range starts at U+1100, so a smaller code point never scans.
+    if (cp < 0x1100) return false
     for (var i = 0; i < WIDE_RANGES.length; i++)
         if (cp >= WIDE_RANGES[i][0] && cp <= WIDE_RANGES[i][1]) return true
     for (var j = 0; j < EMOJI_RANGES.length; j++)
@@ -60,50 +69,86 @@ function isWideCode(cp) {
     return false
 }
 
+// The code point one charsOf element starts with, read without wrapping it in a string.
+// Sample input: codeOf("🎉") is 0x1F389, codeOf("A") is 0x41.
+function codeOf(ch) {
+    var s = String(ch), lead = s.charCodeAt(0)
+    if (lead >= 0xD800 && lead <= 0xDBFF && s.length > 1) {
+        var trail = s.charCodeAt(1)
+        if (trail >= 0xDC00 && trail <= 0xDFFF) return 0x10000 + ((lead - 0xD800) << 10) + (trail - 0xDC00)
+    }
+    return lead
+}
+
 // Cells one char paints: 2 for a wide code point, 1 for all else.
 function cellWidthOf(ch) {
-    var cp = String(ch).codePointAt(0)
-    return isWideCode(cp) ? 2 : 1
+    return isWideCode(codeOf(ch)) ? 2 : 1
+}
+
+// One layout per call: widths plus prefix sums, so every range below is one subtraction.
+// Sample input: storeOf(["a", "🎉"]) carries widths [1, 2].
+function storeOf(chars) {
+    var widths = new Array(chars.length), prefix = new Array(chars.length + 1)
+    prefix[0] = 0
+    for (var i = 0; i < chars.length; i++) {
+        widths[i] = isWideCode(codeOf(chars[i])) ? 2 : 1
+        prefix[i + 1] = prefix[i] + widths[i]
+    }
+    return { seq: chars, widths: widths, prefix: prefix, n: chars.length }
+}
+
+// The same layout over a fast string: no arrays, every range counts chars as cells.
+function fastStoreOf(text) {
+    return { seq: text, widths: null, prefix: null, n: text.length }
+}
+
+// Cells of elements [a..b).
+function rangeCells(st, a, b) {
+    return st.widths === null ? b - a : st.prefix[b] - st.prefix[a]
+}
+
+// Elements from pos fitting in this many cells.
+function spanFrom(st, pos, budget) {
+    if (st.widths === null) return Math.min(Math.max(budget, 0), st.n - pos)
+    var used = 0, i = pos
+    while (i < st.widths.length && used + st.widths[i] <= budget) { used += st.widths[i]; i += 1 }
+    return i - pos
+}
+
+// Trailing elements fitting in this many cells.
+function tailSpan(st, budget) {
+    if (st.widths === null) return Math.min(Math.max(budget, 0), st.n)
+    var used = 0, i = st.widths.length
+    while (i > 0 && used + st.widths[i - 1] <= budget) { used += st.widths[i - 1]; i -= 1 }
+    return st.widths.length - i
+}
+
+// Text of elements [a..b): a slice for a fast string, a join for a char array.
+function pieceOf(st, a, b) {
+    return st.widths === null ? st.seq.slice(a, b) : st.seq.slice(a, b).join("")
 }
 
 // Cells a char array paints.
 function cellsOf(chars) {
-    var n = 0
-    for (var i = 0; i < chars.length; i++) n += cellWidthOf(chars[i])
-    return n
+    return rangeCells(storeOf(chars), 0, chars.length)
 }
 
 // A head that fits in this many cells, never splitting a code point.
 function headByCells(chars, budget) {
-    var out = []
-    var used = 0
-    for (var i = 0; i < chars.length; i++) {
-        var w = cellWidthOf(chars[i])
-        if (used + w > budget) break
-        out.push(chars[i])
-        used += w
-    }
-    return out
+    return chars.slice(0, spanFrom(storeOf(chars), 0, budget))
 }
 
 // A tail that fits in this many cells, never splitting a code point.
 function tailByCells(chars, budget) {
-    var out = []
-    var used = 0
-    for (var i = chars.length - 1; i >= 0; i--) {
-        var w = cellWidthOf(chars[i])
-        if (used + w > budget) break
-        out.unshift(chars[i])
-        used += w
-    }
-    return out
+    return chars.slice(chars.length - tailSpan(storeOf(chars), budget))
 }
 
 // Cells of the caption's last line, so a mark sits past the glyphs it follows.
 // Sample input: lastLineCells("ab\nc🎉") is 3.
 function lastLineCells(text) {
-    var parts = String(text).split("\n")
-    return cellsOf(charsOf(parts[parts.length - 1]))
+    var s = String(text)
+    if (isFastText(s)) return s.length - s.lastIndexOf("\n") - 1
+    return cellsOf(charsOf(s.split("\n").pop()))
 }
 
 // The extension is the last dot's tail, so the last line can keep it whole; a leading dot names a dotfile, not an extension.
@@ -122,63 +167,60 @@ function extensionLength(chars) {
 
 // Elides a char array down to this many cells, keeping a one-line extension whole on the tail.
 function elideChars(chars, capacity, perLine) {
-    if (capacity <= 1)
-        return ["…"]
-    if (cellsOf(chars) <= capacity)
-        return chars.slice(0)
-    var ext = extensionLength(chars)
-    var extCells = ext > 0 ? cellsOf(chars.slice(chars.length - ext)) : 0
-    var head = Math.ceil((capacity - 1) / 2)
-    var tail = Math.floor((capacity - 1) / 2)
+    return elideCore(storeOf(chars), capacity, perLine)
+}
+
+// The head and tail an elide keeps: the head takes the odd cell, the tail keeps a one-line extension.
+function elideSplit(capacity, ext, extCells, perLine) {
+    var head = Math.ceil((capacity - 1) / 2), tail = Math.floor((capacity - 1) / 2)
     // An extension longer than one line, or with no room for the mark beside it, cannot stay whole.
     if (ext > 0 && extCells <= perLine && extCells + 1 <= capacity) {
         tail = Math.max(extCells, tail)
         head = capacity - 1 - tail
     }
-    return headByCells(chars, head).concat(["…"], tailByCells(chars, tail))
+    return [head, tail]
+}
+
+// One elide for both stores: elements for the wrap behind an array, pieces for the join behind a string.
+function elideCore(st, capacity, perLine) {
+    if (capacity <= 1) return ["…"]
+    if (rangeCells(st, 0, st.n) <= capacity) return st.widths === null ? [st.seq] : st.seq.slice(0)
+    var ext = extensionLength(st.seq)
+    var split = elideSplit(capacity, ext, ext > 0 ? rangeCells(st, st.n - ext, st.n) : 0, perLine)
+    var h = spanFrom(st, 0, split[0]), t = tailSpan(st, split[1])
+    if (st.widths === null) return [pieceOf(st, 0, h), "…", pieceOf(st, st.n - t, st.n)]
+    return st.seq.slice(0, h).concat(["…"], st.seq.slice(st.n - t))
 }
 
 // Wraps a char array into at most count lines of perLine cells, breaking after the last separator that still leaves the rest fitting.
 function wrapChars(chars, perLine, count) {
-    var out = []
-    var pos = 0
+    return wrapCore(storeOf(chars), perLine, count)
+}
+
+// The break a line takes: the last separator whose rest still fits, the extension dot losing to any earlier one.
+function breakCut(st, far, pos, left, perLine, extDot) {
+    var cut = -1, extCut = -1
+    for (var i = far - 1; i > pos; i--) {
+        if (!isBreakAfter(st.seq[i]) || rangeCells(st, i + 1, st.n) > (left - 1) * perLine) continue
+        if (i === extDot) { extCut = i + 1; continue }
+        cut = i + 1; break
+    }
+    return cut >= 0 ? cut : (extCut >= 0 ? extCut : far)
+}
+
+// One wrap for both stores: lines of pieces, every range counted once off the layout.
+function wrapCore(st, perLine, count) {
+    var out = [], pos = 0
     // The extension's own dot, so a break there never wins while an earlier separator fits.
-    var extDot = chars.length - extensionLength(chars)
-    for (var ln = 0; ln < count && pos < chars.length; ln++) {
-        var restCells = cellsOf(chars.slice(pos))
+    var extDot = st.n - extensionLength(st.seq)
+    for (var ln = 0; ln < count && pos < st.n; ln++) {
         var left = count - ln
-        if (restCells <= perLine) {
-            out.push(chars.slice(pos).join(""))
-            break
-        }
-        if (ln === count - 1) {
-            out.push(headByCells(chars.slice(pos), perLine).join(""))
-            break
-        }
-        // The farthest char index fitting in this line's cells.
-        var far = pos
-        var used = 0
-        while (far < chars.length && used + cellWidthOf(chars[far]) <= perLine) {
-            used += cellWidthOf(chars[far])
-            far += 1
-        }
-        if (far <= pos)
-            far = pos + 1
-        var cut = -1
-        var extCut = -1
-        for (var i = far - 1; i > pos; i--) {
-            if (!isBreakAfter(chars[i]) || cellsOf(chars.slice(i + 1)) > (left - 1) * perLine)
-                continue
-            if (i === extDot) {
-                extCut = i + 1
-                continue
-            }
-            cut = i + 1
-            break
-        }
-        if (cut < 0)
-            cut = extCut >= 0 ? extCut : far
-        out.push(chars.slice(pos, cut).join(""))
+        if (rangeCells(st, pos, st.n) <= perLine) { out.push(pieceOf(st, pos, st.n)); break }
+        if (ln === count - 1) { out.push(pieceOf(st, pos, pos + spanFrom(st, pos, perLine))); break }
+        var far = pos + spanFrom(st, pos, perLine)
+        if (far <= pos) far = pos + 1
+        var cut = breakCut(st, far, pos, left, perLine, extDot)
+        out.push(pieceOf(st, pos, cut))
         pos = cut
     }
     return out
@@ -188,17 +230,21 @@ function wrapChars(chars, perLine, count) {
 // Sample input: gridCaption("screenshot-2026-08-30-final-review-for-gm-after-the-bench-v3.png", 16, 2) answers "screenshot-2026-\n…he-bench-v3.png".
 function gridCaption(name, perLine, lines) {
     var text = String(name)
-    var per = Math.floor(perLine)
-    var count = Math.floor(lines)
+    var per = Math.floor(perLine), count = Math.floor(lines)
     // A dead width budgets nothing: hand Qt the whole name and let ElideRight say so.
-    if (!(per >= 1) || !(count >= 1))
-        return text
-    var chars = charsOf(text)
-    if (chars.length === 0)
-        return text
+    if (!(per >= 1) || !(count >= 1)) return text
+    var st = isFastText(text) ? fastStoreOf(text) : storeOf(charsOf(text))
+    if (st.n === 0) return text
     // A wide glyph never straddles a line and wastes a cell, so elide until Flea's own wrap holds every char.
-    var capacity = per * count, shown = elideChars(chars, capacity, per)
-    while (capacity > 1 && wrapChars(shown, per, count).join("") !== shown.join(""))
-        shown = elideChars(chars, --capacity, per)
-    return wrapChars(shown, per, count).join("\n")
+    var capacity = per * count
+    if (st.widths === null) {
+        var fast = elideCore(st, capacity, per).join("")
+        while (capacity > 1 && wrapCore(fastStoreOf(fast), per, count).join("") !== fast)
+            fast = elideCore(st, --capacity, per).join("")
+        return wrapCore(fastStoreOf(fast), per, count).join("\n")
+    }
+    var shown = elideCore(st, capacity, per)
+    while (capacity > 1 && wrapCore(storeOf(shown), per, count).join("") !== shown.join(""))
+        shown = elideCore(st, --capacity, per)
+    return wrapCore(storeOf(shown), per, count).join("\n")
 }

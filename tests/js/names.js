@@ -1,5 +1,6 @@
 .import "../../ui/js/Names.js" as Names
 .import "sourcefixture.js" as Source
+.import "namesreference.js" as Ref
 
 // Names040 board: a long name elides in the middle so the extension stays visible; the 64-character sample elides to 49 keeping ".png".
 function run(check) {
@@ -38,6 +39,8 @@ function run(check) {
     check("a two-wide budget keeps the head and the mark",
           Names.middleElide("abcdefghij", 2), "a…")
     runGridCaption(check)
+    runEquivalence(check)
+    runPerf(check)
 }
 
 // The grid caption carries Flea's own breaks, so Qt's word wrap never strands a token on line 2.
@@ -125,4 +128,73 @@ function runGridCaption(check) {
         check("a straddling wide name keeps " + wide[w][2], parts[parts.length - 1].slice(-wide[w][2].length), wide[w][2])
         check("and every line fits its cells for " + wide[w][2], parts.every(function (l) { return Names.cellsOf(Names.charsOf(l)) <= wide[w][1] }), true)
     }
+}
+
+// Seeds covering ASCII, CJK wide, emoji pairs, NFD marks, separators, dotfiles and extensions.
+function corpusSeeds() {
+    return [
+        "screenshot-2026-08-30-final-review-for-gm-after-the-bench-v3.png",
+        "a-very-long-filename-with-no-extension-at-all",
+        ".bashrc-hidden-config-name",
+        ".profile.json",
+        "name.",
+        "data." + "y".repeat(48),
+        "a b-c_d.e f",
+        "中写漢字テスト한글αβ",
+        "🎉📷🚀🎵",
+        "a中🎉-_.Z",
+        "e" + String.fromCharCode(769) + "clair-resume" + String.fromCharCode(769),
+        "café-naïve-klinik",
+        "x"
+    ]
+}
+
+// One seed stretched to exactly len chars; slicing may cut a pair, which both sides see alike.
+function stretched(seed, len) {
+    var out = seed
+    while (out.length < len) out += out
+    return out.slice(0, len)
+}
+
+// Every output equals the frozen reference exactly, over lengths 0 to 300 and the full option ranges.
+function runEquivalence(check) {
+    var lens = [0, 1, 2, 3, 5, 8, 13, 15, 16, 17, 20, 31, 32, 33, 40, 48, 49, 64, 100, 200, 300]
+    var pers = [1, 2, 7, 16, 40], counts = [1, 2, 3], budgets = [0, 1, 2, 3, 5, 10, 16, 20, 49, 80]
+    var seeds = corpusSeeds(), names = []
+    for (var s = 0; s < seeds.length; s++)
+        for (var l = 0; l < lens.length; l++) names.push(stretched(seeds[s], lens[l]))
+    var mism = 0, total = 0, first = "none"
+    function same(a, b, label) {
+        total += 1
+        if (a !== b) {
+            mism += 1
+            if (first === "none") first = label + " got " + JSON.stringify(a) + " ref " + JSON.stringify(b)
+        }
+    }
+    for (var n = 0; n < names.length; n++) {
+        for (var b = 0; b < budgets.length; b++)
+            same(Names.middleElide(names[n], budgets[b]), Ref.middleElide(names[n], budgets[b]), "middleElide")
+        for (var p = 0; p < pers.length; p++)
+            for (var c = 0; c < counts.length; c++)
+                same(Names.gridCaption(names[n], pers[p], counts[c]), Ref.gridCaption(names[n], pers[p], counts[c]), "gridCaption")
+        same(Names.lastLineCells(names[n]), Ref.lastLineCells(names[n]), "lastLineCells")
+        same(Names.lastLineCells("ab\n" + names[n]), Ref.lastLineCells("ab\n" + names[n]), "lastLineCells-cut")
+    }
+    check("every output equals the frozen reference over " + total + " cases", mism, 0)
+    check("first mismatch", first, "none")
+}
+
+// Measured on West at 8000 chars x25: grid new 21 ms and frozen 194 ms, middle new 5 ms and frozen 187 ms; each bound sits about 3x from both.
+var LONG_NAME = 8000
+var GRID_BOUND_MS = 70
+var MIDDLE_BOUND_MS = 30
+
+function runPerf(check) {
+    var ascii = "a".repeat(LONG_NAME)
+    var t0 = Date.now()
+    for (var g = 0; g < 25; g++) Names.gridCaption(ascii, 16, 3)
+    check("gridCaption answers a long name 25 times within the grid bound", Date.now() - t0 <= GRID_BOUND_MS, true)
+    var m0 = Date.now()
+    for (var m = 0; m < 25; m++) Names.middleElide(ascii, 49)
+    check("middleElide answers a long name 25 times within the middle bound", Date.now() - m0 <= MIDDLE_BOUND_MS, true)
 }
