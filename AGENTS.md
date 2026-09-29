@@ -2821,6 +2821,8 @@ e1rowcost moves three ceilings, each re-derived with `wc -l`: `ui/GridTile.qml` 
 
 e6 columnscost moves one ceiling, each count re-derived with `wc -l`: `ui/ColumnsArea.qml` 400 to 406 for the two ancestor `Loader`s active only while their count shows them, with the grandparent and great-grandparent `itemAt` readers routed through the Loader's item under a null check; the parent column stays always built, and every other reader (rowsFor, peeks, focus, drag targets) names no pane id. `ui/ColumnRow.qml` stays at 211 for the clip mark's x staying constant off the clipboard, so an unmarked row reads no name geometry; the mark, dim and elision draw exactly as before. The suite is the new `tests/columnscost.sh` with `tests/columnscost.qml` at 175, inside both budgets, registered in `tests/run-all.sh` beside `rowcost`; the controller pins its measured counts.
 
+e5byid moves one ceiling, re-derived with `wc -l`: `src/gui.rs` 497 to 499 for the `qsregistry::prune_dead` call in `qs_command`, so both `exec_qs` and `pick` pay it. The prune itself is the new `src/qsregistry.rs` at 180, inside both budgets, with `SHELL_ID` and `PICKER_SHELL_ID` beside `paths::ENTRY`; `src/paths.rs` keeps 124 inside the soft budget. Flea deletes its own dead Quickshell registry entries because Quickshell keeps them forever: `prune_dead` removes every dead `by-id` entry of Flea's own shells but the newest `KEEP_DEAD`, dead by Quickshell's own lock test, keeping `qs log`'s last crash reachable.
+
 ## The key table is generated
 
 `keys.toml` at the repository root is the single source of truth for every binding.

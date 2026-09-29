@@ -177,6 +177,8 @@ fn apply_renderer(cmd: &mut Command, renderer: LaunchRenderer) {
 
 // The qs invocation both entry points share, including the renderer chosen at the last hand-off point.
 fn qs_command(target: PathBuf) -> Command {
+    // Quickshell keeps dead registry entries forever, so Flea prunes only its own shells before qs starts.
+    crate::qsregistry::prune_dead(&[crate::paths::SHELL_ID, crate::paths::PICKER_SHELL_ID]);
     let mut cmd = Command::new("qs");
     cmd.arg("-p").arg(target);
     // Only the main window records a prefetch list; a chooser started from a Flea terminal must not overwrite it.
