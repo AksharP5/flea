@@ -25,8 +25,13 @@ function release() {
     _marks = {}
 }
 
+// Sample input: { paths: [], moving: false } is empty, null is empty.
+function isEmpty(clipboard) {
+    return !clipboard || !clipboard.paths || clipboard.paths.length === 0
+}
+
 function markFor(path, clipboard) {
-    if (!clipboard || !clipboard.paths || clipboard.paths.length === 0) {
+    if (isEmpty(clipboard)) {
         release()
         return ""
     }
@@ -35,7 +40,7 @@ function markFor(path, clipboard) {
 
 // An empty clipboard costs nothing: its paths are never joined or searched.
 function markForRow(pane, name, clipboard) {
-    if (!clipboard || !clipboard.paths || clipboard.paths.length === 0) {
+    if (isEmpty(clipboard)) {
         release()
         return ""
     }

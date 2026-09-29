@@ -15,6 +15,14 @@ ListView {
     property var pane: null
     property var menu: null
 
+    // Shared once, read plainly per row, so no delegate builds its own width or array.
+    property real rowWidth: Scroll.contentWidth(root.width, Theme.spacing.rowPaddingX)
+    // Dual mode hides mode and kind on top of the stored set; one array, never one per row.
+    property var rowHiddenCols: root.pane && root.pane.dualMode ? ["mode", "kind"].concat(ViewState.hiddenCols) : ViewState.hiddenCols
+    // One keyed lookup per clipboard; the delegate short-circuits on clipEmpty, so empty costs no call per row.
+    property var clipMarks: ClipMarks.setFor(root.pane ? root.pane.clipboard : null)
+    property bool clipEmpty: ClipMarks.isEmpty(root.pane ? root.pane.clipboard : null)
+
     // Pane owns cursorIndex, thumbState and dirSizeState; List only computes what changed and hands it back.
     // Both ends of cursorClamped are view positions, not listing rows: under a filter they differ.
     signal cursorClamped(int first, int last)
@@ -62,17 +70,17 @@ ListView {
         // filter the two are different. Everything that leaves this delegate takes the listing one.
         readonly property int listingIndex: Filter.at(root.pane.shown, index)
         // The scroll lane stays clear so rows never reflow under the bar.
-        width: Scroll.contentWidth(root.width, Theme.spacing.rowPaddingX)
+        width: root.rowWidth
         row: root.pane.rowFor(listingIndex)
         cursor: listingIndex === root.pane.cursorIndex
         paneFocused: root.pane.paneFocused
         dualMode: root.pane.dualMode
-        hiddenCols: root.pane.dualMode ? ["mode", "kind"].concat(ViewState.hiddenCols) : ViewState.hiddenCols
+        hiddenCols: root.rowHiddenCols
         hovered: hover.hovered
         thumb: root.thumbFor(listingIndex)
         selected: root.pane.isSelected(listingIndex)
-        // The clipboard mark is looked up only for rows a delegate holds.
-        clipMark: ClipMarks.markForRow(root.pane, cell.row ? cell.row.n : "", root.pane.clipboard)
+        // Empty short-circuits before the library, so no row calls it while the clipboard is empty.
+        clipMark: root.clipEmpty ? "" : ClipMarks.markForRow(root.pane, cell.row ? cell.row.n : "", root.pane.clipboard)
         kindNames: root.pane.kindNames
         dirSize: root.dirSizeFor(listingIndex)
         // A filter paints its run the same way a search does; filtering below is what keeps the
@@ -118,7 +126,7 @@ ListView {
     // and where the background menu is raised, and a listing whose last row sits flush on the bottom
     // edge offers neither once it is scrolled to the end.
     footer: Item {
-        width: Scroll.contentWidth(root.width, Theme.spacing.rowPaddingX)
+        width: root.rowWidth
         height: Theme.chromeHeight
     }
 

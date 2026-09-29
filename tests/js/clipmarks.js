@@ -1,4 +1,5 @@
 .import "../../ui/js/ClipMarks.js" as ClipMarks
+.import "sourcefixture.js" as Source
 
 // ClipMarks board: a clipboard row carries copy for copied and scissors for cut, following the clipboard.
 function run(check) {
@@ -71,4 +72,38 @@ function run(check) {
     ClipMarks.setFor(copied)
     ClipMarks.markForRow(home, "IMG_4121.jpg", { paths: [], moving: false })
     check("emptying through markForRow drops it too", ClipMarks._cached, null)
+
+    // The hoisted guard reads once per clipboard, so no row calls the library while it is empty.
+    check("an empty clipboard reads empty through the hoisted helper",
+          ClipMarks.isEmpty({ paths: [], moving: false }), true)
+    check("null reads empty too", ClipMarks.isEmpty(null), true)
+    check("a clipboard with no paths reads empty", ClipMarks.isEmpty({}), true)
+    check("a populated clipboard reads non-empty", ClipMarks.isEmpty(copied), false)
+    check("a cut clipboard reads non-empty", ClipMarks.isEmpty(cut), false)
+
+    // The list delegate hoists its shared values, so no row builds a width, an array or a mark call.
+    var listSrc = Source.source("ui/List.qml")
+    check("the delegate reads the hoisted row width", listSrc.indexOf("width: root.rowWidth") >= 0, true)
+    check("the footer reads it too", listSrc.split("width: root.rowWidth").length - 1 >= 2, true)
+    check("no row builds its own width", listSrc.indexOf("width: Scroll.contentWidth") === -1, true)
+    check("the delegate reads the hoisted hidden columns", listSrc.indexOf("hiddenCols: root.rowHiddenCols") >= 0, true)
+    check("no row builds its own hidden array", listSrc.indexOf("hiddenCols: root.pane.dualMode") === -1, true)
+    check("the delegate guards the mark on the hoisted empty", listSrc.indexOf("clipMark: root.clipEmpty") >= 0, true)
+    check("no row calls the library unguarded", listSrc.indexOf("clipMark: ClipMarks.markForRow") === -1, true)
+
+    // An empty clipboard makes zero library calls per row, counted through the seam.
+    var calls = 0
+    var origMark = ClipMarks.markForRow
+    ClipMarks.markForRow = function (p, n, c) { calls += 1; return origMark(p, n, c) }
+    function guardedMark(p, n, c) { return ClipMarks.isEmpty(c) ? "" : ClipMarks.markForRow(p, n, c) }
+    calls = 0
+    guardedMark(home, "a.txt", { paths: [], moving: false })
+    guardedMark(home, "b.txt", { paths: [], moving: false })
+    guardedMark(home, "c.txt", { paths: [], moving: false })
+    check("an empty clipboard makes zero ClipMarks calls per row", calls, 0)
+    calls = 0
+    var guarded = guardedMark(home, "IMG_4121.jpg", copied)
+    check("a guarded copied row still marks", guarded, "copy")
+    check("and it costs one call", calls, 1)
+    ClipMarks.markForRow = origMark
 }
