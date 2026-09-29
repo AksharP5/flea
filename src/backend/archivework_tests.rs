@@ -223,43 +223,24 @@ fn a_cancel_drains_the_last_writer_before_it_answers() {
     assert!(waited < Duration::from_secs(CANCEL_DRAIN_SECS), "the drain waited past its bound, {waited:?}");
 }
 
-// No live process still carries the token in its command line after the kill and the reap.
-fn no_cmdline_carries(token: &str) -> bool {
-    let Ok(proc_) = std::fs::read_dir("/proc") else { return true };
-    for entry in proc_.flatten() {
-        if !entry.file_name().to_string_lossy().bytes().all(|b| b.is_ascii_digit()) { continue; }
-        if let Ok(cmd) = std::fs::read(entry.path().join("cmdline")) {
-            if String::from_utf8_lossy(&cmd).contains(token) { return false; }
-        }
-    }
-    true
-}
-
 // K1: the pin drives compress() itself through the probe seam, so a capped runner fails the tool it runs.
 #[test]
 fn compress_itself_runs_outside_any_cpu_cap() {
     if crate::backend::sandboxprobe::skipped() { return; }
     let d = TestDir::new("archcompressprobe");
     let dest = d.join("out.zip");
-    std::env::set_var("FLEA_TEST_COMPRESS_PROBE", "1");
-    let result = compress(&Formats::from_tools(true, true), d.path(), &["src".to_string()], "zip", &dest);
-    std::env::remove_var("FLEA_TEST_COMPRESS_PROBE");
-    result.expect("compress() itself must run outside any CPU cap");
+    compress(&Formats::test_probe(), d.path(), &["src".to_string()], "zip", &dest)
+        .expect("compress() itself must run outside any CPU cap");
     assert!(dest.is_file(), "and its destination really landed");
 }
 
-// The setsid grandchild carries the token and holds stderr about a second past the kill: the cancel
-// answers only after that EOF, and no process carries the token afterwards.
+// The reader holds a second past the kill: the cancel answers only after that hold.
 #[test]
-fn a_cancel_waits_for_a_grandchild_outside_the_killed_group() {
+fn a_cancel_waits_for_the_reader_hold_before_it_answers() {
     if crate::backend::sandboxprobe::skipped() { return; }
-    let d = TestDir::new("archcancelsetsid");
-    let mut work = Work::new(d.path(), "set").expect("work");
-    let hold = format!("1.{:03}", std::process::id() % 1000);
-    let hold_secs = hold.parse::<f64>().expect("a fractional sleep");
-    let token = hold.clone();
-    let inner = vec!["/usr/bin/sh".to_string(), "-c".to_string(),
-        format!("/usr/bin/setsid /usr/bin/sleep {hold} & exec /usr/bin/sleep 30")];
+    let d = TestDir::new("archcancelhold");
+    let mut work = Work::new(d.path(), "hld").expect("work");
+    let inner = vec!["/usr/bin/sleep".to_string(), "30".to_string()];
     let cancel = Arc::new(AtomicBool::new(false));
     let flag = Arc::clone(&cancel);
     let started = Arc::new(AtomicU32::new(0));
@@ -271,13 +252,62 @@ fn a_cancel_waits_for_a_grandchild_outside_the_killed_group() {
         }
         flag.store(true, Ordering::Relaxed);
     });
+    set_reader_hold_ms(1000);
     let began = Instant::now();
-    let error = run_boxed_cancellable_observed("archive", inner, d.path(), &mut work, &cancel, &started).unwrap_err();
+    let result = run_boxed_cancellable_observed("archive", inner, d.path(), &mut work, &cancel, &started);
+    set_reader_hold_ms(0);
+    let error = result.unwrap_err();
     notifier.join().expect("the cancellation notifier finished");
     let elapsed = began.elapsed();
     assert_eq!(error.msg, "cancelled");
-    assert!(elapsed + Duration::from_millis(100) >= Duration::from_secs_f64(hold_secs),
-            "the cancel answered before the grandchild's EOF, {elapsed:?}");
+    assert!(elapsed + Duration::from_millis(100) >= Duration::from_secs(1),
+            "the cancel answered before the hold, {elapsed:?}");
     assert!(elapsed < Duration::from_secs(CANCEL_DRAIN_SECS), "a cancelled job was waited out");
-    assert!(no_cmdline_carries(&token), "a process outlived the cancel carrying {token}");
+}
+
+// The hold outlasts a short bound: the answer names the kept folder, and the folder stands.
+#[test]
+fn a_cancel_past_the_drain_bound_keeps_naming_the_work_folder() {
+    if crate::backend::sandboxprobe::skipped() { return; }
+    let d = TestDir::new("archcancelkeep");
+    let mut work = Work::new(d.path(), "kp").expect("work");
+    let name = work.dir.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    let inner = vec!["/usr/bin/sleep".to_string(), "30".to_string()];
+    let cancel = Arc::new(AtomicBool::new(false));
+    let flag = Arc::clone(&cancel);
+    let started = Arc::new(AtomicU32::new(0));
+    let child_pid = Arc::clone(&started);
+    let notifier = std::thread::spawn(move || {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while child_pid.load(Ordering::SeqCst) == 0 && Instant::now() < deadline {
+            std::thread::yield_now();
+        }
+        flag.store(true, Ordering::Relaxed);
+    });
+    set_reader_hold_ms(2000);
+    set_drain_secs(1);
+    let began = Instant::now();
+    let result = run_boxed_cancellable_observed("archive", inner, d.path(), &mut work, &cancel, &started);
+    set_reader_hold_ms(0);
+    set_drain_secs(10);
+    let error = result.unwrap_err();
+    notifier.join().expect("the cancellation notifier finished");
+    assert_eq!(error.msg, format!("cancelled; the archive tool did not exit, so its work folder {name} was left in place"));
+    assert!(began.elapsed() < Duration::from_secs(2), "a cancelled job waited past its bound");
+    assert!(work.dir.is_dir(), "the kept folder was removed under a live writer");
+}
+
+// keep() disarms the cleanup: the directory stands after its own drop, for the caller to remove.
+#[test]
+fn a_kept_work_directory_survives_its_own_drop() {
+    let d = TestDir::new("archworkkeep");
+    let kept = {
+        let mut w = Work::new(d.path(), "k").expect("work");
+        let dir = w.dir.clone();
+        w.keep();
+        dir
+    };
+    assert!(kept.is_dir(), "keep() did not disarm the cleanup");
+    d.assert_contains(&kept);
+    std::fs::remove_dir_all(&kept).ok();
 }

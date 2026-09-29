@@ -26,6 +26,9 @@ pub struct Formats {
     names: Vec<String>,
     have_bsdtar: bool,
     have_7z: bool,
+    // Test seam: with the probe set, compress() itself runs the RLIMIT_CPU check (see K1).
+    #[cfg(test)]
+    probe: bool,
 }
 
 fn on_path(prog: &str) -> bool {
@@ -51,7 +54,16 @@ impl Formats {
         if have_7z {
             names.push(SEVENZIP_FORMAT.to_string());
         }
-        Formats { names, have_bsdtar, have_7z }
+        Formats { names, have_bsdtar, have_7z,
+            #[cfg(test)]
+            probe: false,
+        }
+    }
+
+    // A Formats whose compressor is the RLIMIT_CPU probe, so the uncapped-jail pin drives compress() itself.
+    #[cfg(test)]
+    pub fn test_probe() -> Formats {
+        Formats { names: vec!["zip".to_string()], have_bsdtar: true, have_7z: false, probe: true }
     }
 
     // Exactly the table, which is what the compress submenu draws; an empty one self-hides the entry.
@@ -71,9 +83,9 @@ impl Formats {
         if !self.offers(format) {
             return None;
         }
-        // Test seam: with FLEA_TEST_COMPRESS_PROBE set, the compressor is the RLIMIT_CPU probe.
+        // Test seam: with the probe set, the compressor is the RLIMIT_CPU probe.
         #[cfg(test)]
-        if std::env::var_os("FLEA_TEST_COMPRESS_PROBE").is_some() {
+        if self.probe {
             return Some(vec!["/usr/bin/python3".to_string(), "-c".to_string(),
                 "import resource,sys; open(sys.argv[1],'wb').write(b'probe'); sys.exit(0 if resource.getrlimit(resource.RLIMIT_CPU)[0]==resource.RLIM_INFINITY else 1)".to_string(),
                 dest.to_string_lossy().to_string()]);

@@ -23,6 +23,31 @@ const CANCEL_DRAIN_SECS: u64 = 10;
 // The EOF wait polls at this step, so a fast EOF answers promptly rather than at the bound.
 const CANCEL_DRAIN_STEP: Duration = Duration::from_millis(10);
 
+// Test seams, thread-local so parallel tests share nothing; defaults are production.
+#[cfg(test)]
+thread_local! {
+    static READER_HOLD_MS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+    static DRAIN_SECS: std::cell::Cell<u64> = const { std::cell::Cell::new(10) };
+}
+#[cfg(test)]
+pub(crate) fn set_reader_hold_ms(ms: u64) {
+    READER_HOLD_MS.with(|c| c.set(ms));
+}
+#[cfg(test)]
+pub(crate) fn set_drain_secs(secs: u64) {
+    DRAIN_SECS.with(|c| c.set(secs));
+}
+fn drain_secs() -> u64 {
+    #[cfg(test)]
+    {
+        DRAIN_SECS.with(|c| c.get())
+    }
+    #[cfg(not(test))]
+    {
+        CANCEL_DRAIN_SECS
+    }
+}
+
 pub struct Work {
     pub dir: PathBuf,
     kept: bool,
@@ -143,7 +168,7 @@ fn run_boxed_inner(what: &str, inner: Vec<String>, read_only: &Path, writable: &
 
 // A writer past the kill can still hold stderr open; true means its EOF arrived in bound.
 fn drain_reader(reader: std::thread::JoinHandle<String>) -> bool {
-    let eof = Instant::now() + Duration::from_secs(CANCEL_DRAIN_SECS);
+    let eof = Instant::now() + Duration::from_secs(drain_secs());
     while !reader.is_finished() && Instant::now() < eof {
         std::thread::sleep(CANCEL_DRAIN_STEP);
     }
@@ -178,10 +203,16 @@ fn run_boxed_cancellable_inner(what: &str, inner: Vec<String>, read_only: &Path,
         pid.store(jailed.child.id(), Ordering::SeqCst);
     }
     let stderr = jailed.child.stderr.take();
+    #[cfg(test)]
+    let hold_ms = READER_HOLD_MS.with(|c| c.get());
     let reader = std::thread::spawn(move || {
         let mut text = String::new();
         if let Some(mut pipe) = stderr {
             pipe.read_to_string(&mut text).ok();
+        }
+        #[cfg(test)]
+        if hold_ms > 0 {
+            std::thread::sleep(Duration::from_millis(hold_ms));
         }
         text
     });
