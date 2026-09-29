@@ -2867,6 +2867,8 @@ w037w20 moves one ceiling, re-derived with `wc -l`: `ui/ColumnsArea.qml` 431 to 
 
 w037w23 moves one ceiling, re-derived with `wc -l`: `ui/ColumnsArea.qml` 435 to 440 for ending the leaked picture hold (the `isFileRow` file-load guard, the `thirdSwap.cancel` in the `folderFallback` trigger and in the `showFolderOnPeek` landing); `ui/js/Columns.js` 249 to 255 for `isFileRow` over the soft budget and under the hard cap, `ui/SelectionPreview.qml` 257 to 262 for the folder guards, and `tests/js/previewswap.js` 138 to 173 inside both budgets. w20's entrance skip stays: a data-held empty landing still appears async after a wait, so its entrance would animate a late arrival.
 
+e26 moves one ceiling, re-derived with `wc -l`: `ui/Row.qml` 454 to 465 for the advloop round 1 fixes (the today switch leaving the library to its caller, the drop label's `dropReserve` the name's own margin spends so a long name never overprints it, and the four function seams the rowcost drop phase reads them through).
+
 ## The key table is generated
 
 `keys.toml` at the repository root is the single source of truth for every binding.

@@ -44,8 +44,10 @@ function run(check) {
     check("kind still anchors to the row edge", row.indexOf("id: kind") >= 0 && row.slice(row.indexOf("id: kind"), row.indexOf("id: kind") + 200).indexOf("anchors.right: parent.right") >= 0, true)
     check("the name still ends at the mode cell", row.indexOf("anchors.right: mode.left") >= 0, true)
     // Only the date cell may lift today to the foreground role, through the window's own switch and start.
+    var dateColor = cellBlock(row, "modified")
     check("the date keeps the today lift",
-        row.indexOf("highlightToday &&") >= 0 && row.indexOf("RecentDates.isRecent(true,") >= 0, true)
+        /ViewState\.highlightToday\s*&&\s*RecentDates\.isRecent\(/.test(dateColor), true)
+    check("the date passes no switch into the library", dateColor.indexOf("isRecent(true,") < 0, true)
     check("and only the date lifts it", countRe(row, /RecentDates\.isRecent/g), 1)
     // The pixels are the same tokens: caption type, right elide, plain text, right-aligned numerics, and the by-key cell() lookup.
     var cells = ["mode", "size", "modified", "kind"]

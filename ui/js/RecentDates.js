@@ -14,9 +14,7 @@ function dayStart(nowMs) {
 }
 
 // One boundary, not a band: off reads dimmed and a future stamp counts.
-function isRecent(highlight, mtimeSec, todayStartMs) {
-    if (highlight !== true)
-        return false
+function isRecent(mtimeSec, todayStartMs) {
     if (typeof mtimeSec !== "number" || !isFinite(mtimeSec))
         return false
     return mtimeSec * 1000 >= todayStartMs

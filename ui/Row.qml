@@ -33,6 +33,8 @@ Item {
     property bool dropTarget: false
     // Whether that drop would copy, so the label can say which; the status bar says the rest.
     property bool dropCopying: false
+    // Room for the drop label at caption type, so a long name ends before "move here" starts.
+    readonly property int dropReserve: Math.ceil(Theme.font.caption * 10)
     // A directory's recursive size, resolved by index in List.qml the same way thumb already is; null until it arrives.
     property var dirSize: null
     // The picker's rows start one slot further in for its check; the window's own leave this at zero.
@@ -113,9 +115,11 @@ Item {
 
     // The drop frame and the drop label share one Loader, so both build only on the one row under a drag.
     Loader {
+        id: dropLoader
         active: root.dropTarget
         anchors.fill: parent
         sourceComponent: Item {
+            property alias label: dropLabel
             anchors.fill: parent
             // The board's accent hairline over a faint wash at the hover rung's alpha: the token wins over the mock's own 0.07.
             Rectangle {
@@ -126,6 +130,7 @@ Item {
             }
             // The board's own words in the columns' place: caption type in the accent, against the row padding.
             Text {
+                id: dropLabel
                 anchors.right: parent.right
                 anchors.rightMargin: Theme.spacing.rowPaddingX
                 anchors.verticalCenter: parent.verticalCenter
@@ -220,7 +225,7 @@ Item {
         anchors.left: icon.right
         anchors.leftMargin: Theme.spacing.gap
         anchors.right: mode.left
-        anchors.rightMargin: (root.modeShown ? Theme.spacing.gap : 0) + (root.clipMark.length > 0 ? Theme.spacing.gap + root.clipPx : 0)
+        anchors.rightMargin: (root.modeShown ? Theme.spacing.gap : 0) + (root.clipMark.length > 0 ? Theme.spacing.gap + root.clipPx : 0) + (root.dropTarget ? root.dropReserve + Theme.spacing.gap : 0)
         anchors.verticalCenter: parent.verticalCenter
         text: root.elidedName
         matchStart: root.nameRun.start
@@ -330,8 +335,8 @@ Item {
         visible: root.dateShown && !root.dropTarget
         width: root.dateShown ? root.dateWidth : 0
         text: root.dateShown ? root.dateText() : ""
-        // Short-circuit on the switch first, so a dimmed row never enters the library.
-        color: (ViewState.highlightToday && RecentDates.isRecent(true, root.row ? root.row.m : null, ViewState.todayStart)) ? Theme.color.foreground : root.cellInk
+        // Short-circuit on the switch first, so with the switch off no row enters the library.
+        color: (ViewState.highlightToday && RecentDates.isRecent(root.row ? root.row.m : null, ViewState.todayStart)) ? Theme.color.foreground : root.cellInk
         font.family: Theme.font.family
         font.pixelSize: Theme.font.caption
         horizontalAlignment: Text.AlignRight
@@ -451,4 +456,10 @@ Item {
         }
         return null
     }
+
+    // Test seams as functions, so no row at rest binds to drop geometry.
+    function dropBuilt() { return dropLoader.item !== null }
+    function dropLabelLeft() { return dropLoader.item ? dropLoader.item.label.x : -1 }
+    function dropLabelText() { return dropLoader.item ? dropLoader.item.label.text : "" }
+    function nameRight() { return name.x + name.width }
 }

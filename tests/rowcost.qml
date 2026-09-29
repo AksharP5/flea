@@ -82,6 +82,15 @@ ShellRoot {
         onTriggered: root.measureClip()
     }
 
+    Timer {
+        id: dropProbe
+        interval: 300
+        repeat: false
+        onTriggered: root.measureDrop()
+    }
+
+    property int dropPhase: -1
+
     property int clipPhase: -1
     property int clipBuiltCount: -1
 
@@ -105,6 +114,8 @@ ShellRoot {
         if (probeRow.cell("mode") === null || probeRow.cell("size") === null
                 || probeRow.cell("date") === null || probeRow.cell("kind") === null)
             failures.push("row cell() no longer answers all four cells")
+        if (probeRow.dropBuilt())
+            failures.push("a row at rest builds its drop frame")
         root.rowIdleCount = rowCount
         root.gridIdleCount = gridCount
         probeTile.renaming = true
@@ -155,6 +166,43 @@ ShellRoot {
             failures.push("a cleared clipboard row keeps its mark objects")
         if (probeRow.dimOpacity !== 1)
             failures.push("a cleared clipboard row keeps the cut dim")
+        // A drop-target row with only the name column and a long name: the name must end before the label starts.
+        probeRow.hiddenCols = ["mode", "size", "date", "kind"]
+        probeRow.row = ({ n: "averylongfilenamethatgoesonandonandonandonandonandonandonandonandonandonandonandonandonandonandonandonandonandonandonandonandonandonandonandonandonandonandonandonandon.txt", i: "text-x-generic", p: 493, d: true, s: 13, m: 1758835200, t: false, k: 0, v: 0 })
+        probeRow.dropCopying = false
+        probeRow.dropTarget = true
+        root.dropPhase = 0
+        dropProbe.start()
+    }
+
+    // The drop frame and label build only on the row under a drag, and a long name never overprints them.
+    function measureDrop() {
+        if (root.dropPhase === 0) {
+            if (!probeRow.dropBuilt())
+                failures.push("a drop-target row builds no drop frame")
+            if (probeRow.dropLabelText() !== "move here")
+                failures.push("a drop-target row labels no move, got " + probeRow.dropLabelText())
+            if (!(probeRow.nameRight() < probeRow.dropLabelLeft()))
+                failures.push("a long name overprints the drop label")
+            probeRow.dropCopying = true
+            root.dropPhase = 1
+            dropProbe.start()
+            return
+        }
+        if (root.dropPhase === 1) {
+            if (probeRow.dropLabelText() !== "copy here")
+                failures.push("a copy drop labels no copy, got " + probeRow.dropLabelText())
+            if (!(probeRow.nameRight() < probeRow.dropLabelLeft()))
+                failures.push("a long name overprints the copy label")
+            probeRow.dropTarget = false
+            root.dropPhase = 2
+            dropProbe.start()
+            return
+        }
+        if (probeRow.dropBuilt())
+            failures.push("a cleared drop target keeps its frame objects")
+        if (root.countUnder(probeRow) !== root.rowIdleCount)
+            failures.push("a cleared drop target keeps its label objects")
         if (failures.length === 0)
             console.log("ROWCOST PASS row=" + root.rowIdleCount + " grid=" + root.gridIdleCount)
         for (var f = 0; f < failures.length; f++)

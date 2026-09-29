@@ -13,6 +13,13 @@ function at(y, mo, d, h, mi, s) {
     return new Date(y, mo - 1, d, h || 0, mi || 0, s || 0).getTime()
 }
 
+// The text of the date cell, from its id line to the brace that closes it.
+function dateBlock(row) {
+    var start = row.indexOf("id: modified\n")
+    var end = start < 0 ? -1 : row.indexOf("\n    }\n", start)
+    return start < 0 || end < 0 ? "" : row.slice(start, end)
+}
+
 function run(check) {
     var noon = at(2026, 9, 23, 12, 0, 0)
     var start = RecentDates.dayStart(noon)
@@ -26,24 +33,25 @@ function run(check) {
         start !== Date.UTC(2026, 8, 23, 0, 0, 0), true)
     // The one-second boundary each side of it.
     check("23:59:59 is yesterday",
-        RecentDates.isRecent(true, at(2026, 9, 22, 23, 59, 59) / 1000, start), false)
+        RecentDates.isRecent(at(2026, 9, 22, 23, 59, 59) / 1000, start), false)
     check("00:00:00 is today",
-        RecentDates.isRecent(true, at(2026, 9, 23, 0, 0, 0) / 1000, start), true)
+        RecentDates.isRecent(at(2026, 9, 23, 0, 0, 0) / 1000, start), true)
     check("midday is today",
-        RecentDates.isRecent(true, at(2026, 9, 23, 12, 0, 0) / 1000, start), true)
+        RecentDates.isRecent(at(2026, 9, 23, 12, 0, 0) / 1000, start), true)
     // One boundary and not a band: a future stamp counts as recent too.
     check("a future mtime counts as recent",
-        RecentDates.isRecent(true, at(2026, 9, 24, 12, 0, 0) / 1000, start), true)
-    // The switch off leaves every date dimmed, even one from today.
-    check("the switch off leaves a today date dimmed",
-        RecentDates.isRecent(false, at(2026, 9, 23, 12, 0, 0) / 1000, start), false)
-    check("and an absent switch does too",
-        RecentDates.isRecent(undefined, at(2026, 9, 23, 12, 0, 0) / 1000, start), false)
+        RecentDates.isRecent(at(2026, 9, 24, 12, 0, 0) / 1000, start), true)
+    // The switch lives in Row's binding, not in the library: off draws cellInk on today, on draws foreground.
+    var noonSec = at(2026, 9, 23, 12, 0, 0) / 1000
+    check("switch off on today draws cellInk",
+        (false && RecentDates.isRecent(noonSec, start)) ? "foreground" : "cellInk", "cellInk")
+    check("switch on draws foreground",
+        (true && RecentDates.isRecent(noonSec, start)) ? "foreground" : "cellInk", "foreground")
     // Rows without a real mtime never lift: ShareBrowser's share rows carry null.
-    check("a null mtime is never recent", RecentDates.isRecent(true, null, start), false)
-    check("a missing mtime is never recent", RecentDates.isRecent(true, undefined, start), false)
-    check("the epoch is not recent", RecentDates.isRecent(true, 0, start), false)
-    check("a non-number is never recent", RecentDates.isRecent(true, "noon", start), false)
+    check("a null mtime is never recent", RecentDates.isRecent(null, start), false)
+    check("a missing mtime is never recent", RecentDates.isRecent(undefined, start), false)
+    check("the epoch is not recent", RecentDates.isRecent(0, start), false)
+    check("a non-number is never recent", RecentDates.isRecent("noon", start), false)
 
     // The midnight timer's one-shot: the ms to the next local midnight, re-armed on firing.
     check("one second to midnight arms one second",
@@ -64,9 +72,11 @@ function run(check) {
     check("Row compares against the window start",
         row.indexOf("todayStart") >= 0, true)
     check("Row reads the switch", row.indexOf("highlightToday") >= 0, true)
-    // The off path costs no today work: the binding short-circuits on the switch, so a dimmed row never enters the library.
+    // One switch-first conjunction in the date cell's own color binding, so an inverted or reordered gate fails.
+    var dateColor = dateBlock(row)
     check("the off path never enters the library",
-        row.indexOf("highlightToday &&") >= 0 && row.indexOf("isRecent(true,") >= 0, true)
+        /ViewState\.highlightToday\s*&&\s*RecentDates\.isRecent\(/.test(dateColor), true)
+    check("Row passes no switch into the library", dateColor.indexOf("isRecent(true,") < 0, true)
     check("Row hands no mtime down", row.indexOf("mtime: root.row") < 0, true)
     check("Row holds no timer of its own", countRe(row, /Timer\s*\{/g), 0)
     check("Row builds no Date per row", countRe(row, /new Date/g), 0)
