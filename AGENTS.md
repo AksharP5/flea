@@ -1686,7 +1686,7 @@ failure fails the check rather than passing it.
 - `backend/thumbcache.rs` names and reads entries in the shared thumbnail cache, see
   "Thumbnail cache".
 - `backend/thumbwrite.rs` creates the temp, stamps the PNG and writes the fail marker.
-- `backend/sandbox.rs` wraps a thumbnailer's argv in bwrap and prlimit, and the archive jobs' argv in
+- `backend/sandbox.rs` wraps a thumbnailer's argv in bwrap and prlimit, and the extract's argv in
   that same jail without the CPU cap, see "Thumbnail sandbox".
 - `backend/child.rs` runs one argv under a deadline and says whether it succeeded, failed or
   never started, which is the whole of what decides a `fail/` marker, see "Thumbnail pool".
@@ -3899,9 +3899,11 @@ accepted, because the rung here is the smallest thing that works and the number 
 when somebody brings a measurement. It is still finite and still refuses a decompression
 bomb.
 
-**The archive and convert jobs get this jail without the CPU cap, and that is issue #211.** `wrap` is
-the decoder's wrapper; `sandbox::wrap_archive` is the one `archivework.rs` builds — `run_boxed` for
-compress and convert, `run_boxed_cancellable` for extract — and it is the same flags, the same
+**Only the extract runs without the CPU cap, and that is issue #211.** `wrap` is
+the decoder's wrapper; `sandbox::wrap_archive` is the one `run_boxed_cancellable` builds for
+extract, while `run_boxed` (compress and convert) keeps the decoder's `--cpu=30`, because neither
+has a cancel and convert decodes untrusted input. For the rest this paragraph stands as written:
+it is the same flags, the same
 read-only input, the same single writable path and the same 2 GiB address-space cap with the `--cpu`
 argument left out, `prlimit` still outermost so that cap still arrives. The ticket is a 55 GiB Zip64,
 74 GiB unpacked in 676 members, whose legitimate extract `prlimit --cpu=30` killed after 30 s: status

@@ -63,8 +63,7 @@ impl Drop for Work {
     }
 }
 
-// The signal a job died from, named for the ones these tools can die from; anything else keeps its
-// number alone, because a message that guesses a name is worse than one that states a number.
+// The signal a job died from; anything else keeps its number rather than a guessed name.
 fn signal_name(signal: i32) -> Option<&'static str> {
     match signal {
         6 => Some("SIGABRT"),
@@ -76,15 +75,9 @@ fn signal_name(signal: i32) -> Option<&'static str> {
     }
 }
 
-// The tool's own last line is the best diagnosis there is, and it is what an operator sees for a bad
-// archive. When there is none, the exit status is the only evidence there is, and issue #211 is what the
-// old one-sentence fallback cost: a 55 GiB Zip64 whose legitimate unpack a 30 s RLIMIT_CPU killed arrived
-// as "The archive tool failed.", which names a bad archive for a job the kernel killed. Two spellings of
-// one death are read here, because bwrap maps an application the kernel killed to exit 128+n and keeps a
-// real signal for its own death (measured on the box; see AGENTS.md "Thumbnail pool"), so a launcher
-// SIGKILLed by its parent and an extractor SIGKILLed inside the jail both report the signal.
+// Issue #211: stderr's last non-blank line diagnoses a bad archive; otherwise the status names the signal.
 fn failure_message(what: &str, status: &ExitStatus, stderr: &str) -> String {
-    // A blank line is not a diagnosis, which the old last-line read of stderr took it for.
+    // A blank line is not a diagnosis.
     if let Some(line) = stderr.lines().rev().find(|line| !line.trim().is_empty()) {
         return line.trim().to_string();
     }
@@ -96,29 +89,35 @@ fn failure_message(what: &str, status: &ExitStatus, stderr: &str) -> String {
         return killed(signal);
     }
     match status.code() {
-        // 128+n is bwrap's rendering of a signal, so the number is read back into the sentence; an
-        // unknown 128+n is left as an exit status rather than claimed as a kill.
+        // 128+n is bwrap's rendering of a signal; an unknown one stays an exit status.
         Some(code) if signal_name(code - 128).is_some() => killed(code - 128),
         Some(code) => format!("the {} tool exited with status {}", what, code),
-        // A status is either a code or a signal, so this arm is unreachable; it answers a sentence
-        // rather than panicking, because producing one is this function's whole job.
+        // Unreachable in practice; this function always answers a sentence rather than panicking.
         None => format!("the {} tool failed", what),
     }
 }
 
-// The tools print their own diagnosis on stderr and do not always exit non-zero, so success is read
-// off the filesystem: the file the job was told to produce either exists afterwards or it does not.
-// what names the operation this jail is running, because the same jail runs the archive tools and
-// the image converter: reporting every one of them as "archive" told an operator converting a PNG
-// that the archive tool had failed.
+// Success is read off the filesystem; `what` names the operation so a convert failure says convert.
+// Only the cancellable extract runs uncapped; compress and convert keep the decoder CPU cap.
 pub fn run_boxed(what: &str, inner: Vec<String>, read_only: &Path, writable: &Path) -> Result<(), FleaError> {
-    // Fail closed: the jail is the only containment for these tools, so a missing bwrap or prlimit
-    // refuses the job rather than running it unsandboxed, the same rule thumbs.rs already follows.
+    run_boxed_inner(what, inner, read_only, writable, Some(sandbox::CPU_SECONDS))
+}
+
+// Test seam: lowers the CPU cap so a test burns seconds, not 30 s; release always uses CPU_SECONDS.
+#[cfg(test)]
+fn run_boxed_with_cpu(what: &str, inner: Vec<String>, read_only: &Path, writable: &Path,
+                       cpu_seconds: u32) -> Result<(), FleaError> {
+    run_boxed_inner(what, inner, read_only, writable, Some(cpu_seconds))
+}
+
+fn run_boxed_inner(what: &str, inner: Vec<String>, read_only: &Path, writable: &Path,
+                    cpu_seconds: Option<u32>) -> Result<(), FleaError> {
+    // Fail closed: without bwrap or prlimit the job is refused, never run unsandboxed.
     if !sandbox::available() {
         let tool = inner.first().map_or("", |s| s.as_str());
         return Err(op_err(what, tool, "the sandbox is unavailable: bwrap or prlimit is not on PATH"));
     }
-    let full = sandbox::wrap_archive(&inner, read_only, writable);
+    let full = sandbox::wrap_with(&inner, read_only, writable, cpu_seconds);
     let out = Command::new(&full[0])
         .args(&full[1..])
         .stdin(std::process::Stdio::null())

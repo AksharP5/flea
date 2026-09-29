@@ -68,32 +68,21 @@ fn available_on(path: &str) -> bool {
     has(BWRAP) && has(PRLIMIT)
 }
 
-// The decoder's wrapper: the input is read-only, the one path the caller names is the only writable one,
-// and nothing else is shared. The CPU cap is what makes this the runaway bound; the archive class below
-// builds this same argv without it.
+// The decoder's wrapper; the CPU cap is its runaway bound (see AGENTS.md "Thumbnail sandbox").
 pub fn wrap(inner: &[String], input: &Path, out: &Path) -> Vec<String> {
     wrap_with(inner, input, out, Some(CPU_SECONDS))
 }
 
-// Issue #211: an archive extract runs in this same filesystem boundary and under this same address-space
-// cap and NOT under the decoder's CPU cap. 30 s is a runaway bound for a 1080p decode; the ticket's
-// archive is a 55 GiB Zip64 whose legitimate unpack `prlimit --cpu=30` killed after 30 s, with about
-// 24 GiB staged and nothing on stderr, and the status bar reported that as "The archive tool failed.".
-// No CPU-second number replaces it, because every finite one is smaller than the next archive somebody
-// brings and a runaway unpack is not the failure this layer is for. What bounds the archive class is the
-// address-space cap, `--die-with-parent`, and the operator's cancel, which kills and reaps the child and
-// discards its staging directory. `archivework.rs` is the only caller, for extract, compress and convert.
+// Issue #211: the extract-only jail, same boundary and address-space cap but no CPU cap.
 pub fn wrap_archive(inner: &[String], input: &Path, out: &Path) -> Vec<String> {
     wrap_with(inner, input, out, None)
 }
 
-// The one argv the job wrappers share. The CPU cap is the only argument any of them omits, so it is the
-// one taken as an Option here rather than a second copy of the flag list that could drift from this one.
-fn wrap_with(inner: &[String], input: &Path, out: &Path, cpu_seconds: Option<u32>) -> Vec<String> {
+// The one shared argv; the cap is the only argument a caller omits.
+pub(crate) fn wrap_with(inner: &[String], input: &Path, out: &Path, cpu_seconds: Option<u32>) -> Vec<String> {
     let head_and_binds = 10;
     let mut a: Vec<String> = Vec::with_capacity(inner.len() + BWRAP_FLAGS.len() + head_and_binds);
-    // `prlimit` stays the outermost program with only the CPU limit dropped, because the address-space cap
-    // is the one that holds across both classes; see AGENTS.md "Thumbnail sandbox" for the ordering.
+    // prlimit stays outermost so the address-space cap still arrives.
     a.push(PRLIMIT.to_string());
     if let Some(seconds) = cpu_seconds {
         a.push(format!("--cpu={}", seconds));
@@ -166,10 +155,7 @@ mod tests {
     // The one interpreter on this box that can ask the kernel for a mapping of a chosen protection.
     const PYTHON: &str = "/usr/bin/python3";
 
-    // Sample rows: "Max cpu time              30                   30                   seconds" and
-    // "Max address space         2147483648           2147483648           bytes"; a limit the kernel was
-    // never given reads "unlimited". Read from inside the jail the production argv built, so these are
-    // the values that were enforced and not the ones the argv asked for.
+    // Sample row: "Max cpu time              30                   30                   seconds"; a limit never given reads "unlimited".
     const LIMITS_PROBE: &str = r#"
 def field(path, prefix, column):
     return next(l.split()[column] for l in open(path) if l.startswith(prefix))
@@ -265,9 +251,7 @@ print("over=" + reserve(OVER_MIB))
         assert!(prlimit_at < bwrap_at);
     }
 
-    // Issue #211: 30 CPU seconds is a runaway for a 1080p decode and a truncated unpack for a
-    // multi-gigabyte archive, so the two jails must not carry it alike. This is the argv, which is the
-    // whole of this module's contract; the test below reads what the kernel actually enforced.
+    // Issue #211: one jail carries the decoder CPU cap and the other must not; this is the argv itself.
     #[test]
     fn the_archive_jail_drops_the_decoder_cpu_cap_and_keeps_the_memory_cap() {
         let inner = inner();
@@ -350,10 +334,7 @@ print("over=" + reserve(OVER_MIB))
         assert!(rss < RESIDENT_CEILING_KIB, "the sparse reservation became resident, VmRSS {} kB", rss);
     }
 
-    // Issue #211, at the level the kernel enforces it: the decoder jail must still hold a child to 30 CPU
-    // seconds and the archive jail must hold it to none at all, while both keep the 2 GiB cap that is what
-    // actually confines an unpack. The prober is read from inside each production argv, so this is the
-    // enforced value and not the requested one; the argv test above pins the argument itself.
+    // Issue #211 at the enforced level: the decoder jail holds 30 CPU seconds and the archive jail none.
     #[test]
     fn the_archive_jail_has_no_cpu_limit_where_the_decoder_one_has_thirty_seconds() {
         if crate::backend::sandboxprobe::skipped() { return; }
@@ -363,8 +344,7 @@ print("over=" + reserve(OVER_MIB))
         let decoder = wrapped_output(&wrap(&inner, input, d.path()));
         let archive = wrapped_output(&wrap_archive(&inner, input, d.path()));
         assert_eq!(limits(&decoder, "cpu"), "30", "the decoder jail lost its runaway bound: {}", decoder);
-        // "unlimited" is the kernel's own word for RLIM_INFINITY in /proc/self/limits, so an extract is
-        // free to run past the 30 s that used to kill it.
+        // "unlimited" is the kernel's word for no RLIMIT_CPU, so an extract outlives the 30 s that killed it.
         assert_eq!(limits(&archive, "cpu"), "unlimited", "the archive jail still carries a CPU cap: {}", archive);
         for (who, text) in [("decoder", &decoder), ("archive", &archive)] {
             assert_eq!(limits(text, "as"), TWO_GIB_TEXT,

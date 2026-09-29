@@ -38,8 +38,7 @@ fn a_cancelled_child_is_killed_and_reaped_rather_than_left_running() {
     let e = run_boxed_cancellable_observed("archive", vec!["/usr/bin/sleep".to_string(), seconds],
                                            d.path(), &work.dir, &cancel, &started_pid).unwrap_err();
     notifier.join().expect("the cancellation notifier finished");
-    // The child dies by SIGKILL here, so a runner that read the status before the cancel token would
-    // report a kill for a cancel the operator asked for; this asserts the token wins.
+    // The child dies by SIGKILL, so this asserts the cancel token wins over the status.
     assert_eq!(e.msg, "cancelled");
     assert!(began.elapsed() < Duration::from_secs(10), "a cancelled child was waited out");
     assert!(work.dir.is_dir(), "the runner must not remove the caller's staging directory");
@@ -49,11 +48,7 @@ fn a_cancelled_child_is_killed_and_reaped_rather_than_left_running() {
     assert!(!proc_entry.exists(), "the owned child was not reaped");
 }
 
-// Issue #211: an extractor the kernel killed arrived as the empty-stderr fallback, which names a bad
-// archive for a job that was killed. The status is then the only evidence, and bwrap spells an
-// application the kernel killed as exit 128+n while keeping a real signal for its own death, so both
-// spellings have to read as the one sentence. Raw values are wait(2) statuses: 9 is a signal, n << 8 an
-// exit status.
+// Issue #211: a kernel kill arrives as exit 128+n through bwrap or a real signal, never the old fallback.
 #[test]
 fn a_status_alone_is_read_into_a_sentence_naming_the_signal_or_the_exit() {
     let signalled = ExitStatus::from_raw(9);
@@ -70,9 +65,7 @@ fn a_status_alone_is_read_into_a_sentence_naming_the_signal_or_the_exit() {
     assert_eq!(failure_message("archive", &ExitStatus::from_raw(200 << 8), ""), "the archive tool exited with status 200");
 }
 
-// The tool's own line is the better diagnosis and it is what an operator gets for a genuinely bad
-// archive. The old read took the last line whatever it was, so a trailing blank one produced an empty
-// message and a whitespace one produced whitespace.
+// The tool's own last non-blank line is the diagnosis; a blank stderr falls back to the status.
 #[test]
 fn the_tools_own_last_line_wins_over_the_blank_one_and_over_the_status() {
     let exited = ExitStatus::from_raw(1 << 8);
@@ -88,9 +81,7 @@ fn the_tools_own_last_line_wins_over_the_blank_one_and_over_the_status() {
                "the line is trimmed, because it is pasted into a sentence");
 }
 
-// The sentence above through the real jail, so the wiring is proven and not only the formatter, and so
-// is the other half of #211's ask: a job that only exited non-zero says that, and nothing claims a kill
-// it did not see.
+// The sentence above through the real jail, so the wiring is proven and not only the formatter.
 #[test]
 fn a_killed_tool_is_reported_as_killed_rather_than_as_a_bad_archive() {
     if crate::backend::sandboxprobe::skipped() { return; }
@@ -136,6 +127,23 @@ fn a_cancelled_index_reader_kills_and_reaps_a_child_blocked_on_stdout() {
     assert_ne!(pid, 0, "the verification fixture never exposed its child pid");
     let proc_entry = PathBuf::from(format!("/proc/{pid}"));
     assert!(!proc_entry.exists(), "the blocked verification child was not reaped");
+}
+
+// Issue #211 correction: only extract runs uncapped, so a 3 s burner completes there and not boxed (1 s seam).
+#[test]
+fn a_job_past_the_thumbnail_cpu_cap_completes_uncapped_but_not_boxed() {
+    if crate::backend::sandboxprobe::skipped() { return; }
+    let d = TestDir::new("archcpucap");
+    let work = Work::new(d.path(), "cpu").expect("work");
+    // Burns about 3 CPU seconds, then exits 0: past a 1 s cap, well under none.
+    let burner = || vec!["/usr/bin/python3".to_string(), "-c".to_string(),
+        "import time; s=time.time(); x=0\nwhile time.time()-s < 3: x+=1".to_string()];
+    let cancel = AtomicBool::new(false);
+    run_boxed_cancellable("archive", burner(), d.path(), &work.dir, &cancel)
+        .expect("an extract past the thumbnail cap still completes");
+    let stopped = run_boxed_with_cpu("archive", burner(), d.path(), &work.dir, 1).unwrap_err();
+    assert!(stopped.msg.contains("killed by signal"),
+            "a boxed job past its bound must be stopped, not silent: {}", stopped.msg);
 }
 
 #[test]
