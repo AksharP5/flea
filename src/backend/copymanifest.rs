@@ -303,6 +303,8 @@ fn unfinished(handle: &Handle, mut report: Report, processed: usize) -> Outcome 
 }
 
 fn remove_one(handle: &Handle, record: &Decoded, report: &mut Report) {
+    // ENOTEMPTY from Linux errno.h: ErrorKind::DirectoryNotEmpty needs Rust 1.83 over the 1.77 floor.
+    const ENOTEMPTY: i32 = 39;
     let Some(abs) = contained(&handle.root, &record.rel) else {
         report.kept.push(Kept { path: handle.root.join(&record.rel), reason: "was replaced after the copy" });
         return;
@@ -327,7 +329,7 @@ fn remove_one(handle: &Handle, record: &Decoded, report: &mut Report) {
     if meta.is_dir() && !meta.file_type().is_symlink() {
         match std::fs::remove_dir(&abs) {
             Ok(()) => report.removed += 1,
-            Err(e) if e.kind() == std::io::ErrorKind::DirectoryNotEmpty => {
+            Err(e) if e.raw_os_error() == Some(ENOTEMPTY) => {
                 report.kept.push(Kept { path: abs, reason: "is not empty" })
             }
             Err(e) => report.kept.push(Kept {

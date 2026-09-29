@@ -1,7 +1,7 @@
 // The single-use token a drag out of the shelf carries, and the file it lives in. DragOut rule 1:
 // no row index crosses the process boundary, only a token bound to the entries it was minted for.
 use crate::jsondoc::{self, Json};
-use crate::shelf::Shelf;
+use crate::shelf::{absolute, Shelf};
 use crate::uistore;
 use std::fs;
 use std::io::Read;
@@ -82,7 +82,7 @@ impl Shelf {
             .unwrap_or(Json::Obj(Vec::new()));
         let next = change(&current)?;
         let written = uistore::replace(&self.drags, &jsondoc::render(&next));
-        lock.unlock().map_err(|e| format!("{} could not be unlocked ({:?})", self.lock.display(), e.kind()))?;
+        uistore::unlock(&lock).map_err(|e| format!("{} could not be unlocked ({:?})", self.lock.display(), e.kind()))?;
         written
     }
 }
@@ -106,7 +106,7 @@ fn live_drags(drags: &Json, now_ms: u64) -> Vec<Json> {
 
 // The source identity the lift recorded, which is what makes a token name a file rather than a name.
 fn entry_of(path: &str) -> Result<Json, String> {
-    let full = std::path::absolute(path).map_err(|e| format!("{} could not be read ({:?})", path, e.kind()))?;
+    let full = absolute(path).map_err(|e| format!("{} could not be read ({:?})", path, e.kind()))?;
     let meta = fs::symlink_metadata(&full).map_err(|e| format!("{} could not be read ({:?})", path, e.kind()))?;
     Ok(Json::Obj(vec![
         ("path".to_string(), Json::Str(full.to_string_lossy().to_string())),

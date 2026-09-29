@@ -205,7 +205,7 @@ mod tests {
         let parent = d.dir("locked");
         let path = d.file("locked/file", "retained contents");
         d.assert_contains(&parent);
-        std::fs::set_permissions(&parent, Mode::from_mode(0)).unwrap();
+        std::fs::set_permissions(&parent, Mode::from_mode(0o0)).unwrap();
         let refused = permissions.inspect(2, &path);
         std::fs::set_permissions(&parent, Mode::from_mode(0o700)).unwrap();
         assert_eq!(refused.unwrap_err(), "Could not inspect permissions: permission denied.");
@@ -216,7 +216,7 @@ mod tests {
     fn unreadable_owned_file_can_be_repaired() {
         let d = TestDir::new("permissions-unreadable");
         let path = d.file("item", "a");
-        std::fs::set_permissions(&path, Mode::from_mode(0)).unwrap();
+        std::fs::set_permissions(&path, Mode::from_mode(0o0)).unwrap();
         let mut p = Permissions::default();
         p.inspect(1, &path).unwrap();
         p.apply(1, "600").unwrap();

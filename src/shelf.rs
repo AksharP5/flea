@@ -4,7 +4,8 @@
 use crate::jsondoc::{self, Json};
 use crate::uistore;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::os::unix::ffi::OsStrExt;
+use std::path::{Component, Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const DIR: &str = "omarchy/flea-shelf";
@@ -220,7 +221,7 @@ impl Shelf {
         let held = self.held()?;
         let next = Json::Obj(vec![("items".to_string(), Json::Arr(change(held)))]);
         let written = uistore::replace(&self.pile, &jsondoc::render(&next));
-        lock.unlock().map_err(|e| format!("{} could not be unlocked ({:?})", self.pile_lock.display(), e.kind()))?;
+        uistore::unlock(&lock).map_err(|e| format!("{} could not be unlocked ({:?})", self.pile_lock.display(), e.kind()))?;
         written
     }
 
@@ -266,10 +267,34 @@ fn rebuilt(item: &Json, keep: impl Fn(&str) -> bool, mut added: Vec<(String, Jso
     Json::Obj(fields)
 }
 
+// std::path::absolute needs Rust 1.79 over the 1.77 floor; this joins cwd, drops CurDir, and keeps // and one trailing slash.
+pub(crate) fn absolute(path: &str) -> std::io::Result<PathBuf> {
+    let joined = Path::new(path);
+    if joined.as_os_str().is_empty() {
+        return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "an empty path has no absolute form"));
+    }
+    let joined = if joined.is_absolute() { joined.to_path_buf() } else { std::env::current_dir()?.join(joined) };
+    let raw = joined.as_os_str().as_bytes();
+    let double_slash = raw.starts_with(b"//") && raw.get(2) != Some(&b'/');
+    let trailing_slash = raw.last() == Some(&b'/');
+    let mut out = if double_slash { PathBuf::from("//") } else { PathBuf::new() };
+    for component in joined.components() {
+        match component {
+            Component::CurDir => {}
+            Component::RootDir if double_slash => {}
+            other => out.push(other),
+        }
+    }
+    if trailing_slash && !out.as_os_str().as_bytes().ends_with(b"/") {
+        out.as_mut_os_string().push("/");
+    }
+    Ok(out)
+}
+
 // A pile entry: the path the shelf holds and whether the card draws it as a folder. The size is not
 // recorded, because the card asks for it per drawn row and a folder's answer goes stale on its own.
 fn item_of(path: &str) -> Result<Json, String> {
-    let full = std::path::absolute(path).map_err(|e| format!("{} could not be read ({:?})", path, e.kind()))?;
+    let full = absolute(path).map_err(|e| format!("{} could not be read ({:?})", path, e.kind()))?;
     let meta = fs::symlink_metadata(&full).map_err(|e| format!("{} could not be read ({:?})", path, e.kind()))?;
     Ok(Json::Obj(vec![
         ("path".to_string(), Json::Str(full.to_string_lossy().to_string())),
@@ -279,7 +304,7 @@ fn item_of(path: &str) -> Result<Json, String> {
 
 // The path as the pile spells it, and the caller's own spelling when it cannot be resolved at all.
 fn absolute_or(path: &str) -> String {
-    std::path::absolute(path).map(|p| p.to_string_lossy().to_string()).unwrap_or_else(|_| path.to_string())
+    absolute(path).map(|p| p.to_string_lossy().to_string()).unwrap_or_else(|_| path.to_string())
 }
 
 pub fn now_ms() -> u64 {

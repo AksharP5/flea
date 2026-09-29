@@ -230,7 +230,7 @@ mod tests {
         let cancel = Cancellation::default();
         let mark = format!(r#"{{"op":"mark","id":1,"path":"{}"}}"#, escape(&path.to_string_lossy()));
         dir.assert_contains(&parent);
-        std::fs::set_permissions(&parent, std::fs::Permissions::from_mode(0)).unwrap();
+        std::fs::set_permissions(&parent, std::fs::Permissions::from_mode(0o0)).unwrap();
         let refused = state.handle(&mark, &cancel);
         std::fs::set_permissions(&parent, std::fs::Permissions::from_mode(0o700)).unwrap();
         assert_eq!(refused.unwrap_err(), format!("Could not inspect {}: permission denied", path.display()));

@@ -42,7 +42,7 @@ impl Cancellation {
 pub struct LockedFile(File);
 impl Drop for LockedFile {
     fn drop(&mut self) {
-        let _ = self.0.unlock();
+        let _ = crate::uistore::unlock(&self.0);
     }
 }
 impl std::ops::Deref for LockedFile {
@@ -69,7 +69,7 @@ impl Manifest {
         let file = OpenOptions::new().read(true).write(true).create_new(true).mode(0o600)
             .custom_flags(crate::oflags::O_NOFOLLOW).open(path)
             .map_err(|e| format!("Could not create recovery record {}: {}", path.display(), e))?;
-        file.lock().map_err(|e| format!("Could not lock recovery record: {}", e))?;
+        crate::uistore::lock_exclusive(&file).map_err(|e| format!("Could not lock recovery record: {}", e))?;
         Ok(Self { file: Arc::new(LockedFile(file)), end: 0 })
     }
     pub fn open_inactive(path: &Path) -> Result<Option<Self>, String> {
@@ -78,10 +78,10 @@ impl Manifest {
         // Reopen the verified inode, so replay can append its durable completion marker without a path race.
         let file = OpenOptions::new().read(true).write(true).open(format!("/proc/self/fd/{}", file.as_raw_fd()))
             .map_err(|e| format!("Could not reopen recovery record for completion: {}", e))?;
-        match file.try_lock() {
-            Ok(()) => {}
-            Err(std::fs::TryLockError::WouldBlock) => return Ok(None),
-            Err(std::fs::TryLockError::Error(error)) => return Err(format!("Could not lock recovery record: {}", error)),
+        match crate::uistore::try_lock_exclusive(&file) {
+            Ok(true) => {}
+            Ok(false) => return Ok(None),
+            Err(error) => return Err(format!("Could not lock recovery record: {}", error)),
         }
         let metadata = file.metadata().map_err(|e| e.to_string())?;
         if !metadata.is_file() { return Err("Recovery record is not a regular file.".into()); }

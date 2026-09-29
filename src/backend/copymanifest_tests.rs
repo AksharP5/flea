@@ -166,3 +166,20 @@ fn a_tree_copy_records_each_file_once_and_each_directory_once() {
     assert_eq!(handle.count, 6, "each created path is recorded exactly once");
     assert_eq!(std::fs::read_to_string(dst.join("sub/c.bin")).unwrap(), "c");
 }
+
+#[test]
+fn a_directory_filled_after_the_copy_is_kept_with_its_reason() {
+    let d = TestDir::new("manifestfilled");
+    let handle = recorded(&d, &["sub/"]);
+    let root = handle.root.clone();
+    let filled = root.join("sub");
+    std::fs::write(filled.join("stray.txt"), "someone else put this here").unwrap();
+    assert_eq!(std::fs::remove_dir(&filled).unwrap_err().raw_os_error(), Some(39), "a filled remove_dir is ENOTEMPTY on this kernel");
+    let report = match remove_owned(&handle) {
+        Outcome::Done(report) => report,
+        Outcome::Fallback => panic!("the stream is intact, so the manifest decides"),
+    };
+    assert_eq!(report.removed, 0, "nothing leaves while a stranger's file stands");
+    assert!(report.kept.iter().any(|k| k.reason == "is not empty"), "the filled directory is kept: {:?}", report.kept.first().map(|k| &k.path));
+    assert!(filled.join("stray.txt").exists(), "a stranger's file stands");
+}

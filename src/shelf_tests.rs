@@ -178,4 +178,21 @@ fn a_pin_can_be_taken_off_a_file_that_is_gone() {
     assert!(pinned.is_empty(), "the pin came off, {:?}", pinned);
 }
 
-// The token records the path the pile spells, so a relative argument still names the same row.
+// absolute() is the 1.77 spelling of std::path::absolute: join cwd, drop CurDir, keep // and one trailing slash, refuse empty.
+#[test]
+fn absolute_keeps_the_std_contract_it_replaces() {
+    use std::os::unix::ffi::OsStrExt;
+    // Raw bytes, because PathBuf equality compares components and forgives a lost // or slash.
+    let read = |input: &str| super::absolute(input).expect("an absolute form").as_os_str().as_bytes().to_vec();
+    assert_eq!(read("/tmp/x/./one.txt"), b"/tmp/x/one.txt");
+    assert_eq!(read("/tmp/x/../x/one.txt"), b"/tmp/x/../x/one.txt");
+    assert_eq!(read("/tmp/x/."), b"/tmp/x");
+    assert_eq!(read("/tmp/x/"), b"/tmp/x/");
+    assert_eq!(read("//tmp/x"), b"//tmp/x");
+    assert_eq!(read("//"), b"//");
+    assert_eq!(read("///tmp/x"), b"/tmp/x");
+    assert!(super::absolute("").is_err(), "an empty path has no absolute form");
+    let mut want = std::env::current_dir().expect("a working directory").as_os_str().as_bytes().to_vec();
+    want.extend_from_slice(b"/rel/path");
+    assert_eq!(read("rel/path"), want);
+}

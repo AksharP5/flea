@@ -51,7 +51,7 @@ impl Summon {
     // Said rather than returned: the write either happened or it did not, and an unlock that failed
     // is not the answer to that question. The lock goes when this process does, either way.
     fn give_back(&self, lock: fs::File) {
-        if let Err(e) = lock.unlock() {
+        if let Err(e) = uistore::unlock(&lock) {
             eprintln!("flea: {} could not be unlocked ({:?})", self.lock.display(), e.kind());
         }
     }

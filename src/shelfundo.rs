@@ -243,7 +243,7 @@ fn read_doc(path: &Path) -> Json {
 // Said rather than returned, the way summon says it: the write either happened or it did not, and an
 // unlock that failed is not the answer to that question.
 fn give_back(path: &Path, lock: fs::File) {
-    if let Err(e) = lock.unlock() {
+    if let Err(e) = uistore::unlock(&lock) {
         eprintln!("flea: {} could not be unlocked ({:?})", path.display(), e.kind());
     }
 }

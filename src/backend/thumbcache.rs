@@ -210,9 +210,9 @@ mod tests {
 
     #[test]
     fn a_text_chunk_is_read_by_key() {
-        // A minimal PNG: signature, then one tEXt chunk holding "Thumb::MTime\0123".
+        // A minimal PNG: signature, then one tEXt chunk holding "Thumb::MTime\x00123".
         let mut png: Vec<u8> = vec![0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
-        let payload = b"Thumb::MTime\0123";
+        let payload = b"Thumb::MTime\x00123";
         png.extend_from_slice(&(payload.len() as u32).to_be_bytes());
         png.extend_from_slice(b"tEXt");
         png.extend_from_slice(payload);
@@ -230,7 +230,7 @@ mod tests {
         png.extend_from_slice(b"IHDR");
         png.extend_from_slice(&ihdr);
         png.extend_from_slice(&[0, 0, 0, 0]);
-        let payload = b"Thumb::MTime\0123";
+        let payload = b"Thumb::MTime\x00123";
         png.extend_from_slice(&(payload.len() as u32).to_be_bytes());
         png.extend_from_slice(b"tEXt");
         png.extend_from_slice(payload);

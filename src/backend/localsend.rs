@@ -368,6 +368,8 @@ mod tests {
                 std::thread::sleep(Duration::from_millis(10));
             }
             std::fs::write(&marker, child.id().to_string()).expect("the probe writes its child's pid");
+            // The stand-in must outlive this probe, so its handle is relinquished rather than reaped.
+            std::mem::forget(child);
             return;
         }
         let dir = crate::backend::testdir::TestDir::new("localsend-life");

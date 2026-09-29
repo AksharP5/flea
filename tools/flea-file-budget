@@ -20,7 +20,7 @@ src/backend/jump_tests.rs 403
 src/backend/renamecompat.rs 447
 src/backend/gvfslist.rs 549
 src/backend/imagesize.rs 475
-src/backend/localsend.rs 403
+src/backend/localsend.rs 405
 src/backend/menu_actions.rs 560
 src/backend/menu_registry.rs 563
 src/backend/meta.rs 436
@@ -43,7 +43,7 @@ src/tui/model.rs 1247
 src/tui/render.rs 889
 src/uischema.rs 421
 src/uistate.rs 625
-src/uistore.rs 483
+src/uistore.rs 540
 src/vulkan.rs 728
 tests/js/columns.js 356
 tests/js/focus.js 430
