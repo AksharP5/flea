@@ -737,7 +737,6 @@ fn a_failed_cap_syncfs_keeps_all_sixty_four_sources_and_journals_partials() {
     durable::test_set_fail_syncfs(false);
     let (counts, retry) = close_normal(&mut batch, 1, &tx, &mut steps, &mut durability);
     assert_eq!((counts.ok, counts.failed), (0, 64), "every source stays when the cap syncfs failed");
-    assert_eq!(durability.held_len(), 0, "a failed confirm drains instead of leaving descriptors open");
     assert_eq!(retry.len(), 64, "every unconfirmed source is offered again");
     assert_eq!(steps.len(), 64, "each landed copy journals as a partial: {:?}", steps.len());
     assert!(steps.iter().all(|s| matches!(s, Step::Copied { .. })), "partials, never moves");

@@ -11,6 +11,75 @@ fn vfat_body_for(dir: &std::path::Path) -> String {
     format!("1 0 8:1 / / rw - ext4 /dev/a rw\n30 1 8:17 / {} rw - vfat /dev/sda1 rw\n", dir.display())
 }
 
+// A Durability with a sticky unsettled and five held files, so a confirm must err drained.
+fn sticky_with_five_held(name: &str) -> (TestDir, std::path::PathBuf, Durability) {
+    test_reset();
+    let d = TestDir::new(name);
+    let srcdir = d.dir("src");
+    let out = d.dir("out");
+    test_mark_durable(&out);
+    let mut durability = Durability::begin(&out);
+    durability.batch_syncfs = true;
+    let flag = std::sync::atomic::AtomicBool::new(false);
+    let mut sink = |_: u64, _: u64| {};
+    let first = d.file("first.txt", "body");
+    let mut p = quiet(&flag, &mut sink, &mut durability);
+    crate::backend::copyfile::copy_any(&first, &out.join("first.txt"), &mut p).expect("copy");
+    drop(p);
+    test_set_fail_syncfs(true);
+    assert!(durability.flush_dirs().is_err(), "the failed syncfs sets the sticky flag");
+    test_set_fail_syncfs(false);
+    for n in 0..5 {
+        let src = srcdir.join(format!("h{n}.txt"));
+        std::fs::write(&src, "body").unwrap();
+        let mut p = quiet(&flag, &mut sink, &mut durability);
+        crate::backend::copyfile::copy_any(&src, &out.join(format!("h{n}.txt")), &mut p).expect("a copy still lands past a sticky failure");
+        drop(p);
+    }
+    assert_eq!(durability.held_len(), 5, "five files held past a sticky failure");
+    (d, out, durability)
+}
+
+// A sticky unsettled fails flush_dirs_for_many drained, so a batch keeps every source with no fd open.
+#[test]
+fn a_sticky_unsettled_fails_flush_dirs_for_many_drained() {
+    let (_d, out, mut durability) = sticky_with_five_held("durable-sticky-many");
+    assert!(durability.flush_dirs_for_many(&[out.join("h0.txt")]).is_err(), "a sticky failure fails every later confirm");
+    assert_eq!(durability.held_len(), 0, "a failed confirm drains instead of leaving descriptors open");
+    test_reset();
+}
+
+// A sticky unsettled fails flush_dirs_for drained, so a single-item move keeps its source with no fd open.
+#[test]
+fn a_sticky_unsettled_fails_flush_dirs_for_drained() {
+    let (_d, out, mut durability) = sticky_with_five_held("durable-sticky-for");
+    assert!(durability.flush_dirs_for(&out.join("h0.txt")).is_err(), "a sticky failure fails every later confirm");
+    assert_eq!(durability.held_len(), 0, "a failed confirm drains instead of leaving descriptors open");
+    test_reset();
+}
+
+// A sticky unsettled fails flush_dirs drained, so a duplicate or rename keeps everything with no fd open.
+#[test]
+fn a_sticky_unsettled_fails_flush_dirs_drained() {
+    let (_d, _out, mut durability) = sticky_with_five_held("durable-sticky-flush");
+    assert!(durability.flush_dirs().is_err(), "a sticky failure fails every later confirm");
+    assert_eq!(durability.held_len(), 0, "a failed confirm drains instead of leaving descriptors open");
+    test_reset();
+}
+
+// A sticky unsettled fails finish drained, so the done line reports unconfirmed with no fd open.
+#[test]
+fn a_sticky_unsettled_fails_finish_drained() {
+    use std::sync::mpsc::channel;
+    let (_d, out, mut durability) = sticky_with_five_held("durable-sticky-finish");
+    let (tx, _rx) = channel();
+    let done = finish(41, &tx, &mut durability, &out, 5);
+    assert!(!done.ok, "an unconfirmed batch never claims the drive");
+    assert_eq!(done.note, DIR_UNCONFIRMED, "the note names the unconfirmed folder: {:?}", done.note);
+    assert_eq!(durability.held_len(), 0, "a failed confirm drains instead of leaving descriptors open");
+    test_reset();
+}
+
 #[test]
 fn a_marked_testdir_target_counts_as_usb_without_real_hardware() {
     test_reset();
@@ -1000,7 +1069,6 @@ fn finish_after_a_failed_cap_settle_reports_unconfirmed() {
     let done = finish(31, &tx, &mut durability, &out, 64);
     assert!(!done.ok, "an unconfirmed batch never claims the drive");
     assert_eq!(done.note, DIR_UNCONFIRMED, "the note names the unconfirmed folder: {:?}", done.note);
-    assert_eq!(durability.held_len(), 0, "no descriptor stays open past a failed cap settle");
     test_reset();
 }
 
@@ -1049,6 +1117,5 @@ fn a_sticky_unsettled_still_drains_later_holds() {
     }
     assert_eq!(durability.held_len(), 0, "the next cap drains instead of growing past it");
     assert!(durability.flush_dirs().is_err(), "every later confirm fails sticky");
-    assert_eq!(durability.held_len(), 0, "a failed confirm drains too");
     test_reset();
 }
