@@ -13,19 +13,19 @@
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 1
 
-# Both profiles unconditionally, seven suites driving the debug binary and thumbs.sh the release one: an `[ ! -x <path> ]` guard is satisfied by a stale binary from an older commit, and measured on 2026-09-05 the debug and release hashes were unchanged across a whole run-all over edited source.
-printf 'run-all: building target/debug/flea, seven suites need it\n'
+# Both profiles unconditionally, eleven suites driving the debug binary and thumbs.sh the release one: an `[ ! -x <path> ]` guard is satisfied by a stale binary from an older commit, and measured on 2026-09-05 the debug and release hashes were unchanged across a whole run-all over edited source.
+printf 'run-all: building target/debug/flea, eleven suites need it\n'
 cargo build -q || { printf 'run-all: cargo build failed, nothing else was run\n' >&2; exit 1; }
 printf 'run-all: building target/release/flea, thumbs.sh needs it\n'
 cargo build -q --release || { printf 'run-all: release build failed, nothing else was run\n' >&2; exit 1; }
 
-headless="js keymap-gen charts budget aurpush signalarity empty-state sandbox capability-ownership gio-auth gvfs ops modes update protocol portal archive thumbs thumbs-exec network-open-share network-keyless mount-listing lazy-objects connections-style pdf-turn pdf-first preview-decode preview-swap uistate uiwriter media filemanager1 dragwire shellload settings-columns preview-frame jump-ui jump-gap picker-recent grid-gap menu-settle arm-prompt acceptance-matrix counts"
+headless="js keymap-gen charts budget aurpush signalarity empty-state sandbox capability-ownership gio-auth gvfs ops modes update protocol portal archive thumbs thumbs-exec network-open-share network-keyless mount-listing lazy-objects connections-style pdf-turn pdf-first preview-decode preview-swap uistate uiwriter media filemanager1 dragwire shellload settings-columns preview-frame jump-ui jump-gap picker-recent picker-stall grid-gap menu-settle arm-prompt acceptance-matrix counts"
 failed=0
 ran=0
 
 for name in $headless; do
     suite="tests/$name.sh"
-    [ -x "$suite" ] || { printf '  %-14s SKIP   no executable at %s\n' "$name" "$suite"; continue; }
+    [ -x "$suite" ] || { printf '  %-14s FAIL   no executable at %s\n' "$name" "$suite"; failed=$((failed + 1)); continue; }
     out=$("./$suite" 2>&1)
     rc=$?
     ran=$((ran + 1))
@@ -43,7 +43,6 @@ done
 # Named, not run: each needs something this script cannot assume it has. One list, read twice: it
 # is printed here and it is what the audit below checks, so a suite cannot be quietly excluded.
 not_run="
-picker-stall|needs Quickshell; runs offscreen read-only worker cancellation tests
 ui|needs the display, and refuses beside a Flea it did not start
 drag|needs the display and a real pointer through uinput
 cardsizes|needs the display, a real pointer through uinput, and Hyprland to resize the window

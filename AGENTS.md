@@ -2976,7 +2976,7 @@ waits for its consumer.
   0.1.4 lanes until it was restored. **A guard answers "is there a binary", never "is it this
   commit's binary"**, which is the defect `39e1737` and `8eec5fc` were both written to close, so the
   unconditional build is the contract and the per-suite `-x` guards exist only for a suite invoked
-  directly. Seven suites drive the debug binary and `thumbs.sh` the release one. It runs every suite that
+  directly. Eleven suites drive the debug binary and `thumbs.sh` the release one. It runs every suite that
   needs nothing but a shell, and reads each suite's OWN exit code, never a pipeline's.
   Its own `headless=` list is the inventory of those and its own `not_run` list is the inventory of
   the rest with what each needs, so this paragraph carries neither a count nor a membership for
@@ -3358,8 +3358,7 @@ waits for its consumer.
   dotfiles, so a bare `ls` cannot see them: the operator's cache showed 94 by `ls` and 104 by
   `ls -A`, and the count check alone stays green against a temp that was present both before and
   after, which is why the explicit `.flea-` check is a separate assertion and not a rewording.
-- `./tests/js.sh` runs the pure JavaScript suites through `qml6`: `tests/js/format.js`,
-  `tests/js/keymap.js` and `tests/js/thumbs.js`. The thumbs suite is 66 lines against a
+- `./tests/js.sh` runs the pure JavaScript suites through `qml6`: 87 suites from 86 files under `tests/js/` (90 files on disk, 4 are fixtures). The thumbs suite is 66 lines against a
   77-line helper and pins the four properties the request policy rests on: `plan` names only
   visible rows carrying `t`, it never re-asks a row the map already holds in any of its three
   states, it drops only rows that are still waiting when they leave the viewport, and
@@ -3376,8 +3375,9 @@ waits for its consumer.
   reported. Without `ViewState`'s `onRunningChanged` arm the first three checks go red and the
   second run stays green, which is the exact shape of the defect it was written for.
 - `./tests/ui.sh` drives the real window through `omarchy-drive` and takes a case name to run
-  one of the `case_*` functions it defines; the file's own usage line lists them and
-  `grep -c '^case_[a-z]*()' tests/ui.sh` counts them. With no argument it runs all of them and
+  one of the `case_*` functions; the file's own usage line lists the entry points and
+  `grep -c '^case_[a-z]*()' tests/ui.sh` counts 71 defined in that file (129 across ui.sh and its
+  sourced ui-*.sh libraries). With no argument it runs the 76-name wanted list and
   then three whole-run checks, a backend drain, a log grep and a cache count, so a clean run
   prints `0 of N checks failed`, with N three more than that count. Neither the list nor either
   number is written out here: both went stale the first time a case was added.
