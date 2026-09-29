@@ -237,3 +237,13 @@ function folderDataHold(cursorIsDir, answered) {
 function showFolderOnPeek(childPath, shownChildPath, answered) {
     return answered === true && childPath.length > 0 && childPath !== shownChildPath
 }
+
+// A data-held empty folder lands settled, the whole frame the picture hold revealed.
+// Sample input: shouldSettleHero(true, "/a", "/a", false, 0) is true.
+function shouldSettleHero(cursorIsDir, path, childPath, readFailed, rowCount) {
+    if (cursorIsDir !== true || readFailed === true)
+        return false
+    if (String(path) !== String(childPath))
+        return false
+    return Math.floor(Number(rowCount)) === 0
+}

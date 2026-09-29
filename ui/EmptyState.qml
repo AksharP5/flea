@@ -30,6 +30,8 @@ Item {
     readonly property int rotateMs: 2800
     // PanelHero's own secondary ink: Qt.darker(foreground, 1.4), not the row's muted role.
     readonly property color dim: Qt.darker(Theme.color.foreground, 1.4)
+    // A data-held folder skips this for one landing, so it draws whole like the picture hold did.
+    property bool animateEntrance: true
 
     // Entrance only: the caller (shell.qml) cuts visible straight to false on the way out, so
     // this only ever animates the appear direction, never a disappearance.
@@ -37,7 +39,7 @@ Item {
 
     Behavior on opacity {
         id: entranceOpacity
-        enabled: root.visible && !Theme.reducedMotion
+        enabled: root.animateEntrance && root.visible && !Theme.reducedMotion
         NumberAnimation { duration: Motion.durMs.open; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.bezierCurve }
     }
 
@@ -49,7 +51,7 @@ Item {
 
         Behavior on anchors.verticalCenterOffset {
             id: entranceOffset
-            enabled: root.visible && !Theme.reducedMotion
+            enabled: root.animateEntrance && root.visible && !Theme.reducedMotion
             NumberAnimation { duration: Motion.durMs.open; easing.type: Easing.BezierSpline; easing.bezierCurve: Motion.bezierCurve }
         }
 
@@ -117,8 +119,8 @@ Item {
         function onReducedMotionChanged() {
             if (Theme.reducedMotion) {
                 // Disabling a Behavior leaves its current animation running until the next property write.
-                entranceOpacity.enabled = Qt.binding(function() { return root.visible && !Theme.reducedMotion })
-                entranceOffset.enabled = Qt.binding(function() { return root.visible && !Theme.reducedMotion })
+                entranceOpacity.enabled = Qt.binding(function() { return root.animateEntrance && root.visible && !Theme.reducedMotion })
+                entranceOffset.enabled = Qt.binding(function() { return root.animateEntrance && root.visible && !Theme.reducedMotion })
                 root.opacity = Qt.binding(function() { return root.visible ? 1 : 0 })
                 content.anchors.verticalCenterOffset = Qt.binding(function() { return root.visible ? 0 : Motion.translateUpPx })
                 fade.stop()

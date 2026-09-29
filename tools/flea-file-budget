@@ -54,7 +54,7 @@ tests/columnscost.qml 416
 tests/js/status.js 354
 ui/Backend.qml 431
 ui/ChromeBar.qml 478
-ui/ColumnsArea.qml 431
+ui/ColumnsArea.qml 435
 ui/ContextMenu.qml 579
 ui/ConvertDialog.qml 440
 ui/Ipc.qml 818

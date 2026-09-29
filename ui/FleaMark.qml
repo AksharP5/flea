@@ -30,6 +30,9 @@ Item {
         } else draw.restart()
     }
 
+    // A data-held folder lands whole, the settled frame the picture hold revealed.
+    function settle() { draw.stop(); stroke.dashOffset = 0; root.opacity = 1 }
+
     Shape {
         width: root.grid
         height: root.grid

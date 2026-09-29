@@ -293,6 +293,9 @@ Item {
         function onPeeked(path, hidden, total, rows, readFailed, mode, hiddenLast, first) {
             var key = Columns.peekKey(path, hidden, hiddenLast), sent = Columns.sentKey(key, first)
             if (!Columns.hasAsk(root.pending, sent)) return
+            // A data-held empty folder lands whole, the settled frame the picture hold revealed.
+            var heroSettles = Columns.shouldSettleHero(root.cursorIsDir, path, root.childPath, readFailed, rows.length)
+            if (heroSettles) childColumn.emptyItem.animateEntrance = false
             root.pending = Columns.dropAsk(root.pending, sent)
             var next = root.peeked
             next[key] = rows
@@ -306,6 +309,7 @@ Item {
             // The waiting folder lands with its rows in the same pass, so no frame is mid-built.
             if (Columns.showFolderOnPeek(root.childPath, root.shownChildPath, root.answered(root.childPath)))
                 root.showCursorRow()
+            if (heroSettles) { childColumn.emptyItem.markItem.settle(); childColumn.emptyItem.animateEntrance = true }
             if (root.answered(root.childPath))
                 folderFallback.stop()
         }

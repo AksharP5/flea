@@ -110,6 +110,11 @@ function runFolderDataHold(check) {
     check("an already shown folder shows nothing new", Columns.showFolderOnPeek("/a", "/a", true), false)
     check("a still outstanding peek leaves the old column up", Columns.showFolderOnPeek("/a", "/b", false), false)
     check("no cursor folder shows nothing", Columns.showFolderOnPeek("", "/b", true), false)
+    check("a data-held empty folder lands settled", Columns.shouldSettleHero(true, "/a", "/a", false, 0), true)
+    check("a non-empty folder never settles a hero", Columns.shouldSettleHero(true, "/a", "/a", false, 3), false)
+    check("a locked folder never settles a hero", Columns.shouldSettleHero(true, "/a", "/a", true, 0), false)
+    check("a file never settles a hero", Columns.shouldSettleHero(false, "/a", "/a", false, 0), false)
+    check("a stale peek never settles a hero", Columns.shouldSettleHero(true, "/a", "/b", false, 0), false)
     var area = Source.source("ui/ColumnsArea.qml")
     var move = squashed(bodyOf(area, "moveThird"))
     check("a move onto an unanswered folder takes the data hold", move.indexOf("Columns.folderDataHold(") >= 0, true)
@@ -126,4 +131,8 @@ function runFolderDataHold(check) {
         && peeked.indexOf("root.showCursorRow()") > peeked.indexOf("Columns.showFolderOnPeek("), true)
     check("the fallback is a single shot at the listing swap cap", area.indexOf("interval: Swap.HOLD_MS") >= 0, true)
     check("and shows the pending column when the peek is late", area.indexOf("onTriggered: if (root.cursorIsDir && !root.answered(root.childPath)) root.showCursorRow()") >= 0, true)
+    check("a data-held empty hero skips its entrance", Source.source("ui/EmptyState.qml").indexOf("animateEntrance") >= 0, true)
+    check("its mark can settle at once", Source.source("ui/FleaMark.qml").indexOf("function settle()") >= 0, true)
+    check("a landed empty peek settles its hero whole", peeked.indexOf("Columns.shouldSettleHero(") >= 0
+        && peeked.indexOf("markItem.settle()") > peeked.indexOf("Columns.shouldSettleHero("), true)
 }
