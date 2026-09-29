@@ -28,6 +28,9 @@ FocusScope {
     property string pendingSelect: ""
     // Set with pendingSelect by a right click on a peeked column row: the menu opens on the row once it is the cursor.
     property bool pendingMenu: false
+    // Set by a right click on a neighbour column's empty space: the drawn directory opens, then its background menu opens at the stored scene point once the rows land.
+    property string pendingBackground: ""
+    property var pendingBackgroundAt: null
     // The directory the listing in flight asked for, which is not pane.path until the reply lands.
     property string listingPath: ""
     property int total: 0
@@ -296,7 +299,8 @@ FocusScope {
     // Named escapePressed, not escape, which collides with the JS global URI function; clears an active selection first, see keys.toml.
     function escapePressed() { if (root.selection.count() > 0) { root.clearSelection(); return }; root.message("", false) }
 
-    function applyPendingSelect() { Nav.applyPendingSelect(root) }
+    function applyPendingSelect() { Nav.applyPendingSelect(root); Nav.applyPendingBackground(root) }
+    function openBackgroundMenu(at) { menu.openBackground(at) }
     function refresh(selectPath) { Nav.refresh(root, selectPath) }
 
     function open(newPath) {

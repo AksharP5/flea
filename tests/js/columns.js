@@ -1,4 +1,5 @@
 .import "../../ui/js/Columns.js" as Columns
+.import "../../ui/js/ColumnMenu.js" as ColumnMenu
 .import "../../ui/js/ColumnFit.js" as ColumnFit
 .import "../../ui/js/Picker.js" as Picker
 .import "../../ui/js/Nav.js" as Nav
@@ -125,6 +126,7 @@ function run(check) {
     runColumnsLimitWire(check)
     runColRoot(check)
     runNeighbourAsks(check)
+    runColumnMenu(check)
 }
 
 // ColumnsWidth board (#167, #69): the columns count follows the window width, 2 below 900 up to 5 from 2300, capped by the View limit shipping at 3.
@@ -364,4 +366,117 @@ function runHidden(check) {
     var undefinedSet = Columns.set(2000, BOX)
     check("a caller that passes no hidden set draws as before",
           [undefinedSet.mode, undefinedSet.size, undefinedSet.date, undefinedSet.kind].join(","), "true,true,true,true")
+}
+
+// Neighbour-column backgrounds (e41): a peek's empty space navigates to its drawn directory and opens the background menu once the rows land, never over the wrong path.
+function runColumnMenu(check) {
+    check("a trailing slash trims except at the root", ColumnMenu.trimSlash("/a/"), "/a")
+    check("the root keeps its own slash", ColumnMenu.trimSlash("/"), "/")
+    check("same path ignores a trailing slash", ColumnMenu.samePath("/a/", "/a"), true)
+    check("different paths stay different", ColumnMenu.samePath("/a", "/b"), false)
+    check("an idle pane may arm", ColumnMenu.canArm({}), "")
+    check("a listing in flight refuses before any intent", ColumnMenu.canArm({listInFlight: true}), "loading")
+    check("an open trash refuses", ColumnMenu.canArm({trash: {opened: true}}), "trash")
+    check("a confirming trash refuses", ColumnMenu.canArm({trash: {confirming: true}}), "trash")
+    check("a search refuses", ColumnMenu.canArm({searchMode: "typing"}), "search")
+    check("a card waiting refuses", ColumnMenu.canArm({collide: {pending: {}}}), "collide")
+    check("an open menu refuses a second", ColumnMenu.canArm({menuVisible: true}), "menu")
+    check("a menu action in flight refuses too", ColumnMenu.canArm({menuActions: {opened: true}}), "menu")
+    check("an open rename refuses", ColumnMenu.canArm({renamingIndex: 2}), "rename")
+    check("a pending rename refuses as well", ColumnMenu.canArm({renamePending: true}), "rename")
+    check("a filter line with the caret refuses", ColumnMenu.canArm({filterTyping: true}), "filter")
+    check("a selection band refuses", ColumnMenu.canArm({selectionBand: {}}), "band")
+    check("an open collision card refuses", ColumnMenu.canArm({collide: {opened: true}}), "collide")
+    check("a null collision slot arms", ColumnMenu.canArm({collide: {pending: null}}), "")
+    check("an empty trash slot arms", ColumnMenu.canArm({trash: {}}), "")
+    check("no pane refuses", ColumnMenu.canArm(null), "no pane")
+    check("the shown folder opens where it stands", ColumnMenu.directOpen("/a", "/a/"), true)
+    check("another folder navigates instead", ColumnMenu.directOpen("/a", "/b"), false)
+    check("no target navigates nowhere", ColumnMenu.directOpen("", "/b"), false)
+    check("a ready listing opens its pending menu", ColumnMenu.shouldOpen("/a", "/a", "ready"), true)
+    check("an empty listing opens too", ColumnMenu.shouldOpen("/a", "/a/", "empty"), true)
+    check("a locked listing drops it", ColumnMenu.shouldOpen("/a", "/a", "locked"), false)
+    check("an error drops it", ColumnMenu.shouldOpen("/a", "/a", "error"), false)
+    check("a loading listing opens nothing", ColumnMenu.shouldOpen("/a", "/a", "loading"), false)
+    check("a later unrelated listing opens nothing", ColumnMenu.shouldOpen("/b", "/a", "ready"), false)
+    check("nothing pending opens nothing", ColumnMenu.shouldOpen("/a", "", "ready"), false)
+    var bg = {path: "/a", listingState: "ready", searchMode: "", trash: {},
+        pendingBackground: "/a", pendingBackgroundAt: {x: 1, y: 2}, opened: []}
+    bg.openBackgroundMenu = function (at) { bg.opened.push(at) }
+    Nav.applyPendingBackground(bg)
+    check("the drawn directory opens its menu once the rows land", bg.opened.length, 1)
+    check("and the intent is consumed", bg.pendingBackground, "")
+    var stale = {path: "/b", listingState: "ready", searchMode: "", trash: {},
+        pendingBackground: "/a", pendingBackgroundAt: {x: 1, y: 2}, opened: []}
+    stale.openBackgroundMenu = function (at) { stale.opened.push(at) }
+    Nav.applyPendingBackground(stale)
+    check("a later unrelated listing consumes without opening", stale.opened.length, 0)
+    check("and leaves nothing pending", stale.pendingBackground, "")
+    var locked = {path: "/a", listingState: "locked", searchMode: "", trash: {},
+        pendingBackground: "/a", pendingBackgroundAt: {x: 1, y: 2}, opened: []}
+    locked.openBackgroundMenu = function (at) { locked.opened.push(at) }
+    Nav.applyPendingBackground(locked)
+    check("an unreadable listing drops without opening", locked.opened.length, 0)
+    check("and leaves nothing pending", locked.pendingBackground, "")
+    var failed = {pendingBackground: "/b", pendingBackgroundAt: {x: 1, y: 2}}
+    Nav.clearPendingBackground(failed)
+    check("a failed listing clears the intent", failed.pendingBackground, "")
+    check("with nothing left to open on", failed.pendingBackgroundAt, null)
+    Nav.applyPendingBackground(bg)
+    check("a consumed intent never opens twice", bg.opened.length, 1)
+    function bgListing() {
+        var p = {listInFlight: false, path: "/a", listingPath: "", pendingBackground: "", pendingBackgroundAt: null,
+            searchMode: "", filterQuery: "", filterTyping: false, listingState: "ready", stateMessage: "", lockedMode: 0,
+            total: 1, held: 0, rows: [], kindNames: [], thumbState: null, dirSizeState: null, cursorIndex: 0,
+            trashArmedAt: 0, renamingIndex: -1, storageClass: "", storageKnown: true, windowSize: 10, showHidden: false,
+            listingPreferences: "", appliedListingPreferences: "", said: [], sent: []}
+        p.message = function (t) { p.said.push(t) }
+        p.clearSelection = function () {}
+        p.listArea = {primeSettle: function () {}}
+        p.swap = {hold: function () { return false }}
+        p.backend = {list: function (path) { p.sent.push(path) }, askFsInfo: function () {}}
+        return p
+    }
+    var keeps = bgListing()
+    keeps.pendingBackground = "/b"
+    keeps.pendingBackgroundAt = {x: 1, y: 1}
+    Nav.openWithoutHistory(keeps, "/b")
+    check("a hop to the armed target keeps its request", keeps.sent.join("|"), "/b")
+    check("and keeps the intent for its landing", keeps.pendingBackground, "/b")
+    var drops = bgListing()
+    drops.pendingBackground = "/b"
+    drops.pendingBackgroundAt = {x: 1, y: 1}
+    Nav.openWithoutHistory(drops, "/c")
+    check("a hop elsewhere still asks for its own directory", drops.sent.join("|"), "/c")
+    check("while the waiting intent is dropped", drops.pendingBackground, "")
+    var pane = Source.source("ui/ColumnPane.qml")
+    check("a peek's empty space has its own route", pane.indexOf("signal neighbourBackgroundRequested(var eventPoint)") >= 0, true)
+    var bgBody = Source.slice(pane, "Empty space below the last row", "delegate: Flea.ColumnRow")
+    check("and a peek emits it instead of the active menu", bgBody.indexOf("root.neighbourBackgroundRequested(eventPoint)") >= 0, true)
+    var area = Source.source("ui/ColumnsArea.qml")
+    check("the area navigates a neighbour background", area.indexOf("function menuOnNeighbourBackground(base, eventPoint)") >= 0, true)
+    var helper = Source.slice(area, "function menuOnNeighbourBackground", "function parentItemAt")
+    check("and rejects busy before arming any intent", helper.indexOf("ColumnMenu.canArm(root.pane)") >= 0, true)
+    var armAt = helper.indexOf("root.pane.pendingBackground = base")
+    check("and arms the drawn target before opening it", armAt >= 0 && helper.indexOf("ColumnMenu.canArm(root.pane)") < armAt, true)
+    check("and drops an open that never started", helper.indexOf("if (!root.pane.listInFlight)") >= 0, true)
+    check("the parent routes its drawn directory", area.indexOf("menuOnNeighbourBackground(root.parentPath, eventPoint)") >= 0, true)
+    check("the parent stays gated on its shown ancestor", area.indexOf("if (root.showParent && root.parentShown)") >= 0, true)
+    check("the grandparent routes its own", area.indexOf("menuOnNeighbourBackground(root.grandparentPath, eventPoint)") >= 0, true)
+    check("the grandparent stays gated on its shown ancestor", area.indexOf("if (root.showGrandparent && root.grandparentShown)") >= 0, true)
+    check("the great-grandparent routes its own", area.indexOf("menuOnNeighbourBackground(root.greatGrandparentPath, eventPoint)") >= 0, true)
+    check("the great-grandparent stays gated on its shown ancestor", area.indexOf("if (root.showGreatGrandparent && root.greatGrandparentShown)") >= 0, true)
+    check("the child routes its drawn folder", area.indexOf("menuOnNeighbourBackground(root.shownChildPath, eventPoint)") >= 0, true)
+    var childBody = Source.slice(area, "id: childColumn", "Flea.SelectionPreview")
+    check("and the child waits on the shown folder, never the pending one",
+        childBody.indexOf("root.shownChildPath") >= 0 && childBody.indexOf("root.childPath") < 0, true)
+    check("and a file preview offers no directory", childBody.indexOf("root.shownIsDir") >= 0, true)
+    var wire = Source.source("ui/PaneWire.qml")
+    check("a failed listing drops the intent", wire.indexOf("Nav.clearPendingBackground(pane)") >= 0, true)
+    var nav = Source.source("ui/js/Nav.js")
+    check("a landed listing consumes it by identity", nav.indexOf("ColumnMenu.applyPendingBackground(pane)") >= 0, true)
+    check("a hop elsewhere drops the waiting intent", nav.indexOf("ColumnMenu.samePath(newPath, pane.pendingBackground)") >= 0, true)
+    var menu = Source.source("ui/js/ColumnMenu.js")
+    check("the consume opens only its own successful listing",
+        menu.indexOf("ColumnMenu.shouldOpen") < 0 && menu.indexOf("shouldOpen(pane.path, target, pane.listingState)") >= 0, true)
 }

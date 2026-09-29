@@ -380,6 +380,7 @@ Item {
         function onFailed(where, input, message, mode) {
             // A listing that failed cannot seat the row a peeked right click asked for, so its menu intent dies here.
             pane.pendingMenu = false
+            Nav.clearPendingBackground(pane)
             if (pane.path.length === 0 && input.length > 0) pane.path = input
             var text = Errors.sentence(where, message, input && input !== pane.path ? Ops.leaf(input) : "")
             var terminal = where === "backend" || where === "read"

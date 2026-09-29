@@ -2,6 +2,7 @@ import QtQuick
 import qs.Commons
 import "." as Flea
 import "js/Columns.js" as Columns
+import "js/ColumnMenu.js" as ColumnMenu
 import "js/ExtThumbs.js" as ExtThumbs
 import "js/Focus.js" as Focus
 import "js/Nav.js" as Nav
@@ -177,8 +178,7 @@ Item {
     function restartCoalesce() { active.restartCoalesce() }
     function restartSettle() { active.restartSettle() }
     function positionViewAtIndex(index, mode) { active.positionViewAtIndex(index, mode) }
-    // The one column whose rows are the pane's own, for ui/Ipc.qml: the two beside it are peeks and
-    // answer for another directory, so neither is where a background right click belongs.
+    // The one column whose rows are the pane's own, for ui/Ipc.qml: a neighbour column's background navigates to its drawn directory first, so no peek lands a background right click at once.
     function activeColumn() { return active }
     readonly property var scrollBar: active.scrollBar
     // All active views accept a view position; the pane maps filtered listing indices before calling.
@@ -192,6 +192,31 @@ Item {
         root.pane.pendingSelect = root.pane.join(base, name)
         root.pane.pendingMenu = true
         root.pane.open(base)
+    }
+
+    // A neighbour column's empty space: the DRAWN directory (the peek's own path, never pending childPath; a file preview draws none) becomes the listing and its background menu opens once the rows land.
+    function menuOnNeighbourBackground(base, eventPoint) {
+        if (!base || base.length === 0)
+            return
+        if (!eventPoint || eventPoint.scenePosition === undefined)
+            return
+        var busy = ColumnMenu.canArm(root.pane)
+        if (busy.length > 0) {
+            if (busy === "loading")
+                root.pane.message("A directory is already loading.", false)
+            return
+        }
+        if (ColumnMenu.directOpen(base, root.pane.path)) {
+            root.menu.openBackground(eventPoint.scenePosition)
+            return
+        }
+        root.pane.pendingBackground = base
+        root.pane.pendingBackgroundAt = eventPoint.scenePosition
+        root.pane.open(base)
+        if (!root.pane.listInFlight) {
+            root.pane.pendingBackground = ""
+            root.pane.pendingBackgroundAt = null
+        }
     }
 
     // For ui/Ipc.qml: the peek columns' rows and the child's empty tile; the two eldest answer null while their Loader is unbuilt.
@@ -346,6 +371,10 @@ Item {
                 showDivider: true
                 onActivated: function (name, isDir) { root.activateNeighbour(root.greatGrandparentPath, name, isDir) }
                 onNeighbourMenuRequested: function (name) { root.menuOnNeighbour(root.greatGrandparentPath, name) }
+                onNeighbourBackgroundRequested: function (eventPoint) {
+                    if (root.showGreatGrandparent && root.greatGrandparentShown)
+                        root.menuOnNeighbourBackground(root.greatGrandparentPath, eventPoint)
+                }
             }
         }
 
@@ -365,6 +394,10 @@ Item {
                 showDivider: true
                 onActivated: function (name, isDir) { root.activateNeighbour(root.grandparentPath, name, isDir) }
                 onNeighbourMenuRequested: function (name) { root.menuOnNeighbour(root.grandparentPath, name) }
+                onNeighbourBackgroundRequested: function (eventPoint) {
+                    if (root.showGrandparent && root.grandparentShown)
+                        root.menuOnNeighbourBackground(root.grandparentPath, eventPoint)
+                }
             }
         }
 
@@ -382,6 +415,10 @@ Item {
             showDivider: true
             onActivated: function (name, isDir) { root.activateNeighbour(root.parentPath, name, isDir) }
             onNeighbourMenuRequested: function (name) { root.menuOnNeighbour(root.parentPath, name) }
+            onNeighbourBackgroundRequested: function (eventPoint) {
+                if (root.showParent && root.parentShown)
+                    root.menuOnNeighbourBackground(root.parentPath, eventPoint)
+            }
         }
 
         // The pane's own listing, which is why this column and only this one takes the accent.
@@ -420,6 +457,10 @@ Item {
                 drawsEmpty: root.answered(root.shownChildPath)
                 onActivated: function (name, isDir) { root.activateNeighbour(root.shownChildPath, name, isDir) }
                 onNeighbourMenuRequested: function (name) { root.menuOnNeighbour(root.shownChildPath, name) }
+                onNeighbourBackgroundRequested: function (eventPoint) {
+                    if (root.shownIsDir && root.shownChildPath.length > 0)
+                        root.menuOnNeighbourBackground(root.shownChildPath, eventPoint)
+                }
             }
 
             Flea.SelectionPreview {

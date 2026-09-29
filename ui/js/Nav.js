@@ -5,6 +5,7 @@
 .import "Kinds.js" as Kinds
 .import "Thumbs.js" as Thumbs
 .import "Search.js" as Search
+.import "ColumnMenu.js" as ColumnMenu
 
 // Where the pane has been and how it gets back, taking ui/Pane.qml's root the way Search.js and
 // Ops.js do: the pane holds the state, this holds what the state does.
@@ -78,6 +79,9 @@ function openWithoutHistory(pane, newPath, options) {
         pane.message("A directory is already loading.", false)
         return
     }
+    // A hop elsewhere drops a waiting background menu, while the armed hop keeps its own request.
+    if (pane.pendingBackground && pane.pendingBackground.length > 0 && !ColumnMenu.samePath(newPath, pane.pendingBackground))
+        clearPendingBackground(pane)
     Search.leaveWalk(pane)
     pane.listInFlight = true
     pane.listedSeen = false
@@ -144,6 +148,7 @@ function renameRefreshTarget(pane, path) {
 function refresh(pane, selectPath) {
     pane.pendingSelect = selectPath ? selectPath : ""
     pane.pendingMenu = false
+    clearPendingBackground(pane)
     pane.openWithoutHistory(pane.path)
 }
 
@@ -172,6 +177,12 @@ function applyPendingSelect(pane) {
     // The row is not in this listing, so the intent behind it must not fire on some later match.
     pane.pendingMenu = false
 }
+
+// A failed listing drops the deferred background menu, so no later rows open it.
+function clearPendingBackground(pane) { ColumnMenu.clearPendingBackground(pane) }
+
+// The deferred neighbour background, consumed on every landing by identity.
+function applyPendingBackground(pane) { ColumnMenu.applyPendingBackground(pane) }
 
 // Enter on the cursor row: a directory navigates, an archive opens Flea's own view, anything else
 // goes to the opener. The in-flight guard is what stops a second Enter queueing a second listing.

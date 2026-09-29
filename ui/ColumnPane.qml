@@ -49,6 +49,8 @@ Item {
     signal backgroundMenuRequested(var eventPoint)
     // A right click on a peek's row: the peek's directory becomes the listing with this row as the cursor, and the menu opens there.
     signal neighbourMenuRequested(string name)
+    // A right click on a peek's empty space: the peek's drawn directory becomes the listing, and the background menu opens there once its rows land.
+    signal neighbourBackgroundRequested(var eventPoint)
     // The thumbnail plan for this column's viewport, computed here and written by the pane, the grid's own contract.
     signal thumbsApplied(var work)
     signal dirSizesApplied(var ask)
@@ -194,13 +196,16 @@ Item {
             flickable: view
         }
 
-        // Empty space below the last row, the same rule ui/List.qml carries; pane is what says this
-        // column draws the pane's own listing rather than a peek.
+        // Empty space below the last row, the same rule ui/List.qml carries: the pane's own column answers at once while a peek navigates to its drawn directory first and opens its menu once the rows land.
         TapHandler {
             acceptedButtons: Qt.RightButton
             onTapped: function (eventPoint) {
-                if (root.pane !== null && Tap.onBackground(view, eventPoint))
+                if (!Tap.onBackground(view, eventPoint))
+                    return
+                if (root.pane !== null)
                     root.backgroundMenuRequested(eventPoint)
+                else
+                    root.neighbourBackgroundRequested(eventPoint)
             }
         }
 
