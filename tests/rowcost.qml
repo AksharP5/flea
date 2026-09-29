@@ -4,17 +4,17 @@ import QtQuick
 import Quickshell
 import "flea" as Flea
 
-// Rowcost: each list row and grid tile builds no more than it needs. One Row and one
-// GridTile are built the way ui/List.qml and ui/GridArea.qml build them, then each
-// delegate's tree (children and resources, recursively) is counted. ROW_MAX 32 and
-// GRID_MAX 24 are the 0.3.6 shape plus the clip mark's own clipLoader: a fixed tile
-// holds about 18 objects against about 26 with the eager editor's 8-object subtree,
-// and a Row holds about 24 either way, its win being bindings rather than objects.
+// Rowcost: each list row and grid tile builds no more than it needs. One Row and one GridTile
+// are built the way ui/List.qml and ui/GridArea.qml build them, then each delegate's tree
+// (children and resources, recursively) is counted against the counts measured at 89115b45.
 ShellRoot {
     id: root
 
     property var sampleRow: ({ n: "rowcost.txt", i: "text-x-generic", p: 420, d: false, s: 13, m: 1758835200, t: false, k: 0, v: 0 })
     property var failures: []
+    // Measured in flea-ci at 89115b45 (ROWCOST PASS row=19 grid=14); one more object per delegate is a regression.
+    readonly property int rowMax: 19
+    readonly property int gridMax: 14
 
     Flea.Row {
         id: probeRow
@@ -80,10 +80,10 @@ ShellRoot {
     function measureIdle() {
         var rowCount = root.countUnder(probeRow)
         var gridCount = root.countUnder(probeTile)
-        if (rowCount > 32)
-            failures.push("row holds " + rowCount + " objects over the 32 ceiling")
-        if (gridCount > 24)
-            failures.push("tile holds " + gridCount + " objects over the 24 ceiling")
+        if (rowCount > root.rowMax)
+            failures.push("row holds " + rowCount + " objects over the " + root.rowMax + " ceiling")
+        if (gridCount > root.gridMax)
+            failures.push("tile holds " + gridCount + " objects over the " + root.gridMax + " ceiling")
         if (root.editorsUnder(probeRow) !== 0)
             failures.push("row builds a RenameField while not renaming")
         if (root.editorsUnder(probeTile) !== 0)
