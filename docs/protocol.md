@@ -610,7 +610,9 @@ already expired answers a `total` of 0, and the `transfer` then answers `Menu se
 Example: `{"c":"transfercancel","id":12}`
 
 Cancels the running transfer or archive `extract` if `id` names it, and does nothing otherwise, so a
-cancel aimed at an operation that already finished can never reach the one after it. There is no
+cancel aimed at an operation that already finished can never reach the one after it. A compress
+has no operator cancel; its flag is never set, so a `transfercancel` naming a compress `id`
+does nothing and the compress runs to its end. There is no
 response line of its own: a transfer answers with its own `transferdone` carrying `cancelled` true, and
 an extract answers its own `archivedone` with `ok` false and an `err` of `cancelled`.
 
@@ -623,7 +625,11 @@ there without a partial tree. When the archive tool has not exited ten seconds a
 folder is left in place rather than deleted under a live writer, and the `err` names that folder.
 
 A `quit`, or stdin closing, cancels a running operation the same way and waits for its terminal line
-before the process exits, so shutting down mid-copy also leaves nothing half-written behind.
+before the process exits, so shutting down mid-copy also leaves nothing half-written behind. A
+running compress is the exception on both halves. No cancel reaches its flag, so it runs to
+its end, and the drain watches only the slot operation and the thumbnail queue, so a quit does
+not wait for it. The process exits, the compress dies with it by `--die-with-parent`, and its
+`.flea-work-arc-*` staging beside the destination is left behind.
 
 ### trash
 
