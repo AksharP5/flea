@@ -98,6 +98,8 @@ FocusScope {
     // Ctrl+E with the rail hidden: the Sidebar is unloaded, so the key cannot read entries or
     // release through it; PaneRail spins a transient DeviceMounts for one listing instead.
     function ejectHidden() { railHost.ejectHidden() }
+    // Hiding a focused rail strands the keyboard on a view that no longer exists, so the listing takes it.
+    onRailHiddenChanged: if (root.railHidden) Focus.railHidden(root)
     property bool paneFocused: true
     property bool listOnly: false
     signal focusRequested()

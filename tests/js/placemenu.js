@@ -1,4 +1,5 @@
 .import "../../ui/js/Menu.js" as Menu
+.import "../../ui/js/Focus.js" as Focus
 .import "../../ui/js/PlaceMenu.js" as PlaceMenu
 
 // MenuAdditions rule 3: a Places or Favorites row opens the folder menu for its own path, with the
@@ -16,6 +17,27 @@ function paneStub(hidden) {
 function sidebarStub(hidden) {
     var pane = paneStub(hidden)
     return { navigationPane: pane, said: "", message: function (text) { this.said = text } }
+}
+
+// A pane on the rail's own handoff: open starts a listing the way Nav.openPlace does, from the rail the menu was opened from.
+function openPane(path) {
+    var p = { path: path, focusView: "rail", listInFlight: false, listingPath: "",
+              opened: [], copied: [], said: "", searchMode: "", listingState: "", trash: null,
+              viewMode: "list", preview: { active: false },
+              message: function (text) { p.said = text },
+              open: function (next) {
+                  if (p.listInFlight) { p.message("A directory is already loading."); return }
+                  p.opened.push(next)
+                  p.listInFlight = true
+                  p.listingPath = next
+              },
+              performMenu: function (action, id, paths) { p.copied.push(action + ":" + paths[0]) } }
+    return p
+}
+
+function openSidebar(pane) {
+    return { navigationPane: pane, focusOnOpen: false, said: "",
+             message: function (text) { this.said = text } }
 }
 
 function labels(rows) {
@@ -72,4 +94,32 @@ function run(check) {
     check("and refuses when the record it was opened on is not there any more",
           favourites.removed.join(",") + "|" + legacy.said,
           "0,0|Favorites changed; reopen the menu before removing this row.")
+
+    // Open reuses the rail's own handoff: a ready folder or started listing takes focus, a refused busy open and every other row leave the rail alone.
+    var moving = openSidebar(openPane("/home/gm"))
+    PlaceMenu.perform("open", "place:-1:/home/gm/Downloads", moving, null)
+    check("Open starts the listing the row named", moving.navigationPane.opened.join(","), "/home/gm/Downloads")
+    check("and lands focus in the folder it opened",
+          moving.navigationPane.focusView + "|" + moving.focusOnOpen, "list|false")
+    check("j then moves the listing it landed in",
+          Focus.lookup({ key: Qt.Key_J, text: "j", modifiers: Qt.NoModifier }, moving.navigationPane), "cursorDown")
+    var staying = openPane("/home/gm/Downloads")
+    staying.listingState = "ready"
+    staying.trash = { opened: false }
+    var sameSidebar = openSidebar(staying)
+    PlaceMenu.perform("open", "place:-1:/home/gm/Downloads", sameSidebar, null)
+    check("Open on the folder already shown starts no listing", staying.opened.length, 0)
+    check("but lands focus on that ready folder like rail Enter", staying.focusView + "|" + sameSidebar.focusOnOpen, "list|false")
+    var busy = openPane("/home/gm")
+    busy.listInFlight = true
+    var busySidebar = openSidebar(busy)
+    PlaceMenu.perform("open", "place:-1:/home/gm/Downloads", busySidebar, null)
+    check("Open while a listing is out starts nothing new", busy.opened.length, 0)
+    check("it says the listing is still loading", busy.said, "A directory is already loading.")
+    check("and leaves focus on the rail", busy.focusView + "|" + busySidebar.focusOnOpen, "rail|false")
+    var keeping = openSidebar(openPane("/home/gm"))
+    PlaceMenu.perform("copypath", "place:-1:/home/gm/Downloads", keeping, null)
+    check("Copy path still acts on the row's own path", keeping.navigationPane.copied.join(","), "copypath:/home/gm/Downloads")
+    check("and a non-opening row leaves focus on the rail",
+          keeping.navigationPane.focusView + "|" + keeping.focusOnOpen, "rail|false")
 }

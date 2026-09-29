@@ -30,6 +30,13 @@ function next(current, sidebar) {
     return current === LIST && sidebar ? RAIL : LIST
 }
 
+// Hiding the rail while it holds the keyboard strands focusView, so the listing takes the logical view and the actual focus together.
+function railHidden(root) {
+    if (root.focusView !== RAIL) return
+    root.focusView = LIST
+    if (root.listArea) root.listArea.forceActiveFocus()
+}
+
 function shareBrowserHere(root) {
     return !!(root.shareBrowser && root.shareBrowser.active && (!root.shareBrowser.owner || root.shareBrowser.owner === root))
 }
@@ -338,7 +345,7 @@ function handleKey(event, root, sidebar) {
         return true
     }
     // These answer from the rail as well as the list, so they are taken before the rail's own keys.
-    if (action === "openTerminal" || action === "settings" || action === "copydirpath") {
+    if (action === "sidebar" || action === "openTerminal" || action === "settings" || action === "copydirpath") {
         root.act(action)
         return true
     }

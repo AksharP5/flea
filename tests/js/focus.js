@@ -403,4 +403,28 @@ function run(check) {
     check("another pane keeps its own key context while the shared listing is open", Focus.shareBrowserHere(otherPane), false)
     sharedBrowser.active = false
     check("closing the share listing releases its owner's keys", Focus.shareBrowserHere(shareOwner), false)
+
+    // Ctrl+B answers from the rail too, so hiding a focused rail hands the keyboard to the listing.
+    var hiding = chromePane("rail")
+    hiding.railHidden = false
+    hiding.listArea = { focused: false, forceActiveFocus: function () { this.focused = true } }
+    hiding.toggleRail = function () { this.railHidden = !this.railHidden }
+    var ctrlB = key(Qt.Key_B, "", ctrl)
+    check("ctrl b resolves to the sidebar from the rail", Focus.lookup(ctrlB, hiding), "sidebar")
+    check("ctrl b from the rail is consumed", Focus.handleKey(ctrlB, hiding, hiding.sidebar), true)
+    check("and it hides the rail", hiding.railHidden, true)
+    check("hiding a focused rail is a function the pane can call", typeof Focus.railHidden, "function")
+    if (typeof Focus.railHidden === "function") Focus.railHidden(hiding)
+    check("hiding a focused rail moves the logical view to the list", hiding.focusView, "list")
+    check("and the actual focus follows it", hiding.listArea.focused, true)
+    var j = key(Qt.Key_J, "j", none)
+    check("j then resolves in the list", Focus.lookup(j, hiding), "cursorDown")
+    check("the next chord is consumed too", Focus.handleKey(ctrlB, hiding, hiding.sidebar), true)
+    check("and it shows the rail again", hiding.railHidden, false)
+    var settled = chromePane("list")
+    settled.listArea = { focused: false, forceActiveFocus: function () { this.focused = true } }
+    if (typeof Focus.railHidden === "function") Focus.railHidden(settled)
+    check("a hide with the list focused moves nothing", settled.focusView + "|" + settled.listArea.focused, "list|false")
+    check("tab with a hidden rail stays in the list", Focus.next("list", false), "list")
+    check("tab with an auto-hide rail reveals it", Focus.next("list", true), "rail")
 }
