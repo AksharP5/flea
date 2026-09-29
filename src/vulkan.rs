@@ -294,11 +294,41 @@ fn icd_library(body: &str) -> Option<&str> {
     Some(&after[..end])
 }
 
+// One name test for the hasvk ICD, shared by the pin's skip and the fallback's read.
+// Sample input: "libvulkan_intel_hasvk.so", and "libvulkan_intel.so" for the ANV ICD beside it.
+fn is_hasvk_library(lib: &str) -> bool {
+    lib.to_ascii_lowercase().contains("hasvk")
+}
+
+// Mesa's hasvk drives Gen7 and Gen8 Intel (Ivy Bridge to Broadwell, Bay Trail), whose ids all sit below this one.
+const HASVK_ID_CEILING: u32 = 0x1800;
+// Cherryview and Braswell are Gen8 on hasvk but carry ids above the ceiling.
+const CHERRYVIEW_IDS: [u32; 4] = [0x22b0, 0x22b1, 0x22b2, 0x22b3];
+// Broxton's first id is Gen9, which ANV drives, although it sits below the ceiling.
+const BROXTON_BELOW_CEILING: u32 = 0x0a84;
+
+// Sample input: (0x8086, 0x0412) Haswell GT2 and (0x8086, 0x22b0) Cherryview true, (0x8086, 0xa788) false.
+fn is_hasvk_intel(id: (u32, u32)) -> bool {
+    if id.0 != PCI_VENDOR_INTEL {
+        return false;
+    }
+    if CHERRYVIEW_IDS.contains(&id.1) {
+        return true;
+    }
+    id.1 < HASVK_ID_CEILING && id.1 != BROXTON_BELOW_CEILING
+}
+
+// Issue #160: hasvk draws garbled text, so a box whose every Vulkan device is a hasvk Intel GPU starts on OpenGL.
+// Sample input: [(0x8086, 0x0412)] for a Haswell-only box, plus (0x10de, 0x27e0) beside it.
+pub fn hasvk_only(devices: &[(u32, u32)]) -> bool {
+    !devices.is_empty() && devices.iter().all(|id| is_hasvk_intel(*id))
+}
+
 // Sample input: "libGLX_nvidia.so.0", "libvulkan_intel.so", "libvulkan_intel_hasvk.so".
 fn vendor_of_library(lib: &str) -> Option<u32> {
     let lib = lib.to_ascii_lowercase();
     // hasvk is Haswell/Broadwell, not the display GPU beside a modern iGPU ICD.
-    if lib.contains("hasvk") {
+    if is_hasvk_library(&lib) {
         return None;
     }
     if lib.contains("nvidia") || lib.contains("nouveau") {
@@ -487,6 +517,78 @@ mod tests {
         assert_eq!(vendor_of_library("libvulkan_nouveau.so"), Some(PCI_VENDOR_NVIDIA));
         assert_eq!(vendor_of_library("libvulkan_intel_hasvk.so"), None);
         assert_eq!(vendor_of_library("libvulkan_radeon.so"), Some(PCI_VENDOR_AMD));
+    }
+
+    // Issue #160: hasvk is Mesa's driver for Gen7 and Gen8 Intel; Gen9 and later are ANV's.
+    #[test]
+    fn hasvk_covers_gen7_and_gen8_intel_and_nothing_newer() {
+        assert!(is_hasvk_intel((PCI_VENDOR_INTEL, 0x0412)), "Haswell GT2");
+        assert!(is_hasvk_intel((PCI_VENDOR_INTEL, 0x0166)), "Ivy Bridge GT2");
+        assert!(is_hasvk_intel((PCI_VENDOR_INTEL, 0x0f31)), "Bay Trail");
+        assert!(is_hasvk_intel((PCI_VENDOR_INTEL, 0x1616)), "Broadwell GT2, Gen8");
+        assert!(is_hasvk_intel((PCI_VENDOR_INTEL, 0x22b0)), "Cherryview, Gen8 above the ceiling");
+        assert!(!is_hasvk_intel((PCI_VENDOR_INTEL, 0x0a84)), "Broxton, Gen9 below the ceiling");
+        assert!(!is_hasvk_intel((PCI_VENDOR_INTEL, 0x1916)), "Skylake GT2, Gen9");
+        assert!(!is_hasvk_intel((PCI_VENDOR_INTEL, 0xa788)), "a modern iGPU");
+        assert!(!is_hasvk_intel((PCI_VENDOR_INTEL, 0x1800)));
+        assert!(!is_hasvk_intel((PCI_VENDOR_NVIDIA, 0x0412)));
+    }
+
+    // Issue #160: a Haswell-only box draws garbled text on Vulkan, so the launcher falls back.
+    #[test]
+    fn a_haswell_only_box_is_hasvk_only() {
+        assert!(hasvk_only(&[(PCI_VENDOR_INTEL, 0x0412)]));
+    }
+
+    // Issue #160: hasvk beside another usable device keeps Vulkan, the pin still decides the ICD.
+    #[test]
+    fn hasvk_beside_another_device_is_not_hasvk_only() {
+        assert!(!hasvk_only(&[(PCI_VENDOR_INTEL, 0x0412), (PCI_VENDOR_NVIDIA, 0x27e0)]));
+        assert!(!hasvk_only(&[(PCI_VENDOR_NVIDIA, 0x27e0)]));
+        assert!(!hasvk_only(&[(PCI_VENDOR_INTEL, 0xa788)]));
+    }
+
+    // usable() errors on zero devices, so an empty list never reaches the fallback; it reads as not.
+    #[test]
+    fn no_device_is_never_hasvk_only() {
+        assert!(!hasvk_only(&[]));
+    }
+
+    // The minipc ICD pair, read the way the pin reads them: hasvk is recognised and skipped.
+    #[test]
+    fn the_minipc_icd_pair_names_hasvk_and_skips_it() {
+        let hasvk = "{\"ICD\":{\"library_path\":\"libvulkan_intel_hasvk.so\"}}\n";
+        let intel = "{\"ICD\":{\"library_path\":\"libvulkan_intel.so\"}}\n";
+        assert!(is_hasvk_library(icd_library(hasvk).unwrap()));
+        assert!(!is_hasvk_library(icd_library(intel).unwrap()));
+        assert_eq!(vendor_of_library(icd_library(hasvk).unwrap()), None);
+        assert_eq!(vendor_of_library(icd_library(intel).unwrap()), Some(PCI_VENDOR_INTEL));
+    }
+
+    // A fake Haswell tree: one connected Intel card, whose PCI id the decision reads as hasvk-only.
+    #[test]
+    fn a_fake_haswell_tree_reads_as_hasvk_only() {
+        let drm = fixture_root("drm-haswell");
+        write_card(&drm, "card0", PCI_VENDOR_INTEL, 0x0412);
+        write_connector(&drm, "card0-eDP-1", "connected");
+        let ids = display_pci_ids(&drm);
+        let _ = std::fs::remove_dir_all(&drm);
+        assert!(hasvk_only(&ids));
+    }
+
+    // The same tree with a second GPU is not hasvk-only, whatever the connector says.
+    #[test]
+    fn a_fake_hybrid_tree_with_a_haswell_card_keeps_vulkan() {
+        let drm = fixture_root("drm-haswell-hybrid");
+        write_card(&drm, "card0", PCI_VENDOR_INTEL, 0x0412);
+        write_connector(&drm, "card0-eDP-1", "connected");
+        write_card(&drm, "card1", PCI_VENDOR_NVIDIA, 0x27e0);
+        write_connector(&drm, "card1-DP-1", "connected");
+        let ids = display_pci_ids(&drm);
+        let cards = card_pci_ids(&drm);
+        let _ = std::fs::remove_dir_all(&drm);
+        assert!(!hasvk_only(&ids));
+        assert!(!hasvk_only(&cards));
     }
 
     // Hybrid: Vulkan sees Intel and NVIDIA, only NVIDIA has a panel, so the Intel ICD has to go.

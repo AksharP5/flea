@@ -135,6 +135,22 @@ pub fn pick(reply: &str) -> i32 {
     exec(cmd)
 }
 
+// What the automatic arm hands qs: Vulkan, the hasvk fallback, or the unusable-loader downgrade.
+enum LaunchRenderer {
+    Vulkan(Vec<(u32, u32)>),
+    HasvkFallback,
+    UnusableFallback(String),
+}
+
+// Sample input: Ok(vec![(0x8086, 0x0412)]) for a Haswell-only box, Err for no Vulkan at all.
+fn automatic_renderer(probe: Result<Vec<(u32, u32)>, String>) -> LaunchRenderer {
+    match probe {
+        Err(reason) => LaunchRenderer::UnusableFallback(reason),
+        Ok(devices) if vulkan::hasvk_only(&devices) => LaunchRenderer::HasvkFallback,
+        Ok(devices) => LaunchRenderer::Vulkan(devices),
+    }
+}
+
 // The qs invocation both entry points share, including the renderer chosen at the last hand-off point.
 fn qs_command(target: PathBuf) -> Command {
     let mut cmd = Command::new("qs");
@@ -162,14 +178,20 @@ fn qs_command(target: PathBuf) -> Command {
             pin_display_icd(&mut cmd, None);
         }
     } else {
-        match vulkan::usable() {
-            Err(reason) => {
+        match automatic_renderer(vulkan::usable()) {
+            LaunchRenderer::UnusableFallback(reason) => {
                 // A silent downgrade hides a 2.4x memory regression, so the reason the probe found is said once.
                 eprintln!("flea: Vulkan is unusable, {reason}, so the shell starts on OpenGL");
                 cmd.env("QSG_RHI_BACKEND", "opengl");
                 cmd.env_remove("FLEA_RENDERER_AUTOMATIC");
             }
-            Ok(devices) => {
+            LaunchRenderer::HasvkFallback => {
+                // Issue #160: hasvk draws garbled text, so the fallback names the driver and retries nothing.
+                eprintln!("flea: the only Vulkan device is hasvk (Intel Haswell/Broadwell-era), which draws garbled text, so the shell starts on OpenGL");
+                cmd.env("QSG_RHI_BACKEND", "opengl");
+                cmd.env_remove("FLEA_RENDERER_AUTOMATIC");
+            }
+            LaunchRenderer::Vulkan(devices) => {
                 // Vulkan is the measured fast path, and the marker is what permits the QML arm its one retry.
                 cmd.env("QSG_RHI_BACKEND", "vulkan");
                 cmd.env("FLEA_RENDERER_AUTOMATIC", "1");
@@ -355,6 +377,37 @@ mod tests {
         apply_display_pin(&mut cmd, vulkan::DisplayPin::Unmatched { vendor: 0x10de });
         assert_eq!(override_of(&cmd, "VK_DRIVER_FILES"), None);
         assert_eq!(override_of(&cmd, "VK_ICD_FILENAMES"), None);
+    }
+
+    // Issue #160: the only usable device is hasvk, so the launch is OpenGL with no retry left.
+    #[test]
+    fn a_hasvk_only_probe_starts_on_opengl_with_no_retry() {
+        match automatic_renderer(Ok(vec![(0x8086, 0x0412)])) {
+            LaunchRenderer::HasvkFallback => {}
+            _ => panic!("a Haswell-only probe must fall back"),
+        }
+    }
+
+    // hasvk beside another usable device keeps Vulkan, with the retry the automatic arm permits.
+    #[test]
+    fn a_probe_beside_hasvk_starts_on_vulkan_with_retry() {
+        assert!(matches!(
+            automatic_renderer(Ok(vec![(0x8086, 0x0412), (0x10de, 0x27e0)])),
+            LaunchRenderer::Vulkan(_)
+        ));
+        assert!(matches!(
+            automatic_renderer(Ok(vec![(0x8086, 0xa788)])),
+            LaunchRenderer::Vulkan(_)
+        ));
+    }
+
+    // No Vulkan at all is the existing downgrade, unchanged by the hasvk arm beside it.
+    #[test]
+    fn no_vulkan_at_all_is_the_existing_downgrade() {
+        match automatic_renderer(Err(String::from("vkCreateInstance answered -9"))) {
+            LaunchRenderer::UnusableFallback(reason) => assert!(reason.contains("vkCreateInstance"), "{reason}"),
+            _ => panic!("an unusable loader must downgrade"),
+        }
     }
 
     // The argv a launch helper carries, read back from the built command.
