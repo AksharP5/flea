@@ -252,7 +252,7 @@ ShellRoot {
         if (got !== want)
             root.fail(label + " draws " + got + ", want " + want)
         var ni = delegate.nameItem()
-        if (ni.implicitWidth > ni.width + 0.5)
+        if (ni.implicitWidth > ni.width)
             root.fail(label + " overflows its slot: implicit " + ni.implicitWidth + " over " + ni.width)
         if (ni.truncated === true)
             root.fail(label + " is truncated by Qt after Names elided it")
@@ -279,7 +279,7 @@ ShellRoot {
             return
         }
         budgetProbe.text = Names.middleElide(name, budget + 1)
-        if (!(budgetProbe.implicitWidth > ni.width + 0.5))
+        if (!(budgetProbe.implicitWidth > ni.width))
             root.fail(label + " budget " + budget + " is not tight: budget+1 still fits at " + budgetProbe.implicitWidth + " over " + ni.width)
     }
 
