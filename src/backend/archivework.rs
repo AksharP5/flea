@@ -25,6 +25,7 @@ const CANCEL_DRAIN_STEP: Duration = Duration::from_millis(10);
 
 pub struct Work {
     pub dir: PathBuf,
+    kept: bool,
 }
 
 // Concurrent jobs share a destination, so a counter names each work directory rather than the pid alone.
@@ -41,7 +42,7 @@ impl Work {
             let seq = WORK_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             let dir = beside.join(format!("{}{}-{}-{}", WORK_PREFIX, tag, std::process::id(), seq));
             match std::fs::create_dir(&dir) {
-                Ok(()) => return Ok(Work { dir }),
+                Ok(()) => return Ok(Work { dir, kept: false }),
                 // A taken name may be a live sibling's, so the only safe answer is a different name.
                 Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
                     last = dir.to_string_lossy().to_string();
@@ -51,11 +52,18 @@ impl Work {
         }
         Err(op_err("archive", &last, "no free work directory beside the destination"))
     }
+
+    // A cancel past the drain bound leaves the folder for the operator: the tool may still write.
+    pub fn keep(&mut self) {
+        self.kept = true;
+    }
 }
 
 impl Drop for Work {
     fn drop(&mut self) {
-        // Only ever a directory this process made, under a name only this module writes.
+        if self.kept {
+            return;
+        }        // Only ever a directory this process made, under a name only this module writes.
         if self.dir.file_name().is_some_and(|n| n.to_string_lossy().starts_with(WORK_PREFIX)) {
             let _ = std::fs::remove_dir_all(&self.dir);
         }
@@ -99,7 +107,7 @@ fn failure_message(what: &str, status: &ExitStatus, stderr: &str) -> String {
     }
 }
 
-// Success is read off the filesystem; archive jobs run uncapped and cancellable, convert keeps the decoder CPU cap.
+// Success is read off the filesystem; convert stays on this capped runner, the archive jobs run on the uncapped cancellable one below.
 pub fn run_boxed(what: &str, inner: Vec<String>, read_only: &Path, writable: &Path) -> Result<(), FleaError> {
     run_boxed_inner(what, inner, read_only, writable, Some(sandbox::CPU_SECONDS))
 }
@@ -133,30 +141,32 @@ fn run_boxed_inner(what: &str, inner: Vec<String>, read_only: &Path, writable: &
 }
 
 
-// A writer past the kill can still hold stderr open, and its EOF means every writer exited.
-fn drain_reader(reader: std::thread::JoinHandle<String>) {
+// A writer past the kill can still hold stderr open; true means its EOF arrived in bound.
+fn drain_reader(reader: std::thread::JoinHandle<String>) -> bool {
     let eof = Instant::now() + Duration::from_secs(CANCEL_DRAIN_SECS);
     while !reader.is_finished() && Instant::now() < eof {
         std::thread::sleep(CANCEL_DRAIN_STEP);
     }
-    if reader.is_finished() {
-        reader.join().ok();
+    if !reader.is_finished() {
+        return false;
     }
+    reader.join().ok();
+    true
 }
 
 // run_boxed, watched for a cancel: kill and reap here, so nothing is renamed and stderr is drained.
-pub fn run_boxed_cancellable(what: &str, inner: Vec<String>, read_only: &Path, writable: &Path,
+pub fn run_boxed_cancellable(what: &str, inner: Vec<String>, read_only: &Path, work: &mut Work,
                              cancel: &AtomicBool) -> Result<(), FleaError> {
-    run_boxed_cancellable_inner(what, inner, read_only, writable, cancel, None)
+    run_boxed_cancellable_inner(what, inner, read_only, work, cancel, None)
 }
 
-fn run_boxed_cancellable_inner(what: &str, inner: Vec<String>, read_only: &Path, writable: &Path,
+fn run_boxed_cancellable_inner(what: &str, inner: Vec<String>, read_only: &Path, work: &mut Work,
                                cancel: &AtomicBool, started: Option<&AtomicU32>) -> Result<(), FleaError> {
     if !sandbox::available() {
         let tool = inner.first().map_or("", |s| s.as_str());
         return Err(op_err(what, tool, "the sandbox is unavailable: bwrap or prlimit is not on PATH"));
     }
-    let mut full = sandbox::wrap_archive(&inner, read_only, writable);
+    let mut full = sandbox::wrap_archive(&inner, read_only, &work.dir);
     sandbox::add_status(&mut full, inner.len());
     let mut jailed = crate::backend::jail::spawn_jailed(&full, |cmd| {
         cmd.stdin(std::process::Stdio::null());
@@ -178,8 +188,12 @@ fn run_boxed_cancellable_inner(what: &str, inner: Vec<String>, read_only: &Path,
     loop {
         if cancel.load(Ordering::Relaxed) {
             crate::backend::jail::kill_tree(&mut jailed);
-            drain_reader(reader);
-            return Err(op_err(what, "", "cancelled"));
+            if drain_reader(reader) {
+                return Err(op_err(what, "", "cancelled"));
+            }
+            let name = work.dir.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+            work.keep();
+            return Err(op_err(what, "", &format!("cancelled; the archive tool did not exit, so its work folder {name} was left in place")));
         }
         match jailed.child.try_wait() {
             Ok(Some(status)) => {
@@ -200,9 +214,9 @@ fn run_boxed_cancellable_inner(what: &str, inner: Vec<String>, read_only: &Path,
 }
 
 #[cfg(test)]
-fn run_boxed_cancellable_observed(what: &str, inner: Vec<String>, read_only: &Path, writable: &Path,
+fn run_boxed_cancellable_observed(what: &str, inner: Vec<String>, read_only: &Path, work: &mut Work,
                                   cancel: &AtomicBool, started: &AtomicU32) -> Result<(), FleaError> {
-    run_boxed_cancellable_inner(what, inner, read_only, writable, cancel, Some(started))
+    run_boxed_cancellable_inner(what, inner, read_only, work, cancel, Some(started))
 }
 
 pub fn is_empty_dir(dir: &Path) -> bool {

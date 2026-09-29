@@ -71,6 +71,13 @@ impl Formats {
         if !self.offers(format) {
             return None;
         }
+        // Test seam: with FLEA_TEST_COMPRESS_PROBE set, the compressor is the RLIMIT_CPU probe.
+        #[cfg(test)]
+        if std::env::var_os("FLEA_TEST_COMPRESS_PROBE").is_some() {
+            return Some(vec!["/usr/bin/python3".to_string(), "-c".to_string(),
+                "import resource,sys; open(sys.argv[1],'wb').write(b'probe'); sys.exit(0 if resource.getrlimit(resource.RLIMIT_CPU)[0]==resource.RLIM_INFINITY else 1)".to_string(),
+                dest.to_string_lossy().to_string()]);
+        }
         let mut a: Vec<String> = Vec::with_capacity(names.len() + 7);
         if format == SEVENZIP_FORMAT {
             a.push(SEVENZIP.to_string());

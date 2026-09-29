@@ -18,16 +18,15 @@ pub fn compress(formats: &Formats, parent: &Path, names: &[String], format: &str
     if dest.symlink_metadata().is_ok() {
         return Err(op_err("archive", &dest.to_string_lossy(), "that destination already exists"));
     }
-    let work = Work::new(parent, "arc")?;
+    let mut work = Work::new(parent, "arc")?;
     let staged = work.dir.join(format!("archive.{}", format));
     let inner = match formats.compress_argv(format, &staged, parent, names) {
         Some(a) => a,
         None => return Err(op_err("archive", format, "this box offers no tool for that format")),
     };
-    // Compress has no operator cancel yet, so this flag is never set.
+    // No operator cancel yet, so this flag is never set; the runner stays uncapped past 30 CPU seconds.
     let cancel = AtomicBool::new(false);
-    // Uncapped like the extract: a legitimate compress past 30 CPU seconds is work, not a runaway.
-    run_boxed_cancellable("archive", inner, parent, &work.dir, &cancel)?;
+    run_boxed_cancellable("archive", inner, parent, &mut work, &cancel)?;
     if staged.symlink_metadata().is_err() {
         return Err(op_err("archive", format, "the archive tool wrote nothing"));
     }
@@ -45,7 +44,7 @@ pub fn extract(formats: &Formats, archive: &Path, dest: &Path, cancel: &AtomicBo
         return Err(op_err("archive", &dest.to_string_lossy(), "that destination already exists"));
     }
     let parent = dest.parent().unwrap_or(Path::new("/"));
-    let work = Work::new(parent, "ext")?;
+    let mut work = Work::new(parent, "ext")?;
     let staged = work.dir.join("out");
     std::fs::create_dir(&staged).map_err(|e| from_io("archive", &staged.to_string_lossy(), &e))?;
     let inner = match formats.extract_argv(archive, &staged) {
@@ -58,7 +57,7 @@ pub fn extract(formats: &Formats, archive: &Path, dest: &Path, cancel: &AtomicBo
     }
     // Measured on this box: bsdtar exits 1 on a .. member and de-fangs an absolute one, printing
     // "Removing leading '/'" and extracting it relative. Neither escapes the staging directory.
-    run_boxed_cancellable("archive", inner, archive, &work.dir, cancel)?;
+    run_boxed_cancellable("archive", inner, archive, &mut work, cancel)?;
     // compress and convert stat a path Flea never creates, so their existence check is a real test.
     // This one creates its own staging directory, so the same shape always passes. Two archives
     // legally extract to nothing: an empty one, and one whose only member is the archive root, which
