@@ -4,8 +4,10 @@ use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-// No pid yet, so kill_tree kills only the launcher.
+// No pid yet: kill_tree waits up to STATUS_WAIT_MS for one before any kill.
 pub(crate) const GONE: i32 = -1;
+// The status pipe closed with no pid, so kill_tree stops waiting and kills only the launcher.
+pub(crate) const NO_PID: i32 = 0;
 const SIGKILL: i32 = 9;
 // pipe2 O_CLOEXEC, so a spawn from another thread mid-jail never inherits the status pipe.
 const O_CLOEXEC: i32 = 0o2000000;
@@ -108,7 +110,7 @@ fn status_reader(fd: OwnedFd, out: Arc<AtomicI32>) {
         }
     }
     if !saw_pid {
-        out.store(0, Ordering::SeqCst);
+        out.store(NO_PID, Ordering::SeqCst);
     }
 }
 
