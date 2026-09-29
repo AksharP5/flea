@@ -232,6 +232,10 @@ ShellRoot {
                 failures.push("a clipboard drop labels no copy, got " + probeRow.dropLabelText())
             if (root.countUnder(probeRow) <= root.rowIdleCount)
                 failures.push("a clipboard drop target builds no mark over the idle count")
+            if (probeRow.clipRight() < 0)
+                failures.push("a clipboard drop target draws no clip mark")
+            else if (!(probeRow.clipRight() < probeRow.dropLabelLeft()))
+                failures.push("a clip mark overprints the drop label")
             probeRow.clipMark = ""
             probeRow.dropTarget = false
             root.dropPhase = 2
@@ -276,6 +280,8 @@ ShellRoot {
     // The today lift reads the drawn date cell with the switch off, on, and on with a stale date.
     function measureDate() {
         if (root.datePhase === 0) {
+            if (String(probeRow.cellInk) === String(Flea.Theme.color.foreground))
+                failures.push("cellInk matches foreground, so the today lift reads nothing")
             if (String(probeRow.cell("date").color) !== String(probeRow.cellInk))
                 failures.push("highlight off draws " + probeRow.cell("date").color + " on today, want cellInk")
             Flea.ViewState.state = { highlightToday: true }

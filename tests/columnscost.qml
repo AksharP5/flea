@@ -286,6 +286,14 @@ ShellRoot {
             root.fail("a marked row holds its mark at " + probeMarked.clipX() + ", want " + probeMarked.clipExpectedX())
     }
 
+    // Paint order by document order: the wash sits before the content, the label and mark after it.
+    function checkStacking() {
+        if (typeof probeRow.stackingOk !== "function")
+            root.fail("a column row names no stacking order to assert")
+        else if (!probeRow.stackingOk())
+            root.fail("the drop wash paints above the row content")
+    }
+
     function populateAncestors() {
         var next = {}
         next[area.peekKey(area.parentPath)] = root.ancestorRows
@@ -304,6 +312,7 @@ ShellRoot {
             root.fail("at 3 columns holds " + panes + " ColumnPanes, want 3")
         root.checkRowBudget()
         root.checkClip()
+        root.checkStacking()
         root.checkDividers()
         if (root.failures.length > 0) { root.report(); return }
         root.stubPane.path = "/a/b/c/d"
@@ -363,6 +372,7 @@ ShellRoot {
             root.fail("greatGrandparentItemAt(0) answers non-null after narrowing to 3")
         var rowCount = root.checkRowBudget()
         root.checkClip()
+        root.checkStacking()
         if (root.failures.length === 0)
             console.log("COLUMNCOST PASS panes=" + panes + " row=" + rowCount + " columns=" + count)
         root.reportFailures()

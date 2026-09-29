@@ -74,6 +74,20 @@ Item {
         color: Theme.color.accent
     }
 
+    // The drop wash builds behind the row content, so the accent never tints the text.
+    Loader {
+        id: washLoader
+        active: root.dropTarget
+        anchors.fill: parent
+        // The board's accent hairline over a faint wash at the hover rung's alpha: the token wins over the mock's own 0.07.
+        sourceComponent: Rectangle {
+            anchors.fill: parent
+            color: Util.alpha(Theme.color.accent, Style.hoverFillAlpha)
+            border.width: Theme.spacing.hairline
+            border.color: Theme.color.accent
+        }
+    }
+
     Item {
         id: markSlot
         anchors.left: parent.left
@@ -139,21 +153,18 @@ Item {
         elide: Text.ElideRight
     }
 
-    // One Loader for the drop frame, the drop label and the clip mark, so a row at rest builds none.
-    Component {
-        id: dropComponent
-        Item {
+    // The drop label and the clip mark build above the row content, so a row at rest builds none.
+    Loader {
+        id: dropClipLoader
+        active: root.dropTarget || root.clipMark.length > 0
+        anchors.fill: parent
+        sourceComponent: Item {
             property alias label: dropLabel
-            property alias mark: dropMark
+            property alias mark: clipMarkGlyph
             anchors.fill: parent
-            Rectangle {
-                anchors.fill: parent
-                color: Util.alpha(Theme.color.accent, Style.hoverFillAlpha)
-                border.width: Theme.spacing.hairline
-                border.color: Theme.color.accent
-            }
             Text {
                 id: dropLabel
+                visible: root.dropTarget
                 anchors.right: parent.right
                 anchors.rightMargin: Theme.spacing.rowPaddingX
                 anchors.verticalCenter: parent.verticalCenter
@@ -163,8 +174,9 @@ Item {
                 font.pixelSize: Theme.font.caption
                 textFormat: Text.PlainText
             }
+            // The board's own nudge: the mark sits one pixel above the text centre line.
             Flea.Glyph {
-                id: dropMark
+                id: clipMarkGlyph
                 visible: root.clipMark.length > 0
                 width: root.clipPx
                 height: root.clipPx
@@ -175,30 +187,6 @@ Item {
                 color: Theme.color.muted
             }
         }
-    }
-    Component {
-        id: clipComponent
-        Item {
-            property alias mark: clipMarkGlyph
-            anchors.fill: parent
-            // The board's own nudge: the mark sits one pixel above the text centre line.
-            Flea.Glyph {
-                id: clipMarkGlyph
-                width: root.clipPx
-                height: root.clipPx
-                x: nameText.x + Math.min(nameText.implicitWidth, nameText.width) + Theme.spacing.gap
-                anchors.verticalCenter: parent.verticalCenter
-                anchors.verticalCenterOffset: -1
-                name: root.clipMark
-                color: Theme.color.muted
-            }
-        }
-    }
-    Loader {
-        id: dropClipLoader
-        active: root.dropTarget || root.clipMark.length > 0
-        anchors.fill: parent
-        sourceComponent: root.dropTarget ? dropComponent : clipComponent
     }
 
     // The list's own cell text, so a size reads the same wherever it is drawn.
@@ -234,7 +222,21 @@ Item {
     }
 
     // Test seam as functions, so no row at rest binds to name geometry (tests/columnscost.qml).
-    function clipX() { return dropClipLoader.item && dropClipLoader.item.mark ? dropClipLoader.item.mark.x : 0 }
+    function clipGlyph() { var m = dropClipLoader.item ? dropClipLoader.item.mark : null; return m && m.visible && m.width > 0 ? m : null }
+    function clipX() { var m = root.clipGlyph(); return m ? m.x : 0 }
+    // Paint order as a value: the wash builds behind the content, the label and mark above it.
+    function stackingOk() {
+        var kids = root.children
+        var wash = -1
+        var mark = -1
+        var top = -1
+        for (var i = 0; i < kids.length; i++) {
+            if (kids[i] === washLoader) wash = i
+            if (kids[i] === markSlot) mark = i
+            if (kids[i] === dropClipLoader) top = i
+        }
+        return wash >= 0 && mark >= 0 && top >= 0 && wash < mark && top > mark
+    }
     function clipExpectedX() { return nameText.x + Math.min(nameText.implicitWidth, nameText.width) + Theme.spacing.gap }
     function displayText() { return nameText.text }
     function nameItem() { return nameText }

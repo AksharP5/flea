@@ -2883,6 +2883,12 @@ e33 moves one ceiling, re-derived with `wc -l`: `ui/Pane.qml` 728 to 729 for the
 
 T3 integration records the actual merged ceilings after e32, e33 and w25: `ui/ColumnsArea.qml` 438, `ui/ContextMenu.qml` 582, `ui/Row.qml` 482, `ui/Pane.qml` 729, `tests/columnrow-geom.qml` 409. Each count is re-derived from the merged files; duplicate budget entries from the West pick are removed. The headerhandles and listcost suites are registered in both the aggregate runner and flea-ci.
 
+e32-r2 moves one recorded ceiling, each re-derived with `wc -l`: `ui/Row.qml` 483 to 468 for replacing the two explicit Component resources with one inline Item factory under the one drop/clip Loader (frame, label and mark as conditional children, so a row at rest builds 17 objects) and scoping dropExtra to the mode gap alone; `tests/rowcost.qml` 309 to 314 over soft for the clip-right-edge clears label check and the cellInk differs from foreground guard; `tests/js/recentdates.js` keeps 96 lines for the exact dimmed reverse lift check; `ui/ColumnRow.qml` keeps 248 inside the soft budget, untouched.
+
+e32-r3 keeps the recorded ceiling, each re-derived with `wc -l`: `ui/Row.qml` keeps 468 with the clipRight visible Glyph proof; `ui/ColumnRow.qml` 248 to 250 at the soft budget for splitting the Loader in two (the wash Loader ahead of the content, the label and mark Loader behind it in document order so it paints above, no explicit Component) with the stackingOk order seam and the visible mark clipX proof; `tests/columnscost.qml` 385 to 394 over soft for the wash behind content stacking check; `tests/rowcost.qml` keeps 314; `tools/flea-file-budget` keeps every recorded ceiling.
+
+T3 row-repair integration records `ui/Row.qml` at 468 lines after the earlier comment join; the e32 unit note above keeps its own 468-line provenance. The merged file is the measured ceiling.
+
 ## The key table is generated
 
 `keys.toml` at the repository root is the single source of truth for every binding.

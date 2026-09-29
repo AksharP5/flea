@@ -67,7 +67,7 @@ function run(check) {
     check("Row compares against the window start",
         row.indexOf("todayStart") >= 0, true)
     check("Row reads the switch", row.indexOf("highlightToday") >= 0, true)
-    // Anchored switch-first, so an inverted gate or swapped arms fail; the drawn color is pinned in tests/rowcost.qml.
+    // The source spells the switch-first ternary; the drawn colors are pinned in tests/rowcost.qml.
     var dateColor = dateBlock(row)
     check("the off path never enters the library",
         dateColor.indexOf("(ViewState.highlightToday && RecentDates.isRecent(") >= 0, true)
@@ -75,7 +75,7 @@ function run(check) {
     check("no negated recency survives", dateColor.indexOf("!RecentDates.isRecent") < 0, true)
     check("today lifts to foreground, not the reverse",
         dateColor.indexOf("? root.dimmed(Theme.color.foreground) : root.cellInk") >= 0, true)
-    check("the reverse lift is gone", dateColor.indexOf("? root.cellInk : Theme.color.foreground") < 0, true)
+    check("the reverse lift is gone", dateColor.indexOf("? root.cellInk : root.dimmed(Theme.color.foreground)") < 0, true)
     check("Row passes no switch into the library", dateColor.indexOf("isRecent(true,") < 0, true)
     check("Row hands no mtime down", row.indexOf("mtime: root.row") < 0, true)
     check("Row holds no timer of its own", countRe(row, /Timer\s*\{/g), 0)

@@ -69,7 +69,7 @@ ui/PermissionsDialog.qml 432
 ui/PickerWindow.qml 706
 ui/PreviewColumn.qml 499
 ui/Preview.qml 463
-ui/Row.qml 482
+ui/Row.qml 468
 ui/SettingsPanel.qml 542
 ui/SettingsRow.qml 410
 ui/Sidebar.qml 567

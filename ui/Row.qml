@@ -114,13 +114,17 @@ Item {
     }
 
     // One Loader for the drop frame, the drop label and the clip mark, so a row at rest builds none.
-    Component {
-        id: dropComponent
-        Item {
+    Loader {
+        id: dropLoader
+        active: root.dropTarget || (root.clipMark.length > 0 && !root.renaming && !root.searching)
+        anchors.fill: parent
+        sourceComponent: Item {
             property alias label: dropLabel
+            property alias mark: clipGlyph
             anchors.fill: parent
             // The board's accent hairline over a faint wash at the hover rung's alpha: the token wins over the mock's own 0.07.
             Rectangle {
+                visible: root.dropTarget
                 anchors.fill: parent
                 color: Util.alpha(Theme.color.accent, Style.hoverFillAlpha)
                 border.width: Theme.spacing.hairline
@@ -129,6 +133,7 @@ Item {
             // The board's own words in the columns' place: caption type in the accent, against the row padding.
             Text {
                 id: dropLabel
+                visible: root.dropTarget
                 anchors.right: parent.right
                 anchors.rightMargin: Theme.spacing.rowPaddingX
                 anchors.verticalCenter: parent.verticalCenter
@@ -138,8 +143,9 @@ Item {
                 font.pixelSize: Theme.font.caption
                 textFormat: Text.PlainText
             }
-            // A clipboard row under a drag keeps its mark beside the label.
+            // A clipboard row under a drag keeps its mark beside the label, one pixel above the text centre line.
             Glyph {
+                id: clipGlyph
                 visible: root.clipMark.length > 0 && !root.renaming && !root.searching
                 width: root.clipPx
                 height: root.clipPx
@@ -150,28 +156,6 @@ Item {
                 color: Theme.color.muted
             }
         }
-    }
-    Component {
-        id: clipComponent
-        Item {
-            anchors.fill: parent
-            // The board's own nudge: the mark sits one pixel above the text centre line.
-            Glyph {
-                width: root.clipPx
-                height: root.clipPx
-                x: name.x + Math.min(name.implicitWidth, name.width) + Theme.spacing.gap
-                anchors.verticalCenter: parent.verticalCenter
-                anchors.verticalCenterOffset: -1
-                name: root.clipMark
-                color: Theme.color.muted
-            }
-        }
-    }
-    Loader {
-        id: dropLoader
-        active: root.dropTarget || (root.clipMark.length > 0 && !root.renaming && !root.searching)
-        anchors.fill: parent
-        sourceComponent: root.dropTarget ? dropComponent : clipComponent
     }
 
     // A thumbnail is a decoded image and stays one; the icon beside it is a native mark. The two
@@ -467,6 +451,8 @@ Item {
     function dropLabelLeft() { return root.dropTarget && dropLoader.item ? dropLoader.item.label.x : -1 }
     function dropLabelText() { return root.dropTarget && dropLoader.item ? dropLoader.item.label.text : "" }
     function nameRight() { return name.x + name.width }
+    // The clip mark's right edge, so the drop phase reads the drawn mark and not the name.
+    function clipRight() { var m = dropLoader.item ? dropLoader.item.mark : null; if (!m || !m.visible || m.width <= 0) return -1; return m.x + m.width }
     // The drawn name and mark, so a dim check reads colours and not an opacity.
     function nameItem() { return name }
     function markColor() { return icon.color }
@@ -475,7 +461,7 @@ Item {
         if (!root.dropTarget || !dropLoader.item) return 0
         var labelW = dropLoader.item.label.implicitWidth
         var hidden = root.width - Theme.spacing.rowPaddingX - mode.x
-        var base = (root.modeShown ? Theme.spacing.gap : 0) + (root.clipMark.length > 0 ? Theme.spacing.gap + root.clipPx : 0)
+        var base = root.modeShown ? Theme.spacing.gap : 0
         var need = labelW + Theme.spacing.gap - hidden - base
         return need > 0 ? need : 0
     }
