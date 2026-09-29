@@ -122,9 +122,10 @@ phase and is not in this tree yet.
    Preview and QtMultimedia are now in the tree and the laziness held: `ui/PreviewMedia.qml`
    is the only file that imports QtMultimedia, reached through a `Loader` built by the first
    press of play, because QtMultimedia costs 20 MB before it plays anything.
-   Issue #160: when every usable Vulkan device is a Gen7 or Gen8 Intel GPU (Ivy Bridge to Broadwell and Cherryview, served only by
+   Issue #160: when every Vulkan GPU is a Gen7 or Gen8 Intel GPU (Ivy Bridge to Broadwell and Cherryview, served only by
    Mesa's hasvk), the launcher starts the shell on OpenGL instead and says so once on stderr naming
-   hasvk and the fallback, with no retry marker; a hasvk device beside another usable one keeps Vulkan,
+   hasvk and the fallback, with no retry marker; a CPU-type device such as lavapipe is not a GPU and does
+   not count, a hasvk device beside another Vulkan GPU keeps Vulkan,
    and an explicit `QSG_RHI_BACKEND` is never touched. The environment is the only setter either way:
    `ui/boot/shell.qml` carries no `DefaultEnv` pragma for it, so what `src/gui.rs` puts in the `qs`
    environment is what Qt reads.
@@ -2779,6 +2780,8 @@ f037logic moves three ceilings, each re-derived with `wc -l`: `src/uistate.rs` 5
 f037r6 records one ceiling, re-derived with `wc -l`: `tests/js/columns.js` 298 to 317 for the first-echo peek key and the scoped re-ask checks, crossing the 300 hard cap and recorded rather than split; `ui/js/Names.js` 125 to 199 and `tests/js/names.js` 106 to 128 stay inside their budgets, `src/backend/peek.rs` 217 to 230 stays inside the soft budget, `ui/js/Columns.js` 178 to 184 stays inside its budget, `ui/Backend.qml` falls 426 to 424 inside its recorded 426, `ui/ColumnsArea.qml` keeps 400 at the hard cap and `ui/GridTile.qml` keeps 203.
 
 f037hasvk moves two ceilings, each re-derived with `wc -l`: `src/vulkan.rs` 620 to 722 for the hasvk-only decision (`is_hasvk_library`, `is_hasvk_intel`, `hasvk_only`) with its sysfs-fixture tests, and `src/gui.rs` 432 to 485 for the automatic-arm `LaunchRenderer` with its four probe tests; the file keeps one subject, what the launcher hands `qs`, and the decision adds no probe and no sysfs read to the launch.
+
+The advloop round 1 fixes move four ceilings, each re-derived with `wc -l`: `src/gui.rs` 485 to 497 for the renderer arms applied through `apply_renderer` and the tests that read their environment, `src/uistate.rs` 554 to 625 for map patches merged per entry with null forgets and their tests, `src/vulkan.rs` 722 to 728 for the CPU-type device skip, and `ui/Backend.qml` 426 to 431 for the map-entry writers and the listed path the sort reset reads.
 f037move moves five ceilings, each re-derived with `wc -l`: `src/backend/durable.rs` 439 to 574 for batch_syncfs with held descriptors, scoped release, syncfs_dir and its seams, `src/backend/copyfile.rs` 491 to 534 for the held success path and the batch-aware single-item confirm, `src/backend/movebatch.rs` 466 to 478 for the release plus syncfs confirm and the test-only remove log, `src/backend/durable_tests.rs` 766 to 830 for the mountinfo classification, large-file hold and finish-drain pins, and `src/backend/movebatch_tests.rs` 528 to 709 for the 64-file order log, failed-syncfs, cancel, copy-error and non-block pins; `src/backend/mountinfo.rs` 168 to 170 stays inside the soft budget for the entry source, `src/backend/opsreq.rs` keeps 512 inside its recorded 513 for the mut finish.
 f037movefix moves five ceilings, each re-derived with `wc -l`: `src/backend/durable.rs` 574 to 630 for the settle_held primitive every confirm calls, the hold-at-cap syncfs with its sticky unsettled flag and the success-only syncfs count, `src/backend/copyfile.rs` 534 to 525 for the primitive-owned single-item confirm, `src/backend/movebatch.rs` 478 to 470 for the primitive-owned batch confirm, `src/backend/durable_tests.rs` 830 to 999 for the hold-at-cap, settle-order, rename, redo, failed-syncfs and failed-cap-finish pins, and `src/backend/copyfile_tests.rs` 412 to 460 for the batch move_cross_device pins; `src/backend/movebatch_tests.rs` 709 to 751 for the failed-cap 64-file pin, `src/backend/mountinfo.rs` keeps 170 inside the soft budget, and `src/backend/opsreq.rs` keeps 512 inside its recorded 513.
 

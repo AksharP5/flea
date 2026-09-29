@@ -162,7 +162,7 @@ fn apply_renderer(cmd: &mut Command, renderer: LaunchRenderer) {
         }
         LaunchRenderer::HasvkFallback => {
             // Issue #160: hasvk draws garbled text, so the fallback names the driver and retries nothing.
-            eprintln!("flea: the only GPU is hasvk (Intel Haswell/Broadwell-era), which draws garbled text, so the shell starts on OpenGL");
+            eprintln!("flea: the only Vulkan GPU is hasvk (Intel Ivy Bridge to Broadwell), which draws garbled text, so the shell starts on OpenGL");
             cmd.env("QSG_RHI_BACKEND", "opengl");
             cmd.env_remove("FLEA_RENDERER_AUTOMATIC");
         }

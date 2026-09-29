@@ -4670,6 +4670,14 @@ case_columnautofit() {
     done
     (( _f4j_ok == 1 )) \
         || fail "columnautofit: the second F4 never reached ui.json, widths $(ipc columnWidths)"
+    # A third F4 on fitted widths must change nothing, so F4 is a fit and never a toggle.
+    key -k F4 >/dev/null
+    settle
+    # Sample input: "$(ipc columnWidths)" prints '{"mode":95,"size":125,"date":140,"kind":105}'.
+    local widths_twice
+    widths_twice=$(ipc columnWidths)
+    [[ "$widths_twice" == "$widths_once" ]] \
+        || fail "columnautofit: a third F4 moved $widths_once to $widths_twice"
 
     kill_flea
 }
