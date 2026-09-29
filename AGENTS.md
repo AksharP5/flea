@@ -1686,7 +1686,8 @@ failure fails the check rather than passing it.
 - `backend/thumbcache.rs` names and reads entries in the shared thumbnail cache, see
   "Thumbnail cache".
 - `backend/thumbwrite.rs` creates the temp, stamps the PNG and writes the fail marker.
-- `backend/sandbox.rs` wraps a thumbnailer's argv in bwrap and prlimit, see "Thumbnail sandbox".
+- `backend/sandbox.rs` wraps a thumbnailer's argv in bwrap and prlimit, and the archive jobs' argv in
+  that same jail without the CPU cap, see "Thumbnail sandbox".
 - `backend/child.rs` runs one argv under a deadline and says whether it succeeded, failed or
   never started, which is the whole of what decides a `fail/` marker, see "Thumbnail pool".
 - `backend/thumbs.rs` the bounded, cancellable thumbnail pool, see "Thumbnail pool".
@@ -3861,7 +3862,8 @@ once at startup and prints one line on stderr, so the cause is stated rather tha
 fatal, because listing directories does not need the sandbox. `tests/thumbs.sh` runs the real binary
 with `PATH` pointed at an empty directory and asserts the empty `file`, no cache entry and no marker.
 
-The shape is `prlimit --cpu=30 --as=2147483648 bwrap <flags> <inner>`. **`prlimit` is the
+The decoder's shape is `prlimit --cpu=30 --as=2147483648 bwrap <flags> <inner>`; the archive class
+below is that same argv with the `--cpu=` argument dropped and nothing else. **`prlimit` is the
 outermost program because `bwrap` has no rlimit option**, verified against `bwrap --help`
 on bubblewrap 0.11.2 here. Setting the limits from Rust would need raw `setrlimit`, which
 `std` does not expose and which the zero-dependency rule forbids reaching for through
@@ -3896,6 +3898,37 @@ margin over their range and a larger image on their box could reopen the issue; 
 accepted, because the rung here is the smallest thing that works and the number moves again
 when somebody brings a measurement. It is still finite and still refuses a decompression
 bomb.
+
+**The archive and convert jobs get this jail without the CPU cap, and that is issue #211.** `wrap` is
+the decoder's wrapper; `sandbox::wrap_archive` is the one `archivework.rs` builds — `run_boxed` for
+compress and convert, `run_boxed_cancellable` for extract — and it is the same flags, the same
+read-only input, the same single writable path and the same 2 GiB address-space cap with the `--cpu`
+argument left out, `prlimit` still outermost so that cap still arrives. The ticket is a 55 GiB Zip64,
+74 GiB unpacked in 676 members, whose legitimate extract `prlimit --cpu=30` killed after 30 s: status
+137, about 24 GiB of the staging tree written, nothing on stderr, and the status bar reported that as
+**"The archive tool failed."** — a sentence that names a bad archive for a job the kernel killed.
+Neither zstd nor the tool choice is the cause, as the ticket's own measurements say: libarchive 3.8.9
+reads the archive's method 93, a one-member extract of that member inside this jail is reported to
+succeed, and `7z` would be launched through the same wrapper and die the same way. **No CPU-second
+number replaces 30**, because every finite one is smaller than the next archive somebody brings, and a
+slow unpack is legitimate work rather than the runaway this bound exists for; what bounds the archive
+class is the address-space cap, `--die-with-parent` and the operator's cancel, which kills and reaps
+the child and discards the staging directory. **The index read keeps the decoder's wrapper
+deliberately**, and its own bound is why: `archivelist.rs` stops a read at `ARCHIVE_READ_MS`, 2 s of
+wall clock, `archive_produced_count_inner` answers `None` for a read that failed, timed out or was
+killed, and `extract` already reads that as unverified rather than as a failure, so a cap biting there
+cannot turn into a published lie. **A job that died on a signal now says so.** One that wrote nothing
+used to reach the status bar as the same empty-stderr fallback as a tool that exited non-zero in
+silence, whatever had actually happened, so `archivework.rs`'s `failure_message` reads the status when
+the tool wrote nothing: bwrap renders an application the kernel killed as exit 128+n and keeps a real
+signal for its own death (measured here; see "Thumbnail pool"), so 137 is reported as "was killed by
+signal SIGKILL (9)", a real signal as the same sentence, and any other non-zero exit as "exited with
+status N". The tool's own last non-empty line of stderr still wins over both, because that is the
+better diagnosis for a genuinely bad archive, and a blank or whitespace-only stderr no longer becomes
+an empty message. **What this costs is accepted and stated**: the 30 s cap was incidentally a bound on
+how much of the disk one hostile archive could fill before it was killed, so that job now runs until
+the operator's Cancel reaches it, which is exactly what `7z x` on the same file outside Flea does; a
+memory bomb is still refused, by the address-space cap.
 
 The flags, and why each is there:
 

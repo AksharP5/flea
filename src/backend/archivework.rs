@@ -7,8 +7,9 @@ use crate::backend::archivelist::parse_reader;
 use crate::backend::opsreq::op_err;
 use crate::error::{from_io, FleaError};
 use std::io::{self, Read};
+use std::os::unix::process::ExitStatusExt;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command};
+use std::process::{Child, Command, ExitStatus};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::time::{Duration, Instant};
@@ -62,6 +63,49 @@ impl Drop for Work {
     }
 }
 
+// The signal a job died from, named for the ones these tools can die from; anything else keeps its
+// number alone, because a message that guesses a name is worse than one that states a number.
+fn signal_name(signal: i32) -> Option<&'static str> {
+    match signal {
+        6 => Some("SIGABRT"),
+        9 => Some("SIGKILL"),
+        11 => Some("SIGSEGV"),
+        15 => Some("SIGTERM"),
+        24 => Some("SIGXCPU"),
+        _ => None,
+    }
+}
+
+// The tool's own last line is the best diagnosis there is, and it is what an operator sees for a bad
+// archive. When there is none, the exit status is the only evidence there is, and issue #211 is what the
+// old one-sentence fallback cost: a 55 GiB Zip64 whose legitimate unpack a 30 s RLIMIT_CPU killed arrived
+// as "The archive tool failed.", which names a bad archive for a job the kernel killed. Two spellings of
+// one death are read here, because bwrap maps an application the kernel killed to exit 128+n and keeps a
+// real signal for its own death (measured on the box; see AGENTS.md "Thumbnail pool"), so a launcher
+// SIGKILLed by its parent and an extractor SIGKILLed inside the jail both report the signal.
+fn failure_message(what: &str, status: &ExitStatus, stderr: &str) -> String {
+    // A blank line is not a diagnosis, which the old last-line read of stderr took it for.
+    if let Some(line) = stderr.lines().rev().find(|line| !line.trim().is_empty()) {
+        return line.trim().to_string();
+    }
+    let killed = |signal: i32| match signal_name(signal) {
+        Some(name) => format!("the {} tool was killed by signal {} ({})", what, name, signal),
+        None => format!("the {} tool was killed by signal {}", what, signal),
+    };
+    if let Some(signal) = status.signal() {
+        return killed(signal);
+    }
+    match status.code() {
+        // 128+n is bwrap's rendering of a signal, so the number is read back into the sentence; an
+        // unknown 128+n is left as an exit status rather than claimed as a kill.
+        Some(code) if signal_name(code - 128).is_some() => killed(code - 128),
+        Some(code) => format!("the {} tool exited with status {}", what, code),
+        // A status is either a code or a signal, so this arm is unreachable; it answers a sentence
+        // rather than panicking, because producing one is this function's whole job.
+        None => format!("the {} tool failed", what),
+    }
+}
+
 // The tools print their own diagnosis on stderr and do not always exit non-zero, so success is read
 // off the filesystem: the file the job was told to produce either exists afterwards or it does not.
 // what names the operation this jail is running, because the same jail runs the archive tools and
@@ -74,7 +118,7 @@ pub fn run_boxed(what: &str, inner: Vec<String>, read_only: &Path, writable: &Pa
         let tool = inner.first().map_or("", |s| s.as_str());
         return Err(op_err(what, tool, "the sandbox is unavailable: bwrap or prlimit is not on PATH"));
     }
-    let full = sandbox::wrap(&inner, read_only, writable);
+    let full = sandbox::wrap_archive(&inner, read_only, writable);
     let out = Command::new(&full[0])
         .args(&full[1..])
         .stdin(std::process::Stdio::null())
@@ -84,9 +128,8 @@ pub fn run_boxed(what: &str, inner: Vec<String>, read_only: &Path, writable: &Pa
     if out.status.success() {
         return Ok(());
     }
-    let text = String::from_utf8_lossy(&out.stderr);
-    let fallback = format!("the {} tool failed", what);
-    Err(op_err(what, "", text.lines().last().unwrap_or(&fallback)))
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    Err(op_err(what, "", &failure_message(what, &out.status, &stderr)))
 }
 
 
@@ -102,7 +145,7 @@ fn run_boxed_cancellable_inner(what: &str, inner: Vec<String>, read_only: &Path,
         let tool = inner.first().map_or("", |s| s.as_str());
         return Err(op_err(what, tool, "the sandbox is unavailable: bwrap or prlimit is not on PATH"));
     }
-    let full = sandbox::wrap(&inner, read_only, writable);
+    let full = sandbox::wrap_archive(&inner, read_only, writable);
     let mut child = Command::new(&full[0])
         .args(&full[1..])
         .stdin(std::process::Stdio::null())
@@ -135,8 +178,7 @@ fn run_boxed_cancellable_inner(what: &str, inner: Vec<String>, read_only: &Path,
                 if status.success() {
                     return Ok(());
                 }
-                let fallback = format!("the {} tool failed", what);
-                return Err(op_err(what, "", text.lines().last().unwrap_or(&fallback)));
+                return Err(op_err(what, "", &failure_message(what, &status, &text)));
             }
             Ok(None) => std::thread::sleep(CANCEL_STEP),
             Err(e) => {
@@ -283,103 +325,6 @@ fn archive_produced_count_with_inner(inner: Vec<String>, spec: ListSpec, read_on
                                  Some(Arc::clone(ready)))
 }
 
-
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::backend::testdir::TestDir;
-
-    #[test]
-    fn a_work_directory_is_made_beside_the_destination_and_goes_with_its_own_drop() {
-        let d = TestDir::new("archwork");
-        let kept;
-        {
-            let w = Work::new(d.path(), "arc").expect("work");
-            kept = w.dir.clone();
-            assert!(kept.is_dir());
-            assert!(kept.file_name().unwrap().to_string_lossy().starts_with(WORK_PREFIX));
-            // Beside the destination, so the rename that follows never crosses a filesystem.
-            assert_eq!(kept.parent().unwrap(), d.path());
-        }
-        assert!(!kept.exists(), "the work directory goes with the job that made it");
-    }
-
-    // Cancel kills and reaps; the exact spawned pid keeps the /proc gate off other suites' processes.
-    #[test]
-    fn a_cancelled_child_is_killed_and_reaped_rather_than_left_running() {
-        if crate::backend::sandboxprobe::skipped() { return; }
-        let d = TestDir::new("archworkcancel");
-        let work = Work::new(d.path(), "ext").expect("work");
-        let cancel = std::sync::Arc::new(AtomicBool::new(false));
-        let started_pid = std::sync::Arc::new(AtomicU32::new(0));
-        let flag = std::sync::Arc::clone(&cancel);
-        let child_pid = std::sync::Arc::clone(&started_pid);
-        let notifier = std::thread::spawn(move || {
-            let deadline = Instant::now() + Duration::from_secs(5);
-            while child_pid.load(Ordering::SeqCst) == 0 && Instant::now() < deadline {
-                std::thread::yield_now();
-            }
-            flag.store(true, Ordering::Relaxed);
-        });
-        let seconds = format!("30.{}", std::process::id());
-        let began = std::time::Instant::now();
-        let e = run_boxed_cancellable_observed("archive", vec!["/usr/bin/sleep".to_string(), seconds],
-                                               d.path(), &work.dir, &cancel, &started_pid).unwrap_err();
-        notifier.join().expect("the cancellation notifier finished");
-        assert_eq!(e.msg, "cancelled");
-        assert!(began.elapsed() < Duration::from_secs(10), "a cancelled child was waited out");
-        assert!(work.dir.is_dir(), "the runner must not remove the caller's staging directory");
-        let pid = started_pid.load(Ordering::SeqCst);
-        assert_ne!(pid, 0, "the cancellation fixture never observed its child pid");
-        let proc_entry = PathBuf::from(format!("/proc/{pid}"));
-        assert!(!proc_entry.exists(), "the owned child was not reaped");
-    }
-
-    // The parser must cancel while a real jailed child holds stdout open after one bounded line.
-    #[test]
-    fn a_cancelled_index_reader_kills_and_reaps_a_child_blocked_on_stdout() {
-        if crate::backend::sandboxprobe::skipped() { return; }
-        let d = TestDir::new("archworkindexcancel");
-        let cancel = std::sync::Arc::new(AtomicBool::new(false));
-        let started = std::sync::Arc::new(AtomicU32::new(0));
-        let ready = std::sync::Arc::new(AtomicBool::new(false));
-        let flag = std::sync::Arc::clone(&cancel);
-        let parsed = std::sync::Arc::clone(&ready);
-        let notifier = std::thread::spawn(move || {
-            let deadline = Instant::now() + Duration::from_secs(5);
-            while !parsed.load(Ordering::SeqCst) && Instant::now() < deadline {
-                std::thread::yield_now();
-            }
-            flag.store(true, Ordering::Relaxed);
-        });
-        let fixture = "printf '%s\\n' '-rw-r--r-- 0 gm gm 1 Jan 1 00:00 a.txt'; exec /usr/bin/sleep 600";
-        let result = archive_produced_count_with_inner(
-            vec!["/usr/bin/sh".to_string(), "-c".to_string(), fixture.to_string()],
-            crate::backend::archivespec::tar_spec(), d.path(), &cancel, &started, &ready,
-        );
-        notifier.join().expect("the readiness notifier finished");
-        let error = result.unwrap_err();
-        assert_eq!(error.msg, "cancelled");
-        assert!(ready.load(Ordering::SeqCst), "the fixture never delivered its first line");
-        let pid = started.load(Ordering::SeqCst);
-        assert_ne!(pid, 0, "the verification fixture never exposed its child pid");
-        let proc_entry = PathBuf::from(format!("/proc/{pid}"));
-        assert!(!proc_entry.exists(), "the blocked verification child was not reaped");
-    }
-
-    #[test]
-    fn two_work_directories_beside_the_same_destination_never_share_a_path() {
-        let d = TestDir::new("archwork2");
-        let first = Work::new(d.path(), "ext").expect("first");
-        let second = Work::new(d.path(), "ext").expect("second");
-        assert_ne!(first.dir, second.dir, "a second job must not claim the first job's directory");
-        assert!(first.dir.is_dir(), "and must not have destroyed it");
-        assert!(second.dir.is_dir());
-        // In flight, so a live sibling's contents have to survive the other one being created.
-        std::fs::write(first.dir.join("in-flight"), b"payload").expect("write");
-        let third = Work::new(d.path(), "ext").expect("third");
-        assert!(first.dir.join("in-flight").is_file(), "a third job must not destroy either");
-        assert_ne!(third.dir, first.dir);
-        assert_ne!(third.dir, second.dir);
-    }
-}
+#[path = "archivework_tests.rs"]
+mod tests;
