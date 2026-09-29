@@ -29,8 +29,10 @@ Item {
     property int lockedMode: -1
     // Whether zero rows here means empty: false while a peek is still out, because a pending peek answers zero rows too, and false for the pane's own listing, whose empty answer is the hero ui/shell.qml lays over the area.
     property bool drawsEmpty: false
+    // True when this column draws its size cell, the same flag its rows read as showSize.
+    readonly property bool showsSize: root.pane !== null && root.pane !== undefined
     // One character budget for every row here, so a column lays its names out once.
-    readonly property int nameBudget: Theme.bodyAdvance > 0 ? Math.max(0, Math.floor((Scroll.contentWidth(root.width, Theme.spacing.rowPaddingX) - Theme.spacing.rowPaddingX - Theme.iconSize - Theme.spacing.gap - Theme.spacing.rowPaddingX - (root.pane !== null ? Theme.column.size + Theme.spacing.gap : 0)) / Theme.bodyAdvance)) : -1
+    readonly property int nameBudget: Theme.bodyAdvance > 0 ? Math.max(0, Math.floor((Scroll.contentWidth(root.width, Theme.spacing.rowPaddingX) - Theme.spacing.rowPaddingX - Theme.iconSize - Theme.spacing.gap - Theme.spacing.rowPaddingX - Theme.font.caption - (root.showsSize ? Theme.column.size + 2 * Theme.spacing.gap : 0)) / Theme.bodyAdvance)) : -1
     // True for every shown pane but the rightmost one; the line sits on the pane edge and changes no width.
     property bool showDivider: false
 
@@ -210,7 +212,7 @@ Item {
             // hands that back as undefined; every row reader in the tree tests against a real null.
             row: root.pane ? root.pane.rowFor(listingIndex) : root.rows[index] !== undefined ? root.rows[index] : null
             thumb: root.pane !== null && Thumbs.allowed(row, ViewState.thumbnailMode) ? root.pane.thumbFor(listingIndex) : ""
-            showSize: root.pane !== null
+            showSize: root.showsSize
             dirSize: root.pane !== null ? DirSizes.sizeFor(root.pane.dirSizeState, listingIndex) : null
             cursor: root.selectedIndex >= 0 && listingIndex === root.selectedIndex
             // The clipboard mark is looked up only on the pane's own column.

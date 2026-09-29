@@ -3,13 +3,17 @@
 import QtQuick
 import Quickshell
 import "flea" as Flea
+import "flea/js/Names.js" as Names
 
-// e20 column-row geometry: a real ColumnRow at a realistic column width draws
-// its name between the mark and the size, with the size before the chevron.
+// Column-row geometry through a real ColumnPane: the handed budget fits, a clip fits, and a short name draws whole.
 ShellRoot {
     id: root
 
     property var failures: []
+    property string longName: "a-very-long-filename-that-must-elide-in-the-middle-to-keep-its-extension-visible-0123456789abcdef0123456789abcdef0123456789abcdef.png"
+    property string shortName: "columnrow-geom.txt"
+    property var activeRows: [{ n: root.longName, d: false, i: "text-x-generic", p: 420, s: 13 }, { n: root.shortName, d: false, i: "text-x-generic", p: 420, s: 13 }]
+    property var peekRows: [{ n: root.longName, d: false, i: "text-x-generic", p: 420, s: 13 }, { n: root.shortName, d: false, i: "text-x-generic", p: 420, s: 13 }]
 
     // A ColumnPane-like parent: a fixed column width, the way the delegate is built.
     Item {
@@ -38,6 +42,142 @@ ShellRoot {
             cursor: true
             nameBudget: 40
         }
+
+        Flea.ColumnRow {
+            id: probeScissors
+            y: 80
+            width: parent.width
+            row: ({ n: "columnrow-geom.txt", d: false, i: "text-x-generic", p: 420, s: 13 })
+            thumb: ""
+            clipMark: "scissors"
+            showSize: true
+            nameBudget: 40
+        }
+
+        Flea.ColumnRow {
+            id: probePlainClip
+            y: 120
+            width: parent.width
+            row: ({ n: "columnrow-geom.txt", d: false, i: "text-x-generic", p: 420, s: 13 })
+            thumb: ""
+            clipMark: ""
+            showSize: true
+            nameBudget: 40
+        }
+    }
+
+    Component {
+        id: backendStub
+        QtObject {
+            property int dirDev: 0
+            function peek(path, size, hidden) {}
+            function thumb(rows, cacheOnly) {}
+            function thumbcancel(rows) {}
+            function dirsize(rows) {}
+            function dirsizecancel() {}
+            function window(start, count) {}
+        }
+    }
+
+    Component {
+        id: paneComponent
+        QtObject {
+            property string path: "/probe"
+            property var rows: []
+            property var shown: null
+            property int shownTotal: 2
+            property int total: 2
+            property int held: 0
+            property int cursorIndex: -1
+            property int renamingIndex: -1
+            property var clipboard: ({ paths: [], moving: false })
+            property var thumbState: ({ file: {}, order: [] })
+            property var dirSizeState: ({ file: {}, order: [] })
+            property bool storageKnown: false
+            property bool listInFlight: false
+            property int firstSettleMs: 70
+            property int settleMs: 120
+            property int coalesceMs: 16
+            property int refetchMargin: 25
+            property int buffer: 150
+            property int windowSize: 35
+            property var backend: null
+            property var trash: ({ opened: false })
+            property string searchMode: ""
+            function join(base, name) { return String(base) + "/" + String(name) }
+            function rowFor(index) { var o = index - held; return (o >= 0 && o < rows.length) ? rows[o] : null }
+            function isSelected(index) { return false }
+            function thumbFor(index) { return "" }
+        }
+    }
+
+    property var stubBackend: backendStub.createObject(root)
+    property var stubPanePlain: paneComponent.createObject(root, { backend: root.stubBackend, rows: root.activeRows })
+    property var stubPaneClipped: paneComponent.createObject(root, { backend: root.stubBackend, rows: root.activeRows, clipboard: ({ paths: ["/probe/" + root.longName], moving: false }) })
+
+    // Realistic column widths: 366 is an 1100 px window at 3 columns, 853 a 2560 px window at 3 columns.
+    Flea.ColumnPane {
+        id: activeNarrow
+        y: 200
+        width: 366
+        height: 200
+        pane: root.stubPanePlain
+    }
+
+    Flea.ColumnPane {
+        id: activeWide
+        y: 410
+        width: 853
+        height: 200
+        pane: root.stubPanePlain
+    }
+
+    Flea.ColumnPane {
+        id: clippedNarrow
+        y: 620
+        width: 366
+        height: 200
+        pane: root.stubPaneClipped
+    }
+
+    Flea.ColumnPane {
+        id: peekNarrow
+        y: 830
+        width: 366
+        height: 200
+        rows: root.peekRows
+    }
+
+    Flea.ColumnPane {
+        id: peekWide
+        y: 1040
+        width: 853
+        height: 200
+        rows: root.peekRows
+    }
+
+    Item {
+        id: dynamicContainer
+        y: 1250
+        width: 366
+        height: 40
+    }
+
+    Component {
+        id: dynamicRowComponent
+        Flea.ColumnRow {
+            thumb: ""
+            clipMark: ""
+            showSize: true
+        }
+    }
+
+    property var dynamicRow: null
+    property int dynamicTextChanges: 0
+    Connections {
+        id: dynamicConn
+        target: null
+        function onTextChanged() { root.dynamicTextChanges += 1 }
     }
 
     // Delegates are built on the polish pass, so the read waits one turn like mount-listing.qml.
@@ -46,6 +186,13 @@ ShellRoot {
         running: true
         repeat: false
         onTriggered: root.measure()
+    }
+
+    Timer {
+        id: dynamicTimer
+        interval: 600
+        repeat: false
+        onTriggered: root.measureDynamic()
     }
 
     function fail(text) { root.failures.push(text) }
@@ -68,11 +215,87 @@ ShellRoot {
             root.fail(label + " starts its size at " + sg[0] + " at or left of the mark edge " + markR)
     }
 
+    // A row built by a real ColumnPane fits its handed text: no second elision by Qt.
+    function checkPaneRow(pane, label, index, name, clipped) {
+        var delegate = pane.itemAtIndex(index)
+        if (!delegate) {
+            root.fail(label + " builds no delegate at " + index)
+            return
+        }
+        var budget = pane.nameBudget
+        if (!(budget >= 0)) {
+            root.fail(label + " hands no budget, got " + budget)
+            return
+        }
+        var adjust = 0
+        if (clipped) {
+            if (!delegate.clipMark || delegate.clipMark.length === 0) {
+                root.fail(label + " carries no clip mark, want one")
+                return
+            }
+            adjust = Math.ceil((Flea.Theme.spacing.gap + delegate.clipPx) / Flea.Theme.bodyAdvance)
+        }
+        var want = Names.middleElide(name, Math.max(0, budget - adjust))
+        var got = delegate.displayText()
+        if (got !== want)
+            root.fail(label + " draws " + got + ", want " + want)
+        var ni = delegate.nameItem()
+        if (ni.implicitWidth > ni.width + 0.5)
+            root.fail(label + " overflows its slot: implicit " + ni.implicitWidth + " over " + ni.width)
+        if (ni.truncated === true)
+            root.fail(label + " is truncated by Qt after Names elided it")
+    }
+
+    function checkDim() {
+        if (probeScissors.dimOpacity !== Flea.Theme.disabledOpacity)
+            root.fail("a scissors row dims at " + probeScissors.dimOpacity + ", want " + Flea.Theme.disabledOpacity)
+        if (probePlainClip.dimOpacity !== 1)
+            root.fail("an unmarked row dims at " + probePlainClip.dimOpacity + ", want 1")
+        if (probeScissors.nameItem().opacity !== 1)
+            root.fail("a scissors name carries its own opacity, want the content item's alone")
+    }
+
     function measure() {
         root.checkRow(probeFile, "a file row", "columnrow-geom.txt")
         root.checkRow(probeDir, "a directory row", "full")
+        root.checkDim()
+        root.checkPaneRow(activeNarrow, "an active column at 366", 0, root.longName, false)
+        root.checkPaneRow(activeWide, "an active column at 853", 0, root.longName, false)
+        root.checkPaneRow(clippedNarrow, "a clipped row at 366", 0, root.longName, true)
+        root.checkPaneRow(peekNarrow, "a peek column at 366", 0, root.longName, false)
+        root.checkPaneRow(peekWide, "a peek column at 853", 0, root.longName, false)
+        root.checkPaneRow(activeNarrow, "a short name at 366", 1, root.shortName, false)
+        root.checkPaneRow(peekNarrow, "a short peek name at 366", 1, root.shortName, false)
+        if (String(activeNarrow.itemAtIndex(1).displayText()).indexOf("…") >= 0)
+            root.fail("a short name draws elided at 366")
+        if (root.failures.length > 0) { root.report(); return }
+        root.dynamicTextChanges = 0
+        root.dynamicRow = dynamicRowComponent.createObject(dynamicContainer, { width: 366, row: ({ n: root.longName, d: false, i: "text-x-generic", p: 420, s: 13 }), showSize: true, nameBudget: activeNarrow.nameBudget })
+        if (!root.dynamicRow) {
+            root.fail("a dynamic row never builds")
+            root.report()
+            return
+        }
+        dynamicConn.target = root.dynamicRow.nameItem()
+        dynamicTimer.start()
+    }
+
+    function measureDynamic() {
+        if (!root.dynamicRow) {
+            root.fail("a dynamic row never builds")
+        } else {
+            if (root.dynamicTextChanges !== 0)
+                root.fail("a handed-budget row re-sets its text " + root.dynamicTextChanges + " times, want 0")
+            var want = Names.middleElide(root.longName, activeNarrow.nameBudget)
+            if (root.dynamicRow.displayText() !== want)
+                root.fail("a dynamic row draws " + root.dynamicRow.displayText() + ", want " + want)
+        }
         if (root.failures.length === 0)
             console.log("COLUMNROWGEOM PASS file=columnrow-geom.txt dir=full")
+        root.report()
+    }
+
+    function report() {
         for (var f = 0; f < root.failures.length; f++)
             console.log("COLUMNROWGEOM FAIL " + root.failures[f])
         Quickshell.execDetached(["kill", String(Quickshell.processId)])

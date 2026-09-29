@@ -125,7 +125,7 @@ Item {
             anchors.right: sizeCell.left
             anchors.rightMargin: (root.showSize ? Theme.spacing.gap : 0) + (root.clipMark.length > 0 ? Theme.spacing.gap + root.clipPx : 0)
             anchors.verticalCenter: parent.verticalCenter
-            text: root.row && root.nameBudget >= 0 ? Names.middleElide(root.row.n, root.nameBudget) : (root.row ? root.row.n : "")
+            text: root.row && root.nameBudget >= 0 ? Names.middleElide(root.row.n, Math.max(0, root.nameBudget - (root.clipMark.length > 0 ? Math.ceil((Theme.spacing.gap + root.clipPx) / Theme.bodyAdvance) : 0))) : (root.row ? root.row.n : "")
             color: root.ink
             font.family: Theme.font.family
             font.pixelSize: Theme.font.body
@@ -133,9 +133,7 @@ Item {
             elide: Text.ElideMiddle
         }
 
-        // Only the active column carries a number: a peeked row is never stat'd and dirsize resolves
-        // against the active listing, so a neighbour has no row to ask about. ColumnsTabs board rule 3.
-        // The chevron lives on the row and not in the content, so no anchor crosses that edge: the size holds its right edge off the parent by the chevron width instead.
+        // Only the active column carries a number (ColumnsTabs board rule 3); the size holds its right edge off the parent by the chevron width.
         Text {
             id: sizeCell
             anchors.right: parent.right
@@ -153,8 +151,7 @@ Item {
         }
     }
 
-    // Built only on a clipboard row; off it the x is a constant, so no row reads its name geometry.
-    // Test seams stay functions, so no row at rest binds to name geometry (tests/columnscost.qml).
+    // Built only on a clipboard row, so no row at rest binds to name geometry (tests/columnscost.qml).
     Loader {
         id: clipLoader
         active: root.clipMark.length > 0

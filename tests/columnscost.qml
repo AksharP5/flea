@@ -234,24 +234,6 @@ ShellRoot {
         showSize: false
     }
 
-    // A long name at a column-handed budget, so one build lays its name out once.
-    Flea.ColumnRow {
-        id: probeLong
-        width: 300
-        row: ({ n: "a-very-long-filename-that-must-elide-in-the-middle-to-keep-its-extension-visible-0123456789abcdef.png", d: false, i: "text-x-generic", p: 420, s: 13 })
-        thumb: ""
-        clipMark: ""
-        showSize: false
-        nameBudget: 40
-    }
-
-    // Counting lives here: the Connections misses the first layout, so a stable name reads 0 relayouts.
-    property int longRelayouts: 0
-    Connections {
-        target: probeLong.nameItem()
-        function onTextChanged() { root.longRelayouts += 1 }
-    }
-
     // Measured by the controller offscreen; one more object per delegate is a regression.
     readonly property int columnRowMax: 20
 
@@ -304,18 +286,6 @@ ShellRoot {
             root.fail("a marked row holds its mark at " + probeMarked.clipX() + ", want " + probeMarked.clipExpectedX())
     }
 
-    // One build with an empty clipboard lays its name out once, elided to the handed budget.
-    function checkLayouts() {
-        if (probeLong.nameBudget !== 40)
-            root.fail("a column row keeps no handed budget, got " + probeLong.nameBudget)
-        if (root.longRelayouts !== 0)
-            root.fail("a long name with an empty clipboard lays out " + (root.longRelayouts + 1) + " times, want 1")
-        if (String(probeLong.displayText()).indexOf("…") < 0)
-            root.fail("a long name at budget 40 draws unelided")
-        if (probeLong.clipX() !== 0)
-            root.fail("a long unmarked row moves its mark to " + probeLong.clipX() + ", want 0")
-    }
-
     function populateAncestors() {
         var next = {}
         next[area.peekKey(area.parentPath)] = root.ancestorRows
@@ -334,7 +304,6 @@ ShellRoot {
             root.fail("at 3 columns holds " + panes + " ColumnPanes, want 3")
         root.checkRowBudget()
         root.checkClip()
-        root.checkLayouts()
         root.checkDividers()
         if (root.failures.length > 0) { root.report(); return }
         root.stubPane.path = "/a/b/c/d"
@@ -394,7 +363,6 @@ ShellRoot {
             root.fail("greatGrandparentItemAt(0) answers non-null after narrowing to 3")
         var rowCount = root.checkRowBudget()
         root.checkClip()
-        root.checkLayouts()
         if (root.failures.length === 0)
             console.log("COLUMNCOST PASS panes=" + panes + " row=" + rowCount + " columns=" + count)
         root.reportFailures()
