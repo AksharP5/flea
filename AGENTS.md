@@ -2038,7 +2038,8 @@ Vulkan loader. `src/backend/localsend.rs` crosses the cap at 403, from 399, for 
 a descriptor `sleep` closes just after exec; the file is the LocalSend bridge and its tests, one
 subject. `src/tui/actions.rs` 999 to 1016 and `src/tui/model.rs` 1174 to 1196 for the anchored re-sort
 and the cursor keys that spend it.
-`ui/PickerWindow.qml` 632 to 676 for the chooser's sort header, PR #185, which yields to the save form. `ui/ChromeBar.qml` 409 to 421
+`ui/PickerWindow.qml` 632 to 676 for the chooser's sort header, PR #185, which yields to the save form, then to 706
+for the file double-click send (w9 `doubleActivate`, the mark-then-accept reaching Enter's own accept). `ui/ChromeBar.qml` 409 to 421
 for the handlers that stop under Quick Look. `ui/Sidebar.qml` 532 to 543 and `ui/NetworkMounts.qml` 553
 to 560 for the rail's one-step settle. `ui/OpenWithDialog.qml` 583 to 588 and `ui/Ipc.qml` 780 to 781
 for the scrollbars of PR #128, and `ui/WindowBody.qml` 476 to 484 for the dual view's launch folder.

@@ -127,4 +127,21 @@ function run(check) {
     check("S reverses the order the listing is in", order(Sort.reverseOrder("mtime", false)), "mtime desc")
     check("S reverses an inherited kind order rather than refusing it",
           order(Sort.reverseOrder("kind", true)), "kind asc")
+
+    // A double click on a file does what Enter on that row does: it sends the file in a
+    // single-file request and marks-then-sends it in a multiple one, matching accept() exactly.
+    var single = Picker.request('{"mode":"open","multiple":false}')
+    var multi = Picker.request('{"mode":"open","multiple":true}')
+    var file = {d: false, p: 0, s: 1, m: 1, i: "text"}
+    var folder = {d: true, p: 0, s: 0, m: 1, i: "folder"}
+    check("a double click on an unmarked file marks then sends it", Picker.doubleAction(single, file, "/a/b.txt", "/a/b.txt", []), "markAccept")
+    check("a double click on a marked file sends it", Picker.doubleAction(single, file, "/a/b.txt", "/a/b.txt", [{path: "/a/b.txt", bytes: 3}]), "accept")
+    check("a multiple double click on an unmarked file marks then sends", Picker.doubleAction(multi, file, "/a/c.txt", "/a/c.txt", [{path: "/a/b.txt", bytes: 3}]), "markAccept")
+    check("a multiple double click on a marked file sends the marks", Picker.doubleAction(multi, file, "/a/b.txt", "/a/b.txt", [{path: "/a/b.txt", bytes: 3}]), "accept")
+    check("a double click on a folder still opens it", Picker.doubleAction(single, folder, "/a/sub", "/a/sub", []), "open")
+    check("a folder request never sends on double click", Picker.doubleAction(Picker.request('{"directory":true}'), file, "/a/b.txt", "/a/b.txt", []), "none")
+    check("save mode never sends on double click", Picker.doubleAction(Picker.request('{"mode":"save"}'), file, "/a/b.txt", "/a/b.txt", []), "none")
+    check("a second tap on another row sends nothing", Picker.doubleAction(single, file, "/a/b.txt", "/a/c.txt", []), "none")
+    check("a double click with no first tap sends nothing", Picker.doubleAction(single, file, "/a/b.txt", "", []), "none")
+    check("a double click on no row sends nothing", Picker.doubleAction(single, null, "/a/b.txt", "/a/b.txt", []), "none")
 }

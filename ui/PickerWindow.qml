@@ -229,6 +229,36 @@ ShellRoot {
             win.accept()
         }
 
+        // A file double click marks first, so the accept behind it always carries the row it
+        // landed on; Enter's accept is what sends, and this reaches that same accept either way.
+        function doubleActivate(index, rowPath) {
+            var row = win.rowFor(index)
+            if (!row) {
+                return
+            }
+            if (Picker.directory(row)) {
+                win.open(Picker.rowPath(win.path, row.n))
+                return
+            }
+            if (win.saving || win.folderMode) {
+                return
+            }
+            // The index rebinds when a listing lands, so the path decides, never the row number.
+            if (!rowPath || Picker.rowPath(win.path, row.n) !== rowPath) {
+                return
+            }
+            if (win.backendUnavailable || win.markRequest || win.submitting) {
+                win.say("Selection is still being checked.")
+                return
+            }
+            if (Picker.marked(win.marks, rowPath)) {
+                win.accept()
+                return
+            }
+            win.acceptMarks = true
+            win.markRequest = win.check({op: "mark", path: rowPath, directory: win.folderMode, multiple: win.req.multiple})
+        }
+
         function accept(reviewed) {
             if (win.backendUnavailable || win.submitting || win.markRequest) return
             if (win.saving) {
