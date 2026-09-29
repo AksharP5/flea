@@ -1,7 +1,7 @@
-// A click on the folder already shown opens nothing: the rail hands the pane its own path,
-// and Nav.open treats that as a re-read, dropping cursor, selection, scroll and thumbnails.
+// A click on the folder already shown opens nothing: the rail hands the pane its own path, which Nav.openPlace leaves alone.
 .import "../../ui/js/Nav.js" as Nav
 .import "../../ui/js/RailKeys.js" as RailKeys
+.import "sourcefixture.js" as Source
 
 // A settled pane whose open() is the real Nav.open, so a rail click lists as the app does.
 function settled(path) {
@@ -72,4 +72,8 @@ function run(check) {
     empty.listingState = "empty"
     Nav.openPlace(empty, "/home/gm/Work")
     check("an empty folder shown is kept", empty.sent.join("|"), "")
+    var area = Source.source("ui/ColumnsArea.qml")
+    var actAt = area.indexOf("function activateNeighbour")
+    var actBody = area.substring(actAt, area.indexOf("function askThumb", actAt))
+    check("a neighbour folder opens through the no-op route", actBody.indexOf("Nav.openPlace(root.pane, target)") >= 0, true)
 }

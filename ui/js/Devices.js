@@ -81,9 +81,7 @@ function collectVolumes(nodes, model, unplugs, out, unmounted) {
         // mariobgsp (PR 74), whose USB drive reports tran=usb on sdb and null on sdb1. It stops
         // there: what a crypt leaf under it reads as is what it read as before that PR.
         var pulls = unpluggable(n) || (unplugs && String(n.type || "") === "part")
-        // Only a leaf is a volume. A partition holding a LUKS container is not what mounts, its crypt
-        // child is, and emitting both would put one drive in the rail twice.
-        // RailAdditions rule 1: an unmounted leaf with no filesystem is not a row (issue 143).
+        // Only a leaf is a volume: a LUKS parent and a leaf with no filesystem emit no row (rule 1).
         var noFilesystem = mountOf(n).length === 0 && String(n.fstype || "").length === 0
         if (n.name && kids.length === 0 && !noFilesystem
                 && (pulls || mountOf(n).length > 0 || (unmounted && browsable(n))))

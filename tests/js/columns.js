@@ -292,8 +292,7 @@ function runPicker(check) {
     check("no width at all draws Mode or Kind in the chooser", everDrawn, false)
 }
 
-// w8 colroot: at / no ancestor column repeats the active one, so the parent slot stays
-// blank and Left stays a no-op; each depth below adds one distinct ancestor.
+// w8 colroot: at / no ancestor repeats the active column, so the slot stays blank and Left stays a no-op.
 function runColRoot(check) {
     check("at / no ancestor column is shown", Columns.ancestors("/", 3).join("|"), "")
     check("at /home only the parent (/) is", Columns.ancestors("/home", 3).join("|"), "/")
@@ -320,18 +319,18 @@ function runColRoot(check) {
     check("left at / opens nothing", atRoot.opened.length, 0)
     check("and plants no select on the climb that did not happen", atRoot.pendingSelect, "kept")
     var area = Source.source("ui/ColumnsArea.qml")
-    check("the area gates the parent column on its ancestor",
-        area.indexOf("root.showParent && root.parentShown") >= 0, true)
-    check("the area gates the grandparent column on its ancestor",
-        area.indexOf("root.showGrandparent && root.grandparentShown") >= 0, true)
-    check("the area gates the great-grandparent column on its ancestor",
-        area.indexOf("root.showGreatGrandparent && root.greatGrandparentShown") >= 0, true)
-    check("the area asks no ancestor it does not show",
-        area.indexOf("root.showParent && root.parentShown") >= 0
-        && area.indexOf("root.showGrandparent && root.grandparentShown") >= 0
-        && area.indexOf("root.showGreatGrandparent && root.greatGrandparentShown") >= 0, true)
-    check("the parent reader answers null while its ancestor is hidden",
-        area.indexOf("(root.showParent && root.parentShown) ? parentColumn.itemAtIndex(index) : null") >= 0, true)
+    var refreshBody = area.substring(area.indexOf("function refreshNeighbours"), area.indexOf("function askMeta"))
+    check("refresh asks the parent only while its ancestor shows", refreshBody.indexOf("root.showParent && root.parentShown") >= 0, true)
+    check("refresh asks the grandparent only while its ancestor shows", refreshBody.indexOf("root.showGrandparent && root.grandparentShown") >= 0, true)
+    check("refresh asks the great-grandparent only while its ancestor shows", refreshBody.indexOf("root.showGreatGrandparent && root.greatGrandparentShown") >= 0, true)
+    var greatBody = area.substring(area.indexOf("id: greatGrandparentLoader"), area.indexOf("id: grandparentLoader"))
+    check("great-grandparent draws rows only while its ancestor shows", greatBody.indexOf("root.greatGrandparentShown ? root.rowsFor(root.greatGrandparentPath)") >= 0, true)
+    var grandBody = area.substring(area.indexOf("id: grandparentLoader"), area.indexOf("id: parentColumn"))
+    check("grandparent draws rows only while its ancestor shows", grandBody.indexOf("root.grandparentShown ? root.rowsFor(root.grandparentPath)") >= 0, true)
+    var parentBody = area.substring(area.indexOf("id: parentColumn"), area.indexOf("id: active"))
+    check("parent draws rows only while its ancestor shows", parentBody.indexOf("(root.showParent && root.parentShown) ? root.rowsFor(root.parentPath)") >= 0, true)
+    var readerBody = area.substring(area.indexOf("function parentItemAt"), area.indexOf("function grandparentItemAt"))
+    check("parent reader answers null while its ancestor is hidden", readerBody.indexOf("(root.showParent && root.parentShown) ? parentColumn.itemAtIndex(index) : null") >= 0, true)
 }
 
 // The user's own hidden set, subtracted from what the width affords: a hidden column never draws,
