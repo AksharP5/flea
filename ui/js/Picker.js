@@ -196,17 +196,18 @@ function validName(name) {
 // What both the strip and the status line say about a name validName() refuses, in ops.rs's words.
 var NAME_REFUSED = "a name cannot be empty, . or .. , or contain a separator"
 
-// A double click on a file does what Enter on that row does: Enter calls activate, which
-// walks into a directory and otherwise accepts the marks, saying "Press Space to select a
-// file first" when nothing is marked. The double click marks first, so the accept behind it
-// always has the row it landed on; a second tap on another row is a single tap, never a send.
+// A file double click marks the row when unmarked, then accepts; a multiple accept sends every mark.
 var DOUBLE_OPEN = "open"
 var DOUBLE_ACCEPT = "accept"
 var DOUBLE_MARK_ACCEPT = "markAccept"
 var DOUBLE_NONE = "none"
 
-// Sample input: doubleAction({mode:"open",multiple:false,directory:false}, {d:false},
-// "/a/b.txt", "/a/b.txt", []) answers "markAccept".
+// Sample input: sameTap("/a/b.txt", "/a/b.txt") answers true, sameTap("/a/b.txt", "/a/c.txt") answers false.
+function sameTap(firstPath, rowPath) {
+    return !!rowPath && rowPath === firstPath
+}
+
+// Sample input: doubleAction({mode:"open",multiple:false,directory:false}, {d:false}, "/a/b.txt", "/a/b.txt", []) answers "markAccept".
 function doubleAction(req, row, rowPath, firstPath, marks) {
     if (!row) {
         return DOUBLE_NONE
@@ -219,7 +220,7 @@ function doubleAction(req, row, rowPath, firstPath, marks) {
         return DOUBLE_NONE
     }
     // The row path names the file, so a list rebuilt between the taps never sends another row.
-    if (!rowPath || rowPath !== firstPath) {
+    if (!sameTap(firstPath, rowPath)) {
         return DOUBLE_NONE
     }
     return marked(marks, rowPath) ? DOUBLE_ACCEPT : DOUBLE_MARK_ACCEPT

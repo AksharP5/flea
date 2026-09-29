@@ -229,34 +229,27 @@ ShellRoot {
             win.accept()
         }
 
-        // A file double click marks first, so the accept behind it always carries the row it
-        // landed on; Enter's accept is what sends, and this reaches that same accept either way.
-        function doubleActivate(index, rowPath) {
+        // A file double click marks the row when unmarked, then accepts; a multiple accept sends every mark.
+        function doubleActivate(index, rowPath, firstPath) {
             var row = win.rowFor(index)
-            if (!row) {
-                return
-            }
-            if (Picker.directory(row)) {
+            var choice = Picker.doubleAction(win.req, row, rowPath, firstPath, win.marks)
+            if (choice === Picker.DOUBLE_OPEN) {
                 win.open(Picker.rowPath(win.path, row.n))
                 return
             }
-            if (win.saving || win.folderMode) {
-                return
-            }
-            // The index rebinds when a listing lands, so the path decides, never the row number.
-            if (!rowPath || Picker.rowPath(win.path, row.n) !== rowPath) {
+            if (choice !== Picker.DOUBLE_ACCEPT && choice !== Picker.DOUBLE_MARK_ACCEPT) {
                 return
             }
             if (win.backendUnavailable || win.markRequest || win.submitting) {
                 win.say("Selection is still being checked.")
                 return
             }
-            if (Picker.marked(win.marks, rowPath)) {
+            if (choice === Picker.DOUBLE_ACCEPT) {
                 win.accept()
                 return
             }
             win.acceptMarks = true
-            win.markRequest = win.check({op: "mark", path: rowPath, directory: win.folderMode, multiple: win.req.multiple})
+            win.markRequest = win.check({op: "mark", path: rowPath, directory: false, multiple: win.req.multiple})
         }
 
         function accept(reviewed) {

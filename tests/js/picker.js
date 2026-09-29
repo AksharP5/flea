@@ -128,8 +128,7 @@ function run(check) {
     check("S reverses an inherited kind order rather than refusing it",
           order(Sort.reverseOrder("kind", true)), "kind asc")
 
-    // A double click on a file does what Enter on that row does: it sends the file in a
-    // single-file request and marks-then-sends it in a multiple one, matching accept() exactly.
+    // A file double click marks the row when unmarked, then accepts; a multiple accept sends every mark.
     var single = Picker.request('{"mode":"open","multiple":false}')
     var multi = Picker.request('{"mode":"open","multiple":true}')
     var file = {d: false, p: 0, s: 1, m: 1, i: "text"}
@@ -146,8 +145,12 @@ function run(check) {
     check("a double click on no row sends nothing", Picker.doubleAction(single, null, "/a/b.txt", "/a/b.txt", []), "none")
 
     // Issue #224: the chips take room first and the path gives way, keeping its minimum.
+    check("a second tap on the same path counts as a double", Picker.sameTap("/a/b.txt", "/a/b.txt"), true)
+    check("a second tap on another path is a single tap", Picker.sameTap("/a/b.txt", "/a/c.txt"), false)
+    check("a second tap with no first tap is a single tap", Picker.sameTap("", "/a/b.txt"), false)
+    check("a second tap with no path is a single tap", Picker.sameTap("/a/b.txt", ""), false)
     check("a strip that fits takes it all", Picker.chipStripWidth(300, 100, 96), 100)
     check("chips take room first and the path keeps its minimum", Picker.chipStripWidth(300, 400, 96), 204)
-    check("a strip wider than the free width still scrolls", Picker.chipStripWidth(200, 400, 96) < 400, true)
+    check("a strip wider than the free width still scrolls", Picker.chipStripWidth(200, 400, 96), 104)
     check("no free width leaves the path whole", Picker.chipStripWidth(50, 400, 96), 0)
 }

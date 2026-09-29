@@ -37,8 +37,7 @@ ListView {
     Keys.onTabPressed: function(event) { root.picker.stepFocus(root, (event.modifiers & Qt.ShiftModifier) !== 0) }
     Keys.onBacktabPressed: root.picker.stepFocus(root, true)
     property bool firstArmed: false
-    // The row path the previous tap landed on, so a second tap after a rebuilt list, which
-    // rebinds every row number, only sends when it lands on that same file again.
+    // The previous tap path, so a rebuilt list never sends a row the first tap missed.
     property string lastTapPath: ""
     Flea.FastScrollHandler { flickable: root }
     Flea.ViewportScrollBar {
@@ -123,10 +122,7 @@ ListView {
         TapHandler {
             id: tap
             acceptedButtons: Qt.LeftButton
-            // One tap selects and the second opens, like Enter on that row: a double click on a
-            // file marks it first and then sends, while a folder still opens and a tap on the
-            // mark box only ever toggles that row. Single taps stay instant, with no tap-count
-            // hold, and a second tap on another row is a single tap, never a send.
+            // One tap moves the cursor, a second tap on the same path opens or sends, a box tap toggles.
             onTapped: function (eventPoint, button) {
                 root.picker.cursorIndex = cell.listingIndex
                 root.forceActiveFocus()
@@ -136,13 +132,8 @@ ListView {
                 root.lastTapPath = cell.rowPath
                 if (onBox)
                     root.picker.toggleMark(cell.listingIndex)
-                else if (second && Picker.directory(cell.row))
-                    root.picker.open(cell.rowPath)
-                else if (second && cell.markable && !root.picker.saving && !root.picker.folderMode
-                        && Picker.doubleAction(root.picker.req, cell.row, cell.rowPath, firstPath, root.picker.marks) !== Picker.DOUBLE_NONE)
-                    root.picker.doubleActivate(cell.listingIndex, cell.rowPath)
-                else if (second && cell.markable)
-                    root.picker.toggleMark(cell.listingIndex)
+                else if (second && Picker.sameTap(firstPath, cell.rowPath))
+                    root.picker.doubleActivate(cell.listingIndex, cell.rowPath, firstPath)
             }
         }
     }
