@@ -253,3 +253,19 @@ function parent(pane) {
     pane.pendingSelect = here
     pane.open(cut <= 0 ? "/" : here.substring(0, cut))
 }
+
+// A click on the folder already shown is a no-op, so the rail and columns routes land here.
+function showing(pane, path) {
+    if (trimSlash(path) !== pane.path) return false
+    if (pane.listInFlight) return false
+    if ((pane.searchMode || "").length > 0) return false
+    if (!pane.trash || pane.trash.opened) return false
+    return pane.listingState === "ready" || pane.listingState === "empty"
+}
+
+// The rail's and the columns view's route in: the shown folder returns false and lists nothing.
+function openPlace(pane, path) {
+    if (showing(pane, path)) return false
+    pane.open(path)
+    return true
+}

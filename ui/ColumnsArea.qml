@@ -200,7 +200,7 @@ Item {
     function activateNeighbour(base, name, isDir) {
         var target = root.pane.join(base, name)
         if (isDir)
-            root.pane.open(target)
+            Nav.openPlace(root.pane, target)
         else
             root.pane.openFile(target)
     }

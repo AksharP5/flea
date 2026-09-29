@@ -2,6 +2,7 @@
 
 .import "Eject.js" as Eject
 .import "Mounts.js" as Mounts
+.import "Nav.js" as Nav
 
 // What the rail does with a key, split out of Focus.js at its 300-line hard cap the same way
 // ui/js/PreviewKeys.js was: Focus.js decides which surface owns a key, and this is the surface.
@@ -16,7 +17,7 @@ function landed(root, sidebar) {
 // A Sidebar open (opened or networkOpened): the pane that asked opens it, and a waiting claim lands; no pane spends the claim.
 function openFrom(pane, path, sidebar) {
     if (!pane) { if (sidebar) sidebar.focusOnOpen = false; return }
-    pane.open(path)
+    Nav.openPlace(pane, path)
     if (sidebar) landed(pane, sidebar)
 }
 
