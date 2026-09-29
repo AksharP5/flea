@@ -40,7 +40,7 @@ case_railpointer() {
         [[ "$after" != "$before" ]] || fail "railpointer: $mode: j after right click stayed on $before"
         printf 'RAILPOINTER %s left=ok right=ok\n' "$mode"
     done
-    # A press on the revealed auto-hide rail is a rail press, so it keeps the rail keyboard.
+    # A press on the revealed auto-hide rail is a rail press, so it takes the rail keyboard even from the list.
     seed_ui_state "$fixture_root/railpointer-hide" '{"view":"list","places":{"autoHide":true}}'
     launch "$dir"
     wait_listing 12
@@ -48,9 +48,20 @@ case_railpointer() {
     settle
     [[ "$(ipc focusView)" == "rail" ]] || fail "railpointer: auto-hide Tab did not reach the rail"
     wait_rail 1
-    # The Tab above already revealed the rail, so hide again to prove the pointer reveals it.
+    local rail_total
+    rail_total=$(ipc railCount)
+    [[ "$rail_total" =~ ^[0-9]+$ ]] || fail "railpointer: the revealed rail has no numeric count (railCount=$rail_total railState=$(ipc railState))"
+    (( rail_total >= 2 )) || fail "railpointer: the revealed rail has $rail_total rows, need two for the landed-press proof (railState=$(ipc railState))"
+    # Off row 0 by keyboard before the hide, so the move itself is keyboard-driven.
+    if [[ "$(ipc railCursor)" == "0" ]]; then
+        key j >/dev/null
+        settle
+        [[ "$(ipc railCursor)" != "0" ]] || fail "railpointer: j never left rail row 0 (railCount=$rail_total)"
+    fi
+    # Return focus to the list; the hide unloads the rail Loader and resets its cursor.
     key -k Tab >/dev/null
     settle
+    [[ "$(ipc focusView)" == "list" ]] || fail "railpointer: Tab back to the list left the keyboard on $(ipc focusView) instead of the list"
     local hid=false hid_json
     for _attempt in $(seq 1 60); do
         hid_json=$(ipc railState)
@@ -74,25 +85,18 @@ case_railpointer() {
         sleep 0.05
     done
     [[ "$revealed" == true ]] || fail "railpointer: the auto-hide rail never revealed (railState=$rail_json)"
-    # The hide left the keyboard in the list, so Tab back to the rail before stepping it.
-    key -k Tab >/dev/null
+    # Real mouse path: the pointer reveals while the keyboard stays in the list.
+    [[ "$(ipc focusView)" == "list" ]] || fail "railpointer: the pointer reveal left the keyboard on $(ipc focusView) instead of the list"
+    [[ "$(jq -r '.hidden' 2>/dev/null <<< "$(ipc railState)")" == "false" ]] || fail "railpointer: the rail is not shown before the press (railState=$(ipc railState))"
+    # A hide unloads the rail Loader and resets its cursor to 0, so press the row it does not hold.
+    local rail_before rail_target
+    rail_before=$(ipc railCursor)
+    [[ "$rail_before" =~ ^[0-9]+$ ]] || fail "railpointer: the revealed rail has no numeric cursor (railCursor=$rail_before)"
+    if [[ "$rail_before" == "0" ]]; then rail_target=1; else rail_target=0; fi
+    [[ -n "$(ipc railRowCentre "$rail_target")" ]] || fail "railpointer: rail row $rail_target has no on-screen centre while revealed, so the press has no target"
+    click_rail_row "$rail_target" left
     settle
-    [[ "$(ipc focusView)" == "rail" ]] || fail "railpointer: Tab after the pointer reveal left the keyboard on $(ipc focusView) instead of the rail"
-    # Off row 0 first, so a cursor back on row 0 below proves the press landed.
-    local rail_total
-    rail_total=$(ipc railCount)
-    [[ "$rail_total" =~ ^[0-9]+$ ]] || fail "railpointer: the revealed rail has no numeric count (railCount=$rail_total railState=$(ipc railState))"
-    (( rail_total >= 2 )) || fail "railpointer: the revealed rail has $rail_total rows, need two for the landed-press proof (railState=$(ipc railState))"
-    if [[ "$(ipc railCursor)" == "0" ]]; then
-        key j >/dev/null
-        settle
-        [[ "$(ipc railCursor)" != "0" ]] || fail "railpointer: j never left rail row 0 (railCount=$rail_total)"
-    fi
-    [[ "$(ipc railCursor)" != "0" ]] || fail "railpointer: rail cursor still on row 0 before the press, so row 0 after proves nothing (railCount=$rail_total)"
-    [[ -n "$(ipc railRowCentre 0)" ]] || fail "railpointer: rail row 0 has no on-screen centre while revealed, so the press has no target"
-    click_rail_row 0 left
-    settle
-    [[ "$(ipc railCursor)" == "0" ]] || fail "railpointer: a press on revealed rail row 0 left the rail cursor on $(ipc railCursor)"
+    [[ "$(ipc railCursor)" == "$rail_target" ]] || fail "railpointer: a press on revealed rail row $rail_target left the rail cursor on $(ipc railCursor) (was $rail_before)"
     [[ "$(ipc focusView)" == "rail" ]] || fail "railpointer: a press on the revealed rail left the keyboard on $(ipc focusView)"
     printf 'RAILPOINTER autohide=ok\n'
     # In dual view Tab still switches panes, and a row click focuses that pane with the list keyboard.
