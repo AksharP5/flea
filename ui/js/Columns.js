@@ -177,6 +177,14 @@ function ancestorShown(path, depth) {
     return ancestors(path, d).length >= d
 }
 
+// Sample input: neighbourAsks("/home/gm", 1200, 5) is ["/home"], the shown ancestors oldest first.
+function neighbourAsks(path, width, limit) {
+    var want = ancestorsForCount(columnCountForWidth(Number(width), limit))
+    if (!(want >= 1))
+        return []
+    return ancestors(path, want)
+}
+
 // ui.json carries whatever a hand edit wrote, so only a finite number is a stored width; anything else keeps the measured one.
 // Sample input: storedNumber("120") is NaN, storedNumber(120.6) is 121.
 function storedNumber(raw) {

@@ -97,14 +97,10 @@ Item {
         }
     }
 
-    // Hidden view asks nothing; every move while visible asks both neighbours.
+    // Hidden view asks nothing; the gates are computed fresh, so a handler mid-notify cannot read a stale sibling binding.
     function refreshNeighbours() { if (!root.visible) return
-        if (root.showGreatGrandparent && root.greatGrandparentShown)
-            root.ask(root.greatGrandparentPath)
-        if (root.showGrandparent && root.grandparentShown)
-            root.ask(root.grandparentPath)
-        if (root.showParent && root.parentShown)
-            root.ask(root.parentPath)
+        var asks = Columns.neighbourAsks(root.pane.path, root.width, root.columnsLimit)
+        for (var i = 0; i < asks.length; i++) root.ask(asks[i])
         root.ask(root.childPath)
         root.askMeta()
         root.askThumb()
@@ -143,6 +139,7 @@ Item {
         var fileLoad = Columns.isFileRow(root.cursorRow) && ViewState.previewColumn && ViewState.previewAutomatic && !held
         // An unanswered folder waits by data under the live picture, which the landing or the cap releases with the folder in one pass.
         if (Columns.folderDataHold(root.cursorIsDir, root.answered(root.childPath))) {
+            thirdSwap.stopCap()
             folderFallback.restart()
             return
         }

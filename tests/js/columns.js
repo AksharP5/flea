@@ -124,6 +124,7 @@ function run(check) {
     runHeaderDrag(check)
     runColumnsLimitWire(check)
     runColRoot(check)
+    runNeighbourAsks(check)
 }
 
 // ColumnsWidth board (#167, #69): the columns count follows the window width, 2 below 900 up to 5 from 2300, capped by the View limit shipping at 3.
@@ -289,6 +290,22 @@ function runPicker(check) {
     check("no width at all draws Mode or Kind in the chooser", everDrawn, false)
 }
 
+// e39 neighbour gate: refresh computes its asks fresh, so a width or path step asks the parent first time.
+function runNeighbourAsks(check) {
+    check("a narrow window asks no ancestor", Columns.neighbourAsks("/x/y", 800, 3).join("|"), "")
+    check("widening asks the parent", Columns.neighbourAsks("/x/y", 1100, 3).join("|"), "/x")
+    check("an empty path asks nothing", Columns.neighbourAsks("", 1100, 3).join("|"), "")
+    check("a fresh path asks its parent", Columns.neighbourAsks("/x/y", 1100, 3).join("|"), "/x")
+    check("at / no width asks anything", Columns.neighbourAsks("/", 2560, 5).join("|"), "")
+    check("a wide window asks three ancestors", Columns.neighbourAsks("/a/b/c", 2560, 5).join("|"), "/|/a|/a/b")
+    var area = Source.source("ui/ColumnsArea.qml")
+    var refreshBody = Source.slice(area, "function refreshNeighbours", "function askMeta")
+    check("refresh asks the fresh neighbour list", refreshBody.indexOf("Columns.neighbourAsks(root.pane.path, root.width, root.columnsLimit)") >= 0, true)
+    check("and reads no stale show gate there", refreshBody.indexOf("showParent") < 0 && refreshBody.indexOf("parentShown") < 0, true)
+    var moveBody = Source.slice(area, "Columns.folderDataHold(root.cursorIsDir", "folderFallback.stop()")
+    check("a folder wait stops the old work cap first", moveBody.indexOf("thirdSwap.stopCap()") >= 0, true)
+}
+
 // w8 colroot: at / no ancestor repeats the active column, so the slot stays blank and Left stays a no-op.
 function runColRoot(check) {
     check("at / no ancestor column is shown", Columns.ancestors("/", 3).join("|"), "")
@@ -316,10 +333,8 @@ function runColRoot(check) {
     check("left at / opens nothing", atRoot.opened.length, 0)
     check("and plants no select on the climb that did not happen", atRoot.pendingSelect, "kept")
     var area = Source.source("ui/ColumnsArea.qml")
-    var refreshBody = Source.slice(area, "function refreshNeighbours", "function askMeta")
-    check("refresh asks the parent only while its ancestor shows", refreshBody.indexOf("root.showParent && root.parentShown") >= 0, true)
-    check("refresh asks the grandparent only while its ancestor shows", refreshBody.indexOf("root.showGrandparent && root.grandparentShown") >= 0, true)
-    check("refresh asks the great-grandparent only while its ancestor shows", refreshBody.indexOf("root.showGreatGrandparent && root.greatGrandparentShown") >= 0, true)
+    check("refresh computes its asks fresh, see runNeighbourAsks",
+        area.indexOf("Columns.neighbourAsks(root.pane.path, root.width, root.columnsLimit)") >= 0, true)
     var greatBody = Source.slice(area, "id: greatGrandparentLoader", "id: grandparentLoader")
     check("great-grandparent draws rows only while its ancestor shows", greatBody.indexOf("root.greatGrandparentShown ? root.rowsFor(root.greatGrandparentPath)") >= 0, true)
     var grandBody = Source.slice(area, "id: grandparentLoader", "id: parentColumn")

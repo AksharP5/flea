@@ -1,16 +1,15 @@
 #!/usr/bin/env bash
-# w24 folder data hold: the real ColumnsArea keeps the old column by data while a folder
-# peek is out, hands a live picture hold to that wait, and lands empty folders settled.
+# e39 neighbour gate: a width step and a path step each ask the parent first time.
 set -u
 . "$(dirname "$0")/../tools/flea-sandbox-guard"
 cd "$(dirname "$0")/.." || exit 1
 
 if ! command -v qs >/dev/null; then
-    echo "columnsfolder.sh: qs is not installed, cannot drive the columns view"
+    echo "columnspeekgate.sh: qs is not installed, cannot drive the columns view"
     exit 1
 fi
 
-test_root="$FIXTURE_ROOT/flea-columnsfolder-$$"
+test_root="$FIXTURE_ROOT/flea-columnspeekgate-$$"
 sandbox_make "$test_root"
 cleanup() { sandbox_remove "$test_root"; }
 trap cleanup EXIT
@@ -21,20 +20,20 @@ chmod 700 "$test_root/runtime" || exit 1
 ln -s "$PWD/ui" "$test_root/config/flea" || exit 1
 ln -s "$(readlink -f ui/boot/Commons)" "$test_root/config/Commons" || exit 1
 ln -s "$(readlink -f ui/boot/Ui)" "$test_root/config/Ui" || exit 1
-cp tests/columnsfolder.qml "$test_root/config/shell.qml" || exit 1
+cp tests/columnspeekgate.qml "$test_root/config/shell.qml" || exit 1
 
 output=$(env -u DISPLAY -u WAYLAND_DISPLAY -u HYPRLAND_INSTANCE_SIGNATURE \
     HOME="$test_root/home" XDG_STATE_HOME="$test_root/state" XDG_RUNTIME_DIR="$test_root/runtime" \
     QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1 \
     timeout 30 qs -p "$test_root/config" 2>&1)
 
-# Sample input, one probe line: "  INFO qml: COLUMNSFOLDER PASS folder=data-held preview=kept file=reshown empty=settled w25=kept-landed-bounded"
-pass_count=$(printf '%s\n' "$output" | grep -c 'COLUMNSFOLDER PASS')
-fail_count=$(printf '%s\n' "$output" | grep -c 'COLUMNSFOLDER FAIL')
+# Sample input, one probe line: "  INFO qml: COLUMNSPEEKGATE PASS width=parent path=parent root=empty hidden=held visible=/p"
+pass_count=$(printf '%s\n' "$output" | grep -c 'COLUMNSPEEKGATE PASS')
+fail_count=$(printf '%s\n' "$output" | grep -c 'COLUMNSPEEKGATE FAIL')
 if [ "$pass_count" -ne 1 ] || [ "$fail_count" -ne 0 ]; then
-    printf 'FAIL the folder data hold blanks, holds, or animates its landing\n'
-    printf '%s\n' "$output" | grep -a 'COLUMNSFOLDER FAIL'
+    printf 'FAIL the neighbour gate misses a first parent peek\n'
+    printf '%s\n' "$output" | grep -a 'COLUMNSPEEKGATE FAIL'
     printf '%s\n' "$output" | grep -aE 'ERROR|error' | head -5
     exit 1
 fi
-printf '%s\n' "$output" | grep -o 'COLUMNSFOLDER PASS.*'
+printf '%s\n' "$output" | grep -o 'COLUMNSPEEKGATE PASS.*'

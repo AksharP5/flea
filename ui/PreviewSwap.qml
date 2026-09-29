@@ -97,6 +97,9 @@ Item {
         Qt.callLater(root.check)
     }
 
+    // A folder wait keeps the live picture under its own fallback, so the old work's cap stops here.
+    function stopCap() { cap.stop() }
+
     function captured() {
         if (!root.capturing)
             return

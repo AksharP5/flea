@@ -45,7 +45,7 @@ src/uischema.rs 421
 src/uistate.rs 625
 src/uistore.rs 540
 src/vulkan.rs 728
-tests/js/columns.js 356
+tests/js/columns.js 367
 tests/js/focus.js 430
 tests/js/mounts.js 383
 tests/js/network.js 306
