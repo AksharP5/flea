@@ -24,14 +24,16 @@ Item {
     property string clipMark: ""
     // A cut tile dims to the ClipMarks board's own opacity, content only.
     readonly property bool clipCut: root.clipMark === "scissors"
+    // One dim for the mark slot and the caption, so one ternary serves both opacities.
+    readonly property real dimOpacity: root.clipCut ? Theme.disabledOpacity : 1
     // The mark's own size: 12 px in the muted role, 9 px after the name, per the board.
     readonly property int clipPx: 12
-    readonly property string editorText: editor.current
-    readonly property Item editorField: editor
-    readonly property real renameExtraHeight: root.renaming ? Math.max(0, editor.implicitHeight - Theme.grid.captionHeight - Density.gridPadY(Theme.spacing.rowPaddingX, ViewState.density)) : 0
+    readonly property string editorText: renameLoader.item ? renameLoader.item.current : ""
+    readonly property Item editorField: renameLoader.item as Item
+    readonly property real renameExtraHeight: root.renaming && renameLoader.item ? Math.max(0, renameLoader.item.implicitHeight - Theme.grid.captionHeight - Density.gridPadY(Theme.spacing.rowPaddingX, ViewState.density)) : 0
     signal renameCommitted(string newName)
     signal renameAbandoned()
-    function commitEditor() { return editor.commit() }
+    function commitEditor() { return renameLoader.item ? renameLoader.item.commit() : false }
 
     // A lifted tile is the cursor, the pointer or a selection member, the same ladder Row.qml climbs.
     readonly property bool lifted: root.cursor || root.hovered || root.selected
@@ -73,7 +75,7 @@ Item {
         anchors.topMargin: Density.gridPadY(Theme.spacing.rowPaddingX, ViewState.density)
         width: ViewState.thumbnailPixels
         height: ViewState.thumbnailPixels
-        opacity: root.clipCut ? Theme.disabledOpacity : 1
+        opacity: root.dimOpacity
 
         // A thumbnail is a decoded image and stays one; the glyph beside it is a native mark, and
         // exactly one is visible, chosen the same way ui/Row.qml chooses.
@@ -112,7 +114,7 @@ Item {
     Text {
         id: nameLabel
         visible: !root.renaming
-        opacity: root.clipCut ? Theme.disabledOpacity : 1
+        opacity: root.dimOpacity
         anchors.top: markSlot.bottom
         anchors.topMargin: Theme.spacing.gap
         anchors.left: parent.left
@@ -150,15 +152,18 @@ Item {
         }
     }
 
-    Flea.RenameField {
-        id: editor
-        visible: root.renaming
+    // Built only while renaming, the way ui/Row.qml builds its own editor.
+    Loader {
+        id: renameLoader
+        active: root.renaming
         anchors { top: nameLabel.top; left: nameLabel.left; right: nameLabel.right }
-        height: implicitHeight
-        pane: root.renamePane
-        name: root.row ? root.row.n.split("/").pop() : ""
-        onCommitted: function(newName) { root.renameCommitted(newName) }
-        onAbandoned: root.renameAbandoned()
+        sourceComponent: Flea.RenameField {
+            height: implicitHeight
+            pane: root.renamePane
+            name: root.row ? root.row.n.split("/").pop() : ""
+            onCommitted: function(newName) { root.renameCommitted(newName) }
+            onAbandoned: root.renameAbandoned()
+        }
     }
 
     Text {

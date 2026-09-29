@@ -38,6 +38,8 @@ Item {
     property string clipMark: ""
     // A cut row dims to the ClipMarks board's own opacity, content only.
     readonly property bool clipCut: root.clipMark === "scissors"
+    // One dim for the mark slot, the name and the size, so one ternary serves three opacities.
+    readonly property real dimOpacity: root.clipCut ? Theme.disabledOpacity : 1
     // The mark's own size: 12 px in the muted role, 9 px after the name, per the board.
     readonly property int clipPx: 12
     // Characters of name slot at the body advance the name draws at, with ElideMiddle as the backstop.
@@ -86,7 +88,7 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         width: Theme.iconSize
         height: Theme.iconSize
-        opacity: root.clipCut ? Theme.disabledOpacity : 1
+        opacity: root.dimOpacity
 
         // Sized on purpose, the same decode arm as ui/Row.qml: the cache PNG is capped at the icon's own size.
         Image {
@@ -118,7 +120,7 @@ Item {
         anchors.right: sizeCell.left
         anchors.rightMargin: (root.showSize ? Theme.spacing.gap : 0) + (root.clipMark.length > 0 ? Theme.spacing.gap + root.clipPx : 0)
         anchors.verticalCenter: parent.verticalCenter
-        opacity: root.clipCut ? Theme.disabledOpacity : 1
+        opacity: root.dimOpacity
         text: root.row && root.nameBudget >= 0 ? Names.middleElide(root.row.n, root.nameBudget) : (root.row ? root.row.n : "")
         color: root.ink
         font.family: Theme.font.family
@@ -153,7 +155,7 @@ Item {
         anchors.rightMargin: root.showSize ? Theme.spacing.gap : 0
         anchors.verticalCenter: parent.verticalCenter
         visible: root.showSize && !root.dropTarget
-        opacity: root.clipCut ? Theme.disabledOpacity : 1
+        opacity: root.dimOpacity
         width: visible ? Theme.column.size : 0
         text: root.showSize && root.row ? root.sizeText() : ""
         color: root.ink

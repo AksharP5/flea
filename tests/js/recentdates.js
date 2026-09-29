@@ -58,16 +58,17 @@ function run(check) {
         RecentDates.msUntilMidnight(at(2026, 9, 24, 0, 1, 0)), 24 * 60 * 60 * 1000 - 60000)
 
     // The wiring the window carries: one midnight timer for the whole window, one numeric compare per row, no per-row timer or Date.
-    var rowDate = Source.source("ui/RowDate.qml")
-    var viewState = Source.source("ui/ViewState.qml")
+    // The date cell is a plain Text inside Row.qml now, so the same behaviour is pinned against the row itself.
     var row = Source.source("ui/Row.qml")
-    check("RowDate compares against the window start",
-        rowDate.indexOf("todayStart") >= 0, true)
-    check("RowDate reads the switch", rowDate.indexOf("highlightToday") >= 0, true)
-    check("Row hands the row's own mtime down", row.indexOf("mtime: root.row") >= 0, true)
-    check("RowDate holds no timer of its own", countRe(rowDate, /Timer\s*\{/g), 0)
-    check("RowDate builds no Date per row", countRe(rowDate, /new Date/g), 0)
-    check("and reads no clock per row", rowDate.indexOf("Date.now") < 0, true)
+    var viewState = Source.source("ui/ViewState.qml")
+    check("Row draws the today lift itself", countRe(row, /RecentDates\.isRecent/g), 1)
+    check("Row compares against the window start",
+        row.indexOf("todayStart") >= 0, true)
+    check("Row reads the switch", row.indexOf("highlightToday") >= 0, true)
+    check("Row hands no mtime down", row.indexOf("mtime: root.row") < 0, true)
+    check("Row holds no timer of its own", countRe(row, /Timer\s*\{/g), 0)
+    check("Row builds no Date per row", countRe(row, /new Date/g), 0)
+    check("and reads no clock per row", row.indexOf("Date.now") < 0, true)
     check("ViewState owns the one midnight timer", countRe(viewState, /Timer\s*\{/g), 1)
     check("and that timer steps in minute stops, so a suspend still lands the day",
         viewState.indexOf("RecentDates.MINUTE_MS") >= 0, true)

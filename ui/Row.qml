@@ -5,6 +5,7 @@ import "js/Format.js" as Format
 import "js/Icons.js" as Icons
 import "js/Match.js" as Match
 import "js/Names.js" as Names
+import "js/RecentDates.js" as RecentDates
 import "." as Flea
 
 Item {
@@ -21,8 +22,6 @@ Item {
     property bool selected: false
     // List.qml derives it per visible row, so an empty clipboard costs nothing.
     property string clipMark: ""
-    // A cut row dims to the ClipMarks board's own opacity, content only, never the state fills.
-    readonly property bool clipCut: root.clipMark === "scissors"
     // The mark's own size: 12 px in the muted role, 9 px after the name, per the board.
     readonly property int clipPx: 12
     // The per-response dictionary row.k indexes into; List.qml hands down the same array every row of one response shares.
@@ -78,6 +77,10 @@ Item {
     property bool lifted: root.cursor || root.hovered || root.selected || root.dropTarget
     // The OEM derives its secondary ink from the foreground rather than reading a separate palette key.
     readonly property color dim: Qt.darker(Theme.color.foreground, 1.4)
+    // One ink for the four cells, a lifted row taking foreground per Task 2, shared so one evaluation serves four.
+    readonly property color cellInk: root.lifted || root.foregroundMetadata ? Theme.color.foreground : root.dim
+    // One dim for every dimmed child, so one ternary serves eight opacities instead of eight.
+    readonly property real dimOpacity: root.clipMark === "scissors" ? Theme.disabledOpacity : 1
     // A thumbnail path is not a thumbnail: the cache file can be evicted between the pane's answer
     // and the decode, and a row whose Image failed to load has to be marked by its kind instead.
     readonly property bool thumbDrawn: root.thumb.length > 0 && thumbImage.status !== Image.Error
@@ -123,7 +126,7 @@ Item {
     Image {
         id: thumbImage
         visible: root.thumbDrawn
-        opacity: root.clipCut ? Theme.disabledOpacity : 1
+        opacity: root.dimOpacity
         anchors.left: parent.left
         anchors.leftMargin: Theme.spacing.rowPaddingX + root.leadingSlot
         anchors.verticalCenter: parent.verticalCenter
@@ -141,7 +144,7 @@ Item {
     Glyph {
         id: icon
         visible: !root.thumbDrawn
-        opacity: root.clipCut ? Theme.disabledOpacity : 1
+        opacity: root.dimOpacity
         anchors.left: parent.left
         anchors.leftMargin: Theme.spacing.rowPaddingX + root.leadingSlot
         anchors.verticalCenter: parent.verticalCenter
@@ -196,7 +199,7 @@ Item {
     MatchText {
         id: name
         visible: !root.searching && !root.renaming
-        opacity: root.clipCut ? Theme.disabledOpacity : 1
+        opacity: root.dimOpacity
         anchors.left: icon.right
         anchors.leftMargin: Theme.spacing.gap
         anchors.right: mode.left
@@ -232,7 +235,7 @@ Item {
     // Both are built only while searching, over the same span the two drew in side by side.
     Loader {
         active: root.searching
-        opacity: root.clipCut ? Theme.disabledOpacity : 1
+        opacity: root.dimOpacity
         anchors.left: icon.right
         anchors.leftMargin: Theme.spacing.gap
         anchors.right: size.left
@@ -260,7 +263,7 @@ Item {
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
                 text: root.locationText
-                color: root.cellColor()
+                color: root.cellInk
                 font.family: Theme.font.family
                 font.pixelSize: Theme.font.caption
                 elide: Text.ElideLeft
@@ -269,58 +272,68 @@ Item {
         }
     }
 
-    // Each cell root is the Text itself, so this builds the same four objects the inline Texts did.
-    RowMode {
+    // The four metadata cells, one Text each, bound straight to the row with one shared ink and one shared dim.
+    Text {
         id: mode
-        opacity: root.clipCut ? Theme.disabledOpacity : 1
+        opacity: root.dimOpacity
         anchors.right: size.left
         anchors.rightMargin: root.sizeShown && !root.dualMode ? Theme.spacing.gap : 0
         anchors.verticalCenter: parent.verticalCenter
-        modeShown: root.modeShown
-        dropTarget: root.dropTarget
-        ink: root.cellColor()
-        cellText: root.modeShown && root.row ? Format.permissions(root.row.p) : ""
+        visible: root.modeShown && !root.dropTarget
+        width: root.modeShown ? Theme.column.mode : 0
+        text: root.modeShown && root.row ? Format.permissions(root.row.p) : ""
+        color: root.cellInk
+        font.family: Theme.font.family
+        font.pixelSize: Theme.font.caption
+        elide: Text.ElideRight
+        textFormat: Text.PlainText
     }
-
-    RowSize {
+    Text {
         id: size
-        opacity: root.clipCut ? Theme.disabledOpacity : 1
+        opacity: root.dimOpacity
         anchors.right: modified.left
         anchors.rightMargin: root.dateShown && !root.dualMode ? Theme.spacing.gap : 0
         anchors.verticalCenter: parent.verticalCenter
-        sizeShown: root.sizeShown
-        dropTarget: root.dropTarget
-        sizeWidth: root.sizeWidth
-        ink: root.cellColor()
-        cellText: root.sizeShown && root.row ? root.sizeText() : ""
+        visible: root.sizeShown && !root.dropTarget
+        width: root.sizeShown ? root.sizeWidth : 0
+        text: root.sizeShown && root.row ? root.sizeText() : ""
+        color: root.cellInk
+        font.family: Theme.font.family
+        font.pixelSize: Theme.font.caption
+        horizontalAlignment: Text.AlignRight
+        elide: Text.ElideRight
+        textFormat: Text.PlainText
     }
-
-    RowDate {
+    Text {
         id: modified
-        opacity: root.clipCut ? Theme.disabledOpacity : 1
+        opacity: root.dimOpacity
         anchors.right: kind.left
         anchors.rightMargin: root.kindShown ? Theme.spacing.gap : 0
         anchors.verticalCenter: parent.verticalCenter
-        dateShown: root.dateShown
-        dropTarget: root.dropTarget
-        dateWidth: root.dateWidth
-        ink: root.cellColor()
-        cellText: root.dateShown ? root.dateText() : ""
-        highlightToday: ViewState.highlightToday
-        todayStart: ViewState.todayStart
-        mtime: root.row ? root.row.m : null
+        visible: root.dateShown && !root.dropTarget
+        width: root.dateShown ? root.dateWidth : 0
+        text: root.dateShown ? root.dateText() : ""
+        color: RecentDates.isRecent(ViewState.highlightToday, root.row ? root.row.m : null, ViewState.todayStart) ? Theme.color.foreground : root.cellInk
+        font.family: Theme.font.family
+        font.pixelSize: Theme.font.caption
+        horizontalAlignment: Text.AlignRight
+        elide: Text.ElideRight
+        textFormat: Text.PlainText
     }
-
-    RowKind {
+    Text {
         id: kind
-        opacity: root.clipCut ? Theme.disabledOpacity : 1
+        opacity: root.dimOpacity
         anchors.right: parent.right
         anchors.rightMargin: Theme.spacing.rowPaddingX
         anchors.verticalCenter: parent.verticalCenter
-        kindShown: root.kindShown
-        dropTarget: root.dropTarget
-        ink: root.cellColor()
-        cellText: root.kindShown && root.row ? root.kindText() : ""
+        visible: root.kindShown && !root.dropTarget
+        width: root.kindShown ? Theme.column.kind : 0
+        text: root.kindShown && root.row ? root.kindText() : ""
+        color: root.cellInk
+        font.family: Theme.font.family
+        font.pixelSize: Theme.font.caption
+        elide: Text.ElideRight
+        textFormat: Text.PlainText
     }
 
     // The board's own words in the columns' place: caption type in the accent, against the row padding.
@@ -365,11 +378,6 @@ Item {
         }
         // A regenerated thumbnail keeps its path, so the source mtime is the only thing that moves Qt's cache key.
         return Format.fileUri(root.thumb) + "?m=" + root.row.m
-    }
-
-    // A lifted row is a surface the theme never modelled, so its text takes the strongest ink; see the plan's Task 2 table.
-    function cellColor() {
-        return root.lifted || root.foregroundMetadata ? Theme.color.foreground : root.dim
     }
 
     // A directory's own row.s is its dirent size, not the walk's, so this reads root.dirSize instead, see docs/protocol.md "dirsized".

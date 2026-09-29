@@ -442,7 +442,7 @@ QtObject {
         }
         function rowCellColor(i: int): string {
             var item = root.pane.itemFor(i)
-            return item ? String(item.cellColor()) : ""
+            return item ? String(item.cellInk) : ""
         }
         // The date cell's drawn ink, which Highlight today's dates can lift above rowCellColor.
         function rowDateColor(i: int): string {

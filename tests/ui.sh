@@ -3301,7 +3301,7 @@ case_colour() {
     [[ "$file_colour" == "$foreground" ]] || fail "the file name is $file_colour, not foreground $foreground"
 }
 
-# Catches deleting the lifted branch from Row.nameColor or Row.cellColor in ui/Row.qml.
+# Catches deleting the lifted branch from Row.nameColor or Row.cellInk in ui/Row.qml.
 case_lifted() {
     local dir="$fixture_root/lifted"
     sandbox_scratch "$dir"
