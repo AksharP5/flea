@@ -38,12 +38,12 @@ Item {
     property string clipMark: ""
     // A cut row dims to the ClipMarks board's own opacity, content only.
     readonly property bool clipCut: root.clipMark === "scissors"
-    // One dim for the mark slot, the name and the size, so one ternary serves three opacities.
+    // One dim for the content below, so one ternary serves the mark, the name and the size.
     readonly property real dimOpacity: root.clipCut ? Theme.disabledOpacity : 1
     // The mark's own size: 12 px in the muted role, 9 px after the name, per the board.
     readonly property int clipPx: 12
-    // Characters of name slot at the body advance the name draws at, with ElideMiddle as the backstop.
-    readonly property int nameBudget: Theme.bodyAdvance > 0 && nameText.width > 0 ? Math.floor(nameText.width / Theme.bodyAdvance) : -1
+    // The column hands one budget for every row, with ElideMiddle as the backstop.
+    property int nameBudget: -1
 
     // Truthiness, like the two readers below: ui/ColumnPane.qml hands this rows[index] raw, so a
     // listing that shrank leaves a surviving delegate holding undefined, which is not null.
@@ -81,55 +81,79 @@ Item {
         color: Theme.color.accent
     }
 
+    // One content carries the dim, so one opacity serves the mark, the name and the size.
     Item {
-        id: markSlot
-        anchors.left: parent.left
-        anchors.leftMargin: Theme.spacing.rowPaddingX
-        anchors.verticalCenter: parent.verticalCenter
-        width: Theme.iconSize
-        height: Theme.iconSize
+        id: content
+        anchors.fill: parent
         opacity: root.dimOpacity
 
-        // Sized on purpose, the same decode arm as ui/Row.qml: the cache PNG is capped at the icon's own size.
-        Image {
-            id: thumbImage
-            anchors.fill: parent
-            visible: root.thumbDrawn
-            sourceSize.width: Theme.iconSize
-            sourceSize.height: Theme.iconSize
-            fillMode: Image.PreserveAspectFit
-            asynchronous: true
-            // No cache by URL: a regenerated thumbnail keeps its path, and a cached decode would keep the old pixels.
-            cache: false
-            source: root.thumb.length > 0 ? Format.fileUri(root.thumb) : ""
+        Item {
+            id: markSlot
+            anchors.left: parent.left
+            anchors.leftMargin: Theme.spacing.rowPaddingX
+            anchors.verticalCenter: parent.verticalCenter
+            width: Theme.iconSize
+            height: Theme.iconSize
+
+            // Sized on purpose, the same decode arm as ui/Row.qml: the cache PNG is capped at the icon's own size.
+            Image {
+                id: thumbImage
+                anchors.fill: parent
+                visible: root.thumbDrawn
+                sourceSize.width: Theme.iconSize
+                sourceSize.height: Theme.iconSize
+                fillMode: Image.PreserveAspectFit
+                asynchronous: true
+                // No cache by URL: a regenerated thumbnail keeps its path, and a cached decode would keep the old pixels.
+                cache: false
+                source: root.thumb.length > 0 ? Format.fileUri(root.thumb) : ""
+            }
+
+            Flea.Glyph {
+                anchors.fill: parent
+                visible: !root.thumbDrawn
+                name: root.row ? Icons.glyphForRow(root.row.i, root.row.p) : "file"
+                color: root.cursor ? Theme.color.accent : Theme.color.muted
+            }
         }
 
-        Flea.Glyph {
-            anchors.fill: parent
-            visible: !root.thumbDrawn
-            name: root.row ? Icons.glyphForRow(root.row.i, root.row.p) : "file"
-            color: root.cursor ? Theme.color.accent : Theme.color.muted
+        // corner: arbitrary filename text draws PlainText and elides in the middle per Names040.
+        Text {
+            id: nameText
+            anchors.left: markSlot.right
+            anchors.leftMargin: Theme.spacing.gap
+            anchors.right: sizeCell.left
+            anchors.rightMargin: (root.showSize ? Theme.spacing.gap : 0) + (root.clipMark.length > 0 ? Theme.spacing.gap + root.clipPx : 0)
+            anchors.verticalCenter: parent.verticalCenter
+            text: root.row && root.nameBudget >= 0 ? Names.middleElide(root.row.n, root.nameBudget) : (root.row ? root.row.n : "")
+            color: root.ink
+            font.family: Theme.font.family
+            font.pixelSize: Theme.font.body
+            textFormat: Text.PlainText
+            elide: Text.ElideMiddle
         }
-    }
 
-    // corner: arbitrary filename text draws PlainText and elides in the middle per Names040.
-    Text {
-        id: nameText
-        anchors.left: markSlot.right
-        anchors.leftMargin: Theme.spacing.gap
-        anchors.right: sizeCell.left
-        anchors.rightMargin: (root.showSize ? Theme.spacing.gap : 0) + (root.clipMark.length > 0 ? Theme.spacing.gap + root.clipPx : 0)
-        anchors.verticalCenter: parent.verticalCenter
-        opacity: root.dimOpacity
-        text: root.row && root.nameBudget >= 0 ? Names.middleElide(root.row.n, root.nameBudget) : (root.row ? root.row.n : "")
-        color: root.ink
-        font.family: Theme.font.family
-        font.pixelSize: Theme.font.body
-        textFormat: Text.PlainText
-        elide: Text.ElideMiddle
+        // Only the active column carries a number: a peeked row is never stat'd and dirsize resolves
+        // against the active listing, so a neighbour has no row to ask about. ColumnsTabs board rule 3.
+        Text {
+            id: sizeCell
+            anchors.right: chevronSlot.left
+            anchors.rightMargin: root.showSize ? Theme.spacing.gap : 0
+            anchors.verticalCenter: parent.verticalCenter
+            visible: root.showSize && !root.dropTarget
+            width: visible ? Theme.column.size : 0
+            text: root.showSize && root.row ? root.sizeText() : ""
+            color: root.ink
+            horizontalAlignment: Text.AlignRight
+            font.family: Theme.font.family
+            font.pixelSize: Theme.font.caption
+            textFormat: Text.PlainText
+            elide: Text.ElideRight
+        }
     }
 
     // Built only on a clipboard row; off it the x is a constant, so no row reads its name geometry.
+    // Test seams stay functions, so no row at rest binds to name geometry (tests/columnscost.qml).
     Loader {
         id: clipLoader
         active: root.clipMark.length > 0
@@ -145,25 +169,6 @@ Item {
             name: root.clipMark
             color: Theme.color.muted
         }
-    }
-
-    // Only the active column carries a number: a peeked row is never stat'd and dirsize resolves
-    // against the active listing, so a neighbour has no row to ask about. ColumnsTabs board rule 3.
-    Text {
-        id: sizeCell
-        anchors.right: chevronSlot.left
-        anchors.rightMargin: root.showSize ? Theme.spacing.gap : 0
-        anchors.verticalCenter: parent.verticalCenter
-        visible: root.showSize && !root.dropTarget
-        opacity: root.dimOpacity
-        width: visible ? Theme.column.size : 0
-        text: root.showSize && root.row ? root.sizeText() : ""
-        color: root.ink
-        horizontalAlignment: Text.AlignRight
-        font.family: Theme.font.family
-        font.pixelSize: Theme.font.caption
-        textFormat: Text.PlainText
-        elide: Text.ElideRight
     }
 
     // The list's own cell text, so a size reads the same wherever it is drawn.
@@ -212,4 +217,6 @@ Item {
     // Test seam as functions, so no row at rest binds to name geometry (tests/columnscost.qml).
     function clipX() { return clipLoader.x }
     function clipExpectedX() { return nameText.x + Math.min(nameText.implicitWidth, nameText.width) + Theme.spacing.gap }
+    function displayText() { return nameText.text }
+    function nameItem() { return nameText }
 }

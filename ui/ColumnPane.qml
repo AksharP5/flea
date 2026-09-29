@@ -29,6 +29,8 @@ Item {
     property int lockedMode: -1
     // Whether zero rows here means empty: false while a peek is still out, because a pending peek answers zero rows too, and false for the pane's own listing, whose empty answer is the hero ui/shell.qml lays over the area.
     property bool drawsEmpty: false
+    // One character budget for every row here, so a column lays its names out once.
+    readonly property int nameBudget: Theme.bodyAdvance > 0 ? Math.max(0, Math.floor((Scroll.contentWidth(root.width, Theme.spacing.rowPaddingX) - Theme.spacing.rowPaddingX - Theme.iconSize - Theme.spacing.gap - Theme.spacing.rowPaddingX - (root.pane !== null ? Theme.column.size + Theme.spacing.gap : 0)) / Theme.bodyAdvance)) : -1
 
     // isDir says which of the two things a neighbour column's row is: a directory the pane opens as
     // its own listing, or a file it hands to the opener. See keys.toml's [[pointer]] table.
@@ -218,6 +220,8 @@ Item {
             // Read off the normalised row above: subscripting rows again hands a shrunk listing's undefined to a bool.
             lifted: root.liftedName.length > 0 && row !== null && row.n === root.liftedName
             dim: root.dim && !lifted
+            // The column's own budget, so no row measures its own text to elide it.
+            nameBudget: root.nameBudget
 
             TapHandler {
                 id: tap

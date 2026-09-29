@@ -219,7 +219,7 @@ Item {
         active: root.clipMark.length > 0 && !root.renaming && !root.searching
         width: root.clipPx
         height: root.clipPx
-        x: name.x + Math.min(name.implicitWidth, name.width) + Theme.spacing.gap
+        x: root.clipMark.length > 0 ? name.x + Math.min(name.implicitWidth, name.width) + Theme.spacing.gap : 0
         anchors.verticalCenter: parent.verticalCenter
         // The board's own nudge: the mark sits one pixel above the text centre line.
         anchors.verticalCenterOffset: -1

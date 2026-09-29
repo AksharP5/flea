@@ -193,4 +193,25 @@ function runNonFinite(check) {
     check("gridCaption hands a NaN line count through", Names.gridCaption("abcdef", 16, NaN), "abcdef")
     check("gridCaption hands Infinity through", Names.gridCaption("a".repeat(40), Infinity, 2), "a".repeat(40))
     check("gridCaption hands an infinite line count through", Names.gridCaption("a".repeat(40), 16, Infinity), "a".repeat(40))
+    runColumnRowCost(check)
+}
+
+// A Columns row lays its name out once: the column hands one budget, no row measures its own text.
+function runColumnRowCost(check) {
+    var row = Source.source("ui/ColumnRow.qml")
+    check("a column row takes its budget from the column, not its own text width",
+        row.indexOf("property int nameBudget: -1") >= 0, true)
+    check("no row derives its budget from its own laid-out width",
+        row.indexOf("nameText.width / Theme.bodyAdvance") < 0, true)
+    check("the pane computes one budget per column",
+        Source.source("ui/ColumnPane.qml").indexOf("readonly property int nameBudget") >= 0, true)
+    check("and hands it to every row it builds",
+        Source.source("ui/ColumnPane.qml").indexOf("nameBudget: root.nameBudget") >= 0, true)
+    check("one content carries the dim",
+        row.split("opacity: root.dimOpacity").length - 1, 1)
+    check("the middle-elision backstop stays",
+        row.indexOf("elide: Text.ElideMiddle") >= 0, true)
+    var list = Source.source("ui/Row.qml")
+    check("a list row with an empty clipboard reads no name geometry",
+        list.indexOf("x: root.clipMark.length > 0 ? name.x") >= 0, true)
 }
