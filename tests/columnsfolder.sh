@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # w24 folder data hold: the real ColumnsArea keeps the old column by data while a folder
-# peek is out, cancels a live picture hold onto one, and lands empty folders settled.
+# peek is out, hands a live picture hold to that wait, and lands empty folders settled.
 set -u
 . "$(dirname "$0")/../tools/flea-sandbox-guard"
 cd "$(dirname "$0")/.." || exit 1

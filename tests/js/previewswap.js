@@ -120,10 +120,9 @@ function runFolderDataHold(check) {
     var area = Source.source("ui/ColumnsArea.qml")
     var move = squashed(bodyOf(area, "moveThird"))
     check("a move onto an unanswered folder takes the data hold", move.indexOf("Columns.folderDataHold(") >= 0, true)
-    check("a live hold is given up before the data hold waits",
-        move.indexOf("thirdSwap.cancel()") >= 0
-        && move.indexOf("thirdSwap.cancel()") < move.indexOf("folderFallback.restart()"), true)
     var arm = move.substring(move.indexOf("Columns.folderDataHold("), move.indexOf("folderFallback.restart()"))
+    check("a live hold is handed to the data hold's wait, never cancelled into it",
+        arm.indexOf("thirdSwap.cancel()") < 0, true)
     check("the waiting folder is never shown before its peek lands", arm.indexOf("showCursorRow") < 0, true)
     check("the data hold takes no picture",
         arm.indexOf("thirdSwap.hold(") < 0 && arm.indexOf("thirdSwap.start(") < 0, true)
@@ -132,7 +131,10 @@ function runFolderDataHold(check) {
     check("a landed peek shows the folder it waited for", peeked.indexOf("Columns.showFolderOnPeek(") >= 0
         && peeked.indexOf("root.showCursorRow()") > peeked.indexOf("Columns.showFolderOnPeek("), true)
     check("the fallback is a single shot at the listing swap cap", area.indexOf("interval: Swap.HOLD_MS") >= 0, true)
-    check("and shows the pending column when the peek is late", area.indexOf("onTriggered: if (root.cursorIsDir && !root.answered(root.childPath)) { thirdSwap.cancel(); root.showCursorRow() }") >= 0, true)
+    check("and shows the pending column when the peek is late", area.indexOf("onTriggered: if (root.cursorIsDir && !root.answered(root.childPath)) { thirdSwap.cancel(); root.showCursorRow(true) }") >= 0, true)
+    var show = squashed(bodyOf(area, "showCursorRow"))
+    check("a stale queued show never draws an unanswered folder",
+        show.indexOf("Columns.folderDataHold(") >= 0 && show.indexOf("force") >= 0, true)
     check("a data-held empty hero skips its entrance", Source.source("ui/EmptyState.qml").indexOf("animateEntrance") >= 0, true)
     check("its mark can settle at once", Source.source("ui/FleaMark.qml").indexOf("function settle()") >= 0, true)
     check("a landed empty peek settles its hero whole", peeked.indexOf("Columns.shouldSettleHero(") >= 0
@@ -164,7 +166,7 @@ function runPictureHoldLeak(check) {
     var triggerAt = area.indexOf("onTriggered:", fallbackAt)
     var trigger = area.substring(triggerAt, area.indexOf("\n", triggerAt))
     check("the fallback ends a live picture before showing",
-        trigger.indexOf("thirdSwap.cancel()") >= 0 && trigger.indexOf("root.showCursorRow()") >= 0, true)
+        trigger.indexOf("thirdSwap.cancel()") >= 0 && trigger.indexOf("root.showCursorRow(true)") >= 0, true)
     var preview = Source.source("ui/SelectionPreview.qml")
     check("the preview imports the file-row rule",
         preview.indexOf('import "js/Columns.js" as Columns') >= 0, true)

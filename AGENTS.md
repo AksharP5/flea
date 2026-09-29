@@ -472,7 +472,9 @@ whose peek is outstanding keeps the old column by data, and the landed peek show
 the same pass; a folder whose peek already answered lands at once with no hold. Only a move onto a folder
 whose peek is outstanding restarts a single-shot fallback at `Swap.HOLD_MS`, which shows the pending
 (empty-held) state when the peek is late; any other move stops it, and a move onto an unanswered folder
-during a live hold cancels that hold first, or its queued show would draw the folder with no rows.
+during a live hold hands that picture to the folder's wait, with no new hold and no new capture: the
+landing or the fallback releases it with the folder in one pass, and a stale queued show never draws
+an unanswered folder, only the fallback's pending show passing force.
 A different key during a column hold is held j: it gives the picture up, the
 loading state stays live with `heldOff` until `loadSelection`, which holds again with `atWork`. The
 picture cap is `Swap.HOLD_MS` counted from the start of the preview's own work in `load()`,
@@ -2875,6 +2877,7 @@ e31 moves three ceilings, each re-derived with `wc -l`: `ui/ColumnPane.qml` 346 
 
 w037w26 moves one ceiling, re-derived with `wc -l`: `ui/ContextMenu.qml` 579 to 582 for the locked-empty refusal gate (the `lockedRefusal` read in `openLocked` that emits `refused` instead of placing an empty frame); `ui/js/LockedMenu.js` 43 to 51 for `LOCKED_REFUSAL` with `lockedRefusal`, `tests/js/menu.js` 263 to 273 for the shipped-hidden refusal pins, all inside their budgets.
 w037w27 records one ceiling, re-derived with `wc -l`: `tests/columnrow-geom.qml` 396 to 410 for the three pane-built chevron-budget picks (a file row under the cursor keeps the plain budget, a directory row off the cursor keeps it, a lifted directory row takes the chevron budget, each with fit and tight checks), the checkTight short-fixture guard and the dead index fallback removal; `ui/ColumnPane.qml` keeps 348 for reading the row flag (`cell.showChevron`, which never reads `nameBudget`, so no binding loop); `tests/js/names.js` falls 221 to 219 for the one anchored whole-binding check that replaced the three polarity-blind hits.
+w037w25 moves one ceiling down, re-derived with `wc -l`: `ui/ColumnsArea.qml` 440 to 438 for handing the live picture to the folder's wait (the data-hold cancel goes, the stale-show guard and the fallback force take two lines back). `tests/columnsfolder.qml` stands at 256, over the soft budget and under the hard cap, for the kept-picture phase b; `tests/js/previewswap.js` stands at 198 inside both budgets for the handoff pins.
 
 ## The key table is generated
 

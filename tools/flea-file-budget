@@ -57,6 +57,8 @@ ui/Backend.qml 431
 ui/ChromeBar.qml 478
 ui/ColumnsArea.qml 440
 ui/ContextMenu.qml 582
+ui/ColumnsArea.qml 438
+ui/ContextMenu.qml 579
 ui/ConvertDialog.qml 440
 ui/Ipc.qml 818
 ui/NetworkDialog.qml 449

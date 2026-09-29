@@ -5,7 +5,7 @@ import Quickshell
 import "flea" as Flea
 
 // w24 folder data hold through the real ColumnsArea over a stub pane: an unanswered folder waits by
-// data, j cancels a live hold onto one, back reshows the file, and empty lands settled with no entrance.
+// data, j hands a live hold to that wait, back reshows the file, and empty lands settled with no entrance.
 ShellRoot {
     id: root
 
@@ -112,6 +112,12 @@ ShellRoot {
             root.fail(label + " leaves the third swap holding, want idle")
     }
 
+    // The folder's wait keeps the live picture: the landing or the cap releases it with the folder.
+    function assertHeld(label) {
+        if (!root.swap().holding && !root.swap().capturing)
+            root.fail(label + " leaves the third swap idle, want the live picture kept")
+    }
+
     Timer {
         interval: 800
         running: true
@@ -184,17 +190,17 @@ ShellRoot {
         liveTimer.start()
     }
 
-    // b) a file move holds a live picture; the next step cancels it with j onto the folder.
+    // b) a file move holds a live picture; j onto the folder hands that picture to the folder's wait.
     function phaseLive() {
         var s = root.swap()
         if (!s.holding && !s.capturing)
-            root.fail("b) a file move holds no picture, want a live hold to cancel")
+            root.fail("b) a file move holds no picture, want a live hold for the folder's wait")
         root.stubPane.cursorIndex = 2
         cancelledTimer.start()
     }
 
     function phaseCancelled() {
-        root.assertIdle("b) j onto an unanswered folder")
+        root.assertHeld("b) j onto an unanswered folder")
         var preview = root.preview()
         if (!preview.row || preview.row.n !== "a.txt")
             root.fail("b) j onto an unanswered folder clears a.txt, want the old preview kept")

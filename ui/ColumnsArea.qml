@@ -114,7 +114,9 @@ Item {
     // thumb and dirsize already follow.
     function askMeta() { preview.followSelection() }
 
-    function showCursorRow() {
+    // A stale queued show never draws an unanswered folder; the cap's own pending show passes force.
+    function showCursorRow(force) {
+        if (force !== true && Columns.folderDataHold(root.cursorIsDir, root.answered(root.childPath))) return
         root.shownHasRow = root.cursorRow !== null
         root.shownIsDir = root.cursorIsDir
         root.shownChildPath = root.childPath
@@ -125,7 +127,7 @@ Item {
         id: folderFallback
         interval: Swap.HOLD_MS
         repeat: false
-        onTriggered: if (root.cursorIsDir && !root.answered(root.childPath)) { thirdSwap.cancel(); root.showCursorRow() }
+        onTriggered: if (root.cursorIsDir && !root.answered(root.childPath)) { thirdSwap.cancel(); root.showCursorRow(true) }
     }
 
     // Only a file load takes a hold and an unanswered folder waits by data; a manual load, a hidden preview column or a held frame lands at once, or the cap would never arm and the frozen picture would block the pointer.
@@ -139,10 +141,8 @@ Item {
         var held = ExtThumbs.manualHold(root.pane.storageClass, ViewState.preview)
         // A null row is never a file load: the rows have not landed yet, so a hold here would show the folder with no cap.
         var fileLoad = Columns.isFileRow(root.cursorRow) && ViewState.previewColumn && ViewState.previewAutomatic && !held
-        // An unanswered folder waits by data: a live hold is cancelled first, or its queued show draws the folder with no rows.
+        // An unanswered folder waits by data under the live picture, which the landing or the cap releases with the folder in one pass.
         if (Columns.folderDataHold(root.cursorIsDir, root.answered(root.childPath))) {
-            if (!idle)
-                thirdSwap.cancel()
             folderFallback.restart()
             return
         }
