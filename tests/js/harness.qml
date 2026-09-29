@@ -7,6 +7,7 @@ import "clipmarks.js" as ClipMarksSuite
 import "columns.js" as ColumnsSuite
 import "contrast.js" as ContrastSuite
 import "crumbs.js" as CrumbsSuite
+import "ddtarget.js" as DdtargetSuite
 import "dirsizes.js" as DirSizesSuite
 import "drag.js" as DragSuite
 import "dst.js" as DstSuite
@@ -102,7 +103,7 @@ Item {
 
         var suites = [
             ["archive", ArchiveSuite], ["background", BackgroundSuite], ["buttons", ButtonsSuite], ["collide", CollideSuite], ["clipmarks", ClipMarksSuite], ["columns", ColumnsSuite], ["contrast", ContrastSuite],
-            ["dirsizes", DirSizesSuite], ["drag", DragSuite], ["dst", DstSuite],
+            ["dirsizes", DirSizesSuite], ["drag", DragSuite], ["dst", DstSuite], ["ddtarget", DdtargetSuite],
             ["edmonton", DstSuite],
             ["errors", ErrorsSuite], ["facts", FactsSuite], ["filter", FilterSuite], ["filter-cursor", FilterCursorSuite],
             ["focus", FocusSuite], ["focus-grid", FocusGridSuite], ["focus-forward", FocusForwardSuite],

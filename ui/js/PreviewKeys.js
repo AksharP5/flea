@@ -1,6 +1,7 @@
 .pragma library
 
 .import "Filter.js" as Filter
+.import "Marks.js" as Marks
 
 // What the preview overlay does with a key, split out of Focus.js at its 300-line hard cap the
 // same way ui/js/Trash.js was: Focus.js decides which surface owns a key, and this is the surface.
@@ -48,8 +49,8 @@ function open(root) {
 function act(action, root) {
     root.preview.revealStrip()
     switch (action) {
-    case "cursorDown": Filter.moveCursor(root, 1); follow(root); return
-    case "cursorUp": Filter.moveCursor(root, -1); follow(root); return
+    case "cursorDown": Filter.moveCursor(root, 1); Marks.follow(root); follow(root); return
+    case "cursorUp": Filter.moveCursor(root, -1); Marks.follow(root); follow(root); return
     case "preview": root.preview.close(); return
     // Space closes every kind now, so playback has its own key; it self-guards, because p reaches
     // this only in the media context and a still image has nothing to play.

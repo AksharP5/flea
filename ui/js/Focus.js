@@ -4,6 +4,7 @@
 .import "Grid.js" as Grid
 .import "Format.js" as Format
 .import "Keymap.js" as Keymap
+.import "Marks.js" as Marks
 .import "Mounts.js" as Mounts
 .import "Ops.js" as Ops
 .import "PreviewKeys.js" as PreviewKeys
@@ -108,14 +109,14 @@ function lookup(event, root) {
 function act(action, root, menuId, paths) {
     switch (action) {
     // List steps follow item order; in the grid ui/js/Grid.js takes j/k and the arrows as visual cells.
-    case "cursorDown": step(root, 1); return
-    case "cursorUp": step(root, -1); return
-    case "cursorLeft": step(root, -1); return
-    case "cursorRight": step(root, 1); return
-    case "cursorFirst": Filter.setCursorView(root, 0); return
-    case "cursorLast": Filter.setCursorView(root, root.shownTotal - 1); return
-    case "pageDown": step(root, Math.max(1, Math.floor(root.visibleRows / 2))); return
-    case "pageUp": step(root, -Math.max(1, Math.floor(root.visibleRows / 2))); return
+    case "cursorDown": step(root, 1); Marks.follow(root); return
+    case "cursorUp": step(root, -1); Marks.follow(root); return
+    case "cursorLeft": step(root, -1); Marks.follow(root); return
+    case "cursorRight": step(root, 1); Marks.follow(root); return
+    case "cursorFirst": Filter.setCursorView(root, 0); Marks.follow(root); return
+    case "cursorLast": Filter.setCursorView(root, root.shownTotal - 1); Marks.follow(root); return
+    case "pageDown": step(root, Math.max(1, Math.floor(root.visibleRows / 2))); Marks.follow(root); return
+    case "pageUp": step(root, -Math.max(1, Math.floor(root.visibleRows / 2))); Marks.follow(root); return
     case "open": root.openCursor(); return
     case "parent": root.openParent(); return
     case "historyBack": root.goBack(); return

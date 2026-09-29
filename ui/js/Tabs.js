@@ -32,6 +32,8 @@ function snapshot(pane, path) {
         viewMode: pane.viewMode,
         showHidden: pane.showHidden,
         selected: elsewhere ? [] : pane.selectedIndices().slice(),
+        // A lone row restores with only(), so a tab switch never re-arms the row a tap left behind.
+        follows: elsewhere ? false : pane.selection.follows(),
         sortBy: pane.backend.sortBy,
         sortDesc: pane.backend.sortDesc,
         // Issue 94, nixfred: the counter every list bumps, so a selection only returns to its own rows.
@@ -120,10 +122,15 @@ function busy(pane) {
 
 // Only ever called for a switch that re-listed nothing; the clamp is the belt on top of that, since
 // an index past the end would select a row that is not there at all.
-function restoreSelection(pane, selected) {
+function restoreSelection(pane, selected, follows) {
     pane.clearSelection()
     if (!selected || selected.length === 0)
         return
+    if (follows === true && selected.length === 1 && selected[0] < pane.total) {
+        pane.selection.only(selected[0])
+        pane.selectionVersion++
+        return
+    }
     var kept = 0
     for (var i = 0; i < selected.length; i++) {
         if (selected[i] < pane.total) {
@@ -153,7 +160,7 @@ function apply(pane, item, dropped) {
         // The switch that re-reads nothing, unless something else did: the watch and a write both list.
         pane.setCursor(item.cursorIndex)
         if (pane.backend && item.listRequests === pane.backend.listRequests) {
-            restoreSelection(pane, item.selected)
+            restoreSelection(pane, item.selected, item.follows)
             return
         }
         pane.clearSelection()

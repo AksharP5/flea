@@ -76,7 +76,7 @@ ui/Theme.qml 415
 ui/TrashView.qml 475
 ui/WindowBody.qml 546
 ui/js/Filter.js 253
-ui/js/Focus.js 364
+ui/js/Focus.js 365
 ui/js/Keymap.js 314
 ui/js/Menu.js 337
 ui/js/Ops.js 371

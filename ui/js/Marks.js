@@ -52,6 +52,16 @@ function toggleRow(pane, index) {
     pane.selectionVersion += 1
 }
 
+// A lone selection follows a plain cursor move, so the next delete takes the cursor row
+// and not the one a tap left behind. Deliberate marks dropped lone when they were made.
+function follow(pane) {
+    if (!pane.selection.follows() || pane.cursorIndex === pane.selectedIndices()[0])
+        return
+    pane.selection.only(pane.cursorIndex)
+    pane.selectionAnchor = pane.cursorIndex
+    pane.selectionVersion += 1
+}
+
 // The rows drawn between the cursor and the anchor, for both gestures above.
 function extendTo(pane, anchor) {
     if (pane.shown === null) {

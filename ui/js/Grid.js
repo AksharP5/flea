@@ -1,6 +1,7 @@
 .pragma library
 
 .import "Filter.js" as Filter
+.import "Marks.js" as Marks
 
 // The grid's own geometry: which cell a key means when the rows are tiles rather than lines. Split
 // out of ui/js/Focus.js, which holds the key map and the actions every view shares.
@@ -27,6 +28,6 @@ function arrow(event, action, root) {
             || (across < 0 && index % columns === 0)
             || (across > 0 && nextIndex % columns === 0)) return true
     if (action === "extendDown" || action === "extendUp") root.extendSelection(delta)
-    else Filter.moveCursor(root, delta)
+    else { Filter.moveCursor(root, delta); Marks.follow(root) }
     return true
 }

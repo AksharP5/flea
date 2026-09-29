@@ -2840,6 +2840,8 @@ Nothing was removed: the only object a Row at rest gained is the inactive clipLo
 
 w8 colroot moves two ceilings, each re-derived with `wc -l`: `ui/ColumnsArea.qml` 406 to 410 for the root-stops-the-climb gate (parentShown/grandparentShown/greatGrandparentShown off `Columns.ancestorShown`, the refreshNeighbours ask gate, the blank-but-width-kept ancestor slots and the null-while-hidden Ipc readers); `tests/js/columns.js` 313 to 356 for the w8 checks (ancestors at /, /home, /home/gm, the no-equal-neighbour sweep, Left at / opening nothing and the area gating pins). `ui/js/Columns.js` 185 to 227 for ancestorParent/ancestors/ancestorShown, over the soft budget and under the hard cap.
 
+ddtarget moves one ceiling, re-derived with `wc -l`: `ui/js/Focus.js` 364 to 365 for the Marks import carrying the lone-selection follow on the eight plain-move cases, each call appended to its case's own line so the import is the only added line. `ui/js/Marks.js` 66 to 76 for follow, `ui/js/Selection.js` 50 to 58 for the lone flag with follows, `ui/js/Tabs.js` 292 to 299 for the snapshot follows with the only() restore, `ui/js/Grid.js` 32 to 33 and `ui/js/PreviewKeys.js` 85 to 86 for their follow calls, each inside its budget; the suite is the new `tests/js/ddtarget.js` at 166, inside both budgets, registered in `tests/js/harness.qml` at 170.
+
 ## The key table is generated
 
 `keys.toml` at the repository root is the single source of truth for every binding.

@@ -3818,8 +3818,8 @@ case_dd() {
     [[ "$(ipc rowAt "$(ipc cursor)")" == "f6.txt|"* ]] \
         || fail "dd: the cursor sits on $(ipc rowAt "$(ipc cursor)"), not the row that slid up"
 
-    # The delete's anchor selects the row it landed on, so the next dd would take that row and not the
-    # cursor's: Escape is what hands the keyboard back to the cursor rule.
+    # The delete's anchor selects the row it landed on, which is the cursor row, so the next dd
+    # takes the cursor's row; Escape is what clears the selection.
     [[ "$(ipc selectionCount)" == "1" ]] \
         || fail "dd: the row the cursor landed on is not selected, count is $(ipc selectionCount)"
     key -k Escape >/dev/null
@@ -3841,6 +3841,47 @@ case_dd() {
     [[ "$(ipc rowAt "$(ipc cursor)")" == "f4.txt|"* ]] \
         || fail "dd: the clamped cursor sits on $(ipc rowAt "$(ipc cursor)")"
     kill_flea
+}
+
+# A click followed by a plain Down moves the lone selection with the cursor, so the dd after
+# it trashes the cursor row and not the clicked one: list, then grid, each asserting the clicked
+# file is still in the fixture and the cursor row is in this case's own Trash, case_dd's pattern.
+case_ddclick() {
+    local view dir
+    for view in list grid; do
+        dir="$fixture_root/ddclick-$view"
+        sandbox_scratch "$dir"
+        printf 'stay\n' > "$dir/f0.txt"
+        printf 'go\n' > "$dir/f1.txt"
+        export XDG_DATA_HOME="$fixture_root/ddclick-$view-data"
+        mkdir -p "$XDG_DATA_HOME"
+
+        launch "$dir"
+        wait_listing 2
+        if [[ "$view" == grid ]]; then
+            click_chrome grid
+            settle
+            [[ "$(ipc viewMode)" == grid ]] || fail "ddclick: the chrome did not switch to the grid"
+        fi
+
+        click_row 0 left
+        settle
+        [[ "$(ipc cursor)" == "0" ]] || fail "ddclick ($view): the click left the cursor on $(ipc cursor), not 0"
+        key -k Down >/dev/null
+        settle
+        [[ "$(ipc cursor)" == "1" ]] || fail "ddclick ($view): Down left the cursor on $(ipc cursor), not 1"
+        key d >/dev/null
+        wait_message "Press d again to trash, or Delete on its own."
+        key d >/dev/null
+        for _attempt in $(seq 1 40); do [[ -e "$dir/f1.txt" ]] || break; sleep 0.25; done
+        [[ -e "$dir/f1.txt" ]] && fail "ddclick ($view): f1.txt survived, the bar reads $(ipc lastMessage)"
+        [[ -e "$dir/f0.txt" ]] || fail "ddclick ($view): the clicked f0.txt went to Trash instead of the cursor row"
+        # Hard rule 9 in the case itself: the row went to this case's own trash and not the operator's.
+        [[ -s "$XDG_DATA_HOME/Trash/files/f1.txt" ]] \
+            || fail "ddclick ($view): f1.txt did not land in $XDG_DATA_HOME/Trash/files, which holds $(ls -A "$XDG_DATA_HOME/Trash/files" 2>&1)"
+        printf 'DDCLICK view=%s kept=f0.txt trashed=f1.txt\n' "$view"
+        kill_flea
+    done
 }
 
 # Paste onto a name that exists: asked once, and Cancel, Keep both, Skip and Replace with its Undo each do
@@ -10503,7 +10544,7 @@ case_previewviews() {
 . "$repo/tests/ui-transfer-live.sh"
 
 declare -a wanted=("$@")
-[[ ${#wanted[@]} -eq 0 ]] && wanted=(cursor scroll scrollbar terminal open rows click ctrlclick viewrestart dd collide sortrestart duallaunch dirsortstale editplace mute placemenu runscript unmounted sidebar menu background hidden selection watch optical select colour lifted icons thumbs hashcache stale nosweep oem header columnresize columnautofit overflow focus preview pdffocus network netmark networkauth networktimeout gvfs sharebrowser unmount phones trasharm eject rename renamelife taildrop providers grid columns operations tabs openterminal renderer settings makedefault scrolllane clickthrough wheelunder overlays views formats previewviews hangshare openwithdesign noblank previewswap transferlive)
+[[ ${#wanted[@]} -eq 0 ]] && wanted=(cursor scroll scrollbar terminal open rows click ctrlclick viewrestart dd ddclick collide sortrestart duallaunch dirsortstale editplace mute placemenu runscript unmounted sidebar menu background hidden selection watch optical select colour lifted icons thumbs hashcache stale nosweep oem header columnresize columnautofit overflow focus preview pdffocus network netmark networkauth networktimeout gvfs sharebrowser unmount phones trasharm eject rename renamelife taildrop providers grid columns operations tabs openterminal renderer settings makedefault scrolllane clickthrough wheelunder overlays views formats previewviews hangshare openwithdesign noblank previewswap transferlive)
 
 : > "$run_log"
 : > "$flea_log"
