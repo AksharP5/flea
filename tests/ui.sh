@@ -290,13 +290,14 @@ kill_flea() {
         sleep 0.05
     done
     (( found == 0 )) || fail "an owned backend or Trash monitor survived for $drain_wait_s s after its window closed"
-    # qs's cmdline empties at exit but Hyprland lists the dead window 100 to 150 ms longer, and the
-    # next launch's wait window would match it; wait, bounded, until no client carries a dead pid.
+    # Hyprland lists a dead window 100 to 150 ms past its exit, so the next launch waits, bounded, until no client carries a dead pid.
     deadline=$((SECONDS + drain_wait_s))
     local hclients still
     while :; do
         still=""
         hclients=$(hyprctl clients -j 2>/dev/null) || fail "cannot inspect Hyprland clients while draining"
+        jq -e 'type == "array"' <<< "$hclients" >/dev/null \
+            || fail "hyprctl clients -j returned non-JSON while draining, so no dead window can be ruled out"
         for pid in $dead_pids; do
             [[ -n "$pid" ]] || continue
             if jq -e --argjson pid "$pid" '[.[] | select(.pid == $pid)] | length > 0' <<< "$hclients" >/dev/null; then
@@ -3563,7 +3564,7 @@ case_reclick() {
     for i in $(seq -w 1 150); do printf 'body\n' > "$dir/file-$i.txt"; done
     for i in $(seq -w 1 80); do printf 'body\n' > "$dir/aaa/file-$i.txt"; done
     seed=$(jq -cn --arg path "$dir" --arg sub "$dir/aaa" '{view:"list",places:{favourites:[{label:"Reclick here",path:$path},{label:"Reclick sub",path:$sub}]}}')
-    seed_ui_state "$dir/state" "$seed"
+    seed_ui_state "$fixture_root/reclick-state" "$seed"
     launch "$dir"
     wait_listing 152
     # Dirs sort first, so the two subdirs head the listing and the lit parent row later.
@@ -3578,7 +3579,11 @@ case_reclick() {
     req=$(ipc listRequests); cur=$(ipc cursor); sel=$(ipc selectedIndices); cy=$(ipc listContentY)
     (( cy > 0 )) || fail "reclick: row 40 left contentY at $cy, so the scroll assertion is vacuous"
     click_rail_row "$(rail_row_of 'Reclick here')" left
+    # A rail tap resolves past Qt's 400 ms double-click interval (392 to 433 ms measured in AGENTS.md), so the no-op reads wait it out.
     settle
+    sleep 0.6
+    [[ "$(ipc railCursor)" == "$(rail_row_of 'Reclick here')" ]] \
+        || fail "reclick: the rail tap never reached the rail, cursor is $(ipc railCursor)"
     [[ "$(ipc path)" == "$dir" ]] || fail "reclick: a rail click on the shown folder left $dir for $(ipc path)"
     [[ "$(ipc listRequests)" == "$req" ]] || fail "reclick: a rail click on the shown folder re-listed, $req then $(ipc listRequests)"
     [[ "$(ipc cursor)" == "$cur" ]] || fail "reclick: a rail click on the shown folder moved the cursor to $(ipc cursor)"
@@ -3589,8 +3594,7 @@ case_reclick() {
     click_rail_row "$(rail_row_of 'Reclick sub')" left
     wait_path "$dir/aaa"
     [[ "$(ipc listRequests)" -gt "$req" ]] || fail "reclick: a rail click on another folder listed nothing"
-    # The columns half: the parent column shows $dir with aaa lit at row 0, and the
-    # tap on the bbb sibling at row 1 is the positive control below.
+    # The columns half: the parent column shows $dir with aaa lit at row 0, and the tap on the bbb sibling at row 1 is its positive control.
     switch_view columns
     [[ "$(ipc viewMode)" == "columns" ]] || fail "reclick: the view did not switch to columns"
     goto_row 40
@@ -3605,7 +3609,11 @@ case_reclick() {
     [[ -n "$fy" ]] || fail "reclick: the parent column shows no row 0 for the lit aaa row"
     read -r wx wy _ww _wh < <(window_box) || fail "native window coordinates unavailable"
     omarchy-drive click "$((wx + fx))" "$((wy + fy))" left >/dev/null
+    # Same deferred-tap wait as the rail half: the lit-row tap resolves past the 400 ms double-click interval before the no-op reads.
     settle
+    sleep 0.6
+    [[ -n "$(ipc columnParentRowCentre 0)" ]] \
+        || fail "reclick: the lit parent row is gone, so the tap may have landed on no row at all"
     [[ "$(ipc path)" == "$dir/aaa" ]] || fail "reclick: a tap on the lit parent row left $dir/aaa for $(ipc path)"
     [[ "$(ipc listRequests)" == "$req" ]] || fail "reclick: a tap on the lit parent row re-listed, $req then $(ipc listRequests)"
     [[ "$(ipc cursor)" == "$cur" ]] || fail "reclick: a tap on the lit parent row moved the cursor to $(ipc cursor)"
@@ -3625,7 +3633,7 @@ case_reclick() {
 # instead of repeating / one and two levels down. Left at / is a silent no-op, and the
 # parent column lists / again once /usr is opened. JS pins the climb in tests/js/columns.js.
 case_colroot() {
-    local n count
+    local n count _cwx _cwy _cww _cwh
     for n in 3 4 5; do
         seed_ui_state "$fixture_root/colroot-state-$n" '{"view":"columns","columnsLimit":'"$n"'}'
         launch "/"
@@ -3633,14 +3641,17 @@ case_colroot() {
         [[ "$(ipc viewMode)" == "columns" ]] || fail "colroot: limit $n opened in $(ipc viewMode), not columns"
         [[ "$(ipc path)" == "/" ]] || fail "colroot: limit $n opened at $(ipc path), not /"
         count=$(ipc columnCount)
+        [[ "$count" =~ ^[0-9]+$ ]] || fail "colroot: limit $n answered count [$count], not a number"
+        read -r _cwx _cwy _cww _cwh < <(window_box) || fail "native window coordinates unavailable"
+        [[ "$count" == "$n" ]] || fail "colroot: limit $n shows $count columns on a ${_cww}px window, not $n"
         # A blank slot has no rows, so its row centre is empty; centreOf answers "" for null.
         [[ -z "$(ipc columnParentRowCentre 0)" ]] \
             || fail "colroot: limit $n shows a parent row at /, the duplicate / column is back"
-        if (( count >= 4 )); then
+        if (( n >= 4 )); then
             [[ -z "$(ipc columnGrandparentRowCentre 0)" ]] \
                 || fail "colroot: limit $n shows a grandparent row at /"
         fi
-        if (( count >= 5 )); then
+        if (( n >= 5 )); then
             [[ -z "$(ipc columnGreatGrandparentRowCentre 0)" ]] \
                 || fail "colroot: limit $n shows a great-grandparent row at /"
         fi
@@ -3664,7 +3675,26 @@ case_colroot() {
     wait_path "/usr"
     [[ -n "$(ipc columnParentRowCentre 0)" ]] \
         || fail "colroot: the parent column shows no row for / under /usr"
-    printf 'COLROOT left=no-op parent-lists-slash\n'
+    # Positive control: at depth 3 every ancestor seam answers non-empty, so the blank reads above cannot pass on a missing seam.
+    seek_row_named "share"
+    key -k Return >/dev/null
+    wait_path "/usr/share"
+    settle
+    [[ -n "$(ipc columnParentRowCentre 0)" ]] \
+        || fail "colroot: the parent column shows no row under /usr/share"
+    [[ -n "$(ipc columnGrandparentRowCentre 0)" ]] \
+        || fail "colroot: the grandparent column shows no row under /usr/share"
+    seek_row_named "doc"
+    key -k Return >/dev/null
+    wait_path "/usr/share/doc"
+    settle
+    [[ -n "$(ipc columnParentRowCentre 0)" ]] \
+        || fail "colroot: the parent column shows no row under /usr/share/doc"
+    [[ -n "$(ipc columnGrandparentRowCentre 0)" ]] \
+        || fail "colroot: the grandparent column shows no row under /usr/share/doc"
+    [[ -n "$(ipc columnGreatGrandparentRowCentre 0)" ]] \
+        || fail "colroot: the great-grandparent column shows no row under /usr/share/doc"
+    printf 'COLROOT left=no-op parent-lists-slash depth-controls=ok\n'
     kill_flea
 }
 
@@ -10564,12 +10594,18 @@ case_previewviews() {
         for _attempt in $(seq 1 40); do [[ "$(ipc previewState)" == "pdf" ]] && break; sleep 0.1; done
         [[ "$(ipc previewKind)" == "pdf" && "$(ipc previewState)" == "pdf" && "$(ipc previewPdfPage)" == "0" ]] \
             || fail "$mode: Space on manual.pdf: kind $(ipc previewKind), state $(ipc previewState), page $(ipc previewPdfPage)"
-        # Space closes a PDF Quick Look instead of paging or zooming it; the page and
-        # zoom it opened with are what pin the old behaviour, cleared readers aside.
+        # Space closes a PDF Quick Look instead of paging or zooming it; the open page and zoom pin the old behaviour, cleared readers aside.
         local page_before zoom_before page_after zoom_after
         page_before=$(ipc previewPdfPage); zoom_before=$(ipc previewPdfZoom)
         [[ "$page_before" == "0" && -n "$zoom_before" ]] \
             || fail "$mode: manual.pdf opened on page $page_before zoom $zoom_before, not page 0"
+        # A reopen from page 0 proves nothing, so page off it first: the close must keep the page and the reopen must reset it.
+        key -k Right >/dev/null
+        settle
+        key -k Right >/dev/null
+        settle
+        [[ "$(ipc previewPdfPage)" == "1" ]] || fail "$mode: two Rights left manual.pdf on page $(ipc previewPdfPage), not the last page 1"
+        page_before=$(ipc previewPdfPage)
         key -k space >/dev/null
         settle
         [[ "$(ipc previewOpen)" == "false" ]] || fail "$mode: Space did not close the manual.pdf preview"
@@ -10580,8 +10616,8 @@ case_previewviews() {
             || fail "$mode: Space zoomed manual.pdf to $zoom_after instead of closing it"
         key -k space >/dev/null
         for _attempt in $(seq 1 40); do [[ "$(ipc previewState)" == "pdf" ]] && break; sleep 0.1; done
-        [[ "$(ipc previewPdfPage)" == "0" ]] \
-            || fail "$mode: reopened manual.pdf sits on page $(ipc previewPdfPage), not the first"
+        [[ "$(ipc previewOpen)" == "true" && "$(ipc previewPdfPage)" == "0" ]] \
+            || fail "$mode: reopened manual.pdf shows open $(ipc previewOpen) on page $(ipc previewPdfPage), not an open preview on the first"
         key -k Right >/dev/null
         settle
         key -k Right >/dev/null
