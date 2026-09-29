@@ -3996,17 +3996,18 @@ case_dd() {
 # it trashes the cursor row and not the clicked one: list, then grid, each asserting the clicked
 # file is still in the fixture and the cursor row is in this case's own Trash, case_dd's pattern.
 case_ddclick() {
-    local view dir
+    local view dir count cur want
     for view in list grid; do
         dir="$fixture_root/ddclick-$view"
         sandbox_scratch "$dir"
-        printf 'stay\n' > "$dir/f0.txt"
-        printf 'go\n' > "$dir/f1.txt"
+        if [[ "$view" == grid ]]; then count=9; else count=2; fi
+        local i
+        for i in $(seq 0 $((count - 1))); do printf 'body\n' > "$dir/f$i.txt"; done
         export XDG_DATA_HOME="$fixture_root/ddclick-$view-data"
         mkdir -p "$XDG_DATA_HOME"
 
         launch "$dir"
-        wait_listing 2
+        wait_listing "$count"
         if [[ "$view" == grid ]]; then
             click_chrome grid
             settle
@@ -4016,19 +4017,27 @@ case_ddclick() {
         click_row 0 left
         settle
         [[ "$(ipc cursor)" == "0" ]] || fail "ddclick ($view): the click left the cursor on $(ipc cursor), not 0"
+        [[ "$(ipc selectedIndices)" == "0" ]] || fail "ddclick ($view): the click selected $(ipc selectedIndices), not 0"
         key -k Down >/dev/null
         settle
-        [[ "$(ipc cursor)" == "1" ]] || fail "ddclick ($view): Down left the cursor on $(ipc cursor), not 1"
+        cur="$(ipc cursor)"
+        if [[ "$view" == grid ]]; then
+            (( cur >= 2 && cur < count )) || fail "ddclick (grid): Down left the cursor on $cur, not a full stride below 0"
+        else
+            [[ "$cur" == "1" ]] || fail "ddclick ($view): Down left the cursor on $cur, not 1"
+        fi
+        [[ "$(ipc selectedIndices)" == "$cur" ]] || fail "ddclick ($view): the lone selection is $(ipc selectedIndices), not the cursor row $cur"
+        want="f$cur.txt"
         key d >/dev/null
         wait_message "Press d again to trash, or Delete on its own."
         key d >/dev/null
-        for _attempt in $(seq 1 40); do [[ -e "$dir/f1.txt" ]] || break; sleep 0.25; done
-        [[ -e "$dir/f1.txt" ]] && fail "ddclick ($view): f1.txt survived, the bar reads $(ipc lastMessage)"
+        for _attempt in $(seq 1 40); do [[ -e "$dir/$want" ]] || break; sleep 0.25; done
+        [[ -e "$dir/$want" ]] && fail "ddclick ($view): $want survived, the bar reads $(ipc lastMessage)"
         [[ -e "$dir/f0.txt" ]] || fail "ddclick ($view): the clicked f0.txt went to Trash instead of the cursor row"
         # Hard rule 9 in the case itself: the row went to this case's own trash and not the operator's.
-        [[ -s "$XDG_DATA_HOME/Trash/files/f1.txt" ]] \
-            || fail "ddclick ($view): f1.txt did not land in $XDG_DATA_HOME/Trash/files, which holds $(ls -A "$XDG_DATA_HOME/Trash/files" 2>&1)"
-        printf 'DDCLICK view=%s kept=f0.txt trashed=f1.txt\n' "$view"
+        [[ -s "$XDG_DATA_HOME/Trash/files/$want" ]] \
+            || fail "ddclick ($view): $want did not land in $XDG_DATA_HOME/Trash/files, which holds $(ls -A "$XDG_DATA_HOME/Trash/files" 2>&1)"
+        printf 'DDCLICK view=%s kept=f0.txt trashed=%s cursor=%s\n' "$view" "$want" "$cur"
         kill_flea
     done
 }

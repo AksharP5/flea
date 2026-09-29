@@ -60,6 +60,8 @@ function pane(query, held) {
     // deliberate mark drops it, so suites driving Focus.act see the production follow rule.
     var lone = false
     p.selection = {
+        has: function (i) { return p.picked[i] === true },
+        promote: function (i) { if (lone && p.selectedIndices().length === 1 && p.picked[i]) { lone = false; return true } return false },
         count: function () { return p.selectedIndices().length },
         only: function (i) { p.picked = {}; p.picked[i] = true; lone = true },
         toggle: function (i) { if (p.picked[i]) delete p.picked[i]; else p.picked[i] = true; lone = false },

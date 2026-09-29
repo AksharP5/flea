@@ -62,6 +62,13 @@ function follow(pane) {
     pane.selectionVersion += 1
 }
 
+// v on a lone following row keeps it as a deliberate mark instead of toggling it off.
+function toggleSelect(pane) {
+    if (!pane.selection.promote(pane.cursorIndex)) pane.selection.toggle(pane.cursorIndex)
+    pane.selectionAnchor = pane.cursorIndex
+    pane.selectionVersion += 1
+}
+
 // The rows drawn between the cursor and the anchor, for both gestures above.
 function extendTo(pane, anchor) {
     if (pane.shown === null) {

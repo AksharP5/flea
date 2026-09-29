@@ -22,9 +22,12 @@ function create() {
     }
 
     function dropLone() { lone = false }
+    // v on its lone row keeps it and drops lone, so the next v toggles it off.
+    function promote(i) { if (lone && n === 1 && has(i)) { dropLone(); return true } return false }
 
     return {
         has: has,
+        promote: promote,
         count: function () { return n },
         // A lone row follows a plain move; any deliberate mark drops that promise at once.
         follows: function () { return lone && n === 1 },

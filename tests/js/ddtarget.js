@@ -6,6 +6,8 @@
 .import "../../ui/js/Nav.js" as Nav
 .import "../../ui/js/Ops.js" as Ops
 .import "../../ui/js/Tap.js" as Tap
+.import "../../ui/js/Anchor.js" as Anchor
+.import "../../ui/js/Tabs.js" as Tabs
 .import "../../ui/js/PreviewKeys.js" as PreviewKeys
 
 // A lone selection the pane made follows a plain cursor move, so dd trashes the cursor row.
@@ -16,9 +18,10 @@ function pane(rows, viewMode, stride) {
         rows: rows, held: 0, total: rows.length, shown: null, shownTotal: rows.length,
         cursorIndex: 0, viewMode: viewMode || "list", cursorStride: stride || 1,
         visibleRows: 10, wrapAtEnds: false, filterQuery: "", filterTyping: false,
-        searchMode: "", selectionAnchor: 0, selectionVersion: 0, path: "/d",
-        kindNames: [], trashedFirst: -1, sent: [], asked: null, moved: null,
-        pendingSelect: "", pendingMenu: false
+        searchMode: "", searchFrom: "", selectionAnchor: 0, selectionVersion: 0, path: "/d",
+        kindNames: [], trashedFirst: -1, sent: [], asked: null, askLog: [], moved: null,
+        pendingSelect: "", pendingMenu: false, history: [], forwardHistory: [],
+        showHidden: false, home: "/home", windowSize: 50, listInFlight: false, openedPath: ""
     }
     p.selection = Selection.create()
     p.rowFor = function (i) { return i < 0 || i >= p.rows.length ? null : p.rows[i] }
@@ -32,15 +35,12 @@ function pane(rows, viewMode, stride) {
         p.selectionAnchor = p.cursorIndex
         p.selectionVersion++
     }
-    p.toggleSelect = function () {
-        p.selection.toggle(p.cursorIndex)
-        p.selectionAnchor = p.cursorIndex
-        p.selectionVersion++
-    }
+    p.toggleSelect = function () { Marks.toggleSelect(p) }
     p.clearSelection = function () { p.selection.clear(); p.selectionVersion++ }
     p.commitOpenRename = function () {}
     p.act = function () {}
     p.message = function () {}
+    p.openWithoutHistory = function (path, opts) { p.openedPath = path }
     p.preview = { revealStrip: function () {}, follow: function () {} }
     p.collide = { ask: function (req) { p.moved = req } }
     p.clipboard = { paths: [], moving: false }
@@ -48,7 +48,9 @@ function pane(rows, viewMode, stride) {
     p.pathsPending = null
     p.backend = {
         trash: function (idx, menuId) { p.trashedFirst = idx[0]; p.sent.push("trash " + idx.join(",")) },
-        askPaths: function (idx) { p.asked = idx.slice() }
+        askPaths: function (idx) { p.askLog.push(idx.slice()); p.asked = idx.slice() },
+        window: function (start, size) {},
+        sortBy: "", sortDesc: false, listRequests: 0, dirDev: 0
     }
     return p
 }
@@ -85,9 +87,15 @@ function run(check, label) {
     Ops.trash(mid)
     check(label + " columns: tap+j+dd trashes the cursor row", mid.sent.join(";"), "trash 1")
 
-    // A trash lands selecting its row, so dd-j-dd takes each cursor row in turn.
+    // A trash lands through Anchor.afterDelete, so dd-j-dd takes each cursor row in turn.
     var twice = pane(files(6))
-    twice.selectOnly(2)
+    twice.setCursor(2)
+    Ops.trash(twice)
+    twice.sent = []
+    twice.clearSelection()
+    var anchor = Anchor.afterDelete(twice, true)
+    Anchor.apply(twice, anchor)
+    check(label + " landing selects its row as lone", twice.selectedIndices().join(",") + "|" + twice.selection.follows(), "2|true")
     down(twice)
     Ops.trash(twice)
     check(label + " dd-j-dd trashes the row the cursor moved to", twice.sent.join(";"), "trash 3")
@@ -102,26 +110,75 @@ function run(check, label) {
 
     // Quick Look j moves the cursor the same way, so dd after it trashes the cursor row.
     var look = pane(files(6))
-    look.selectOnly(0)
+    Tap.tapped(0, 1, none, look)
     PreviewKeys.act("cursorDown", look)
     Ops.trash(look)
     check(label + " Quick Look j then dd trashes the cursor row", look.sent.join(";"), "trash 1")
 
-    // Every targetIndices action names the cursor row after click+Down.
+    // v on a lone following row promotes it, so tap-j-v-j-v gives 1,2.
+    var vv = pane(files(6))
+    Tap.tapped(0, 1, none, vv)
+    down(vv)
+    vv.toggleSelect()
+    check(label + " v on the lone row keeps it", vv.selectedIndices().join(","), "1")
+    check(label + " v promotes lone to deliberate", vv.selection.follows(), false)
+    down(vv)
+    vv.toggleSelect()
+    check(label + " tap-j-v-j-v gives 1,2", vv.selectedIndices().join(","), "1,2")
+    var ctl = pane(files(6))
+    Tap.tapped(0, 1, none, ctl)
+    Marks.toggleRow(ctl, 0)
+    check(label + " ctrl+click on the lone row empties it", ctl.selectedIndices().join(","), "")
+
+    // Every production route names the cursor row after click+Down.
     var mixed = pane(files(6))
     Tap.tapped(0, 1, none, mixed)
     down(mixed)
     check(label + " the mixed list targets the cursor row", Ops.targetIndices(mixed).join(","), "1")
+    mixed.sent = []
     Ops.trash(mixed)
-    Ops.clip(mixed, false, null)
-    Ops.clip(mixed, true, null)
-    mixed.pathsPending = null
-    mixed.backend.askPaths = function (idx) { mixed.asked = idx.slice() }
-    Ops.compress(mixed, "zip")
-    mixed.collide.ask({ c: "transfer", op: "move", rows: Ops.targetIndices(mixed), dest: "/drop" })
     check(label + " trash names the cursor row", mixed.sent.join(";"), "trash 1")
-    check(label + " copy, cut and compress ask for the cursor row", mixed.asked.join(","), "1")
+    mixed.clipPending = null
+    mixed.askLog = []
+    Ops.clip(mixed, false, null)
+    check(label + " copy asks for the cursor row", mixed.askLog.map(function (a) { return a.join(",") }).join(";"), "1")
+    mixed.clipPending = null
+    mixed.askLog = []
+    Ops.clip(mixed, true, null)
+    check(label + " cut asks for the cursor row", mixed.askLog.map(function (a) { return a.join(",") }).join(";"), "1")
+    mixed.pathsPending = null
+    mixed.askLog = []
+    Ops.compress(mixed, "zip")
+    check(label + " compress asks for the cursor row", mixed.askLog.map(function (a) { return a.join(",") }).join(";"), "1")
+    mixed.moved = null
+    Ops.moveToDropbox(mixed, "/drop", 0)
     check(label + " Move to Dropbox names the cursor row", mixed.moved.rows.join(","), "1")
+    check(label + " Move to Dropbox keeps its destination", mixed.moved.dest, "/drop")
+
+    // A tab switch restores the lone row as lone, so Down+dd still trash the cursor.
+    var tabSrc = pane(files(6))
+    Tap.tapped(0, 1, none, tabSrc)
+    var snap = Tabs.snapshot(tabSrc)
+    check(label + " snapshot keeps the lone row", snap.selected.join(","), "0")
+    check(label + " snapshot keeps follows", snap.follows, true)
+    var tabDst = pane(files(6))
+    Tabs.restoreSelection(tabDst, snap.selected, snap.follows)
+    check(label + " restore keeps the lone row", tabDst.selectedIndices().join(","), "0")
+    check(label + " restore keeps follows", tabDst.selection.follows(), true)
+    down(tabDst)
+    Ops.trash(tabDst)
+    check(label + " tab-switch click Down dd trashes the cursor row", tabDst.sent.join(";"), "trash 1")
+
+    // A lone row follows a plain move under a filter, so dd trashes the drawn cursor row.
+    var filt = pane([{ n: "aa.txt", d: false }, { n: "ab.txt", d: false }, { n: "b.txt", d: false }])
+    filt.filterQuery = "a"
+    filt.shown = Filter.shown(filt.rows, filt.held, filt.filterQuery)
+    filt.shownTotal = filt.shown.length
+    Tap.tapped(0, 1, none, filt)
+    down(filt)
+    check(label + " filtered follow selects the drawn cursor row", filt.selectedIndices().join(","), "1")
+    Ops.trash(filt)
+    check(label + " filtered tap-j-dd trashes the drawn cursor row", filt.sent.join(";"), "trash 1")
 
     // The follow shape: f1 selected after the move, and deliberate marks still span.
     var shape = pane(files(6))

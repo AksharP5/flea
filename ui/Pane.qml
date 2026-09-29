@@ -278,7 +278,7 @@ FocusScope {
     function isSelected(index) { return root.selectionVersion >= 0 && root.selection.has(index) }
     function selectionCount() { return root.selectionVersion >= 0 ? root.selection.count() : 0 }
     function selectedIndices() { return root.selectionVersion >= 0 ? root.selection.indices() : [] }
-    function toggleSelect() { root.selection.toggle(root.cursorIndex); root.selectionAnchor = root.cursorIndex; root.selectionVersion++ }
+    function toggleSelect() { Marks.toggleSelect(root) }
     function selectAll() { Marks.selectAll(root); root.selectionVersion++ }
     function clearSelection() { root.selection.clear(); root.selectionVersion++ }
     function selectOnly(index) {
