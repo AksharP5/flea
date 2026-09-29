@@ -28,10 +28,8 @@ PYEND
 trap cleanup EXIT
 mkdir -p "$fixture/flea/js"
 cp ui/PickerListing.qml ui/PickerLifecycle.qml ui/Backend.qml "$fixture/flea/"
-# Sample input: import "js/Swap.js" as Swap
-for js in $(grep -ho '"js/[^"]*\.js"' ui/Backend.qml ui/PickerListing.qml ui/PickerLifecycle.qml | tr -d '"' | sort -u); do
-    cp "ui/$js" "$fixture/flea/js/"
-done
+# The js files import each other (FolderSorts.js imports Sort.js), so the fixture takes the whole folder.
+cp ui/js/*.js "$fixture/flea/js/"
 # A test-only method fixes the rare cancel-before-FailedToStart event order, never the handler under test.
 python3 - "$fixture/flea/Backend.qml" <<'PYEND'
 from pathlib import Path
