@@ -215,5 +215,5 @@ function runColumnRowCost(check) {
         row.indexOf("elide: Text.ElideMiddle") >= 0, true)
     var list = Source.source("ui/Row.qml")
     check("a list row with an empty clipboard reads no name geometry",
-        list.indexOf("x: root.clipMark.length > 0 ? name.x") >= 0, true)
+        list.indexOf("id: clipLoader") < 0 && list.indexOf("x: name.x + Math.min(name.implicitWidth") >= 0, true)
 }

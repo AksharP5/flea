@@ -36,7 +36,7 @@ function run(check) {
     check("Row defines one shared cell ink", countRe(row, /readonly property color cellInk/g), 1)
     check("no cellColor() call is left", countRe(row, /cellColor\(\)/g), 0)
     check("mode, size and kind bind the shared ink", ["mode", "size", "kind"].every(function (id) { return cellBlock(row, id).indexOf("color: root.cellInk\n") >= 0 }), true)
-    check("an older date keeps the shared ink", cellBlock(row, "modified").indexOf("? Theme.color.foreground : root.cellInk\n") >= 0, true)
+    check("an older date keeps the shared ink", cellBlock(row, "modified").indexOf("? root.dimmed(Theme.color.foreground) : root.cellInk\n") >= 0, true)
     // The anchor chain is untouched: every cell still anchors to its right neighbour, and the name still ends at the mode cell.
     check("mode still anchors to size", row.indexOf("anchors.right: size.left") >= 0, true)
     check("size still anchors to modified", row.indexOf("anchors.right: modified.left") >= 0, true)

@@ -287,28 +287,27 @@ ShellRoot {
             root.fail(label + " budget " + budget + " is not tight: budget+1 still fits at " + budgetProbe.implicitWidth + " over " + ni.width)
     }
 
-    // The dim lives on the content item, so read the drawn opacity and not the role.
+    // The dim lives in the drawn colours, so deleting the fold reddens these three lines.
+    function checkDrawnDim(probe, label, wantDim) {
+        var want = wantDim ? Flea.Theme.disabledOpacity : 1
+        var nameA = probe.nameItem().color.a
+        if (Math.abs(nameA - want) > 0.01)
+            root.fail(label + " draws its name at " + nameA + ", want " + want)
+        var sizeA = probe.sizeItem().color.a
+        if (Math.abs(sizeA - want) > 0.01)
+            root.fail(label + " draws its size at " + sizeA + ", want " + want)
+        var markA = probe.markItem().color.a
+        if (Math.abs(markA - want) > 0.01)
+            root.fail(label + " draws its mark at " + markA + ", want " + want)
+    }
+
     function checkDim() {
         if (probeScissors.dimOpacity !== Flea.Theme.disabledOpacity)
             root.fail("a scissors row dims at " + probeScissors.dimOpacity + ", want " + Flea.Theme.disabledOpacity)
         if (probePlainClip.dimOpacity !== 1)
             root.fail("an unmarked row dims at " + probePlainClip.dimOpacity + ", want 1")
-        if (probeScissors.nameItem().opacity !== 1)
-            root.fail("a scissors name carries its own opacity, want the content item's alone")
-        var sc = probeScissors.nameItem()
-        var pl = probePlainClip.nameItem()
-        if (!sc || !sc.parent)
-            root.fail("a scissors row has no drawn name to read dim from")
-        else if (sc.parent.opacity !== Flea.Theme.disabledOpacity)
-            root.fail("a scissors row draws at " + sc.parent.opacity + ", want " + Flea.Theme.disabledOpacity)
-        if (!pl || !pl.parent)
-            root.fail("an unmarked row has no drawn name to read dim from")
-        else if (pl.parent.opacity !== 1)
-            root.fail("an unmarked row draws at " + pl.parent.opacity + ", want 1")
-        if (sc && sc.parent && sc.opacity * sc.parent.opacity !== Flea.Theme.disabledOpacity)
-            root.fail("a scissors name shows effective " + (sc.opacity * sc.parent.opacity) + ", want " + Flea.Theme.disabledOpacity)
-        if (pl && pl.parent && pl.opacity * pl.parent.opacity !== 1)
-            root.fail("an unmarked name shows effective " + (pl.opacity * pl.parent.opacity) + ", want 1")
+        root.checkDrawnDim(probeScissors, "a scissors row", true)
+        root.checkDrawnDim(probePlainClip, "an unmarked row", false)
     }
 
     // Every delegate read is guarded, so a missing row fails loud instead of hanging.

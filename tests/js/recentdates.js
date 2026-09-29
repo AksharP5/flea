@@ -74,7 +74,7 @@ function run(check) {
     check("no inverted switch survives", dateColor.indexOf("!ViewState.highlightToday") < 0, true)
     check("no negated recency survives", dateColor.indexOf("!RecentDates.isRecent") < 0, true)
     check("today lifts to foreground, not the reverse",
-        dateColor.indexOf("? Theme.color.foreground : root.cellInk") >= 0, true)
+        dateColor.indexOf("? root.dimmed(Theme.color.foreground) : root.cellInk") >= 0, true)
     check("the reverse lift is gone", dateColor.indexOf("? root.cellInk : Theme.color.foreground") < 0, true)
     check("Row passes no switch into the library", dateColor.indexOf("isRecent(true,") < 0, true)
     check("Row hands no mtime down", row.indexOf("mtime: root.row") < 0, true)

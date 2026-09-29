@@ -10,8 +10,8 @@ ShellRoot {
 
     property var sampleRow: ({ n: "rowcost.txt", i: "text-x-generic", p: 420, d: false, s: 13, m: 1758835200, t: false, k: 0, v: 0 })
     property var failures: []
-    // Tied to 0.3.6 98404bc7 (row=18 grid=14); one more object per delegate is a regression.
-    readonly property int rowMax: 18
+    // One Loader fewer than 0.3.6 98404bc7 (row=18 grid=14); one more object per delegate is a regression.
+    readonly property int rowMax: 17
     readonly property int gridMax: 14
 
     Flea.Row {
@@ -149,11 +149,25 @@ ShellRoot {
         clipProbe.start()
     }
 
-    // A cut row dims and builds its mark over idle, a copy builds undimmed, clearing returns to idle.
+    // Cut dims drawn colours, copy stays bright, and clearing restores idle objects and ink.
+    function checkDrawnDim(wantDim) {
+        var want = wantDim ? Flea.Theme.disabledOpacity : 1
+        var nameA = probeRow.nameItem().color.a
+        if (Math.abs(nameA - want) > 0.01)
+            failures.push("a row draws its name at " + nameA + ", want " + want)
+        var sizeA = probeRow.cell("size").color.a
+        if (Math.abs(sizeA - want) > 0.01)
+            failures.push("a row draws its size at " + sizeA + ", want " + want)
+        var markA = probeRow.markColor().a
+        if (Math.abs(markA - want) > 0.01)
+            failures.push("a row draws its mark at " + markA + ", want " + want)
+    }
+
     function measureClip() {
         if (root.clipPhase === 0) {
             if (probeRow.dimOpacity === 1)
                 failures.push("a cut row shares no dim with its mark")
+            root.checkDrawnDim(true)
             root.clipBuiltCount = root.countUnder(probeRow)
             if (root.clipBuiltCount <= root.rowIdleCount)
                 failures.push("a clipboard row builds no mark over the idle count")
@@ -165,6 +179,7 @@ ShellRoot {
         if (root.clipPhase === 1) {
             if (probeRow.dimOpacity !== 1)
                 failures.push("a copied row keeps the cut dim")
+            root.checkDrawnDim(false)
             if (root.countUnder(probeRow) <= root.rowIdleCount)
                 failures.push("a copy mark builds nothing over the idle count")
             probeRow.clipMark = ""
@@ -176,6 +191,7 @@ ShellRoot {
             failures.push("a cleared clipboard row keeps its mark objects")
         if (probeRow.dimOpacity !== 1)
             failures.push("a cleared clipboard row keeps the cut dim")
+        root.checkDrawnDim(false)
         // A drop-target row with only the name column and a long name: the name must end before the label starts.
         probeRow.hiddenCols = ["mode", "size", "date", "kind"]
         probeRow.row = ({ n: "averylongfilenamethatgoesonandonandonandonandonandonandonandonandonandonandonandonandonandonandonandonandonandonandonandonandonandonandonandonandonandonandonandonandon.txt", i: "text-x-generic", p: 493, d: true, s: 13, m: 1758835200, t: false, k: 0, v: 0 })
@@ -204,6 +220,19 @@ ShellRoot {
                 failures.push("a copy drop labels no copy, got " + probeRow.dropLabelText())
             if (!(probeRow.nameRight() < probeRow.dropLabelLeft()))
                 failures.push("a long name overprints the copy label")
+            probeRow.clipMark = "copy"
+            root.dropPhase = 5
+            dropProbe.start()
+            return
+        }
+        if (root.dropPhase === 5) {
+            if (!probeRow.dropBuilt())
+                failures.push("a clipboard drop target builds no drop frame")
+            if (probeRow.dropLabelText() !== "copy here")
+                failures.push("a clipboard drop labels no copy, got " + probeRow.dropLabelText())
+            if (root.countUnder(probeRow) <= root.rowIdleCount)
+                failures.push("a clipboard drop target builds no mark over the idle count")
+            probeRow.clipMark = ""
             probeRow.dropTarget = false
             root.dropPhase = 2
             dropProbe.start()

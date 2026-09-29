@@ -56,7 +56,8 @@ Item {
             Rectangle {
                 anchors.fill: runText
                 visible: runText.width > 0
-                color: Qt.alpha(root.accent, Theme.washActive)
+                // The accent carries the row dim, so the wash multiplies it instead of replacing it.
+                color: Qt.rgba(root.accent.r, root.accent.g, root.accent.b, root.accent.a * Theme.washActive)
             }
 
             Text {

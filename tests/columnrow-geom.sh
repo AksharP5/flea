@@ -30,14 +30,16 @@ output=$(env -u DISPLAY -u WAYLAND_DISPLAY -u HYPRLAND_INSTANCE_SIGNATURE \
 # Sample input, one probe line: "  INFO qml: COLUMNROWGEOM PASS file=columnrow-geom.txt dir=full"
 if printf '%s\n' "$output" | grep -q 'Cannot anchor'; then
     printf 'FAIL a column row anchors across its content edge\n'
-    printf '%s\n' "$output" | grep -aE 'COLUMNROWGEOM|Cannot anchor' | head -20
+    printf '%s\n' "$output" | grep -a 'COLUMNROWGEOM'
+    printf '%s\n' "$output" | grep -a 'Cannot anchor' | head -20
     exit 1
 fi
 pass_count=$(printf '%s\n' "$output" | grep -c 'COLUMNROWGEOM PASS')
 fail_count=$(printf '%s\n' "$output" | grep -c 'COLUMNROWGEOM FAIL')
 if [ "$pass_count" -ne 1 ] || [ "$fail_count" -ne 0 ]; then
     printf 'FAIL a column row draws no name, or its size sits over the mark\n'
-    printf '%s\n' "$output" | grep -aE 'COLUMNROWGEOM|ERROR|error' | head -20
+    printf '%s\n' "$output" | grep -a 'COLUMNROWGEOM'
+    printf '%s\n' "$output" | grep -aiE 'ERROR|error' | head -20
     exit 1
 fi
 printf '%s\n' "$output" | grep -o 'COLUMNROWGEOM PASS.*'

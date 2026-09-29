@@ -40,6 +40,8 @@ Item {
     readonly property bool clipCut: root.clipMark === "scissors"
     // One dim for the content below, so one ternary serves the mark, the name and the size.
     readonly property real dimOpacity: root.clipCut ? Theme.disabledOpacity : 1
+    // One helper, so each dimmed colour multiplies the cut without a second binding.
+    function dimmed(base) { return Util.alpha(base, root.dimOpacity) }
     // The mark's own size: 12 px in the muted role, 9 px after the name, per the board.
     readonly property int clipPx: 12
     // The column hands one budget for every row, with ElideMiddle as the backstop.
@@ -48,9 +50,8 @@ Item {
     // Truthiness, like the two readers below: ui/ColumnPane.qml hands this rows[index] raw, so a
     // listing that shrank leaves a surviving delegate holding undefined, which is not null.
     readonly property bool isDir: !!root.row && root.row.d === true
-    readonly property color ink: root.cursor ? Theme.color.accent
-                                : root.dim ? Theme.color.muted
-                                : Theme.color.foreground
+    // The cut dim lives in the ink, so no child carries its own opacity binding.
+    readonly property color ink: root.dimmed(root.cursor ? Theme.color.accent : root.dim ? Theme.color.muted : Theme.color.foreground)
 
     // One height for every row: ui/ColumnPane.qml draws the editor over the row rather than inside
     // it, so no row grows and the overlay's own y is plain arithmetic on this height.
@@ -67,106 +68,137 @@ Item {
     }
 
     Rectangle {
-        anchors.fill: parent
-        visible: root.dropTarget
-        color: Util.alpha(Theme.color.accent, Style.hoverFillAlpha)
-        border.width: Theme.spacing.hairline
-        border.color: Theme.color.accent
-    }
-
-    Rectangle {
         visible: root.cursor
         width: Theme.spacing.hairline * 2
         height: parent.height
         color: Theme.color.accent
     }
 
-    // One content carries the dim, so one opacity serves the mark, the name and the size.
     Item {
-        id: content
-        anchors.fill: parent
-        opacity: root.dimOpacity
+        id: markSlot
+        anchors.left: parent.left
+        anchors.leftMargin: Theme.spacing.rowPaddingX
+        anchors.verticalCenter: parent.verticalCenter
+        width: Theme.iconSize
+        height: Theme.iconSize
 
-        Item {
-            id: markSlot
-            anchors.left: parent.left
-            anchors.leftMargin: Theme.spacing.rowPaddingX
-            anchors.verticalCenter: parent.verticalCenter
-            width: Theme.iconSize
-            height: Theme.iconSize
-
-            // Sized on purpose, the same decode arm as ui/Row.qml: the cache PNG is capped at the icon's own size.
-            Image {
-                id: thumbImage
-                anchors.fill: parent
-                visible: root.thumbDrawn
-                sourceSize.width: Theme.iconSize
-                sourceSize.height: Theme.iconSize
-                fillMode: Image.PreserveAspectFit
-                asynchronous: true
-                // No cache by URL: a regenerated thumbnail keeps its path, and a cached decode would keep the old pixels.
-                cache: false
-                source: root.thumb.length > 0 ? Format.fileUri(root.thumb) : ""
-            }
-
-            Flea.Glyph {
-                anchors.fill: parent
-                visible: !root.thumbDrawn
-                name: root.row ? Icons.glyphForRow(root.row.i, root.row.p) : "file"
-                color: root.cursor ? Theme.color.accent : Theme.color.muted
-            }
+        // Sized on purpose, the same decode arm as ui/Row.qml: the cache PNG is capped at the icon's own size.
+        Image {
+            id: thumbImage
+            anchors.fill: parent
+            visible: root.thumbDrawn
+            opacity: root.dimOpacity
+            sourceSize.width: Theme.iconSize
+            sourceSize.height: Theme.iconSize
+            fillMode: Image.PreserveAspectFit
+            asynchronous: true
+            // No cache by URL: a regenerated thumbnail keeps its path, and a cached decode would keep the old pixels.
+            cache: false
+            source: root.thumb.length > 0 ? Format.fileUri(root.thumb) : ""
         }
 
-        // corner: arbitrary filename text draws PlainText and elides in the middle per Names040.
-        Text {
-            id: nameText
-            anchors.left: markSlot.right
-            anchors.leftMargin: Theme.spacing.gap
-            anchors.right: sizeCell.left
-            anchors.rightMargin: (root.showSize ? Theme.spacing.gap : 0) + (root.clipMark.length > 0 ? Theme.spacing.gap + root.clipPx : 0)
-            anchors.verticalCenter: parent.verticalCenter
-            text: root.row && root.nameBudget >= 0 ? Names.middleElide(root.row.n, Math.max(0, root.nameBudget - (root.clipMark.length > 0 ? Math.ceil((Theme.spacing.gap + root.clipPx) / Theme.bodyAdvance) : 0))) : (root.row ? root.row.n : "")
-            color: root.ink
-            font.family: Theme.font.family
-            font.pixelSize: Theme.font.body
-            textFormat: Text.PlainText
-            elide: Text.ElideMiddle
-        }
-
-        // Only the active column carries a number (ColumnsTabs board rule 3); the size holds its right edge off the parent by the chevron width.
-        Text {
-            id: sizeCell
-            anchors.right: parent.right
-            anchors.rightMargin: Theme.spacing.rowPaddingX + chevronSlot.width + (root.showSize ? Theme.spacing.gap : 0)
-            anchors.verticalCenter: parent.verticalCenter
-            visible: root.showSize && !root.dropTarget
-            width: visible ? Theme.column.size : 0
-            text: root.showSize && root.row ? root.sizeText() : ""
-            color: root.ink
-            horizontalAlignment: Text.AlignRight
-            font.family: Theme.font.family
-            font.pixelSize: Theme.font.caption
-            textFormat: Text.PlainText
-            elide: Text.ElideRight
+        Flea.Glyph {
+            id: markGlyph
+            anchors.fill: parent
+            visible: !root.thumbDrawn
+            name: root.row ? Icons.glyphForRow(root.row.i, root.row.p) : "file"
+            color: root.dimmed(root.cursor ? Theme.color.accent : Theme.color.muted)
         }
     }
 
-    // Built only on a clipboard row, so no row at rest binds to name geometry (tests/columnscost.qml).
-    Loader {
-        id: clipLoader
-        active: root.clipMark.length > 0
-        width: root.clipPx
-        height: root.clipPx
-        x: root.clipMark.length > 0 ? nameText.x + Math.min(nameText.implicitWidth, nameText.width) + Theme.spacing.gap : 0
+    // corner: arbitrary filename text draws PlainText and elides in the middle per Names040.
+    Text {
+        id: nameText
+        anchors.left: markSlot.right
+        anchors.leftMargin: Theme.spacing.gap
+        anchors.right: sizeCell.left
+        anchors.rightMargin: (root.showSize ? Theme.spacing.gap : 0) + (root.clipMark.length > 0 ? Theme.spacing.gap + root.clipPx : 0)
         anchors.verticalCenter: parent.verticalCenter
-        // The board's own nudge: the mark sits one pixel above the text centre line.
-        anchors.verticalCenterOffset: -1
-        sourceComponent: Flea.Glyph {
-            width: root.clipPx
-            height: root.clipPx
-            name: root.clipMark
-            color: Theme.color.muted
+        text: root.row && root.nameBudget >= 0 ? Names.middleElide(root.row.n, Math.max(0, root.nameBudget - (root.clipMark.length > 0 ? Math.ceil((Theme.spacing.gap + root.clipPx) / Theme.bodyAdvance) : 0))) : (root.row ? root.row.n : "")
+        color: root.ink
+        font.family: Theme.font.family
+        font.pixelSize: Theme.font.body
+        textFormat: Text.PlainText
+        elide: Text.ElideMiddle
+    }
+
+    // Only the active column carries a number (ColumnsTabs board rule 3); the size holds its right edge off the parent by the chevron width.
+    Text {
+        id: sizeCell
+        anchors.right: parent.right
+        anchors.rightMargin: Theme.spacing.rowPaddingX + chevronSlot.width + (root.showSize ? Theme.spacing.gap : 0)
+        anchors.verticalCenter: parent.verticalCenter
+        visible: root.showSize && !root.dropTarget
+        width: visible ? Theme.column.size : 0
+        text: root.showSize && root.row ? root.sizeText() : ""
+        color: root.ink
+        horizontalAlignment: Text.AlignRight
+        font.family: Theme.font.family
+        font.pixelSize: Theme.font.caption
+        textFormat: Text.PlainText
+        elide: Text.ElideRight
+    }
+
+    // One Loader for the drop frame, the drop label and the clip mark, so a row at rest builds none.
+    Component {
+        id: dropComponent
+        Item {
+            property alias label: dropLabel
+            property alias mark: dropMark
+            anchors.fill: parent
+            Rectangle {
+                anchors.fill: parent
+                color: Util.alpha(Theme.color.accent, Style.hoverFillAlpha)
+                border.width: Theme.spacing.hairline
+                border.color: Theme.color.accent
+            }
+            Text {
+                id: dropLabel
+                anchors.right: parent.right
+                anchors.rightMargin: Theme.spacing.rowPaddingX
+                anchors.verticalCenter: parent.verticalCenter
+                text: DragOps.label(root.dropCopying)
+                color: Theme.color.accent
+                font.family: Theme.font.family
+                font.pixelSize: Theme.font.caption
+                textFormat: Text.PlainText
+            }
+            Flea.Glyph {
+                id: dropMark
+                visible: root.clipMark.length > 0
+                width: root.clipPx
+                height: root.clipPx
+                x: nameText.x + Math.min(nameText.implicitWidth, nameText.width) + Theme.spacing.gap
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.verticalCenterOffset: -1
+                name: root.clipMark
+                color: Theme.color.muted
+            }
         }
+    }
+    Component {
+        id: clipComponent
+        Item {
+            property alias mark: clipMarkGlyph
+            anchors.fill: parent
+            // The board's own nudge: the mark sits one pixel above the text centre line.
+            Flea.Glyph {
+                id: clipMarkGlyph
+                width: root.clipPx
+                height: root.clipPx
+                x: nameText.x + Math.min(nameText.implicitWidth, nameText.width) + Theme.spacing.gap
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.verticalCenterOffset: -1
+                name: root.clipMark
+                color: Theme.color.muted
+            }
+        }
+    }
+    Loader {
+        id: dropClipLoader
+        active: root.dropTarget || root.clipMark.length > 0
+        anchors.fill: parent
+        sourceComponent: root.dropTarget ? dropComponent : clipComponent
     }
 
     // The list's own cell text, so a size reads the same wherever it is drawn.
@@ -183,25 +215,14 @@ Item {
         anchors.right: parent.right
         anchors.rightMargin: Theme.spacing.rowPaddingX
         anchors.verticalCenter: parent.verticalCenter
-        width: root.dropTarget ? dropLabel.implicitWidth : root.showChevron ? Theme.font.caption : 0
-        height: root.dropTarget ? dropLabel.implicitHeight : Theme.font.caption
+        width: root.dropTarget && dropClipLoader.item && dropClipLoader.item.label ? dropClipLoader.item.label.implicitWidth : root.showChevron ? Theme.font.caption : 0
+        height: root.dropTarget && dropClipLoader.item && dropClipLoader.item.label ? dropClipLoader.item.label.implicitHeight : Theme.font.caption
 
         Flea.Glyph {
             anchors.fill: parent
             visible: root.showChevron && !root.dropTarget
             name: "chevron-right"
             color: root.cursor ? Theme.color.accent : Theme.color.muted
-        }
-
-        Text {
-            id: dropLabel
-            anchors.centerIn: parent
-            visible: root.dropTarget
-            text: DragOps.label(root.dropCopying)
-            color: Theme.color.accent
-            font.family: Theme.font.family
-            font.pixelSize: Theme.font.caption
-            textFormat: Text.PlainText
         }
     }
 
@@ -213,13 +234,15 @@ Item {
     }
 
     // Test seam as functions, so no row at rest binds to name geometry (tests/columnscost.qml).
-    function clipX() { return clipLoader.x }
+    function clipX() { return dropClipLoader.item && dropClipLoader.item.mark ? dropClipLoader.item.mark.x : 0 }
     function clipExpectedX() { return nameText.x + Math.min(nameText.implicitWidth, nameText.width) + Theme.spacing.gap }
     function displayText() { return nameText.text }
     function nameItem() { return nameText }
+    function markItem() { return markGlyph }
+    function sizeItem() { return sizeCell }
     // Row-relative boxes for the geometry suite, so the probe reads the drawn layout and not the source.
-    function markRight() { return content.x + markSlot.x + markSlot.width }
-    function nameGeom() { return [content.x + nameText.x, nameText.width] }
-    function sizeGeom() { return [content.x + sizeCell.x, sizeCell.width] }
+    function markRight() { return markSlot.x + markSlot.width }
+    function nameGeom() { return [nameText.x, nameText.width] }
+    function sizeGeom() { return [sizeCell.x, sizeCell.width] }
     function chevronGeom() { return [chevronSlot.x, chevronSlot.width] }
 }

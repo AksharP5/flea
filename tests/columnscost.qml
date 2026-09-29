@@ -234,8 +234,8 @@ ShellRoot {
         showSize: false
     }
 
-    // Measured by the controller offscreen; one more object per delegate is a regression.
-    readonly property int columnRowMax: 20
+    // One lazy frame, label and mark without the wrapper; measured ceiling pins idle row cost.
+    readonly property int columnRowMax: 17
 
     // Delegates are built on the polish pass, so the read waits one turn like mount-listing.qml.
     Timer {
