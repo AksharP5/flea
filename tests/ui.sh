@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Drives the real Quickshell window with omarchy-drive and asserts through the read-only IPC seam.
-# Usage: ./tests/ui.sh [cursor|terminal|open|rows|click|ctrlclick|viewrestart|dd|sortrestart|dirsortstale|editplace|mute|placemenu|runscript|unmounted|sidebar|menu|hidden|selection|watch|optical|select|colour|lifted|icons|thumbs|hashcache|stale|nosweep|oem|header|overflow|focus|preview|network|netmark|networktimeout|networklive|gvfs|sharebrowser|unmount|phones|eject|rename|renamelife|taildrop|grid|columns|operations|tabs|openterminal|renderer|settings|makedefault|scrolllane|noblank|previewswap ...]; networklive is opt-in.
+# Usage: ./tests/ui.sh [cursor|terminal|open|rows|click|ctrlclick|viewrestart|dd|sortrestart|dirsortstale|editplace|mute|placemenu|runscript|unmounted|sidebar|menu|hidden|selection|watch|optical|select|colour|lifted|icons|thumbs|hashcache|stale|nosweep|oem|header|overflow|focus|preview|network|netmark|networktimeout|networklive|gvfs|sharebrowser|unmount|phones|eject|rename|renamelife|taildrop|grid|columns|reclick|colroot|operations|tabs|openterminal|renderer|settings|makedefault|scrolllane|noblank|previewswap ...]; networklive is opt-in.
 set -u
 set -o pipefail
 # Hard rule 9's guard, which owns FIXTURE_ROOT and every create and delete this suite makes.
@@ -3530,6 +3530,137 @@ case_columns() {
     settle
     [[ "$(ipc viewMode)" == "list" ]] || fail "columns: the list button did not switch back"
     kill_flea
+}
+
+# A click on the folder already shown lists nothing: the rail row and the columns
+# parent-column row of the current folder go through Nav.openPlace, a no-op on the
+# settled folder, so cursor, selection and scroll survive it. A click on another
+# folder still navigates. JS pins the decision in tests/js/reclick.js; this is the live half.
+case_reclick() {
+    local dir="$fixture_root/reclick"
+    sandbox_scratch "$dir"
+    mkdir -p "$dir/aaa" "$dir/bbb"
+    printf 'in bbb\n' > "$dir/bbb/inside.txt"
+    local i seed
+    for i in $(seq -w 1 150); do printf 'body\n' > "$dir/file-$i.txt"; done
+    for i in $(seq -w 1 80); do printf 'body\n' > "$dir/aaa/file-$i.txt"; done
+    seed=$(jq -cn --arg path "$dir" --arg sub "$dir/aaa" '{view:"list",places:{favourites:[{label:"Reclick here",path:$path},{label:"Reclick sub",path:$sub}]}}')
+    seed_ui_state "$dir/state" "$seed"
+    launch "$dir"
+    wait_listing 152
+    # Dirs sort first, so the two subdirs head the listing and the lit parent row later.
+    [[ "$(ipc rowAt 0)" == "aaa|dir|"* ]] || fail "reclick: row 0 is $(ipc rowAt 0), not the aaa directory"
+    [[ "$(ipc rowAt 1)" == "bbb|dir|"* ]] || fail "reclick: row 1 is $(ipc rowAt 1), not the bbb directory"
+    goto_row 40
+    key v >/dev/null
+    settle
+    [[ "$(ipc cursor)" == "40" ]] || fail "reclick: the cursor is $(ipc cursor), not row 40"
+    [[ "$(ipc selectedIndices)" == "40" ]] || fail "reclick: row 40 is not selected, got $(ipc selectedIndices)"
+    local req cur sel cy
+    req=$(ipc listRequests); cur=$(ipc cursor); sel=$(ipc selectedIndices); cy=$(ipc listContentY)
+    (( cy > 0 )) || fail "reclick: row 40 left contentY at $cy, so the scroll assertion is vacuous"
+    click_rail_row "$(rail_row_of 'Reclick here')" left
+    settle
+    [[ "$(ipc path)" == "$dir" ]] || fail "reclick: a rail click on the shown folder left $dir for $(ipc path)"
+    [[ "$(ipc listRequests)" == "$req" ]] || fail "reclick: a rail click on the shown folder re-listed, $req then $(ipc listRequests)"
+    [[ "$(ipc cursor)" == "$cur" ]] || fail "reclick: a rail click on the shown folder moved the cursor to $(ipc cursor)"
+    [[ "$(ipc selectedIndices)" == "$sel" ]] || fail "reclick: a rail click on the shown folder lost the selection, got $(ipc selectedIndices)"
+    [[ "$(ipc listContentY)" == "$cy" ]] || fail "reclick: a rail click on the shown folder scrolled to $(ipc listContentY)"
+    printf 'RECLICK rail no-op req=%s cursor=%s selected=%s contentY=%s\n' "$req" "$cur" "$sel" "$cy"
+    # A click on a different folder still navigates: the positive control the no-op above needs.
+    click_rail_row "$(rail_row_of 'Reclick sub')" left
+    wait_path "$dir/aaa"
+    [[ "$(ipc listRequests)" -gt "$req" ]] || fail "reclick: a rail click on another folder listed nothing"
+    # The columns half: the parent column shows $dir with aaa lit at row 0, and the
+    # tap on the bbb sibling at row 1 is the positive control below.
+    switch_view columns
+    [[ "$(ipc viewMode)" == "columns" ]] || fail "reclick: the view did not switch to columns"
+    goto_row 40
+    key v >/dev/null
+    settle
+    [[ "$(ipc cursor)" == "40" && "$(ipc selectedIndices)" == "40" ]] \
+        || fail "reclick: columns setup left cursor $(ipc cursor) selected $(ipc selectedIndices)"
+    req=$(ipc listRequests); cur=$(ipc cursor); sel=$(ipc selectedIndices); cy=$(ipc viewContentY)
+    (( cy > 0 )) || fail "reclick: row 40 left the active column at $cy, so the scroll assertion is vacuous"
+    local fx fy wx wy
+    read -r fx fy <<< "$(ipc columnParentRowCentre 0)"
+    [[ -n "$fy" ]] || fail "reclick: the parent column shows no row 0 for the lit aaa row"
+    read -r wx wy _ww _wh < <(window_box) || fail "native window coordinates unavailable"
+    omarchy-drive click "$((wx + fx))" "$((wy + fy))" left >/dev/null
+    settle
+    [[ "$(ipc path)" == "$dir/aaa" ]] || fail "reclick: a tap on the lit parent row left $dir/aaa for $(ipc path)"
+    [[ "$(ipc listRequests)" == "$req" ]] || fail "reclick: a tap on the lit parent row re-listed, $req then $(ipc listRequests)"
+    [[ "$(ipc cursor)" == "$cur" ]] || fail "reclick: a tap on the lit parent row moved the cursor to $(ipc cursor)"
+    [[ "$(ipc selectedIndices)" == "$sel" ]] || fail "reclick: a tap on the lit parent row lost the selection, got $(ipc selectedIndices)"
+    [[ "$(ipc viewContentY)" == "$cy" ]] || fail "reclick: a tap on the lit parent row scrolled to $(ipc viewContentY)"
+    printf 'RECLICK parent no-op req=%s cursor=%s selected=%s contentY=%s\n' "$req" "$cur" "$sel" "$cy"
+    read -r fx fy <<< "$(ipc columnParentRowCentre 1)"
+    [[ -n "$fy" ]] || fail "reclick: the parent column shows no row 1 for the bbb sibling"
+    omarchy-drive click "$((wx + fx))" "$((wy + fy))" left >/dev/null
+    wait_path "$dir/bbb"
+    [[ "$(ipc listRequests)" -gt "$req" ]] || fail "reclick: a tap on the bbb sibling listed nothing"
+    printf 'RECLICK sibling navigates\n'
+    kill_flea
+}
+
+# At / the climb stops, so every shown ancestor slot stays blank and keeps its width
+# instead of repeating / one and two levels down. Left at / is a silent no-op, and the
+# parent column lists / again once /usr is opened. JS pins the climb in tests/js/columns.js.
+case_colroot() {
+    local n count
+    for n in 3 4 5; do
+        seed_ui_state "$fixture_root/colroot-state-$n" '{"view":"columns","columnsLimit":'"$n"'}'
+        launch "/"
+        wait_colroot_settled
+        [[ "$(ipc viewMode)" == "columns" ]] || fail "colroot: limit $n opened in $(ipc viewMode), not columns"
+        [[ "$(ipc path)" == "/" ]] || fail "colroot: limit $n opened at $(ipc path), not /"
+        count=$(ipc columnCount)
+        # A blank slot has no rows, so its row centre is empty; centreOf answers "" for null.
+        [[ -z "$(ipc columnParentRowCentre 0)" ]] \
+            || fail "colroot: limit $n shows a parent row at /, the duplicate / column is back"
+        if (( count >= 4 )); then
+            [[ -z "$(ipc columnGrandparentRowCentre 0)" ]] \
+                || fail "colroot: limit $n shows a grandparent row at /"
+        fi
+        if (( count >= 5 )); then
+            [[ -z "$(ipc columnGreatGrandparentRowCentre 0)" ]] \
+                || fail "colroot: limit $n shows a great-grandparent row at /"
+        fi
+        [[ "$(ipc rowAt 0)" != "loading" ]] || fail "colroot: limit $n left the active column with no rows"
+        printf 'COLROOT limit=%s count=%s parent=blank active=%s\n' "$n" "$count" "$(ipc rowAt 0 | cut -d'|' -f1)"
+        shot "colroot-$n"
+        kill_flea
+    done
+    seed_ui_state "$fixture_root/colroot-state-left" '{"view":"columns","columnsLimit":5}'
+    launch "/"
+    wait_colroot_settled
+    local req msg
+    req=$(ipc listRequests); msg=$(ipc lastMessage)
+    key -k Left >/dev/null
+    settle
+    [[ "$(ipc path)" == "/" ]] || fail "colroot: Left at / left / for $(ipc path)"
+    [[ "$(ipc listRequests)" == "$req" ]] || fail "colroot: Left at / re-listed, $req then $(ipc listRequests)"
+    [[ "$(ipc lastMessage)" == "$msg" ]] || fail "colroot: Left at / said $(ipc lastMessage)"
+    seek_row_named "usr"
+    key -k Return >/dev/null
+    wait_path "/usr"
+    [[ -n "$(ipc columnParentRowCentre 0)" ]] \
+        || fail "colroot: the parent column shows no row for / under /usr"
+    printf 'COLROOT left=no-op parent-lists-slash\n'
+    kill_flea
+}
+
+# The listing at / has no fixed total, so this waits for a settled path rather than a count.
+wait_colroot_settled() {
+    local row
+    for _attempt in $(seq 1 300); do
+        row=$(ipc rowAt 0 2>/dev/null || printf loading)
+        if [[ "$(ipc path 2>/dev/null)" == "/" && "$row" != "loading" && "$(ipc listInFlight 2>/dev/null)" == "false" ]]; then
+            return
+        fi
+        sleep 0.05
+    done
+    fail "colroot: / never settled, row 0 is $row"
 }
 
 # Directive 48: there is no centre lane. The transient ends one padding before the text the disk facts
@@ -10384,9 +10515,9 @@ case_previewviews() {
         for _attempt in $(seq 1 40); do [[ "$(ipc previewState)" == "image" ]] && break; sleep 0.1; done
         [[ "$(ipc previewOpen)" == "true" && "$(ipc previewKind)" == "image" && "$(ipc previewState)" == "image" ]] \
             || fail "$mode: Space on p.jpg: open $(ipc previewOpen), kind $(ipc previewKind), state $(ipc previewState)"
-        key -k Escape >/dev/null
+        key -k space >/dev/null
         settle
-        [[ "$(ipc previewOpen)" == "false" ]] || fail "$mode: Escape did not close the preview"
+        [[ "$(ipc previewOpen)" == "false" ]] || fail "$mode: Space did not close the p.jpg preview"
         switch_view list
         goto_row "$(row_index_of manual.pdf)"
         switch_view "$mode"
@@ -10394,6 +10525,24 @@ case_previewviews() {
         for _attempt in $(seq 1 40); do [[ "$(ipc previewState)" == "pdf" ]] && break; sleep 0.1; done
         [[ "$(ipc previewKind)" == "pdf" && "$(ipc previewState)" == "pdf" && "$(ipc previewPdfPage)" == "0" ]] \
             || fail "$mode: Space on manual.pdf: kind $(ipc previewKind), state $(ipc previewState), page $(ipc previewPdfPage)"
+        # Space closes a PDF Quick Look instead of paging or zooming it; the page and
+        # zoom it opened with are what pin the old behaviour, cleared readers aside.
+        local page_before zoom_before page_after zoom_after
+        page_before=$(ipc previewPdfPage); zoom_before=$(ipc previewPdfZoom)
+        [[ "$page_before" == "0" && -n "$zoom_before" ]] \
+            || fail "$mode: manual.pdf opened on page $page_before zoom $zoom_before, not page 0"
+        key -k space >/dev/null
+        settle
+        [[ "$(ipc previewOpen)" == "false" ]] || fail "$mode: Space did not close the manual.pdf preview"
+        page_after=$(ipc previewPdfPage); zoom_after=$(ipc previewPdfZoom)
+        [[ "$page_after" == "$page_before" || "$page_after" == "-1" ]] \
+            || fail "$mode: Space paged manual.pdf to $page_after instead of closing it"
+        [[ "$zoom_after" == "$zoom_before" || -z "$zoom_after" ]] \
+            || fail "$mode: Space zoomed manual.pdf to $zoom_after instead of closing it"
+        key -k space >/dev/null
+        for _attempt in $(seq 1 40); do [[ "$(ipc previewState)" == "pdf" ]] && break; sleep 0.1; done
+        [[ "$(ipc previewPdfPage)" == "0" ]] \
+            || fail "$mode: reopened manual.pdf sits on page $(ipc previewPdfPage), not the first"
         key -k Right >/dev/null
         settle
         key -k Right >/dev/null
@@ -10545,7 +10694,7 @@ case_previewviews() {
 . "$repo/tests/ui-transfer-live.sh"
 
 declare -a wanted=("$@")
-[[ ${#wanted[@]} -eq 0 ]] && wanted=(cursor scroll scrollbar terminal open rows click ctrlclick viewrestart dd ddclick collide sortrestart duallaunch dirsortstale editplace mute placemenu runscript unmounted sidebar menu background hidden selection watch optical select colour lifted icons thumbs hashcache stale nosweep oem header columnresize columnautofit overflow focus railpointer preview pdffocus network netmark networkauth networktimeout gvfs sharebrowser unmount phones trasharm eject rename renamelife taildrop providers grid columns operations tabs openterminal renderer settings makedefault scrolllane clickthrough wheelunder overlays views formats previewviews hangshare openwithdesign noblank previewswap transferlive)
+[[ ${#wanted[@]} -eq 0 ]] && wanted=(cursor scroll scrollbar terminal open rows click ctrlclick viewrestart dd ddclick collide sortrestart duallaunch dirsortstale editplace mute placemenu runscript unmounted sidebar menu background hidden selection watch optical select colour lifted icons thumbs hashcache stale nosweep oem header columnresize columnautofit overflow focus railpointer preview pdffocus network netmark networkauth networktimeout gvfs sharebrowser unmount phones trasharm eject rename renamelife taildrop providers grid columns operations tabs openterminal renderer settings makedefault scrolllane clickthrough wheelunder overlays views formats previewviews reclick colroot hangshare openwithdesign noblank previewswap transferlive)
 
 : > "$run_log"
 : > "$flea_log"
