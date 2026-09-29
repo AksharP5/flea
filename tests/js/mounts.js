@@ -213,7 +213,9 @@ function run(check) {
     check("a mounted afc phone draws the mark", Eject.releasable(afc), true)
     check("a cloud row keeps its square", Eject.releasable(cloud), false)
     check("a fixed internal volume keeps its square", Eject.releasable(fixedDisk), false)
+    var idlePhone = { label: "Pixel", group: "device", kind: "phone", uri: "mtp://x/", path: "", mounted: false }
     check("an unmounted drive keeps its square", Eject.releasable(idle), false)
+    check("an unmounted phone keeps its square", Eject.releasable(idlePhone), false)
     check("an unmounted share keeps its square", Eject.releasable(bookmark), false)
     check("no entry at all draws no mark", Eject.releasable(null), false)
 
@@ -222,6 +224,8 @@ function run(check) {
     check("the mark on a drive is Eject", Eject.releaseAction(stick), "eject")
     check("the mark on a share is Unmount", Eject.releaseAction(smb), "unmount")
     check("the mark on a phone is its Unmount", Eject.releaseAction(phone), "unmountPhone")
+    check("the mark on a gphoto2 phone is its Unmount", Eject.releaseAction(gphoto), "unmountPhone")
+    check("the mark on an afc phone is its Unmount", Eject.releaseAction(afc), "unmountPhone")
     check("a row with no mark has no click action", Eject.releaseAction(nfs), "")
     check("and neither does a cloud row", Eject.releaseAction(cloud), "")
 

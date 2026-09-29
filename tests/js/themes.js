@@ -1,5 +1,6 @@
 .import "../../ui/js/Palette.js" as Palette
 .import "../../ui/js/Contrast.js" as Contrast
+.import "sourcefixture.js" as Source
 
 // The stock themes installed under /usr/share/omarchy/themes, read live rather than fixtured, so a
 // palette that changes under a theme update is caught here. tests/themes.sh compares this list with
@@ -107,7 +108,7 @@ var ERROR_ON_SURFACE_SAMPLES = [
 
 // Sample input: one palette body above; the bar's own ground is the surface it sits on.
 function errorOnSurfaceSamples(check) {
-    var applied = source("ui/Theme.qml")
+    var applied = Source.source("ui/Theme.qml")
     check("Theme.qml lifts the status bar red on its surface", applied.indexOf("Contrast.ensureRatio(Color.urgent, surface, 4.5)") >= 0, true)
     var weak = 0
     for (var i = 0; i < ERROR_ON_SURFACE_SAMPLES.length; i++) {
@@ -117,14 +118,6 @@ function errorOnSurfaceSamples(check) {
             weak += 1
     }
     check("the background lift alone lands under 4.5 on at least one surface", weak >= 1, true)
-}
-
-// A file of this tree, read the way rowcells.js reads ui/Row.qml; "" when missing.
-function source(path) {
-    var request = new XMLHttpRequest()
-    request.open("GET", Qt.resolvedUrl("../../" + path), false)
-    request.send()
-    return String(request.responseText || "")
 }
 
 function run(check) {

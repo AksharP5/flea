@@ -22,7 +22,7 @@ function run(check) {
         check("cells at " + width + " fit the width they were divided from",
               columns * cell <= width - GAP, true)
         check("one more column at " + width + " would not fit beside them",
-              (columns + 1) * cell > width - GAP, true)
+              (columns + 1) * Math.max(MIN_CELL, THUMB_PX + 2 * PAD_X) > width - GAP, true)
         // The frame clearance is measured, not computed: tests/grid-gap.qml reads the real frame.
     }
 
@@ -48,7 +48,7 @@ function run(check) {
         check("cells at " + laneWidth + " fit the width they were divided from",
               laneColumns * laneCell <= laneWidth - GAP - PAD_X, true)
         check("one more column at " + laneWidth + " would not fit beside them",
-              (laneColumns + 1) * laneCell > laneWidth - GAP - PAD_X, true)
+              (laneColumns + 1) * Math.max(MIN_CELL, THUMB_PX + 2 * PAD_X) > laneWidth - GAP - PAD_X, true)
     }
     // At 738 the lane costs a column, so a lane-blind columnsFor fails here.
     check("at 738 the lane costs a column",

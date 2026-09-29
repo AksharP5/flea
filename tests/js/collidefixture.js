@@ -1,17 +1,10 @@
 // The real ui/CollideHost.qml, ui/FileDrag.qml and ui/RowDrag.qml over a stub pane and backend, for tests/js/collide.js.
-
-// A file of this tree, read the way tests/js/settingsabout.js reads its sources.
-function source(path) {
-    var request = new XMLHttpRequest()
-    request.open("GET", Qt.resolvedUrl("../../" + path), false)
-    request.send()
-    return String(request.responseText || "")
-}
+.import "sourcefixture.js" as Source
 
 // ui/<file> built from its own text beside ui/js, because ui/qmldir's singletons need Quickshell, which qml6 lacks.
 // Sample input: 'import QtQuick\nimport "js/Drag.js" as DragOps\n\n// Delegate input ...\nItem {\n    id: root\n'
 function built(file, parent, properties) {
-    var text = source("ui/" + file)
+    var text = Source.source("ui/" + file)
     var body = text.search(/^[A-Z]\w* \{/m)
     var imports = text.substring(0, body).replace(/import "js\//g, "import \"")
     var wrapper = Qt.createQmlObject(imports + "QtObject { property Component made: Component { " + text.substring(body) + " } }",

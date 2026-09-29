@@ -4,21 +4,13 @@
 .import "../../ui/js/Sort.js" as Sort
 .import "../../ui/js/Tabs.js" as Tabs
 .import "tabsfixture.js" as Fixture
-
-// A file of this tree, read the way tests/js/themes.js reads colors.toml; "" when missing.
-function source(path) {
-    var request = new XMLHttpRequest()
-    request.open("GET", Qt.resolvedUrl("../../" + path), false)
-    request.send()
-    return String(request.responseText || "")
-}
+.import "sourcefixture.js" as Source
 
 // Per-folder sorts (issue 179) and Hidden files last (issue 70): map, Settings rows, flyout forget row, tab-kept sorts.
-function sortPane(path, sorts, remember) {
+function sortPane(path, sorts) {
     var p = {
         path: path,
         sorts: sorts || {},
-        remember: remember,
         windowSize: 200,
         remembered: [],
         forgotten: [],
@@ -62,11 +54,11 @@ function run(check) {
     check("past the cap the oldest entry goes", FolderSorts.has(over, "/d0"), false)
     check("and the newest stays", FolderSorts.has(over, "/new"), true)
     check("at exactly the cap", FolderSorts.count(over), FolderSorts.MAX)
-    var touched = FolderSorts.set(full, "/d0", "size", true)
+    var touched = FolderSorts.set(full, "/d5", "size", true)
     check("a re-sort of a held folder evicts nothing", FolderSorts.count(touched), FolderSorts.MAX)
     var afterTouch = FolderSorts.set(touched, "/new2", "name", false)
-    check("and moves its folder to the most recent end", FolderSorts.has(afterTouch, "/d1"), false)
-    check("so the touched folder survives the next eviction", FolderSorts.has(afterTouch, "/d0"), true)
+    check("and the oldest entry goes on the next write", FolderSorts.has(afterTouch, "/d0"), false)
+    check("so the touched folder survives the next eviction", FolderSorts.has(afterTouch, "/d5"), true)
     check("forgetting drops that folder alone", FolderSorts.has(FolderSorts.forget(two, "/a"), "/a"), false)
     check("and keeps the rest", FolderSorts.count(FolderSorts.forget(FolderSorts.set(two, "/b", "name", false), "/a")), 1)
     check("forgetting a folder with no entry changes nothing", FolderSorts.count(FolderSorts.forget({}, "/a")), 0)
@@ -94,24 +86,25 @@ function run(check) {
           JSON.stringify({ key: "mtime", reverse: true }))
 
     // A user sort writes its folder; browsing writes nothing.
-    var pane = sortPane("/a", {}, true)
+    var pane = sortPane("/a", {})
     Sort.column(pane, "size")
     check("choosing a sort writes its folder", pane.remembered.join(","), "/a|size:false")
     check("and still sends the sort and the window", pane.sent.join(","), "sort size,window")
-    var changed = sortPane("/a", {}, true)
+    var changed = sortPane("/a", {})
     Sort.resort(changed, "size", true)
     check("a changed order writes its folder", changed.remembered.join(","), "/a|size:true")
-    var off = sortPane("/a", {}, false)
+    var off = sortPane("/a", {})
     Sort.column(off, "size")
     check("but still sends the sort and the window", off.sent.join(","), "sort size,window")
     check("with remembering off nothing writes", FolderSorts.shouldRemember(false, "/a"), false)
     check("with remembering on a folder writes", FolderSorts.shouldRemember(true, "/a"), true)
     check("an empty path writes nothing", FolderSorts.shouldRemember(true, ""), false)
-    check("Backend gates folder writes through FolderSorts", source("ui/Backend.qml").indexOf("FolderSorts.shouldRemember") >= 0, true)
-    var same = sortPane("/a", {}, true)
+    check("Backend gates folder writes through FolderSorts",
+          Source.source("ui/Backend.qml").indexOf("if (!FolderSorts.shouldRemember(ViewState.state.rememberSort, path))") >= 0, true)
+    var same = sortPane("/a", {})
     Sort.resort(same, "name", false)
     check("asking for the order already shown writes nothing", same.remembered.length, 0)
-    var picked = sortPane("/a", {}, true)
+    var picked = sortPane("/a", {})
     Sort.column(picked, "__default__")
     check("the flyout's forget row forgets its folder", picked.forgotten.join(","), "/a")
     check("and lists the folder again on the default", picked.sent.join(","), "list /a")
@@ -155,7 +148,7 @@ function run(check) {
     check("and it is greyed while hidden files are off", hiddenLast.available, false)
     var shown = Settings.rows("view", { data: { hidden: true } })
     var shownLast = shown.filter(function (r) { return r.id === "hiddenLast" })[0] || {}
-    check("and live once they are shown", shownLast.available !== false, true)
+    check("and live once they are shown", shownLast.id === "hiddenLast" && shownLast.available !== false, true)
     var remember = view.filter(function (r) { return r.id === "rememberSort" })[0] || {}
     var cursorAt = -1
     for (var c = 0; c < view.length; c++) {

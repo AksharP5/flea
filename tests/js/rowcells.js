@@ -1,12 +1,5 @@
 // Row.qml cells split: the four metadata Texts live in ui/RowMode/Size/Date/Kind.qml, each rooting one Text with no wrapper Item.
-
-// A file of this tree, read the way tests/js/themes.js reads colors.toml; "" when missing.
-function source(path) {
-    var request = new XMLHttpRequest()
-    request.open("GET", Qt.resolvedUrl("../../" + path), false)
-    request.send()
-    return String(request.responseText || "")
-}
+.import "sourcefixture.js" as Source
 
 function countRe(text, re) {
     var found = text.match(re)
@@ -16,9 +9,9 @@ function countRe(text, re) {
 var CELLS = ["ui/RowMode.qml", "ui/RowSize.qml", "ui/RowDate.qml", "ui/RowKind.qml"]
 
 function run(check) {
-    var row = source("ui/Row.qml")
+    var row = Source.source("ui/Row.qml")
     // Red on the base: these files do not exist there, so every check below fails there first.
-    var bodies = CELLS.map(function (path) { return source(path) })
+    var bodies = CELLS.map(function (path) { return Source.source(path) })
     for (var i = 0; i < CELLS.length; i++) {
         check(CELLS[i] + " exists", bodies[i].length > 0, true)
     }

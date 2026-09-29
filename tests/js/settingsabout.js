@@ -2,6 +2,7 @@
 .import "../../ui/js/Update.js" as Update
 .import "../../ui/js/MakeDefault.js" as MakeDefault
 .import "../../ui/js/SettingsAbout.js" as SettingsAbout
+.import "sourcefixture.js" as Source
 
 // The About section's Updates group: the Update Flea row, the switch that governs the automatic checks, and the note line; then This box's Make Flea the default row.
 
@@ -75,14 +76,6 @@ var RELEASE = ["--default", "off"]
 // The number the run's own re-read carries, one past the read About opened with.
 var REREAD = 2
 
-// A file of this tree, read the way tests/js/themes.js reads colors.toml; "" when it is not there.
-function source(path) {
-    var request = new XMLHttpRequest()
-    request.open("GET", Qt.resolvedUrl("../../" + path), false)
-    request.send()
-    return String(request.responseText || "")
-}
-
 // The one "flea: " sentence a Rust function prints on stderr, its {} filled, with the newline eprintln! adds; "" unless there is exactly one.
 // Sample input: eprintln!("flea: no portal backend is installed, so the file chooser step was skipped");
 function spoken(text, header, fill) {
@@ -124,7 +117,7 @@ function after(args, code, stderr, restartOk) {
 
 function runDefault(check) {
     // The two sentences MakeDefault.js reads are the binary's own, taken from the source rather than copied here.
-    var defaults = source("src/defaults.rs"), main = source("src/main.rs")
+    var defaults = Source.source("src/defaults.rs"), main = Source.source("src/main.rs")
     // Sample input: pub const DESKTOP_ID: &str = "com.thisisgm.flea.desktop";
     var rustId = (defaults.match(/pub const DESKTOP_ID: &str = "([^"]*)"/) || [])[1]
     var refusal = spoken(defaults, "pub fn claim() -> i32 {", rustId)
@@ -262,7 +255,7 @@ var FLEA_BIN_QI = "Name            : flea-bin\nVersion         : 0.3.4-1\nPackag
 
 // Installed from is the kind src/update.rs derives from the same two pacman answers, so it and the Update Flea row agree.
 function runInstalled(check) {
-    var update = source("src/update.rs")
+    var update = Source.source("src/update.rs")
     // Sample input: const AUR_PACKAGE: &str = "flea-bin";
     function named(constant) { return (update.match(new RegExp("const " + constant + ": &str = \"([^\"]*)\";")) || [])[1] }
     check("the three package names are src/update.rs's own", [SettingsAbout.PACKAGES.opr, SettingsAbout.PACKAGES.aur, SettingsAbout.PACKAGES.git].join("|"),
@@ -288,5 +281,5 @@ function runInstalled(check) {
            SettingsAbout.packageFacts("Validated By    : SHA-256 Sum\n").signed,
            SettingsAbout.packageFacts("Description     : Signature\nValidated By    : None\n").signed].join("|"), "true|false|false")
     check("a query that failed is an empty answer", JSON.stringify(SettingsAbout.packageFacts("")), '{"package":"","built":"","signed":false}')
-    check("and About asks pacman -Si nothing, which cannot see an AUR package", source("ui/AboutFacts.qml").indexOf("\"-Si\""), -1)
+    check("and About asks pacman -Si nothing, which cannot see an AUR package", Source.source("ui/AboutFacts.qml").indexOf("\"-Si\""), -1)
 }

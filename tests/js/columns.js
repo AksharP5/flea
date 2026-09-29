@@ -1,6 +1,7 @@
 .import "../../ui/js/Columns.js" as Columns
 .import "../../ui/js/ColumnFit.js" as ColumnFit
 .import "../../ui/js/Picker.js" as Picker
+.import "sourcefixture.js" as Source
 
 // Below about 659 px of window the four fixed columns claimed the whole row and the filename had a
 // negative slot, so ui/Row.qml drew every column except the one a file manager exists for. These
@@ -21,14 +22,6 @@ var PICKER = { rowPaddingX: 14, gap: 9, iconSize: 23, nameMin: 156, mode: 70, si
 // The chooser's list area on this box: Hyprland floats the picker at 875 px and ui/PickerPlaces.qml
 // takes Theme.space(150), 175 px of it, measured off the window Hyprland reported for flea --pick.
 var PICKER_SLOT = 700
-
-// A file of this tree, read the way tests/js/themes.js reads colors.toml; "" when missing.
-function source(path) {
-    var request = new XMLHttpRequest()
-    request.open("GET", Qt.resolvedUrl("../../" + path), false)
-    request.send()
-    return String(request.responseText || "")
-}
 
 // The anchor chain in ui/Row.qml, walked here independently of ui/js/Columns.js: the row, less its
 // padding either side, the mark and the gap after it, and every drawn column with its own gap.
@@ -192,7 +185,7 @@ function runPeekKey(check) {
     check("a repair count asks apart from the pane's own",
         Columns.sentKey(Columns.peekKey("/a", false, false), 1) !== Columns.sentKey(Columns.peekKey("/a", false, false), 35), true)
     check("the same count asks the same", Columns.sentKey("/a\n00", 35), "/a\n00\n35")
-    var area = source("ui/ColumnsArea.qml")
+    var area = Source.source("ui/ColumnsArea.qml")
     check("the columns view matches a reply on its sent count",
         area.indexOf("Columns.peekKey(path, hidden, hiddenLast), sent = Columns.sentKey(key, first)") >= 0, true)
     check("and asks with the pane's window size",
@@ -216,7 +209,7 @@ function runPeekPending(check) {
     check("while the pane's own reply is kept", Columns.hasAsk(held, own), true)
     check("and the repair reply drops no ask of its own",
         Columns.hasAsk(Columns.dropAsk(held, repair), own), true)
-    var area = source("ui/ColumnsArea.qml")
+    var area = Source.source("ui/ColumnsArea.qml")
     check("the columns view tracks its own asks", area.indexOf("Columns.trackAsk(root.pending, sent)") >= 0, true)
     check("and stores only a reply it asked for", area.indexOf("if (!Columns.hasAsk(root.pending, sent)) return") >= 0, true)
     check("and drops the ask it stored", area.indexOf("Columns.dropAsk(root.pending, sent)") >= 0, true)
@@ -232,7 +225,7 @@ function runPeekPending(check) {
 
 // The header drag writes once on release after a real move, so a click pins nothing and a fit survives its own release.
 function runHeaderDrag(check) {
-    var header = source("ui/Header.qml")
+    var header = Source.source("ui/Header.qml")
     var beginBody = header.substring(header.indexOf("function beginDrag"), header.indexOf("}", header.indexOf("function beginDrag")))
     check("a press that never travels marks nothing to write",
         beginBody.indexOf("root.dragMoved = false") >= 0, true)
@@ -250,7 +243,7 @@ function runHeaderDrag(check) {
 
 // The window passes the raw stored limit through, so a hand-edited false or "" reaches cappedLimit instead of coercing to 0.
 function runColumnsLimitWire(check) {
-    var area = source("ui/ColumnsArea.qml")
+    var area = Source.source("ui/ColumnsArea.qml")
     check("the limit is not an int property",
         area.indexOf("readonly property var columnsLimit") >= 0, true)
 }

@@ -1,19 +1,12 @@
 .import "../../ui/js/Focus.js" as Focus
 .import "../../ui/js/PathBar.js" as PathBar
+.import "sourcefixture.js" as Source
 
 // The path bar's whole meaning is what a typed line resolves to, and every one of those lines is a
 // navigation the user cannot see before it happens: a wrong tilde or a swallowed ".." opens the
 // wrong directory silently. So the resolution is asserted here, with no window and no backend.
 
 var HOME = "/home/gm"
-
-// A file of this tree, read the way tests/js/columns.js reads ui/ColumnsArea.qml; "" when missing.
-function source(path) {
-    var request = new XMLHttpRequest()
-    request.open("GET", Qt.resolvedUrl("../../" + path), false)
-    request.send()
-    return String(request.responseText || "")
-}
 
 // Only the members Focus.handleKey touches on its way to the path bar, and the counter for the one
 // call it must make: the pane asks, and ui/WindowBody.qml is what opens the field. The routing lives in
@@ -207,7 +200,7 @@ function run(check) {
 
     // Tab completes dotfiles first, so the completion peek opts out of the listing's hidden-last order.
     check("Tab completion peeks with hiddenLast false",
-        source("ui/WindowBody.qml").indexOf("backend.peek(dir, view.currentPane.windowSize, hidden, false)") >= 0, true)
+        Source.source("ui/WindowBody.qml").indexOf("backend.peek(dir, view.currentPane.windowSize, hidden, false)") >= 0, true)
     check("and the peek keeps the listing order for every other caller",
-        source("ui/Backend.qml").indexOf("function peek(path, first, hidden, hiddenLast)") >= 0, true)
+        Source.source("ui/Backend.qml").indexOf("var last = hiddenLast === undefined ? ViewState.state.hiddenLast === true : hiddenLast === true") >= 0, true)
 }

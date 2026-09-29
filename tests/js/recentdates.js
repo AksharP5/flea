@@ -1,14 +1,7 @@
 .import "../../ui/js/RecentDates.js" as RecentDates
+.import "sourcefixture.js" as Source
 
 // Highlight today's dates (Settings, View, ships off): on, today draws foreground and older stamps keep dimmed ink, with no relative words.
-
-// A file of this tree, read the way tests/js/themes.js reads colors.toml; "" when missing.
-function source(path) {
-    var request = new XMLHttpRequest()
-    request.open("GET", Qt.resolvedUrl("../../" + path), false)
-    request.send()
-    return String(request.responseText || "")
-}
 
 function countRe(text, re) {
     var found = text.match(re)
@@ -65,9 +58,9 @@ function run(check) {
         RecentDates.msUntilMidnight(at(2026, 9, 24, 0, 1, 0)), 24 * 60 * 60 * 1000 - 60000)
 
     // The wiring the window carries: one midnight timer for the whole window, one numeric compare per row, no per-row timer or Date.
-    var rowDate = source("ui/RowDate.qml")
-    var viewState = source("ui/ViewState.qml")
-    var row = source("ui/Row.qml")
+    var rowDate = Source.source("ui/RowDate.qml")
+    var viewState = Source.source("ui/ViewState.qml")
+    var row = Source.source("ui/Row.qml")
     check("RowDate compares against the window start",
         rowDate.indexOf("todayStart") >= 0, true)
     check("RowDate reads the switch", rowDate.indexOf("highlightToday") >= 0, true)

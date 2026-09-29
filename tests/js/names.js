@@ -1,14 +1,7 @@
 .import "../../ui/js/Names.js" as Names
+.import "sourcefixture.js" as Source
 
 // Names040 board: a long name elides in the middle so the extension stays visible; the 64-character sample elides to 49 keeping ".png".
-
-// A file of this tree, read the way tests/js/themes.js reads colors.toml; "" when missing.
-function source(path) {
-    var request = new XMLHttpRequest()
-    request.open("GET", Qt.resolvedUrl("../../" + path), false)
-    request.send()
-    return String(request.responseText || "")
-}
 function run(check) {
     var full = "screenshot-2026-08-30-final-review-for-gm-after-the-bench-v3.png"
     check("the board sample elides to the board string",
@@ -105,7 +98,7 @@ function runGridCaption(check) {
     check("a dead line count hands the whole name back",
           Names.gridCaption(full, 16, 0), full)
     check("gridBudget is gone", typeof Names.gridBudget, "undefined")
-    var tile = source("ui/GridTile.qml")
+    var tile = Source.source("ui/GridTile.qml")
     check("the caption breaks through the wrap-safe helper",
           tile.indexOf("Names.gridCaption") >= 0, true)
     check("the wrap guess is gone",
