@@ -3139,7 +3139,7 @@ cat <<JSON
 {"name":"nvme0n1","path":"/dev/nvme0n1","label":null,"mountpoints":[null],"rm":false,"size":256060514304,"type":"disk","model":"KBG40ZNS256G",
 "children":[{"name":"nvme0n1p1","path":"/dev/nvme0n1p1","label":null,"mountpoints":["/"],"rm":false,"size":256060514304,"type":"part","model":null}]},
 {"name":"sr0","path":"/dev/sr0","label":null,"mountpoints":\$optical_points,"rm":true,"size":0,"type":"rom","fstype":\$optical_fs,"model":"$label"},
-{"name":"sdb","path":"/dev/sdb","label":"USB","mountpoints":[null],"rm":true,"size":34359738368,"type":"disk","model":"USB Flash Disk"}
+{"name":"sdb","path":"/dev/sdb","label":"USB","mountpoints":[null],"rm":true,"size":34359738368,"type":"disk","model":"USB Flash Disk","fstype":"vfat"}
 ]}
 JSON
 EOS
@@ -8108,7 +8108,7 @@ cat <<JSON
 {"name":"nvme0n1","path":"/dev/nvme0n1","label":null,"mountpoints":[null],"rm":false,"size":"238.5G","type":"disk","model":"KBG40ZNS256G",
 "children":[{"name":"nvme0n1p1","path":"/dev/nvme0n1p1","label":null,"mountpoints":["/"],"rm":false,"size":"238.5G","type":"part","model":null}]},
 {"name":"sda","path":"/dev/sda","label":null,"mountpoints":[null],"rm":true,"size":"116.1G","type":"disk","model":"USB Flash Disk",
-"children":[{"name":"sda1","path":"/dev/sda1","label":"FLEASTICK","mountpoints":[\$mp],"rm":true,"size":"116.1G","type":"part","model":null}]}]}
+"children":[{"name":"sda1","path":"/dev/sda1","label":"FLEASTICK","mountpoints":[\$mp],"rm":true,"size":"116.1G","type":"part","model":null,"fstype":"vfat"}]}]}
 JSON
 EOS
     chmod +x "$dir/bin/lsblk"

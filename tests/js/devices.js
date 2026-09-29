@@ -76,7 +76,7 @@ function run(check) {
                + '{"name":"nvme0n1","path":"/dev/nvme0n1","label":null,"mountpoints":[null],"rm":false,"tran":"nvme","size":256060514304,"type":"disk","model":"KBG40ZNS256G",'
                + '"children":[{"name":"nvme0n1p1","path":"/dev/nvme0n1p1","label":null,"mountpoints":["/"],"rm":false,"tran":null,"size":256060514304,"type":"part","model":null}]},'
                + '{"name":"sdb","path":"/dev/sdb","label":null,"mountpoints":[null],"rm":false,"tran":"usb","size":2000398934016,"type":"disk","model":"My Passport 25E2",'
-               + '"children":[{"name":"sdb1","path":"/dev/sdb1","label":"Passport","mountpoints":["/run/media/gm/Passport"],"rm":false,"tran":null,"size":2000398934016,"type":"part","model":null}]}'
+               + '"children":[{"name":"sdb1","path":"/dev/sdb1","label":"Passport","mountpoints":["/run/media/gm/Passport"],"rm":false,"tran":null,"size":2000398934016,"type":"part","model":null,"fstype":"vfat"}]}'
                + ']}'
     var usb = Devices.parseDevices(bridge)
     check("a mounted USB bridge is a rail row", usb.length + "|" + usb[1].label, "2|Passport")
@@ -147,7 +147,7 @@ function run(check) {
 
     // Present and unmounted: the state a stick sits in on this box, which automounts nothing.
     var unmounted = '{"blockdevices":[{"name":"sda","path":"/dev/sda","label":null,"mountpoints":[null],"rm":true,"size":124656812032,"type":"disk","model":"USB Flash Disk",'
-                  + '"children":[{"name":"sda1","path":"/dev/sda1","label":"128GB","mountpoints":[null],"rm":true,"size":124656812032,"type":"part","model":null}]}]}'
+                  + '"children":[{"name":"sda1","path":"/dev/sda1","label":"128GB","mountpoints":[null],"rm":true,"size":124656812032,"type":"part","model":null,"fstype":"vfat"}]}]}'
     var u = Devices.parseDevices(unmounted)
     check("an unmounted stick is still a row", u.length, 1)
     check("an unmounted volume reads as unmounted", u[0].mounted, false)
@@ -158,7 +158,7 @@ function run(check) {
     // Issue 143's three states, with a USB disk beside the optical device as the negative control: empty rom hidden, inserted and mounted iso9660 rows retained.
     var opticalSystem = '{"name":"nvme0n1","path":"/dev/nvme0n1","label":null,"mountpoints":[null],"rm":false,"size":256060514304,"type":"disk","model":"KBG40ZNS256G",'
                      + '"children":[{"name":"nvme0n1p1","path":"/dev/nvme0n1p1","label":null,"mountpoints":["/"],"rm":false,"size":256060514304,"type":"part","model":null}]},'
-    var opticalUsb = '{"name":"sdb","path":"/dev/sdb","label":"USB","mountpoints":[null],"rm":true,"size":34359738368,"type":"disk","model":"USB Flash Disk"}'
+    var opticalUsb = '{"name":"sdb","path":"/dev/sdb","label":"USB","mountpoints":[null],"rm":true,"size":34359738368,"type":"disk","model":"USB Flash Disk","fstype":"vfat"}'
     var opticalEmpty = '{"blockdevices":[' + opticalSystem
                      + '{"name":"sr0","path":"/dev/sr0","label":null,"mountpoints":[null],"rm":true,"size":0,"type":"rom","model":"MATSHITA DVD+/-RW UJ8FB"},'
                      + opticalUsb + ']}'
@@ -184,8 +184,8 @@ function run(check) {
              + '{"name":"nvme1n1","path":"/dev/nvme1n1","label":null,"mountpoints":[null],"rm":false,"size":1000000000000,"type":"disk","model":"Second NVMe"},'
              + '{"name":"sda","path":"/dev/sda","label":null,"mountpoints":[null],"rm":true,"size":124656812032,"type":"disk","model":"USB Flash Disk",'
              + '"children":[{"name":"sda1","path":"/dev/sda1","label":"first","mountpoints":["/run/media/gm/first"],"rm":true,"size":62277025792,"type":"part","model":null},'
-             + '{"name":"sda2","path":"/dev/sda2","label":"second","mountpoints":[null],"rm":true,"size":62277025792,"type":"part","model":null}]},'
-             + '{"name":"sdb","path":"/dev/sdb","label":"CARD","mountpoints":[null],"rm":true,"size":34359738368,"type":"disk","model":"SD Reader"}'
+             + '{"name":"sda2","path":"/dev/sda2","label":"second","mountpoints":[null],"rm":true,"size":62277025792,"type":"part","model":null,"fstype":"vfat"}]},'
+             + '{"name":"sdb","path":"/dev/sdb","label":"CARD","mountpoints":[null],"rm":true,"size":34359738368,"type":"disk","model":"SD Reader","fstype":"vfat"}'
              + ']}'
     var m = Devices.parseDevices(many)
     check("four rows come out of two sticks, the system disk and one bare internal drive", m.length, 4)
@@ -199,28 +199,28 @@ function run(check) {
 
     // The label ladder: filesystem label, then the drive's product name, then the kernel name.
     var noLabel = '{"blockdevices":[{"name":"sda","path":"/dev/sda","label":null,"mountpoints":[null],"rm":true,"size":124656812032,"type":"disk","model":"USB Flash Disk",'
-                + '"children":[{"name":"sda1","path":"/dev/sda1","label":null,"mountpoints":[null],"rm":true,"size":124656812032,"type":"part","model":null}]}]}'
+                + '"children":[{"name":"sda1","path":"/dev/sda1","label":null,"mountpoints":[null],"rm":true,"size":124656812032,"type":"part","model":null,"fstype":"vfat"}]}]}'
     check("an unlabelled volume falls back to the drive's product name", Devices.parseDevices(noLabel)[0].label, "USB Flash Disk")
     var noModel = '{"blockdevices":[{"name":"sdb","path":"/dev/sdb","label":null,"mountpoints":[null],"rm":true,"size":34359738368,"type":"disk","model":null,'
-                + '"children":[{"name":"sdb1","path":"/dev/sdb1","label":null,"mountpoints":[null],"rm":true,"size":34359738368,"type":"part","model":null}]}]}'
+                + '"children":[{"name":"sdb1","path":"/dev/sdb1","label":null,"mountpoints":[null],"rm":true,"size":34359738368,"type":"part","model":null,"fstype":"vfat"}]}]}'
     check("a volume with neither label nor model falls back to the kernel name", Devices.parseDevices(noModel)[0].label, "sdb1")
 
     // A label is a name off somebody else's filesystem, so it is data: the parser never rewrites it
     // and ui/SidebarRow.qml draws it through Text.PlainText.
     var awkward = '{"blockdevices":[{"name":"sda","path":"/dev/sda","label":null,"mountpoints":[null],"rm":true,"size":8589934592,"type":"disk","model":null,'
-                + '"children":[{"name":"sda1","path":"/dev/sda1","label":"Sauvegarde & Co \\"2026\\" <b>","mountpoints":[null],"rm":true,"size":8589934592,"type":"part","model":null}]}]}'
+                + '"children":[{"name":"sda1","path":"/dev/sda1","label":"Sauvegarde & Co \\"2026\\" <b>","mountpoints":[null],"rm":true,"size":8589934592,"type":"part","model":null,"fstype":"vfat"}]}]}'
     check("an awkward label survives the parse verbatim", Devices.parseDevices(awkward)[0].label, 'Sauvegarde & Co "2026" <b>')
 
     var longName = "Photographs and scans of every receipt from two thousand and twenty six, quarter one through quarter four"
     var longLabel = '{"blockdevices":[{"name":"sda","path":"/dev/sda","label":null,"mountpoints":[null],"rm":true,"size":8589934592,"type":"disk","model":null,'
-                  + '"children":[{"name":"sda1","path":"/dev/sda1","label":"' + longName + '","mountpoints":[null],"rm":true,"size":8589934592,"type":"part","model":null}]}]}'
+                  + '"children":[{"name":"sda1","path":"/dev/sda1","label":"' + longName + '","mountpoints":[null],"rm":true,"size":8589934592,"type":"part","model":null,"fstype":"vfat"}]}]}'
     check("a very long label is elided by the row, never truncated by the parser", Devices.parseDevices(longLabel)[0].label, longName)
 
     // A mountpoint with a space needs no decoding here, and that is measured rather than assumed:
     // the kernel writes /tmp/.../USB\040Drive in /proc/self/mountinfo, and lsblk --json was run
     // against a real vfat mount at that path and printed "/tmp/.../USB Drive" with a literal space.
     var spaced = '{"blockdevices":[{"name":"sda","path":"/dev/sda","label":null,"mountpoints":[null],"rm":true,"size":8589934592,"type":"disk","model":null,'
-               + '"children":[{"name":"sda1","path":"/dev/sda1","label":"USB Drive","mountpoints":["/run/media/gm/USB Drive"],"rm":true,"size":8589934592,"type":"part","model":null}]}]}'
+               + '"children":[{"name":"sda1","path":"/dev/sda1","label":"USB Drive","mountpoints":["/run/media/gm/USB Drive"],"rm":true,"size":8589934592,"type":"part","model":null,"fstype":"vfat"}]}]}'
     check("a mountpoint with a space is opened verbatim", Devices.parseDevices(spaced)[0].path, "/run/media/gm/USB Drive")
 
     // A trust boundary: a node with no name would build "/dev/undefined" and hand it to gio.

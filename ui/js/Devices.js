@@ -83,9 +83,9 @@ function collectVolumes(nodes, model, unplugs, out, unmounted) {
         var pulls = unpluggable(n) || (unplugs && String(n.type || "") === "part")
         // Only a leaf is a volume. A partition holding a LUKS container is not what mounts, its crypt
         // child is, and emitting both would put one drive in the rail twice.
-        var emptyOptical = String(n.type || "").toLowerCase() === "rom"
-                        && mountOf(n).length === 0 && String(n.fstype || "").length === 0
-        if (n.name && kids.length === 0 && !emptyOptical
+        // RailAdditions rule 1: an unmounted leaf with no filesystem is not a row (issue 143).
+        var noFilesystem = mountOf(n).length === 0 && String(n.fstype || "").length === 0
+        if (n.name && kids.length === 0 && !noFilesystem
                 && (pulls || mountOf(n).length > 0 || (unmounted && browsable(n))))
             out.push(volumeRow(n, own, pulls, unmounted))
         collectVolumes(kids, own, pulls, out, unmounted)

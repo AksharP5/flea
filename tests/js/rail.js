@@ -47,6 +47,41 @@ function run(check) {
     check("a volume with no filesystem has nothing to mount", labels(on).indexOf("sdb4"), -1)
     check("a locked LUKS container mounts through its crypt child, never itself", labels(on).indexOf("sdb5"), -1)
 
+    // A USB LUN with media but no filesystem is not a rail row, removable or not.
+    function bootBox(sda) {
+        return '{"blockdevices":['
+            + '{"name":"nvme0n1","path":"/dev/nvme0n1","label":null,"mountpoints":[null],"rm":false,"size":256060514304,"type":"disk","model":"KBG40ZNS256G","fstype":null,"parttypename":null,'
+            + '"children":[{"name":"nvme0n1p1","path":"/dev/nvme0n1p1","label":null,"mountpoints":["/"],"rm":false,"size":256060514304,"type":"part","model":null,"fstype":"btrfs","parttypename":"Linux filesystem"}]},'
+            + sda + ']}'
+    }
+    var bootLun = '{"name":"sda","path":"/dev/sda","label":null,"mountpoints":[null],"rm":true,"tran":"usb","size":4194304,"type":"disk","model":"USB bootloader","fstype":null,"parttypename":null}'
+    check("a no-filesystem USB LUN is not a row with the switch on", labels(Devices.parseDevices(bootBox(bootLun), true)), "nvme0n1")
+    check("a no-filesystem USB LUN is not a row with the switch off", labels(Devices.parseDevices(bootBox(bootLun), false)), "nvme0n1")
+    var bootChild = '{"name":"sda","path":"/dev/sda","label":null,"mountpoints":[null],"rm":false,"tran":"usb","size":4194304,"type":"disk","model":"USB bootloader","fstype":null,"parttypename":null,'
+        + '"children":[{"name":"sda1","path":"/dev/sda1","label":null,"mountpoints":[null],"rm":false,"tran":null,"size":4194304,"type":"part","model":null,"fstype":null,"parttypename":null}]}'
+    check("a no-filesystem child on a USB disk is not a row either", labels(Devices.parseDevices(bootBox(bootChild), true)), "nvme0n1")
+    check("null, empty and absent fstype all mean no filesystem",
+        [bootLun, bootLun.replace('"fstype":null', '"fstype":""'), bootLun.replace(',"fstype":null', '')].every(function (leaf) {
+            return labels(Devices.parseDevices(bootBox(leaf), true)) === "nvme0n1"
+        }), true)
+    check("the same LUN with a filesystem is still a row", labels(Devices.parseDevices(bootBox(bootLun.replace('"fstype":null', '"fstype":"vfat"')), true)), "nvme0n1,USB bootloader")
+    function stickPart(leaf) {
+        return '{"name":"sda","path":"/dev/sda","label":null,"mountpoints":[null],"rm":true,"tran":"usb","size":124656812032,"type":"disk","model":"USB bootloader","fstype":null,"parttypename":null,'
+            + '"children":[' + leaf + ']}'
+    }
+    function romLeaf(fs) {
+        var fstype = fs === null ? "null" : '"' + fs + '"'
+        return '{"name":"sr0","path":"/dev/sr0","label":null,"mountpoints":[null],"rm":true,"size":0,"type":"rom","model":"MATSHITA DVD+/-RW UJ8FB","fstype":' + fstype + '}'
+    }
+    var espLeaf = '{"name":"sda1","path":"/dev/sda1","label":"BOOT","mountpoints":[null],"rm":true,"tran":null,"size":536870912,"type":"part","model":null,"fstype":"vfat","parttypename":"EFI System"}'
+    check("an EFI system partition on a stick is still a row", labels(Devices.parseDevices(bootBox(stickPart(espLeaf)), true)), "nvme0n1,BOOT")
+    var cryptLeaf = '{"name":"sda1","path":"/dev/sda1","label":null,"mountpoints":[null],"rm":true,"tran":null,"size":8589934592,"type":"part","model":null,"fstype":"crypto_LUKS","parttypename":"Linux filesystem"}'
+    check("an unmounted crypto_LUKS stick partition is still a row", labels(Devices.parseDevices(bootBox(stickPart(cryptLeaf)), true)), "nvme0n1,USB bootloader")
+    check("a no-filesystem leaf that is somehow mounted is still a row",
+        labels(Devices.parseDevices(bootBox(bootLun.replace('[null]', '["/run/media/gm/BOOT"]')), true)), "nvme0n1,USB bootloader")
+    check("an empty rom stays hidden through the same guard", labels(Devices.parseDevices(bootBox(romLeaf(null)), true)), "nvme0n1")
+    check("an iso9660 rom is still a row", labels(Devices.parseDevices(bootBox(romLeaf("iso9660")), true)), "nvme0n1,MATSHITA DVD+/-RW UJ8FB")
+
     // Rule 2's rows, which only a row from rule 1 carries.
     function solid(rows) { return rows.filter(function (r) { return r.separator !== true }) }
     var unmounted = { group: "device", kind: "volume", mounted: false, removable: false, volumeMenu: true }
