@@ -86,8 +86,10 @@ Item {
     property bool sortDesc: false
     property bool preserveSort: false
     property bool hasListed: false
+    // The path the last list request named, so a settings change re-reads that folder's own order.
+    property string lastListedPath: ""
     readonly property string sortPreference: JSON.stringify(ViewState.state.sort || {})
-    onSortPreferenceChanged: if (!root.preserveSort || !root.hasListed) root.resetSort()
+    onSortPreferenceChanged: if (!root.preserveSort || !root.hasListed) root.resetSort(root.lastListedPath)
 
     function resetSort(path) {
         // Read once per listing, so browsing never writes; only Sort.resort does.
@@ -107,13 +109,17 @@ Item {
         if (!FolderSorts.shouldRemember(ViewState.state.rememberSort, path))
             return
         var keyed = key === "mtime" ? "date" : key
-        ViewState.changeKey("folderSorts", FolderSorts.set(ViewState.state.folderSorts, path, keyed, desc === true))
+        var leaf = {}
+        leaf[path] = { key: keyed, reverse: desc === true }
+        ViewState.changeMapEntries("folderSorts", leaf, FolderSorts.set(ViewState.state.folderSorts, path, keyed, desc === true))
     }
 
     function forgetFolderSort(path) {
         if (!path)
             return
-        ViewState.changeKey("folderSorts", FolderSorts.forget(ViewState.state.folderSorts, path))
+        var leaf = {}
+        leaf[path] = null
+        ViewState.changeMapEntries("folderSorts", leaf, FolderSorts.forget(ViewState.state.folderSorts, path))
     }
 
     // What the settle gate asserts: how many thumb requests this process has attempted; see AGENTS.md.
@@ -155,6 +161,7 @@ Item {
     // A fresh scan is always name ascending, so a refresh after a write puts the header's mark back.
     function listRequest(path, first, hidden) {
         root.listRequests += 1
+        root.lastListedPath = path
         if (!root.preserveSort || !root.hasListed) root.resetSort(path)
         root.hasListed = true
         return { c: "list", path: path, first: first, hidden: hidden, by: root.sortBy, desc: root.sortDesc,
@@ -249,8 +256,7 @@ Item {
         root.send({ c: "fsinfo" })
     }
 
-    // A read-only look at a directory that is not the current listing; see docs/protocol.md "peek".
-    // Tab passes hiddenLast false so dotfiles sort first, every other caller keeps the listing's own order.
+    // A read-only look elsewhere; Tab passes hiddenLast false, other callers keep the listing order.
     function peek(path, first, hidden, hiddenLast) {
         var last = hiddenLast === undefined ? ViewState.state.hiddenLast === true : hiddenLast === true
         root.send({ c: "peek", path: path, first: first, hidden: hidden, hiddenLast: last })

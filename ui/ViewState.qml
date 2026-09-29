@@ -132,6 +132,11 @@ QtObject {
         root.owe(key, UiState.withGroup(root.state, key, leaf), UiState.withGroup(root.unsaved, key, leaf))
     }
 
+    // Changed entries of a map key: the document draws the whole map, the patch owes those entries alone.
+    function changeMapEntries(key, entries, full) {
+        root.owe(key, UiState.withKey(root.state, key, full), UiState.withGroup(root.unsaved, key, entries))
+    }
+
     // Both writers' last move: hold the new document, and when the named key is not the value it
     // already held, owe the state file what changed and ask for a write. A setter that lands the
     // value already on screen owes nothing, so a chord clamped at the end of its range writes nothing.

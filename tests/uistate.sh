@@ -217,6 +217,23 @@ check "a huge thumbnail patch exits 0" "0" "$rc"
 out=$(flea_ui '{"preview":{"thumbSize":"largest"}}' 2>&1); rc=$?
 check "a largest thumbnail patch exits 0" "0" "$rc"
 
+# G1: two folder patches both survive, a null forgets one, and two widths behave per key.
+fresh
+out=$(flea_ui '{"folderSorts":{"/a":{"key":"size","reverse":true}}}' 2>&1); rc=$?
+check "the first folder patch exits 0" "0" "$rc"
+out=$(flea_ui '{"folderSorts":{"/b":{"key":"name","reverse":false}}}' 2>&1); rc=$?
+check "the second folder patch exits 0" "0" "$rc"
+flat=$(tr -d ' \n' < "$UI")
+check "two folder patches both survive" "1|1" "$(echo "$flat" | grep -c '"/a":{"key":"size","reverse":true}')|$(echo "$flat" | grep -c '"/b":{"key":"name","reverse":false}')"
+out=$(flea_ui '{"folderSorts":{"/a":null}}' 2>&1); rc=$?
+check "a null forget exits 0" "0" "$rc"
+flat=$(tr -d ' \n' < "$UI")
+check "a null forgets only its folder" "0|1" "$(echo "$flat" | grep -c '"/a":')|$(echo "$flat" | grep -c '"/b":{"key":"name","reverse":false}')"
+flea_ui '{"columnWidths":{"size":120}}' >/dev/null 2>&1
+flea_ui '{"columnWidths":{"date":140}}' >/dev/null 2>&1
+flat=$(tr -d ' \n' < "$UI")
+check "two width patches both survive" "1|1" "$(echo "$flat" | grep -c '"size":120')|$(echo "$flat" | grep -c '"date":140')"
+
 # The path is predictable, so a link planted at it is refused and what it points at is untouched.
 fresh
 mkdir -p "$STATE/flea"

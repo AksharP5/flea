@@ -127,6 +127,21 @@ function run(check) {
           '{"display":{"textSize":{"mode":16},"aKeyThisBuildHasNeverHeardOf":true}}')
     check("and the patch beside it never carries one", JSON.stringify(owed).indexOf("NeverHeardOf"), -1)
 
+    // A map entry owes itself alone: the document draws the whole map, the patch names one entry.
+    var entryOwed = UiState.withGroup({}, "folderSorts", { "/a": { key: "size", reverse: true } })
+    check("a folder sort owes its entry alone",
+          JSON.stringify(entryOwed), '{"folderSorts":{"/a":{"key":"size","reverse":true}}}')
+    var twoOwed = UiState.withGroup(entryOwed, "folderSorts", { "/b": { key: "name", reverse: false } })
+    check("a second folder joins the patch already owed",
+          JSON.stringify(twoOwed), '{"folderSorts":{"/a":{"key":"size","reverse":true},"/b":{"key":"name","reverse":false}}}')
+    check("a landed entry clears out of the map",
+          JSON.stringify(UiState.acknowledged(twoOwed, '{"folderSorts":{"/a":{"key":"size","reverse":true}}}')),
+          '{"folderSorts":{"/b":{"key":"name","reverse":false}}}')
+    check("a landed forget clears too",
+          JSON.stringify(UiState.acknowledged({ folderSorts: { "/a": null } }, '{"folderSorts":{"/a":null}}')), "{}")
+    check("a width owes its edge alone",
+          JSON.stringify(UiState.withGroup({}, "columnWidths", { size: 120 })), '{"columnWidths":{"size":120}}')
+
     var drained = UiState.exited(queued, 0, THIRD)
     check("the queued patch starts when the writer exits", drained.start, THIRD)
     check("and the exited writer's own patch is what the file now holds", drained.saved, NEW)

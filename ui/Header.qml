@@ -22,8 +22,7 @@ Item {
     // was hit; the key is the protocol's own, which is why Modified sends "mtime".
     signal sortRequested(string key)
 
-    // The pane whose held rows a double click fits, set by ui/Pane.qml. Null in the picker's own
-    // header use, where no resize is offered.
+    // The pane whose held rows a double click fits; null where the picker reuses this header.
     property var pane: null
     // A drag in flight, so the hairline follows the pointer and one write lands on release.
     property string dragKey: ""
@@ -52,11 +51,7 @@ Item {
     // accepts no input, so the titles under it stay hittable unless the handlers go down with them.
     readonly property bool sortable: root.searchMode.length === 0
 
-    // The columns this width affords, less the ones the user has hidden (qs module ViewState).
-    // ui/Row.qml resolves its own from a width anchoring keeps
-    // equal to this one, so the header can never head a column no row below it is drawing.
-    // The width is the view less the scroll lane: rows draw lane-narrow, so the header that did
-    // not would head a column no row below it is drawing.
+    // The columns this width affords, less the hidden ones; rows draw lane-narrow like this header.
     property var hiddenCols: ViewState.hiddenCols
     readonly property real contentWidth: Math.max(0, root.width - Theme.spacing.rowPaddingX)
     readonly property var cols: root.dualMode ? Theme.dualColumns(root.contentWidth, root.hiddenCols) : Theme.columns(root.contentWidth, root.hiddenCols, root.dateWidth)
@@ -251,10 +246,12 @@ Item {
         if (cur === next)
             return
         var obj = {}
+        var leaf = {}
         var stored = ViewState.state.columnWidths || {}
         for (var k in stored) obj[k] = stored[k]
         obj[key] = next
-        ViewState.changeKey("columnWidths", obj)
+        leaf[key] = next
+        ViewState.changeMapEntries("columnWidths", leaf, obj)
     }
 
     function beginDrag(key, handle, mouse) {
@@ -286,8 +283,7 @@ Item {
         root.dragMoved = false
     }
 
-    // The same strings ui/Row.qml draws, measured in the cells' own caption face over the rows
-    // the window holds and nothing else.
+    // The strings ui/Row.qml draws, measured in the cells' own face over the held rows only.
     function fittedWidth(key) {
         var widths = []
         for (var i = 0; i < root.pane.rows.length; i++) {
@@ -318,6 +314,7 @@ Item {
         if (!root.pane || root.dualMode || !root.sortable)
             return
         var obj = {}
+        var leaf = {}
         var stored = ViewState.state.columnWidths || {}
         for (var k in stored) obj[k] = stored[k]
         var changed = false
@@ -328,11 +325,12 @@ Item {
             var next = root.fittedWidth(keys[i])
             if (next >= 0 && obj[keys[i]] !== Columns.clampListWidth(next)) {
                 obj[keys[i]] = Columns.clampListWidth(next)
+                leaf[keys[i]] = Columns.clampListWidth(next)
                 changed = true
             }
         }
         if (changed)
-            ViewState.changeKey("columnWidths", obj)
+            ViewState.changeMapEntries("columnWidths", leaf, obj)
     }
 
     // What the header case reads, built from the same values the header renders.

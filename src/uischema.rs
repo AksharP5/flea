@@ -334,8 +334,7 @@ mod tests {
         );
     }
 
-    // Per-folder sorts: each key a place, each value a sort order in sort's own shape, and
-    // past the cap the oldest entries go rather than the write failing.
+    // Each key a place, each value a sort order; past the cap the oldest entries go.
     #[test]
     fn folder_sorts_hold_places_to_orders_and_heal_past_the_cap() {
         let current = crate::uistate::from_file("{}");

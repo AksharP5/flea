@@ -12,6 +12,7 @@ function liveKey(key) {
     return key === "date" ? "mtime" : key
 }
 
+// Sample input: {"/home/gm/Work": {"key": "size", "reverse": true}}.
 function get(sorts, path) {
     var entry = sorts ? sorts[path] : null
     if (!entry || Sort.ORDERS.indexOf(liveKey(entry.key)) < 0)
