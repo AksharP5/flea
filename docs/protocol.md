@@ -628,8 +628,8 @@ A `quit`, or stdin closing, cancels a running operation the same way and waits f
 before the process exits, so shutting down mid-copy also leaves nothing half-written behind. A
 quit sets each detached compress and convert flag too and drains them under the one 25 s shutdown
 budget, so each job's `Work` cleanup runs before the process exits and no `.flea-work-*` folder is
-left beside the destination. A job still running past that budget keeps its folder in place
-and its terminal `err` names it.
+left beside the destination. A job whose tool has not exited ten seconds after the cancel keeps its folder in place
+and its terminal `err` names it; one still running when the budget ends is abandoned with the process.
 
 ### trash
 

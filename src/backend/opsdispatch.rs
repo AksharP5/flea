@@ -289,6 +289,8 @@ pub(crate) fn report_op(out: &mut impl Write, ops: &mut Ops, msg: OpMsg) {
         OpMsg::Meta { line } => {
             writeln!(out, "{}", line).ok();
         }
+        // The job leaves the quit registry here, so a drain that sees it empty has already written every line.
+        OpMsg::DetachedDone { id, line } => { writeln!(out, "{}", line).ok(); ops.detached.remove(id); }
         OpMsg::Duplicated { ok, path, err, entry } => {
             ops.journal.push(entry);
             ops.live.finished();

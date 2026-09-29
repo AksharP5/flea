@@ -57,8 +57,9 @@ pub enum OpMsg {
     Duplicated { ok: bool, path: String, err: String, entry: Entry },
     RedoDone { journal: super::undo::Journal, result: Result<String, FleaError> },
     MenuDeleteDone { line: String },
-    // A terminal line for a slot-holding operation: written like Meta, and it releases the slot.
+    // A terminal line, written like Meta: SlotDone also releases the slot, DetachedDone drops a compress or convert from the quit registry.
     SlotDone { line: String },
+    DetachedDone { id: usize, line: String },
     // A collisions answer, kept as the latest question before its line goes out; it claims no slot.
     Asked { turn: usize, question: crate::backend::collide::Question, line: String },
     // Not an operation: meta rides this channel because a media probe is a subprocess and the loop

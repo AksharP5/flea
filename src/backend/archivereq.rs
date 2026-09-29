@@ -17,7 +17,6 @@ use std::sync::Arc;
 use std::thread;
 use super::menu_actions::{validate_sources, Selected};
 use super::opsdispatch::menu_sources;
-use crate::backend::opscancel::DetachedJobs;
 
 
 pub fn archivestarted_line(id: usize) -> String {
@@ -72,7 +71,7 @@ fn extractstarted_line(id: usize) -> String {
 
 pub(crate) fn run_archive(id: usize, compressing: bool, paths: Vec<String>, format: String,
                    archive: PathBuf, dest: PathBuf, formats: &Formats, tx: Sender<OpMsg>, selection: Option<Vec<Selected>>,
-                   cancel: Arc<AtomicBool>, jobs: Option<Arc<DetachedJobs>>) {
+                   cancel: Arc<AtomicBool>) {
     let sources: Vec<PathBuf> = if compressing { paths.iter().map(PathBuf::from).collect() } else { vec![archive.clone()] };
     let result = if let Err(error) = validate_sources(selection.as_deref(), &sources) {
         Err(op_err("archive", "", &error))
@@ -85,25 +84,20 @@ pub(crate) fn run_archive(id: usize, compressing: bool, paths: Vec<String>, form
     } else {
         extract(formats, &archive, &dest, &cancel)
     };
-    // The line goes out before the id is forgotten, so a drain that sees an empty registry never misses it.
     let line = match result {
         Ok(verified) => archivedone_line(id, true, verified, ""),
         Err(e) => archivedone_line(id, false, true, &e.msg),
     };
-    // An extract frees the slot its terminal line took; a compress claims none.
-    let message = if compressing { OpMsg::Meta { line } } else { OpMsg::SlotDone { line } };
+    // An extract frees the slot its terminal line took; a compress claims none and leaves the quit registry when its line is read.
+    let message = if compressing { OpMsg::DetachedDone { id, line } } else { OpMsg::SlotDone { line } };
     let _ = tx.send(message);
-    if let Some(tracked) = jobs {
-        tracked.remove(id);
-    }
 }
 
 pub(crate) fn run_convert(id: usize, request_id: usize, input: PathBuf, dest: PathBuf, strip: bool, tx: Sender<OpMsg>, selection: Option<Vec<Selected>>,
-                   cancel: Arc<AtomicBool>, jobs: Option<Arc<DetachedJobs>>) {
+                   cancel: Arc<AtomicBool>) {
     let result = validate_sources(selection.as_deref(), std::slice::from_ref(&input))
         .map_err(|error| op_err("convert", &input.to_string_lossy(), &error))
         .and_then(|()| convert_one(&input, &dest, strip, &cancel));
-    // The line goes out before the id is forgotten, so a drain that sees an empty registry never misses it.
     let line = match result {
         Ok(()) => convertdone_line(id, request_id, &input.to_string_lossy(), true, &dest.to_string_lossy(), "", false),
         Err(e) => {
@@ -112,10 +106,7 @@ pub(crate) fn run_convert(id: usize, request_id: usize, input: PathBuf, dest: Pa
             convertdone_line(id, request_id, &input.to_string_lossy(), false, &dest.to_string_lossy(), &message, collision)
         }
     };
-    let _ = tx.send(OpMsg::Meta { line });
-    if let Some(tracked) = jobs {
-        tracked.remove(id);
-    }
+    let _ = tx.send(OpMsg::DetachedDone { id, line });
 }
 
 // The dispatch half, kept beside the work so run.rs's own match stays one line per request.
@@ -149,12 +140,9 @@ pub fn start_archive(
     }
     // A compress runs alongside by design, so its flag is tracked for a quit to set.
     let (id, cancel) = if compressing { (ops.claim_id(), Arc::new(AtomicBool::new(false))) } else { ops.claim_transfer() };
-    let jobs = if compressing {
+    if compressing {
         ops.detached.insert(id, &cancel);
-        Some(Arc::clone(&ops.detached))
-    } else {
-        None
-    };
+    }
     writeln!(out, "{}", archivestarted_line(id)).ok();
     if !compressing {
         let name = archive.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
@@ -165,7 +153,7 @@ pub fn start_archive(
     out.flush().ok();
     let tx = ops.tx.clone();
     thread::spawn(move || {
-        run_archive(id, compressing, paths, format, archive, dest, &formats, tx, selection, cancel, jobs)
+        run_archive(id, compressing, paths, format, archive, dest, &formats, tx, selection, cancel)
     });
 }
 
@@ -194,11 +182,10 @@ pub fn start_convert(out: &mut impl Write, ops: &mut Ops, input: PathBuf, dest: 
     // A convert runs alongside by design, so its flag is tracked for a quit to set.
     let cancel = Arc::new(AtomicBool::new(false));
     ops.detached.insert(id, &cancel);
-    let jobs = Arc::clone(&ops.detached);
     writeln!(out, "{}", convertstarted_line(id, request_id, &input.to_string_lossy())).ok();
     out.flush().ok();
     let tx = ops.tx.clone();
-    thread::spawn(move || run_convert(id, request_id, input, dest, strip, tx, selection.unwrap(), cancel, Some(jobs)));
+    thread::spawn(move || run_convert(id, request_id, input, dest, strip, tx, selection.unwrap(), cancel));
 }
 
 #[cfg(test)]

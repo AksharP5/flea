@@ -30,7 +30,7 @@ use crate::error::FleaError;
 use crate::heap;
 use std::io::{self, BufWriter, Write};
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::{channel, Receiver, RecvTimeoutError, TryRecvError};
+use std::sync::mpsc::{channel, Receiver, TryRecvError};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -41,8 +41,7 @@ pub(crate) const DRAIN_LIMIT: Duration = Duration::from_secs(25);
 // The UI gives up on a silent child after this; the budget above stays under it (ui/Backend.qml quitDeadline).
 pub(crate) const UI_QUIT_DEADLINE_SECS: u64 = 30;
 const _: () = assert!(DRAIN_LIMIT.as_secs() < UI_QUIT_DEADLINE_SECS);
-// A detached job forgets its id just after sending its line, so the drain re-reads the registry on this tick as well as on each event.
-const DRAIN_TICK: Duration = Duration::from_millis(50);
+const _: () = assert!(crate::backend::archivework::CANCEL_DRAIN_SECS < DRAIN_LIMIT.as_secs());
 
 // The loop stops on Quit; every other request continues it, because errors are responses.
 #[derive(PartialEq)]
@@ -421,15 +420,11 @@ pub(crate) fn drain(
     }
     ops.detached.cancel_all();
     while st.outstanding > 0 || ops.live.running().is_some() || !ops.detached.is_empty() {
-        let left = deadline.saturating_duration_since(Instant::now());
-        if left.is_zero() {
-            break;
-        }
-        match rx.recv_timeout(left.min(DRAIN_TICK)) {
+        match rx.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
             Ok(Event::Thumb(d)) => report_done(out, st, d),
             Ok(Event::Op(m)) => report_op(out, ops, m),
-            Ok(_) | Err(RecvTimeoutError::Timeout) => {}
-            Err(RecvTimeoutError::Disconnected) => break,
+            Ok(_) => {}
+            Err(_) => break,
         }
     }
     pool.cancel_all();

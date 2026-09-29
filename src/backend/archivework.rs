@@ -28,6 +28,12 @@ const CANCEL_DRAIN_STEP: Duration = Duration::from_millis(10);
 thread_local! {
     static READER_HOLD_MS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
     static DRAIN_SECS: std::cell::Cell<u64> = const { std::cell::Cell::new(CANCEL_DRAIN_SECS) };
+    // The cap the last job on this thread ran under (None: none yet, Some(None): uncapped), so a test tells convert's runner from an archive's.
+    static LAST_CPU: std::cell::Cell<Option<Option<u32>>> = const { std::cell::Cell::new(None) };
+}
+#[cfg(test)]
+pub(crate) fn last_cpu() -> Option<Option<u32>> {
+    LAST_CPU.with(|c| c.get())
 }
 #[cfg(test)]
 pub(crate) fn set_reader_hold_ms(ms: u64) {
@@ -166,6 +172,8 @@ fn run_boxed_cancellable_capped_with_cpu(what: &str, inner: Vec<String>, read_on
 
 fn run_boxed_cancellable_inner(what: &str, inner: Vec<String>, read_only: &Path, work: &mut Work,
                                cancel: &AtomicBool, started: Option<&AtomicU32>, cpu: Option<u32>) -> Result<(), FleaError> {
+    #[cfg(test)]
+    LAST_CPU.with(|c| c.set(Some(cpu)));
     if !sandbox::available() {
         let tool = inner.first().map_or("", |s| s.as_str());
         return Err(op_err(what, tool, "the sandbox is unavailable: bwrap or prlimit is not on PATH"));
