@@ -9,6 +9,7 @@ import "js/Mounts.js" as Mounts
 import "js/Places.js" as Places
 import "js/PlaceMenu.js" as PlaceMenu
 import "js/RailMenu.js" as RailMenu
+import "js/RailKeys.js" as RailKeys
 
 // Places, Favorites, Network and Devices share one flat cursor in visual order.
 Item {
@@ -404,8 +405,8 @@ Item {
                 id: trashRepeater
                 model: root.trashEntries
                 delegate: SidebarRow {
-                    // The menu sets cursorIndex on open, so the Trash row takes the cursor rung; trashActive keeps it lit.
-                    cursor: root.trashActive || (index + root.homeEntries.length === root.cursorIndex)
+                    // The menu sets cursorIndex on open, so isCursor also means the open menu is on this row.
+                    cursor: RailKeys.trashCursor(root.trashActive, index + root.homeEntries.length === root.cursorIndex, root.focused, root.menu && root.menu.opened && root.menu.forRail)
                     focused: root.focused || root.trashActive
                     onActivated: function (idx) { root.activate(idx + root.homeEntries.length) }
                     onMenuRequested: function(idx, pos) { root.openRailMenu(idx + root.homeEntries.length, pos) }

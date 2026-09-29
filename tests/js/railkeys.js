@@ -189,4 +189,16 @@ function run(check) {
     RailKeys.act("eject", onPhone, onPhone.sidebar)
     check("ctrl e on a phone unmounts it rather than opening it",
           onPhone.sidebar.released.join(","), "unmountPhone:mtp://Google_Pixel_7_1A2B/")
+
+    // Leaving Trash takes the accent cursor off its row: unfocused with no menu is dark.
+    check("leaving Trash takes the accent cursor off the Trash row",
+          RailKeys.trashCursor(false, true, false, false), false)
+    check("the Trash row keeps the cursor while the rail has focus",
+          RailKeys.trashCursor(false, true, true, false), true)
+    check("the Trash row keeps the cursor while its own rail menu is open",
+          RailKeys.trashCursor(false, true, false, true), true)
+    check("the Trash row keeps the cursor while Trash is open",
+          RailKeys.trashCursor(true, true, false, false), true)
+    check("a rail menu on another row leaves this one dark",
+          RailKeys.trashCursor(false, false, false, true), false)
 }

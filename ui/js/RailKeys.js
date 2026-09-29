@@ -26,6 +26,14 @@ function messaged(sidebar, isError) {
     if (isError && sidebar) sidebar.focusOnOpen = false
 }
 
+// The Trash row's accent rung reads as "open", so it draws the cursor only while Trash is
+// open, while the rail has focus, or while the rail menu is open on it; leaving Trash darkens it.
+function trashCursor(trashActive, isCursor, focused, menuOnRow) {
+    if (trashActive) return true
+    if (!isCursor) return false
+    return Boolean(focused || menuOnRow)
+}
+
 // The rail answers ten of the key table's action names and ignores the rest while it has focus.
 function act(action, root, sidebar) {
     // Any other rail key ends a mount-first open's claim on the focus.
