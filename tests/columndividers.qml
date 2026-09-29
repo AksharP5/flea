@@ -262,84 +262,115 @@ ShellRoot {
 
     function fail(text) { root.failures.push(text) }
 
+    // A throw inside a Timer handler fails loud, so a TypeError never hangs to timeout.
     function measureEmpty() {
-        if (area.columnCount !== 3)
-            root.fail("at 900 px the default limit draws " + area.columnCount + " columns, want 3")
-        if (root.countVisiblePanes(area) !== 2)
-            root.fail("at 900 px with an empty third shows " + root.countVisiblePanes(area) + " panes, want 2")
-        if (area.thirdShown !== false)
-            root.fail("an empty third shows thirdShown true, want false")
-        root.checkActive(false, "empty third")
-        if (root.failures.length > 0) { root.report(); return }
-        Flea.ViewState.state = {}
-        area.shownHasRow = true
-        area.shownIsDir = true
-        area.shownChildPath = "/a/b/c/sub"
-        root.populateChild()
-        dirTimer.start()
+        try {
+            if (area.columnCount !== 3)
+                root.fail("at 900 px the default limit draws " + area.columnCount + " columns, want 3")
+            if (root.countVisiblePanes(area) !== 2)
+                root.fail("at 900 px with an empty third shows " + root.countVisiblePanes(area) + " panes, want 2")
+            if (area.thirdShown !== false)
+                root.fail("an empty third shows thirdShown true, want false")
+            root.checkActive(false, "empty third")
+            if (root.failures.length > 0) { root.report(); return }
+            Flea.ViewState.state = {}
+            area.shownHasRow = true
+            area.shownIsDir = true
+            area.shownChildPath = "/a/b/c/sub"
+            root.populateChild()
+            dirTimer.start()
+        } catch (e) {
+            root.fail("measureEmpty threw " + e)
+            root.report()
+        }
     }
 
     function measureDir() {
-        if (area.thirdShown !== true)
-            root.fail("a child folder with rows leaves thirdShown false, want true")
-        if (root.countVisiblePanes(area) !== 3)
-            root.fail("a child folder with rows shows " + root.countVisiblePanes(area) + " panes, want 3")
-        if (root.countVisibleDividers(area) !== 2)
-            root.fail("a child folder with rows draws " + root.countVisibleDividers(area) + " dividers, want 2")
-        root.checkActive(true, "child folder with rows")
-        if (root.failures.length > 0) { root.report(); return }
-        area.shownHasRow = true
-        area.shownIsDir = false
-        area.shownChildPath = ""
-        Flea.ViewState.state = {}
-        fileTimer.start()
+        try {
+            if (area.thirdShown !== true)
+                root.fail("a child folder with rows leaves thirdShown false, want true")
+            if (root.countVisiblePanes(area) !== 3)
+                root.fail("a child folder with rows shows " + root.countVisiblePanes(area) + " panes, want 3")
+            if (root.countVisibleDividers(area) !== 2)
+                root.fail("a child folder with rows draws " + root.countVisibleDividers(area) + " dividers, want 2")
+            root.checkActive(true, "child folder with rows")
+            if (root.failures.length > 0) { root.report(); return }
+            area.shownHasRow = true
+            area.shownIsDir = false
+            area.shownChildPath = ""
+            Flea.ViewState.state = {}
+            fileTimer.start()
+        } catch (e) {
+            root.fail("measureDir threw " + e)
+            root.report()
+        }
     }
 
     function measureFileOn() {
-        if (area.thirdShown !== true)
-            root.fail("a file preview with the preview column on leaves thirdShown false, want true")
-        root.checkActive(true, "file preview with the preview column on")
-        if (root.failures.length > 0) { root.report(); return }
-        Flea.ViewState.state = { preview: { column: false } }
-        offTimer.start()
+        try {
+            if (area.thirdShown !== true)
+                root.fail("a file preview with the preview column on leaves thirdShown false, want true")
+            root.checkActive(true, "file preview with the preview column on")
+            if (root.failures.length > 0) { root.report(); return }
+            Flea.ViewState.state = { preview: { column: false } }
+            offTimer.start()
+        } catch (e) {
+            root.fail("measureFileOn threw " + e)
+            root.report()
+        }
     }
 
     function measureFileOff() {
-        if (area.thirdShown !== false)
-            root.fail("with the preview column off a file keeps thirdShown true, want false")
-        root.checkActive(false, "preview column off")
-        if (root.failures.length > 0) { root.report(); return }
-        Flea.ViewState.state = { columnsLimit: 5 }
-        root.stubPane.path = "/a/b/c/d"
-        area.shownHasRow = false
-        area.shownIsDir = false
-        area.shownChildPath = ""
-        area.width = 2400
-        root.populateAncestors()
-        wideTimer.start()
+        try {
+            if (area.thirdShown !== false)
+                root.fail("with the preview column off a file keeps thirdShown true, want false")
+            root.checkActive(false, "preview column off")
+            if (root.failures.length > 0) { root.report(); return }
+            Flea.ViewState.state = { columnsLimit: 5 }
+            root.stubPane.path = "/a/b/c/d"
+            area.shownHasRow = false
+            area.shownIsDir = false
+            area.shownChildPath = ""
+            area.width = 2400
+            root.populateAncestors()
+            wideTimer.start()
+        } catch (e) {
+            root.fail("measureFileOff threw " + e)
+            root.report()
+        }
     }
 
     function measureWide5() {
-        if (area.columnCount !== 5)
-            root.fail("at 2400 px with limit 5 draws " + area.columnCount + " columns, want 5")
-        if (root.countVisiblePanes(area) !== 4)
-            root.fail("at 5 columns with an empty third shows " + root.countVisiblePanes(area) + " panes, want 4")
-        root.checkWide("at 2400 px with limit 5")
-        if (root.failures.length > 0) { root.report(); return }
-        area.width = 1800
-        root.populateAncestors()
-        midTimer.start()
+        try {
+            if (area.columnCount !== 5)
+                root.fail("at 2400 px with limit 5 draws " + area.columnCount + " columns, want 5")
+            if (root.countVisiblePanes(area) !== 4)
+                root.fail("at 5 columns with an empty third shows " + root.countVisiblePanes(area) + " panes, want 4")
+            root.checkWide("at 2400 px with limit 5")
+            if (root.failures.length > 0) { root.report(); return }
+            area.width = 1800
+            root.populateAncestors()
+            midTimer.start()
+        } catch (e) {
+            root.fail("measureWide5 threw " + e)
+            root.report()
+        }
     }
 
     function measureWide4() {
-        if (area.columnCount !== 4)
-            root.fail("at 1800 px with limit 5 draws " + area.columnCount + " columns, want 4")
-        if (root.countVisiblePanes(area) !== 3)
-            root.fail("at 4 columns with an empty third shows " + root.countVisiblePanes(area) + " panes, want 3")
-        root.checkWide("at 1800 px with limit 5")
-        if (root.failures.length === 0)
-            console.log("COLUMNDIVIDERS PASS panes=" + root.countVisiblePanes(area) + " dividers=" + root.countVisibleDividers(area))
-        root.reportFailures()
+        try {
+            if (area.columnCount !== 4)
+                root.fail("at 1800 px with limit 5 draws " + area.columnCount + " columns, want 4")
+            if (root.countVisiblePanes(area) !== 3)
+                root.fail("at 4 columns with an empty third shows " + root.countVisiblePanes(area) + " panes, want 3")
+            root.checkWide("at 1800 px with limit 5")
+            if (root.failures.length === 0)
+                console.log("COLUMNDIVIDERS PASS panes=" + root.countVisiblePanes(area) + " dividers=" + root.countVisibleDividers(area))
+            root.reportFailures()
+        } catch (e) {
+            root.fail("measureWide4 threw " + e)
+            root.report()
+        }
     }
 
     function report() {

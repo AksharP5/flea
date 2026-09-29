@@ -156,6 +156,15 @@ ShellRoot {
         rows: root.peekRows
     }
 
+    // Same font as ColumnRow.nameText, so a budget+1 probe measures the drawn slot.
+    Text {
+        id: budgetProbe
+        visible: false
+        font.family: Flea.Theme.font.family
+        font.pixelSize: Flea.Theme.font.body
+        textFormat: Text.PlainText
+    }
+
     Item {
         id: dynamicContainer
         y: 1250
@@ -246,6 +255,32 @@ ShellRoot {
             root.fail(label + " is truncated by Qt after Names elided it")
     }
 
+    // The budget is the largest that fits: one more cell would overflow the slot.
+    function checkTight(pane, label, name) {
+        var delegate = null
+        try { delegate = pane.itemAtIndex(0) } catch (e) {
+            root.fail(label + " delegate read threw " + e)
+            return
+        }
+        if (!delegate) {
+            root.fail(label + " builds no delegate at 0 for the tight check")
+            return
+        }
+        var ni = null
+        try { ni = delegate.nameItem() } catch (e) {
+            root.fail(label + " name read threw " + e)
+            return
+        }
+        if (!ni) {
+            root.fail(label + " has no drawn name for the tight check")
+            return
+        }
+        budgetProbe.text = Names.middleElide(name, pane.nameBudget + 1)
+        if (!(budgetProbe.implicitWidth > ni.width + 0.5))
+            root.fail(label + " budget " + pane.nameBudget + " is not tight: budget+1 still fits at " + budgetProbe.implicitWidth + " over " + ni.width)
+    }
+
+    // The dim lives on the content item, so read the drawn opacity and not the role.
     function checkDim() {
         if (probeScissors.dimOpacity !== Flea.Theme.disabledOpacity)
             root.fail("a scissors row dims at " + probeScissors.dimOpacity + ", want " + Flea.Theme.disabledOpacity)
@@ -253,46 +288,99 @@ ShellRoot {
             root.fail("an unmarked row dims at " + probePlainClip.dimOpacity + ", want 1")
         if (probeScissors.nameItem().opacity !== 1)
             root.fail("a scissors name carries its own opacity, want the content item's alone")
+        var sc = probeScissors.nameItem()
+        var pl = probePlainClip.nameItem()
+        if (!sc || !sc.parent)
+            root.fail("a scissors row has no drawn name to read dim from")
+        else if (sc.parent.opacity !== Flea.Theme.disabledOpacity)
+            root.fail("a scissors row draws at " + sc.parent.opacity + ", want " + Flea.Theme.disabledOpacity)
+        if (!pl || !pl.parent)
+            root.fail("an unmarked row has no drawn name to read dim from")
+        else if (pl.parent.opacity !== 1)
+            root.fail("an unmarked row draws at " + pl.parent.opacity + ", want 1")
+        if (sc && sc.parent && sc.opacity * sc.parent.opacity !== Flea.Theme.disabledOpacity)
+            root.fail("a scissors name shows effective " + (sc.opacity * sc.parent.opacity) + ", want " + Flea.Theme.disabledOpacity)
+        if (pl && pl.parent && pl.opacity * pl.parent.opacity !== 1)
+            root.fail("an unmarked name shows effective " + (pl.opacity * pl.parent.opacity) + ", want 1")
     }
 
+    // Every delegate read is guarded, so a missing row fails loud instead of hanging.
     function measure() {
-        root.checkRow(probeFile, "a file row", "columnrow-geom.txt")
-        root.checkRow(probeDir, "a directory row", "full")
-        root.checkDim()
-        root.checkPaneRow(activeNarrow, "an active column at 366", 0, root.longName, false)
-        root.checkPaneRow(activeWide, "an active column at 853", 0, root.longName, false)
-        root.checkPaneRow(clippedNarrow, "a clipped row at 366", 0, root.longName, true)
-        root.checkPaneRow(peekNarrow, "a peek column at 366", 0, root.longName, false)
-        root.checkPaneRow(peekWide, "a peek column at 853", 0, root.longName, false)
-        root.checkPaneRow(activeNarrow, "a short name at 366", 1, root.shortName, false)
-        root.checkPaneRow(peekNarrow, "a short peek name at 366", 1, root.shortName, false)
-        if (String(activeNarrow.itemAtIndex(1).displayText()).indexOf("…") >= 0)
-            root.fail("a short name draws elided at 366")
-        if (root.failures.length > 0) { root.report(); return }
-        root.dynamicTextChanges = 0
-        root.dynamicRow = dynamicRowComponent.createObject(dynamicContainer, { width: 366, row: ({ n: root.longName, d: false, i: "text-x-generic", p: 420, s: 13 }), showSize: true, nameBudget: activeNarrow.nameBudget })
-        if (!root.dynamicRow) {
-            root.fail("a dynamic row never builds")
+        try {
+            root.checkRow(probeFile, "a file row", "columnrow-geom.txt")
+            root.checkRow(probeDir, "a directory row", "full")
+            root.checkDim()
+            root.checkPaneRow(activeNarrow, "an active column at 366", 0, root.longName, false)
+            root.checkPaneRow(activeWide, "an active column at 853", 0, root.longName, false)
+            root.checkPaneRow(clippedNarrow, "a clipped row at 366", 0, root.longName, true)
+            root.checkPaneRow(peekNarrow, "a peek column at 366", 0, root.longName, false)
+            root.checkPaneRow(peekWide, "a peek column at 853", 0, root.longName, false)
+            root.checkPaneRow(activeNarrow, "a short name at 366", 1, root.shortName, false)
+            root.checkPaneRow(peekNarrow, "a short peek name at 366", 1, root.shortName, false)
+            root.checkTight(activeNarrow, "an active column at 366", root.longName)
+            root.checkTight(activeWide, "an active column at 853", root.longName)
+            root.checkTight(peekNarrow, "a peek column at 366", root.longName)
+            root.checkTight(peekWide, "a peek column at 853", root.longName)
+            var shortDelegate = null
+            try { shortDelegate = activeNarrow.itemAtIndex(1) } catch (e) {
+                root.fail("a short name delegate read threw " + e)
+            }
+            if (!shortDelegate)
+                root.fail("a short name at 366 builds no delegate at 1")
+            else if (String(shortDelegate.displayText()).indexOf("…") >= 0)
+                root.fail("a short name draws elided at 366")
+            if (root.failures.length > 0) { root.report(); return }
+            // Built raw at budget -1, so the counter arms before any handed text is set.
+            root.dynamicTextChanges = 0
+            root.dynamicRow = dynamicRowComponent.createObject(dynamicContainer, { width: 366, row: ({ n: root.longName, d: false, i: "text-x-generic", p: 420, s: 13 }), showSize: true, nameBudget: -1 })
+            if (!root.dynamicRow) {
+                root.fail("a dynamic row never builds")
+                root.report()
+                return
+            }
+            var dynamicName = null
+            try { dynamicName = root.dynamicRow.nameItem() } catch (e) {
+                root.fail("a dynamic row name read threw " + e)
+                root.report()
+                return
+            }
+            if (!dynamicName) {
+                root.fail("a dynamic row has no drawn name to count")
+                root.report()
+                return
+            }
+            dynamicConn.target = dynamicName
+            root.dynamicRow.nameBudget = activeNarrow.nameBudget
+            dynamicTimer.start()
+        } catch (e) {
+            root.fail("measure threw " + e)
             root.report()
-            return
         }
-        dynamicConn.target = root.dynamicRow.nameItem()
-        dynamicTimer.start()
     }
 
     function measureDynamic() {
-        if (!root.dynamicRow) {
-            root.fail("a dynamic row never builds")
-        } else {
-            if (root.dynamicTextChanges !== 0)
-                root.fail("a handed-budget row re-sets its text " + root.dynamicTextChanges + " times, want 0")
-            var want = Names.middleElide(root.longName, activeNarrow.nameBudget)
-            if (root.dynamicRow.displayText() !== want)
-                root.fail("a dynamic row draws " + root.dynamicRow.displayText() + ", want " + want)
+        try {
+            if (!root.dynamicRow) {
+                root.fail("a dynamic row never builds")
+            } else {
+                if (root.dynamicTextChanges !== 1)
+                    root.fail("a handed-budget row re-sets its text " + root.dynamicTextChanges + " times, want 1")
+                var want = Names.middleElide(root.longName, activeNarrow.nameBudget)
+                var got = null
+                try { got = root.dynamicRow.displayText() } catch (e) {
+                    root.fail("a dynamic row text read threw " + e)
+                    got = null
+                }
+                if (got !== null && got !== want)
+                    root.fail("a dynamic row draws " + got + ", want " + want)
+            }
+            if (root.failures.length === 0)
+                console.log("COLUMNROWGEOM PASS file=columnrow-geom.txt dir=full")
+            root.report()
+        } catch (e) {
+            root.fail("measureDynamic threw " + e)
+            root.report()
         }
-        if (root.failures.length === 0)
-            console.log("COLUMNROWGEOM PASS file=columnrow-geom.txt dir=full")
-        root.report()
     }
 
     function report() {

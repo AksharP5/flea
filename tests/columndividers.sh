@@ -32,7 +32,7 @@ pass_count=$(printf '%s\n' "$output" | grep -c 'COLUMNDIVIDERS PASS')
 fail_count=$(printf '%s\n' "$output" | grep -c 'COLUMNDIVIDERS FAIL')
 if [ "$pass_count" -ne 1 ] || [ "$fail_count" -ne 0 ]; then
     printf 'FAIL the active column draws its edge in the wrong states, or an ancestor lost its own\n'
-    printf '%s\n' "$output" | grep -aE 'COLUMNDIVIDERS|ERROR|error' | head -20
+    printf '%s\n' "$output" | grep -aiE 'COLUMNDIVIDERS|ERROR|error' | head -20
     exit 1
 fi
 printf '%s\n' "$output" | grep -o 'COLUMNDIVIDERS PASS.*'
