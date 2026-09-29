@@ -50,15 +50,13 @@ tests/js/focus.js 406
 tests/js/mounts.js 383
 tests/js/network.js 306
 tests/js/ops.js 390
-tests/columnrow-geom.qml 410
+tests/columnrow-geom.qml 409
 tests/columnscost.qml 416
 tests/js/status.js 354
 ui/Backend.qml 431
 ui/ChromeBar.qml 478
-ui/ColumnsArea.qml 440
-ui/ContextMenu.qml 582
 ui/ColumnsArea.qml 438
-ui/ContextMenu.qml 579
+ui/ContextMenu.qml 582
 ui/ConvertDialog.qml 440
 ui/Ipc.qml 818
 ui/NetworkDialog.qml 449
@@ -71,7 +69,7 @@ ui/PermissionsDialog.qml 432
 ui/PickerWindow.qml 706
 ui/PreviewColumn.qml 499
 ui/Preview.qml 463
-ui/Row.qml 483
+ui/Row.qml 482
 ui/SettingsPanel.qml 542
 ui/SettingsRow.qml 410
 ui/Sidebar.qml 567
