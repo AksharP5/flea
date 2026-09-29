@@ -135,10 +135,11 @@ Item {
 
         // Only the active column carries a number: a peeked row is never stat'd and dirsize resolves
         // against the active listing, so a neighbour has no row to ask about. ColumnsTabs board rule 3.
+        // The chevron lives on the row and not in the content, so no anchor crosses that edge: the size holds its right edge off the parent by the chevron width instead.
         Text {
             id: sizeCell
-            anchors.right: chevronSlot.left
-            anchors.rightMargin: root.showSize ? Theme.spacing.gap : 0
+            anchors.right: parent.right
+            anchors.rightMargin: Theme.spacing.rowPaddingX + chevronSlot.width + (root.showSize ? Theme.spacing.gap : 0)
             anchors.verticalCenter: parent.verticalCenter
             visible: root.showSize && !root.dropTarget
             width: visible ? Theme.column.size : 0
@@ -219,4 +220,9 @@ Item {
     function clipExpectedX() { return nameText.x + Math.min(nameText.implicitWidth, nameText.width) + Theme.spacing.gap }
     function displayText() { return nameText.text }
     function nameItem() { return nameText }
+    // Row-relative boxes for the geometry suite, so the probe reads the drawn layout and not the source.
+    function markRight() { return content.x + markSlot.x + markSlot.width }
+    function nameGeom() { return [content.x + nameText.x, nameText.width] }
+    function sizeGeom() { return [content.x + sizeCell.x, sizeCell.width] }
+    function chevronGeom() { return [chevronSlot.x, chevronSlot.width] }
 }
