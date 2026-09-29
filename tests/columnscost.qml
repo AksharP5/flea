@@ -10,7 +10,7 @@ import "flea" as Flea
 ShellRoot {
     id: root
 
-        // One ColumnPane signature: drawsEmpty, lockedMode and liftedName with itemAtIndex.
+    // One ColumnPane signature: drawsEmpty, lockedMode and liftedName with itemAtIndex.
     // Nothing else in the area carries all four, so the count is the built panes.
     function isColumnPane(o) {
         return o !== null && o.drawsEmpty !== undefined && o.lockedMode !== undefined
@@ -119,6 +119,7 @@ ShellRoot {
 
     property var stubBackend: backendStub.createObject(root)
     property var stubPane: paneStub.createObject(root, { backend: root.stubBackend })
+    property var failures: []
 
     // 900 px at the shipped default limit draws 3 columns: parent, active, child.
     Flea.ColumnsArea {
@@ -130,6 +131,7 @@ ShellRoot {
     }
 
     property var sampleRow: ({ n: "columnscost.txt", d: false, i: "text-x-generic", p: 420, s: 13 })
+    property var ancestorRows: [{ n: "ancestor.txt", d: false, i: "text-x-generic", p: 420, s: 1 }]
 
     Flea.ColumnRow {
         id: probeRow
@@ -137,6 +139,15 @@ ShellRoot {
         row: root.sampleRow
         thumb: ""
         clipMark: ""
+        showSize: false
+    }
+
+    Flea.ColumnRow {
+        id: probeMarked
+        width: 300
+        row: root.sampleRow
+        thumb: ""
+        clipMark: "copy"
         showSize: false
     }
 
@@ -151,25 +162,139 @@ ShellRoot {
         onTriggered: root.measure()
     }
 
-    function measure() {
-        var failures = []
-        var count = area.columnCount
-        if (count !== 3)
-            failures.push("at 900 px the default limit draws " + count + " columns, want 3")
-        var panes = root.countPanes(area)
-        if (panes !== 3)
-            failures.push("at 3 columns holds " + panes + " ColumnPanes, want 3: no great-grandparent or grandparent pane exists below 4 and 5")
+    Timer {
+        id: wideTimer
+        interval: 600
+        repeat: false
+        onTriggered: root.measureWide()
+    }
+
+    Timer {
+        id: midTimer
+        interval: 600
+        repeat: false
+        onTriggered: root.measureMid()
+    }
+
+    Timer {
+        id: narrowTimer
+        interval: 600
+        repeat: false
+        onTriggered: root.measureNarrow()
+    }
+
+    function fail(text) { root.failures.push(text) }
+
+    function checkRowBudget() {
         var rowCount = root.countUnder(probeRow)
         if (rowCount > root.columnRowMax)
-            failures.push("a column row holds " + rowCount + " objects over the " + root.columnRowMax + " ceiling")
+            root.fail("a column row holds " + rowCount + " objects over the " + root.columnRowMax + " ceiling")
+        return rowCount
+    }
+
+    function checkClip() {
         if (probeRow.clipCut !== false)
-            failures.push("an unmarked row reads cut")
+            root.fail("an unmarked row reads cut")
         if (probeRow.dimOpacity !== 1)
-            failures.push("an unmarked row dims at " + probeRow.dimOpacity)
-        if (failures.length === 0)
+            root.fail("an unmarked row dims at " + probeRow.dimOpacity)
+        if (probeRow.clipX() !== 0)
+            root.fail("an unmarked row moves its mark to " + probeRow.clipX() + ", want 0")
+        if (Math.abs(probeMarked.clipX() - probeMarked.clipExpectedX()) > 0.01)
+            root.fail("a marked row holds its mark at " + probeMarked.clipX() + ", want " + probeMarked.clipExpectedX())
+    }
+
+    function populateAncestors() {
+        var next = {}
+        next[area.peekKey(area.parentPath)] = root.ancestorRows
+        next[area.peekKey(area.grandparentPath)] = root.ancestorRows
+        next[area.peekKey(area.greatGrandparentPath)] = root.ancestorRows
+        area.peeked = next
+        area.peekVersion += 1
+    }
+
+    function measure() {
+        var count = area.columnCount
+        if (count !== 3)
+            root.fail("at 900 px the default limit draws " + count + " columns, want 3")
+        var panes = root.countPanes(area)
+        if (panes !== 3)
+            root.fail("at 3 columns holds " + panes + " ColumnPanes, want 3")
+        root.checkRowBudget()
+        root.checkClip()
+        if (root.failures.length > 0) { root.report(); return }
+        root.stubPane.path = "/a/b/c/d"
+        Flea.ViewState.state = { columnsLimit: 5 }
+        area.width = 2400
+        root.populateAncestors()
+        wideTimer.start()
+    }
+
+    function measureWide() {
+        var count = area.columnCount
+        if (count !== 5)
+            root.fail("at 2400 px with limit 5 draws " + count + " columns, want 5")
+        var panes = root.countPanes(area)
+        if (panes !== 5)
+            root.fail("at 5 columns holds " + panes + " ColumnPanes, want 5")
+        if (area.rowsFor(area.grandparentPath).length !== 1)
+            root.fail("the grandparent pane is not bound to its rows")
+        if (area.rowsFor(area.greatGrandparentPath).length !== 1)
+            root.fail("the great-grandparent pane is not bound to its rows")
+        if (area.grandparentItemAt(0) === null)
+            root.fail("grandparentItemAt(0) answers null with 5 columns")
+        if (area.greatGrandparentItemAt(0) === null)
+            root.fail("greatGrandparentItemAt(0) answers null with 5 columns")
+        if (root.failures.length > 0) { root.report(); return }
+        area.width = 1800
+        midTimer.start()
+    }
+
+    function measureMid() {
+        var count = area.columnCount
+        if (count !== 4)
+            root.fail("at 1800 px with limit 5 draws " + count + " columns, want 4")
+        var panes = root.countPanes(area)
+        if (panes !== 4)
+            root.fail("at 4 columns holds " + panes + " ColumnPanes, want 4")
+        if (area.grandparentItemAt(0) === null)
+            root.fail("grandparentItemAt(0) answers null with 4 columns")
+        if (area.greatGrandparentItemAt(0) !== null)
+            root.fail("greatGrandparentItemAt(0) answers non-null with 4 columns")
+        if (root.failures.length > 0) { root.report(); return }
+        Flea.ViewState.state = {}
+        area.width = 900
+        narrowTimer.start()
+    }
+
+    function measureNarrow() {
+        var count = area.columnCount
+        if (count !== 3)
+            root.fail("narrowed back draws " + count + " columns, want 3")
+        var panes = root.countPanes(area)
+        if (panes !== 3)
+            root.fail("narrowed back holds " + panes + " ColumnPanes, want 3")
+        if (area.grandparentItemAt(0) !== null)
+            root.fail("grandparentItemAt(0) answers non-null after narrowing to 3")
+        if (area.greatGrandparentItemAt(0) !== null)
+            root.fail("greatGrandparentItemAt(0) answers non-null after narrowing to 3")
+        var rowCount = root.checkRowBudget()
+        root.checkClip()
+        if (root.failures.length === 0)
             console.log("COLUMNCOST PASS panes=" + panes + " row=" + rowCount + " columns=" + count)
-        for (var f = 0; f < failures.length; f++)
-            console.log("COLUMNCOST FAIL " + failures[f])
+        root.reportFailures()
+    }
+
+    function report() {
+        for (var f = 0; f < root.failures.length; f++)
+            console.log("COLUMNCOST FAIL " + root.failures[f])
         Quickshell.execDetached(["kill", String(Quickshell.processId)])
+    }
+
+    function reportFailures() {
+        if (root.failures.length === 0) {
+            Quickshell.execDetached(["kill", String(Quickshell.processId)])
+            return
+        }
+        root.report()
     }
 }

@@ -20,14 +20,13 @@ struct Flock {
     l_pid: i32,
 }
 
-// std already links the system libc, so fcntl is declared here rather than taking a crate.
-// The fcntl shape differs from backend/jail.rs's on purpose: C fcntl is variadic, and this call passes a struct address where that one passes an int.
+// std already links libc, so fcntl is declared here; the struct-address shape differs from backend/jail.rs's int on purpose.
 #[allow(clashing_extern_declarations)]
 extern "C" {
     fn fcntl(fd: i32, cmd: i32, lock: *mut Flock) -> i32;
 }
 
-// Called from gui::qs_command, so both exec_qs and pick pay it; never blocks, fails or prints.
+// Called from gui::exec_qs and gui::pick before qs_command, so no Command builder touches the runtime dir.
 pub fn prune_dead(shell_ids: &[&str]) {
     // Sample input: XDG_RUNTIME_DIR=/run/user/1000, falling back to /run/user/<uid> as Quickshell does.
     let base = match std::env::var_os("XDG_RUNTIME_DIR").filter(|value| !value.is_empty()) {
@@ -143,6 +142,16 @@ mod tests {
         std::fs::create_dir_all(root.join("by-shell").join("flea")).unwrap();
         std::fs::create_dir_all(root.join("by-shell").join("omarchy")).unwrap();
         std::fs::create_dir_all(root.join("by-pid")).unwrap();
+        // Sample fixture: by-id/spoof exists dead, but by-shell/flea/spoof points at by-id/target instead.
+        let spoof_dir = root.join("by-id").join("spoof");
+        std::fs::create_dir_all(&spoof_dir).unwrap();
+        std::fs::write(spoof_dir.join("instance.lock"), b"pid 103\n").unwrap();
+        std::fs::write(spoof_dir.join("log.qslog"), "log").unwrap();
+        let target_dir = root.join("by-id").join("target");
+        std::fs::create_dir_all(&target_dir).unwrap();
+        std::fs::write(target_dir.join("instance.lock"), b"pid 104\n").unwrap();
+        std::fs::write(target_dir.join("log.qslog"), "log").unwrap();
+        std::os::unix::fs::symlink(&target_dir, root.join("by-shell").join("flea").join("spoof")).unwrap();
         // Oldest first with a sleep between, so the log mtimes stagger newest-last.
         for name in ["dead0", "dead1", "dead2", "dead3", "dead4", "dead5"] {
             make_entry(root, "flea", name, b"pid 100\n");
@@ -173,8 +182,11 @@ mod tests {
         assert!(root.join("by-shell").join("omarchy").join("other").is_symlink(), "another shell's link is untouched");
         assert!(root.join("by-shell").join("flea").join("evil").is_symlink(), "the outside link is untouched");
         assert!(outside.is_dir(), "the outside target is untouched");
+        assert!(spoof_dir.is_dir(), "the divergent by-id dir is untouched");
+        assert!(target_dir.is_dir(), "the divergent link target is untouched");
+        assert_eq!(std::fs::read_link(root.join("by-shell").join("flea").join("spoof")).unwrap(), target_dir, "the divergent link is untouched");
         prune_dead_in(root, &["flea"]);
-        assert_eq!(std::fs::read_dir(root.join("by-shell").join("flea")).unwrap().count(), 6, "a second call changes nothing");
+        assert_eq!(std::fs::read_dir(root.join("by-shell").join("flea")).unwrap().count(), 7, "a second call changes nothing");
         prune_dead_in(&root.join("no-such-base"), &["flea"]);
     }
 }

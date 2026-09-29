@@ -14,6 +14,8 @@ extern "C" {
 
 // exec rather than spawn, so the shell replaces this process and no pid is orphaned.
 pub fn exec_qs(ui: &Path, start: Option<&str>, select: Option<&str>) -> i32 {
+    // Quickshell keeps dead entries forever, so Flea prunes only its own shells before qs starts.
+    crate::qsregistry::prune_dead(&[crate::paths::SHELL_ID, crate::paths::PICKER_SHELL_ID]);
     // One helper fork for the launch: the page-cache list and the gvfs head start together.
     let list = prefetch::list_path();
     let prepared: Option<(PathBuf, u64)> = start.and_then(crate::gvfsprefetch::prepare);
@@ -130,6 +132,8 @@ pub fn pick(reply: &str) -> i32 {
         eprintln!("{}", paths::missing_ui_message());
         return 2;
     };
+    // Quickshell keeps dead entries forever, so Flea prunes only its own shells before qs starts.
+    crate::qsregistry::prune_dead(&[crate::paths::SHELL_ID, crate::paths::PICKER_SHELL_ID]);
     let mut cmd = qs_command(ui.join(paths::PICKER_ENTRY));
     cmd.env("FLEA_PICKER_REPLY", reply);
     exec(cmd)
@@ -177,8 +181,6 @@ fn apply_renderer(cmd: &mut Command, renderer: LaunchRenderer) {
 
 // The qs invocation both entry points share, including the renderer chosen at the last hand-off point.
 fn qs_command(target: PathBuf) -> Command {
-    // Quickshell keeps dead registry entries forever, so Flea prunes only its own shells before qs starts.
-    crate::qsregistry::prune_dead(&[crate::paths::SHELL_ID, crate::paths::PICKER_SHELL_ID]);
     let mut cmd = Command::new("qs");
     cmd.arg("-p").arg(target);
     // Only the main window records a prefetch list; a chooser started from a Flea terminal must not overwrite it.

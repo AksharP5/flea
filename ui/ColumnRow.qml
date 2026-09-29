@@ -208,4 +208,8 @@ Item {
         id: hover
         onHoveredChanged: root.hovered = hovered
     }
+
+    // Test seam as functions, so no row at rest binds to name geometry (tests/columnscost.qml).
+    function clipX() { return clipLoader.x }
+    function clipExpectedX() { return nameText.x + Math.min(nameText.implicitWidth, nameText.width) + Theme.spacing.gap }
 }

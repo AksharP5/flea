@@ -36,7 +36,7 @@ src/backend/thumbs.rs 442
 src/backend/thumbworker.rs 953
 src/backend/trashbrowse.rs 698
 src/backend/trashdelete.rs 901
-src/gui.rs 499
+src/gui.rs 501
 src/tui/actions.rs 1021
 src/tui/input.rs 449
 src/tui/model.rs 1247

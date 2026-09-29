@@ -121,4 +121,15 @@ mod tests {
         assert_eq!(percent_decode("100%2"), "100%2");
         assert_eq!(percent_decode("a%zzb"), "a%zzb");
     }
+
+    // Sample file line: `//@ pragma ShellId flea` in ui/boot/shell.qml.
+    fn shell_id_of(text: &str) -> Option<&str> {
+        text.lines().find_map(|line| line.trim_start().strip_prefix("//@ pragma ShellId "))
+    }
+
+    #[test]
+    fn the_shell_ids_match_the_boot_pragmas() {
+        assert_eq!(shell_id_of(include_str!("../ui/boot/shell.qml")), Some(SHELL_ID));
+        assert_eq!(shell_id_of(include_str!("../ui/boot/picker.qml")), Some(PICKER_SHELL_ID));
+    }
 }

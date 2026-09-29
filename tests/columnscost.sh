@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# e6 columnscost: a ColumnsArea at the default limit builds only the panes it shows,
-# and one ColumnRow holds its object ceiling. Offscreen, needs neither display nor lock.
+# e6 columnscost: default limit builds only shown panes and one ColumnRow holds its ceiling, offscreen with no display or lock.
 set -u
 . "$(dirname "$0")/../tools/flea-sandbox-guard"
 cd "$(dirname "$0")/.." || exit 1
