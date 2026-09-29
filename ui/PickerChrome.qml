@@ -254,7 +254,8 @@ Item {
             anchors.right: parent.right
             anchors.rightMargin: Theme.spacing.rowPaddingX
             anchors.verticalCenter: parent.verticalCenter
-            width: Math.min(chipRow.width, Math.max(0, (where.width - moves.width - 3 * Theme.spacing.rowPaddingX) / 2))
+            // The chips take room first and the path gives way through its anchor, keeping its minimum.
+            width: Picker.chipStripWidth(where.width - moves.width - 2 * Theme.spacing.rowPaddingX - 2 * Theme.spacing.gap, chipRow.width, Picker.CHIP_PATH_MIN)
             height: Theme.hitMin
             contentWidth: chipRow.width
             contentHeight: height

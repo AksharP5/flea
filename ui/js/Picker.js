@@ -121,6 +121,21 @@ function chips(req) {
     return out
 }
 
+// Room the path label always keeps, so a narrow window still names where the list stands.
+var CHIP_PATH_MIN = 96
+
+// Sample input: chipStripWidth(300, 400, 96) answers 204, chipStripWidth(300, 100, 96) answers 100.
+function chipStripWidth(free, chipsWidth, pathMin) {
+    if (!(free > 0) || !(chipsWidth > 0)) {
+        return 0
+    }
+    var keep = pathMin > 0 ? pathMin : 0
+    if (free <= keep) {
+        return 0
+    }
+    return Math.min(chipsWidth, free - keep)
+}
+
 // Which chip starts active: the caller's current_filter when it names one of them, else the first.
 function currentChip(req) {
     if (req.filters.length === 0) {
