@@ -29,12 +29,12 @@ Item {
 
     // The accent line shows only while hovered or dragged, so it builds only then; the zone stays live at rest.
     Loader {
-        anchors.fill: parent
+        anchors.centerIn: parent
+        width: Theme.spacing.hairline
+        height: parent.height
         active: zone.containsMouse || root.hot
         sourceComponent: Rectangle {
-            anchors.centerIn: parent
-            width: Theme.spacing.hairline
-            height: parent.height
+            anchors.fill: parent
             color: Theme.color.accent
         }
     }

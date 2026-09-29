@@ -4,8 +4,7 @@ import QtQuick
 import Quickshell
 import "flea" as Flea
 
-// Headercost: one Header built as ui/Pane.qml builds it holds no accent Rectangle per
-// handle and no TextMetrics at rest; both build only while used.
+// Headercost: one Header as ui/Pane.qml builds it holds no accent or metrics at rest; both build only while used.
 ShellRoot {
     id: root
 
@@ -30,13 +29,34 @@ ShellRoot {
         }
     }
 
-    // Sample input: String(o) is "QQuickRectangle(0x55d0...)" for a built-in type and "ResizeHandle_QMLTYPE_7(0x...)" for a file type.
     function isType(o, name) { var s = String(o); return s.indexOf(name) === 0 || s.indexOf("QQuick" + name) === 0 }
 
     function handles() {
         var out = []
         root.walk(probeHeader, function (o) { if (root.isType(o, "ResizeHandle")) out.push(o) })
         return out
+    }
+
+    // The one handle for a column key, so the hot accent is read off the dragged column.
+    function handleFor(key) {
+        var found = null
+        root.walk(probeHeader, function (o) { if (root.isType(o, "ResizeHandle") && o.columnKey === key) found = o })
+        return found
+    }
+
+    // The first accent rectangle under a handle, if one is built.
+    function accentUnder(handle) {
+        var found = null
+        root.walk(handle, function (o) { if (o !== handle && found === null && root.isType(o, "Rectangle")) found = o })
+        return found
+    }
+
+    // The fit Loader among the header's direct children, so OEM title internals never count.
+    function fitLoader() {
+        var found = null
+        var kids = probeHeader.children
+        for (var i = 0; i < kids.length; i++) if (root.isType(kids[i], "Loader")) found = kids[i]
+        return found
     }
 
     // Direct children and resources of the header, so OEM title internals never count.
@@ -99,6 +119,15 @@ ShellRoot {
         root.walk(probeHeader, function (o) { if (root.isType(o, "Rectangle")) allRects += 1 })
         if (allRects === 0)
             failures.push("found no Rectangle at all; the walker is blind")
+        var fit = root.fitLoader()
+        if (fit === null)
+            failures.push("found no fit Loader; the walker is blind")
+        else {
+            if (fit.active !== false)
+                failures.push("fit Loader is active at rest")
+            if (fit.item !== null)
+                failures.push("fit Loader holds an item at rest")
+        }
         probeHeader.dragKey = "size"
         hotProbe.start()
     }
@@ -109,6 +138,22 @@ ShellRoot {
         for (var i = 0; i < hs.length; i++) hot += root.rectsUnder(hs[i])
         if (hot !== 1)
             failures.push("a dragged column builds " + hot + " accent rectangles, not 1")
+        var sizeHandle = root.handleFor("size")
+        if (sizeHandle === null)
+            failures.push("found no size handle; the walker is blind")
+        else {
+            var accent = root.accentUnder(sizeHandle)
+            if (accent === null)
+                failures.push("a dragged column builds no accent to measure")
+            else {
+                var hairline = Flea.Theme.spacing.hairline
+                if (Math.abs(accent.width - hairline) > 0.001)
+                    failures.push("hot accent is " + accent.width + " px wide, not the " + hairline + " px hairline")
+                var mid = accent.mapToItem(sizeHandle, accent.width / 2, 0).x
+                if (Math.abs(mid - sizeHandle.width / 2) > 0.001)
+                    failures.push("hot accent sits at " + mid + ", not the handle centre " + sizeHandle.width / 2)
+            }
+        }
         var first = -1
         var second = -2
         try {
@@ -121,11 +166,36 @@ ShellRoot {
             failures.push("fittedWidth measured " + first + " px for a size cell")
         if (first !== second)
             failures.push("two fits disagree, " + first + " against " + second)
+        try {
+            probeHeader.autofitColumn("size")
+        } catch (e) {
+            failures.push("autofitColumn threw " + e)
+        }
+        root.assertFitReleased("autofitColumn")
+        try {
+            probeHeader.autofitAll()
+        } catch (e) {
+            failures.push("autofitAll threw " + e)
+        }
+        root.assertFitReleased("autofitAll")
         probeHeader.dragKey = ""
         if (failures.length === 0)
             console.log("HEADERCOST PASS accents=0 metrics=0 hot=1 fit=" + first)
         for (var f = 0; f < failures.length; f++)
             console.log("HEADERCOST FAIL " + failures[f])
         Quickshell.execDetached(["kill", String(Quickshell.processId)])
+    }
+
+    // A fit path must leave no metrics object behind, or rest is a leak with one autofit of history.
+    function assertFitReleased(who) {
+        var fit = root.fitLoader()
+        if (fit === null)
+            failures.push(who + ": found no fit Loader; the walker is blind")
+        else {
+            if (fit.active !== false)
+                failures.push(who + " left its fit Loader active")
+            if (fit.item !== null)
+                failures.push(who + " left its TextMetrics built")
+        }
     }
 }

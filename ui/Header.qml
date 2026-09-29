@@ -212,8 +212,7 @@ Item {
         onDoubleClicked: root.autofitColumn("kind")
     }
 
-    // Caption type, the same face the rows measure their cells in; built only while a fit
-    // measures, so a header at rest carries no metrics object.
+    // Built only while a fit measures, in the cells' own caption face, so rest carries no metrics object.
     Loader {
         id: fitLoader
         active: false
@@ -287,8 +286,7 @@ Item {
         root.dragMoved = false
     }
 
-    // The strings ui/Row.qml draws, measured in the cells' own face over the held rows only.
-    // The loader builds synchronously, so its item is ready in this same turn.
+    // The strings ui/Row.qml draws over the held rows only; the loader builds synchronously, so its item is ready in this same turn.
     function fittedWidth(key) {
         var widths = []
         fitLoader.active = true

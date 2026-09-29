@@ -2783,6 +2783,11 @@ comment and the two autofit deactivations, and `ui/ResizeHandle.qml` 37 to 41 fo
 accent-line Loader with its rest-only comment, each re-derived with `wc -l`; the suite is
 the new `tests/headercost.sh` with `tests/headercost.qml` at 130, inside both budgets.
 
+w037w2 round 2 takes `ui/Header.qml` 364 to 362 for the one-line comments, keeps
+`ui/ResizeHandle.qml` at 41 with the Loader centred hairline-wide instead of filled, and takes
+`tests/headercost.qml` 130 to 201 for the QQuick isType match, the hot-accent geometry check, the
+at-rest Loader asserts and the two driven autofit release checks, each re-derived with `wc -l`.
+
 0.3.7 integration records `ui/Theme.qml` at 401, re-derived with `wc -l`, where the button system and the
 list columns each added their tokens.
 
