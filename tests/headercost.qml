@@ -30,7 +30,8 @@ ShellRoot {
         }
     }
 
-    function isType(o, name) { return String(o).indexOf(name) === 0 }
+    // Sample input: String(o) is "QQuickRectangle(0x55d0...)" for a built-in type and "ResizeHandle_QMLTYPE_7(0x...)" for a file type.
+    function isType(o, name) { var s = String(o); return s.indexOf(name) === 0 || s.indexOf("QQuick" + name) === 0 }
 
     function handles() {
         var out = []
