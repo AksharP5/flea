@@ -116,7 +116,7 @@ fn the_emptiness_check_reads_the_destination_and_the_index_separately() {
     assert_eq!(archive_produced_count(&formats, &junk), None, "an index nothing can read is not a count of zero");
 }
 
-// The case run_boxed's own comment names, a tool that writes nothing and exits 0, driven through
+// A tool that writes nothing and exits 0, driven through the real jail. /usr/bin/true is inside
 // the real jail. /usr/bin/true is inside the --ro-bind /usr tree and is named by absolute path,
 // so --clearenv wiping PATH does not reach it and nothing is substituted from outside the jail.
 // That is every part of the integration except extract's own three lines of wiring.
@@ -138,11 +138,12 @@ fn a_tool_that_exits_zero_writing_nothing_is_caught_by_the_predicate() {
     }
     assert_eq!(archive_produced_count(&formats, &archive), Some(1), "the fixture archive produces one entry");
 
-    let work = Work::new(d.path(), "ext").expect("work");
+    let mut work = Work::new(d.path(), "ext").expect("work");
     let staged = work.dir.join("out");
     std::fs::create_dir(&staged).expect("staged");
+    let idle = AtomicBool::new(false);
     // Through prlimit and bwrap, exactly as a real listing tool runs.
-    run_boxed("archive", vec!["/usr/bin/true".to_string()], &archive, &work.dir)
+    run_boxed_cancellable("archive", vec!["/usr/bin/true".to_string()], &archive, &mut work, &idle)
         .expect("/usr/bin/true exits 0");
     assert!(is_empty_dir(&staged), "and it wrote nothing, which is the whole point of it");
     // The predicate extract applies to those two facts.
@@ -162,17 +163,17 @@ fn a_tool_that_exits_zero_writing_nothing_is_caught_by_the_predicate() {
     if made.map(|s| s.success()).unwrap_or(false) {
         assert!(archive_produced_count(&formats, &dirs).unwrap_or(0) > 0,
                 "an all-directories archive still names members that must appear");
-        let work2 = Work::new(d.path(), "ext").expect("work");
+        let mut work2 = Work::new(d.path(), "ext").expect("work");
         let staged2 = work2.dir.join("out");
         std::fs::create_dir(&staged2).expect("staged");
-        run_boxed("archive", vec!["/usr/bin/true".to_string()], &dirs, &work2.dir).expect("exits 0");
+        run_boxed_cancellable("archive", vec!["/usr/bin/true".to_string()], &dirs, &mut work2, &idle).expect("exits 0");
         assert!(is_empty_dir(&staged2) && archive_produced_count(&formats, &dirs).unwrap_or(0) > 0,
                 "so a tool that wrote nothing for it is a failure, not a verified success");
     }
 
     // The other arm, for completeness: a tool that exits non-zero is refused before the check.
-    assert!(run_boxed("archive", vec!["/usr/bin/false".to_string()], &archive, &work.dir).is_err(),
-            "run_boxed reads the status, so the non-zero arm never reaches the predicate");
+    assert!(run_boxed_cancellable("archive", vec!["/usr/bin/false".to_string()], &archive, &mut work, &idle).is_err(),
+            "the runner reads the status, so the non-zero arm never reaches the predicate");
 }
 
 // GM converted an image and was told the archive tool had failed: one jail runs both, and every
@@ -182,13 +183,14 @@ fn a_tool_that_exits_zero_writing_nothing_is_caught_by_the_predicate() {
 fn a_silent_failure_names_the_operation_that_was_running() {
     if crate::backend::sandboxprobe::skipped() { return; }
     let d = TestDir::new("archwho");
-    let work = Work::new(d.path(), "who").expect("work directory");
+    let mut work = Work::new(d.path(), "who").expect("work directory");
     let quiet = vec!["/usr/bin/false".to_string()];
-    let converting = run_boxed("convert", quiet.clone(), d.path(), &work.dir).unwrap_err();
+    let idle = AtomicBool::new(false);
+    let converting = run_boxed_cancellable_capped("convert", quiet.clone(), d.path(), &mut work, &idle).unwrap_err();
     assert_eq!(converting.where_, "convert", "an image conversion says so");
     assert!(converting.msg.contains("convert") && !converting.msg.contains("archive"),
             "and its wording does too: {}", converting.msg);
-    let archiving = run_boxed("archive", quiet, d.path(), &work.dir).unwrap_err();
+    let archiving = run_boxed_cancellable("archive", quiet, d.path(), &mut work, &idle).unwrap_err();
     assert_eq!(archiving.where_, "archive", "and an archive still says archive");
 }
 

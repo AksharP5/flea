@@ -88,14 +88,15 @@ fn the_tools_own_last_line_wins_over_the_blank_one_and_over_the_status() {
 fn a_killed_tool_is_reported_as_killed_rather_than_as_a_bad_archive() {
     if crate::backend::sandboxprobe::skipped() { return; }
     let d = TestDir::new("archkilled");
-    let work = Work::new(d.path(), "kill").expect("work");
+    let mut work = Work::new(d.path(), "kill").expect("work");
+    let idle = AtomicBool::new(false);
     // The tool kills itself and prints nothing, which is what a killed unpack looks like from here.
-    let killed = run_boxed("archive",
+    let killed = run_boxed_cancellable_capped("archive",
                            vec!["/usr/bin/sh".to_string(), "-c".to_string(), "kill -9 $$".to_string()],
-                           d.path(), &work.dir).unwrap_err();
+                           d.path(), &mut work, &idle).unwrap_err();
     assert!(killed.msg.contains("killed by signal SIGKILL (9)"), "a kill must name the signal: {}", killed.msg);
     assert!(!killed.msg.contains("failed"), "and must not read as the old empty-stderr fallback: {}", killed.msg);
-    let exited = run_boxed("archive", vec!["/usr/bin/false".to_string()], d.path(), &work.dir).unwrap_err();
+    let exited = run_boxed_cancellable_capped("archive", vec!["/usr/bin/false".to_string()], d.path(), &mut work, &idle).unwrap_err();
     assert!(exited.msg.contains("exited with status 1"), "an exit is reported as an exit: {}", exited.msg);
 }
 
@@ -131,7 +132,7 @@ fn a_cancelled_index_reader_kills_and_reaps_a_child_blocked_on_stdout() {
     assert!(!proc_entry.exists(), "the blocked verification child was not reaped");
 }
 
-// Issue #211 correction: the archive jail reports no CPU cap while a 3 s burner is stopped boxed (1 s seam).
+// Issue #211 correction: the archive jail carries no CPU cap while the convert runner keeps its own, both driven through the runners the jobs use.
 #[test]
 fn the_archive_jail_has_no_cpu_cap_but_a_boxed_burner_is_stopped() {
     if crate::backend::sandboxprobe::skipped() { return; }
@@ -140,10 +141,10 @@ fn the_archive_jail_has_no_cpu_cap_but_a_boxed_burner_is_stopped() {
     let cancel = AtomicBool::new(false);
     run_boxed_cancellable("archive", uncapped_probe(), d.path(), &mut work, &cancel)
         .expect("the archive jail carries no CPU cap");
-    // Burns about 3 CPU seconds, then exits 0: past a 1 s cap, well under none.
+    // Burns CPU time past a 1 s cap, then would exit 0: a wall-clock loop finishes under the cap on a loaded host, so this one counts its own CPU.
     let burner = || vec!["/usr/bin/python3".to_string(), "-c".to_string(),
-        "import time; s=time.time(); x=0\nwhile time.time()-s < 3: x+=1".to_string()];
-    let stopped = run_boxed_with_cpu("archive", burner(), d.path(), &work.dir, 1).unwrap_err();
+        "import resource,time\ns=time.time()\nx=0\nwhile True:\n x+=1\n if x%200000==0:\n  u=resource.getrusage(resource.RUSAGE_SELF)\n  if u.ru_utime+u.ru_stime>3: break\n  if time.time()-s>120: break".to_string()];
+    let stopped = run_boxed_cancellable_capped_with_cpu("convert", burner(), d.path(), &mut work, &cancel, 1).unwrap_err();
     assert!(stopped.msg.contains("killed by signal"),
             "a boxed job past its bound must be stopped, not silent: {}", stopped.msg);
 }

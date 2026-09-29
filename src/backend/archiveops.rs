@@ -4,7 +4,7 @@
 // archivelist.rs's.
 use crate::backend::archive::Formats;
 use crate::backend::archivework::{archive_produced_count_cancellable, is_empty_dir,
-                                   run_boxed, run_boxed_cancellable, run_boxed_cancellable_capped, Work};
+                                   run_boxed_cancellable, run_boxed_cancellable_capped, Work};
 use crate::backend::convert;
 use crate::backend::ops::rename_noreplace;
 use crate::backend::opsreq::op_err;

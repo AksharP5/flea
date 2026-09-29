@@ -9,7 +9,7 @@ use crate::error::{from_io, FleaError};
 use std::io::{self, Read};
 use std::os::unix::process::ExitStatusExt;
 use std::path::{Path, PathBuf};
-use std::process::{Command, ExitStatus};
+use std::process::ExitStatus;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::time::{Duration, Instant};
@@ -132,40 +132,6 @@ fn failure_message(what: &str, status: &ExitStatus, stderr: &str) -> String {
     }
 }
 
-// Success is read off the filesystem; convert stays on this capped runner, the archive jobs run on the uncapped cancellable one below.
-pub fn run_boxed(what: &str, inner: Vec<String>, read_only: &Path, writable: &Path) -> Result<(), FleaError> {
-    run_boxed_inner(what, inner, read_only, writable, Some(sandbox::CPU_SECONDS))
-}
-
-// Test seam: lowers the CPU cap so a test burns seconds, not 30 s; release always uses CPU_SECONDS.
-#[cfg(test)]
-fn run_boxed_with_cpu(what: &str, inner: Vec<String>, read_only: &Path, writable: &Path,
-                       cpu_seconds: u32) -> Result<(), FleaError> {
-    run_boxed_inner(what, inner, read_only, writable, Some(cpu_seconds))
-}
-
-fn run_boxed_inner(what: &str, inner: Vec<String>, read_only: &Path, writable: &Path,
-                    cpu_seconds: Option<u32>) -> Result<(), FleaError> {
-    // Fail closed: without bwrap or prlimit the job is refused, never run unsandboxed.
-    if !sandbox::available() {
-        let tool = inner.first().map_or("", |s| s.as_str());
-        return Err(op_err(what, tool, "the sandbox is unavailable: bwrap or prlimit is not on PATH"));
-    }
-    let full = sandbox::wrap_with(&inner, read_only, writable, cpu_seconds);
-    let out = Command::new(&full[0])
-        .args(&full[1..])
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .output()
-        .map_err(|e| from_io(what, &full[0], &e))?;
-    if out.status.success() {
-        return Ok(());
-    }
-    let stderr = String::from_utf8_lossy(&out.stderr);
-    Err(op_err(what, "", &failure_message(what, &out.status, &stderr)))
-}
-
-
 // A writer past the kill can still hold stderr open; true means its EOF arrived in bound.
 fn drain_reader(reader: std::thread::JoinHandle<String>) -> bool {
     let eof = Instant::now() + Duration::from_secs(drain_secs());
@@ -179,7 +145,7 @@ fn drain_reader(reader: std::thread::JoinHandle<String>) -> bool {
     true
 }
 
-// run_boxed, watched for a cancel: kill and reap here, so nothing is renamed and stderr is drained.
+// The cancellable runner, watched for a cancel: kill and reap here, so nothing is renamed and stderr is drained.
 pub fn run_boxed_cancellable(what: &str, inner: Vec<String>, read_only: &Path, work: &mut Work,
                              cancel: &AtomicBool) -> Result<(), FleaError> {
     run_boxed_cancellable_inner(what, inner, read_only, work, cancel, None, None)
@@ -189,6 +155,13 @@ pub fn run_boxed_cancellable(what: &str, inner: Vec<String>, read_only: &Path, w
 pub fn run_boxed_cancellable_capped(what: &str, inner: Vec<String>, read_only: &Path, work: &mut Work,
                                     cancel: &AtomicBool) -> Result<(), FleaError> {
     run_boxed_cancellable_inner(what, inner, read_only, work, cancel, None, Some(sandbox::CPU_SECONDS))
+}
+
+// Test seam: the convert runner with a lower cap, so the pin burns seconds, not 30 s.
+#[cfg(test)]
+fn run_boxed_cancellable_capped_with_cpu(what: &str, inner: Vec<String>, read_only: &Path, work: &mut Work,
+                                         cancel: &AtomicBool, cpu_seconds: u32) -> Result<(), FleaError> {
+    run_boxed_cancellable_inner(what, inner, read_only, work, cancel, None, Some(cpu_seconds))
 }
 
 fn run_boxed_cancellable_inner(what: &str, inner: Vec<String>, read_only: &Path, work: &mut Work,
