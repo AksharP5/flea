@@ -2851,6 +2851,9 @@ pathretry moves two ceilings, each re-derived with `wc -l`: `ui/ChromeBar.qml` 4
 trashrow moves one ceiling, re-derived with `wc -l`: `ui/Sidebar.qml` 566 to 567 for the `RailKeys` import the Trash row cursor rule reads; the rule itself is `RailKeys.trashCursor`, tested in `tests/js/railkeys.js`.
 
 w037w17 moves one ceiling, re-derived with `wc -l`: `ui/ColumnsArea.qml` 410 to 425 for the folder data hold (the `Swap` import, the single-shot `folderFallback` at `Swap.HOLD_MS`, the `folderDataHold` early return with its restart, the stop on every other move, and the `showFolderOnPeek` landing in `onPeeked`); `ui/js/Columns.js` 227 to 239 for `folderDataHold` and `showFolderOnPeek`, over the soft budget and under the hard cap, and `tests/js/previewswap.js` 70 to 95 inside both budgets.
+e18 moves one ceiling, re-derived with `wc -l`: `ui/ColumnsArea.qml` 425 to 431 for the column hairlines (`thirdShown`, one `showDivider` per pane with the active pane following the preview column); the shared ink is the new `ui/Divider.qml` at 9 lines, `ui/ColumnPane.qml` keeps 340 inside the hard cap for the `showDivider` prop and its edge line, `ui/Sidebar.qml` falls 567 to 564 using the same component, and `tests/columnscost.qml` keeps 384 over soft for the N-1 divider checks.
+
+The hairline merged onto the Columns row unit records one ceiling, re-derived with `wc -l`: `tests/columnscost.qml` crosses the hard cap at 416 as the arithmetic of the two units, the row unit's layout-count probe and the hairline's N-1 divider checks, recorded rather than split because both pin the same Columns delegate cost.
 
 ## The key table is generated
 

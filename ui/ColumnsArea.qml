@@ -63,6 +63,8 @@ Item {
     readonly property bool greatGrandparentShown: Columns.ancestorShown(root.pane.path, 3)
     readonly property int shownBefore: (root.showGreatGrandparent ? 1 : 0) + (root.showGrandparent ? 1 : 0) + (root.showParent ? 1 : 0) + 1
     readonly property int activeX: (root.shownBefore - 1) * root.columnWidth
+    // The preview column counts as shown when the child folder or the file preview draws, else the active pane is rightmost.
+    readonly property bool thirdShown: root.shownIsDir || (root.shownHasRow && !root.shownIsDir && ViewState.previewColumn)
 
     // The key a column's rows are kept under: the path and the order that sorted them.
     function peekKey(path) {
@@ -337,6 +339,7 @@ Item {
                 drawsEmpty: root.greatGrandparentShown && root.answered(root.greatGrandparentPath)
                 liftedName: root.greatGrandparentShown ? Nav.leafOf(root.grandparentPath) : ""
                 dim: true
+                showDivider: true
                 onActivated: function (name, isDir) { root.activateNeighbour(root.greatGrandparentPath, name, isDir) }
                 onNeighbourMenuRequested: function (name) { root.menuOnNeighbour(root.greatGrandparentPath, name) }
             }
@@ -355,6 +358,7 @@ Item {
                 drawsEmpty: root.grandparentShown && root.answered(root.grandparentPath)
                 liftedName: root.grandparentShown ? Nav.leafOf(root.parentPath) : ""
                 dim: true
+                showDivider: true
                 onActivated: function (name, isDir) { root.activateNeighbour(root.grandparentPath, name, isDir) }
                 onNeighbourMenuRequested: function (name) { root.menuOnNeighbour(root.grandparentPath, name) }
             }
@@ -371,6 +375,7 @@ Item {
             drawsEmpty: root.parentShown && root.answered(root.parentPath)
             liftedName: root.parentShown ? Nav.leafOf(root.pane.path) : ""
             dim: true
+            showDivider: true
             onActivated: function (name, isDir) { root.activateNeighbour(root.parentPath, name, isDir) }
             onNeighbourMenuRequested: function (name) { root.menuOnNeighbour(root.parentPath, name) }
         }
@@ -384,6 +389,7 @@ Item {
             selectedIndex: root.pane.cursorIndex
             // Only this column's rows are the pane's own, so only it can paint the pane's selection.
             pane: root.pane
+            showDivider: root.thirdShown
             // The list's and the grid's own two routes, reached from the one column whose rows are the pane's listing, so a click means the same thing in all three views.
             onPicked: function (index, tapCount, modifiers) { Tap.tappedMiddle(index, tapCount, modifiers, root.pane) }
             onMenuRequested: function (index, eventPoint) { Tap.tappedMenu(index, eventPoint, root.pane, root.menu) }

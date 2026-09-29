@@ -45,6 +45,90 @@ ShellRoot {
         return n
     }
 
+    // One shared Divider per column edge; a row delegate carries none.
+    function isDivider(o) {
+        return o !== null && o.isDivider === true
+    }
+
+    // False on any hidden ancestor, so a divider under an unbuilt Loader or a hidden pane counts as drawn none.
+    function effectivelyVisible(o) {
+        var cur = o
+        while (cur !== null) {
+            if (cur.visible === false) return false
+            cur = cur.parent
+        }
+        return true
+    }
+
+    function countVisiblePanes(item) {
+        var n = 0
+        var stack = [item]
+        while (stack.length > 0) {
+            var o = stack.pop()
+            if (root.isColumnPane(o) && root.effectivelyVisible(o)) n += 1
+            var kids = (o !== null && o.children !== undefined) ? o.children : []
+            for (var i = 0; i < kids.length; i++) stack.push(kids[i])
+        }
+        return n
+    }
+
+    function countVisibleDividers(item) {
+        var n = 0
+        var stack = [item]
+        while (stack.length > 0) {
+            var o = stack.pop()
+            if (root.isDivider(o) && root.effectivelyVisible(o) && o.visible) n += 1
+            var kids = (o !== null && o.children !== undefined) ? o.children : []
+            for (var i = 0; i < kids.length; i++) stack.push(kids[i])
+        }
+        return n
+    }
+
+    // The divider built directly under a pane, or null when the pane draws none.
+    function dividerOf(pane) {
+        var kids = pane.children || []
+        for (var i = 0; i < kids.length; i++) if (root.isDivider(kids[i])) return kids[i]
+        return null
+    }
+
+    // The active pane owns the listing; every other ColumnPane is a peek.
+    function isActivePane(o) {
+        return root.isColumnPane(o) && o.pane !== undefined && o.pane !== null
+    }
+
+    function checkDividers() {
+        var panes = root.countVisiblePanes(area)
+        if (panes !== 2)
+            root.fail("at 900 px with an empty third shows " + panes + " panes, want 2")
+        var dividers = root.countVisibleDividers(area)
+        if (dividers !== panes - 1)
+            root.fail("at 900 px draws " + dividers + " dividers over " + panes + " panes, want " + (panes - 1))
+        var stack = [area]
+        while (stack.length > 0) {
+            var o = stack.pop()
+            if (root.isColumnPane(o) && root.effectivelyVisible(o)) {
+                var div = root.dividerOf(o)
+                if (div === null) {
+                    root.fail("a shown pane draws no divider")
+                } else {
+                    if (root.isActivePane(o) && div.visible !== false)
+                        root.fail("the rightmost pane draws a divider")
+                    if (!root.isActivePane(o) && div.visible !== true)
+                        root.fail("a shown pane hides its divider")
+                    if (div.width !== Flea.Theme.spacing.hairline)
+                        root.fail("a column divider is " + div.width + " wide, want the rail hairline")
+                    if (String(div.color) !== String(Flea.Theme.color.foreground))
+                        root.fail("a column divider inks " + div.color + ", want the rail ink")
+                    if (div.opacity !== 0.12)
+                        root.fail("a column divider opacifies at " + div.opacity + ", want 0.12")
+                }
+            }
+            var kids = (o !== null && o.children !== undefined) ? o.children : []
+            for (var i = 0; i < kids.length; i++) stack.push(kids[i])
+        }
+        return dividers
+    }
+
     // The backend ColumnsArea peeks through; every answer is a no-op, so nothing lands.
     Component {
         id: backendStub
@@ -251,6 +335,7 @@ ShellRoot {
         root.checkRowBudget()
         root.checkClip()
         root.checkLayouts()
+        root.checkDividers()
         if (root.failures.length > 0) { root.report(); return }
         root.stubPane.path = "/a/b/c/d"
         Flea.ViewState.state = { columnsLimit: 5 }

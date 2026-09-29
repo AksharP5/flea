@@ -31,6 +31,8 @@ Item {
     property bool drawsEmpty: false
     // One character budget for every row here, so a column lays its names out once.
     readonly property int nameBudget: Theme.bodyAdvance > 0 ? Math.max(0, Math.floor((Scroll.contentWidth(root.width, Theme.spacing.rowPaddingX) - Theme.spacing.rowPaddingX - Theme.iconSize - Theme.spacing.gap - Theme.spacing.rowPaddingX - (root.pane !== null ? Theme.column.size + Theme.spacing.gap : 0)) / Theme.bodyAdvance)) : -1
+    // True for every shown pane but the rightmost one; the line sits on the pane edge and changes no width.
+    property bool showDivider: false
 
     // isDir says which of the two things a neighbour column's row is: a directory the pane opens as
     // its own listing, or a file it hands to the opener. See keys.toml's [[pointer]] table.
@@ -259,6 +261,14 @@ Item {
         listingState: root.lockedMode >= 0 ? "locked" : "ready"
         lockedMode: root.lockedMode
         total: root.rows.length
+    }
+
+    // The column boundary, one per pane and never one per row; an inactive Loader builds no pane so draws none.
+    Flea.Divider {
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        visible: root.showDivider
     }
 
     // corner: one editor for this column, never one inside each row. A delegate binding that follows

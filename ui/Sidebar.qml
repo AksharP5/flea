@@ -555,13 +555,10 @@ Item {
         rest -= root.networkEntries.length
         return devRepeater.itemAt(rest)
     }
-    // The one divider in the whole design.
-    Rectangle {
+    // The rail edge, one Divider shared with the column edges.
+    Flea.Divider {
         anchors.right: parent.right
         anchors.top: parent.top
         anchors.bottom: parent.bottom
-        width: Style.spacing.hairline
-        color: Theme.color.foreground
-        opacity: 0.12
     }
 }
