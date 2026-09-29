@@ -72,8 +72,35 @@ function run(check) {
     runFolderDataHold(check)
 }
 
-// A folder peek in Columns holds by data, not by picture: an unanswered folder keeps the
-// old column with no swap hold, and the landed peek shows it with its rows in one pass.
+// The body of one QML function by brace count, so each check reads the arm it names and not a copy elsewhere.
+function bodyOf(src, name) {
+    var text = String(src)
+    var at = text.indexOf(name + "(")
+    if (at < 0)
+        return ""
+    var open = text.indexOf("{", at)
+    if (open < 0)
+        return ""
+    var depth = 0
+    for (var i = open; i < text.length; i++) {
+        var c = text.charAt(i)
+        if (c === "{")
+            depth += 1
+        else if (c === "}") {
+            depth -= 1
+            if (depth === 0)
+                return text.substring(open, i + 1)
+        }
+    }
+    return ""
+}
+
+// Sample input: squashed("a  b\n c") is "a b c".
+function squashed(s) {
+    return String(s).replace(/\s+/g, " ")
+}
+
+// A folder peek in Columns holds by data: an unanswered folder keeps the old column, and the landed peek shows it with its rows in one pass.
 function runFolderDataHold(check) {
     check("an unanswered folder defers by data", Columns.folderDataHold(true, false), true)
     check("an answered folder lands at once", Columns.folderDataHold(true, true), false)
@@ -84,12 +111,19 @@ function runFolderDataHold(check) {
     check("a still outstanding peek leaves the old column up", Columns.showFolderOnPeek("/a", "/b", false), false)
     check("no cursor folder shows nothing", Columns.showFolderOnPeek("", "/b", true), false)
     var area = Source.source("ui/ColumnsArea.qml")
-    check("a move onto an unanswered folder takes the data hold", area.indexOf("Columns.folderDataHold(") >= 0, true)
-    check("and restarts the fallback instead of a picture", area.indexOf("folderFallback.restart()") >= 0, true)
-    check("while every other move stops it", area.indexOf("folderFallback.stop()") >= 0, true)
-    check("and no folder arm starts the swap", area.indexOf("if (root.cursorIsDir)\n            thirdSwap.start(false)") < 0, true)
+    var move = squashed(bodyOf(area, "moveThird"))
+    check("a move onto an unanswered folder takes the data hold", move.indexOf("Columns.folderDataHold(") >= 0, true)
+    check("a live hold is given up before the data hold waits",
+        move.indexOf("thirdSwap.cancel()") >= 0
+        && move.indexOf("thirdSwap.cancel()") < move.indexOf("folderFallback.restart()"), true)
+    var arm = move.substring(move.indexOf("Columns.folderDataHold("), move.indexOf("folderFallback.restart()"))
+    check("the waiting folder is never shown before its peek lands", arm.indexOf("showCursorRow") < 0, true)
+    check("the data hold takes no picture",
+        arm.indexOf("thirdSwap.hold(") < 0 && arm.indexOf("thirdSwap.start(") < 0, true)
+    check("while every other move stops it", move.indexOf("folderFallback.stop()") >= 0, true)
+    var peeked = squashed(bodyOf(area, "onPeeked"))
+    check("a landed peek shows the folder it waited for", peeked.indexOf("Columns.showFolderOnPeek(") >= 0
+        && peeked.indexOf("root.showCursorRow()") > peeked.indexOf("Columns.showFolderOnPeek("), true)
     check("the fallback is a single shot at the listing swap cap", area.indexOf("interval: Swap.HOLD_MS") >= 0, true)
-    check("and shows the pending column when the peek is late", area.indexOf("id: folderFallback") >= 0
-        && area.indexOf("onTriggered: if (root.cursorIsDir && !root.answered(root.childPath)) root.showCursorRow()") >= 0, true)
-    check("a landed peek shows the folder it waited for", area.indexOf("Columns.showFolderOnPeek(") >= 0, true)
+    check("and shows the pending column when the peek is late", area.indexOf("onTriggered: if (root.cursorIsDir && !root.answered(root.childPath)) root.showCursorRow()") >= 0, true)
 }

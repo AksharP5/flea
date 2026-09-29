@@ -128,9 +128,7 @@ Item {
         onTriggered: if (root.cursorIsDir && !root.answered(root.childPath)) root.showCursorRow()
     }
 
-    // A folder whose rows are already here lands at once; any other change of what the third column shows is held.
-    // A hold is taken only when a file load will follow; an unanswered folder is held by data instead.
-    // A manual load, a hidden preview column or a held frame lands at once, or the cap would never arm and the frozen picture would block the pointer.
+    // Only a file load takes a hold and an unanswered folder waits by data; a manual load, a hidden preview column or a held frame lands at once, or the cap would never arm and the frozen picture would block the pointer.
     function moveThird() {
         if (root.cursorIsDir === root.shownIsDir && root.childPath === root.shownChildPath
                 && (root.cursorRow !== null) === root.shownHasRow)
@@ -140,8 +138,10 @@ Item {
         // for it the way a load does and onStorageKnownChanged decides when it lands.
         var held = ExtThumbs.manualHold(root.pane.storageClass, ViewState.preview)
         var fileLoad = !root.cursorIsDir && ViewState.previewColumn && ViewState.previewAutomatic && !held
-        // An unanswered folder keeps the old column by data: no picture, no show yet.
+        // An unanswered folder waits by data: a live hold is cancelled first, or its queued show draws the folder with no rows.
         if (Columns.folderDataHold(root.cursorIsDir, root.answered(root.childPath))) {
+            if (!idle)
+                thirdSwap.cancel()
             folderFallback.restart()
             return
         }

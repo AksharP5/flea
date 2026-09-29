@@ -469,12 +469,15 @@ move, the settle runs from the key through `armSettle` and is not pushed back on
 runs after the capture so `pending` makes `Facts.state(null, loading)` return LOADING. A folder shows
 through the deferred `shownIsDir` and `shownChildPath` and never holds a picture: a move onto a folder
 whose peek is outstanding keeps the old column by data, and the landed peek shows it with its rows in
-the same pass; a folder whose peek already answered lands at once with no hold. Each folder move restarts
-a single-shot fallback at `Swap.HOLD_MS`, which shows the pending (empty-held) state when the peek is late.
+the same pass; a folder whose peek already answered lands at once with no hold. Only a move onto a folder
+whose peek is outstanding restarts a single-shot fallback at `Swap.HOLD_MS`, which shows the pending
+(empty-held) state when the peek is late; any other move stops it, and a move onto an unanswered folder
+during a live hold cancels that hold first, or its queued show would draw the folder with no rows.
 A different key during a column hold is held j: it gives the picture up, the
 loading state stays live with `heldOff` until `loadSelection`, which holds again with `atWork`. The
-cap is `Swap.HOLD_MS` counted from the start of the preview's own work, `load()` or the folder fallback,
-plus `DOCUMENT_SETTLE_MS` (120) for a PDF. Quick Look holds in `follow()` with no apply, `load()`
+picture cap is `Swap.HOLD_MS` counted from the start of the preview's own work in `load()`,
+plus `DOCUMENT_SETTLE_MS` (120) for a PDF; the folder fallback is a separate single-shot at the same
+interval, restarted only by a move onto an unanswered folder. Quick Look holds in `follow()` with no apply, `load()`
 mutates under the picture and then calls `start(isPdf)`, held j joins the hold with the old preview
 staying, and `close()` calls `cancel()` so nothing queued runs. Space's own open has no hold and draws
 as it builds.

@@ -12,6 +12,7 @@ import QtQuick
 // Sample input: PREVIEW_SWAP_SURFACE=column PREVIEW_SWAP_DIRECT=1 skips the hold and
 // mutates directly, which is the v0.3.4 shape and the control that proves the harness
 // can see the defect it guards against.
+// The column folder's data-hold ordering is product code: tests/js/previewswap.js pins moveThird's arm, so this harness only simulates the wait.
 ShellRoot {
     id: shell
 
@@ -106,15 +107,15 @@ ShellRoot {
         }
     }
 
-    // One move: hold the old picture, mutate under it, start the cap, land ready.
-    // A column folder move takes no hold: the old color stays by data until the peek lands.
+    // One move holds the old picture while the next builds under it; a column folder waits by data with no hold.
     function move(kindIndex) {
         var kind = shell.kinds[kindIndex]
         var key = "/previews\n" + kindIndex
         var isPdf = kind === "pdf"
+        // The decode landing: fast kinds well inside Swap.HOLD_MS, a PDF inside its longer cap.
+        landTimer.interval = isPdf ? 200 : 60
         if (!shell.direct && shell.surfaceKind === "column" && kind === "folder") {
             shell.pendingFolder = kind
-            landTimer.interval = 60
             landTimer.restart()
             return
         }
@@ -137,8 +138,6 @@ ShellRoot {
         }
         if (!shell.direct)
             shell.swap.start(isPdf)
-        // The decode landing: fast kinds well inside Swap.HOLD_MS, a PDF inside its longer cap.
-        landTimer.interval = isPdf ? 200 : 60
         landTimer.restart()
     }
 
