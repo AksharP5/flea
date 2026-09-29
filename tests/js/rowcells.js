@@ -43,10 +43,12 @@ function run(check) {
     check("modified still anchors to kind", row.indexOf("anchors.right: kind.left") >= 0, true)
     check("kind still anchors to the row edge", row.indexOf("id: kind") >= 0 && row.slice(row.indexOf("id: kind"), row.indexOf("id: kind") + 200).indexOf("anchors.right: parent.right") >= 0, true)
     check("the name still ends at the mode cell", row.indexOf("anchors.right: mode.left") >= 0, true)
-    // Only the date cell may lift today to the foreground role, through the window's own switch and start.
+    // Only the date cell may lift today; the drawn color with the switch off and on is pinned in tests/rowcost.qml.
     var dateColor = cellBlock(row, "modified")
     check("the date keeps the today lift",
-        /ViewState\.highlightToday\s*&&\s*RecentDates\.isRecent\(/.test(dateColor), true)
+        dateColor.indexOf("(ViewState.highlightToday && RecentDates.isRecent(") >= 0, true)
+    check("no inverted switch survives", dateColor.indexOf("!ViewState.highlightToday") < 0, true)
+    check("no negated recency survives", dateColor.indexOf("!RecentDates.isRecent") < 0, true)
     check("the date passes no switch into the library", dateColor.indexOf("isRecent(true,") < 0, true)
     check("and only the date lifts it", countRe(row, /RecentDates\.isRecent/g), 1)
     // The pixels are the same tokens: caption type, right elide, plain text, right-aligned numerics, and the by-key cell() lookup.

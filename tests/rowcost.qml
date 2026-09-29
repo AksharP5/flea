@@ -89,7 +89,17 @@ ShellRoot {
         onTriggered: root.measureDrop()
     }
 
+    Timer {
+        id: dateProbe
+        interval: 300
+        repeat: false
+        onTriggered: root.measureDate()
+    }
+
     property int dropPhase: -1
+    property double fitBefore: -1
+    property double todayFixture: 0
+    property int datePhase: -1
 
     property int clipPhase: -1
     property int clipBuiltCount: -1
@@ -199,10 +209,67 @@ ShellRoot {
             dropProbe.start()
             return
         }
-        if (probeRow.dropBuilt())
-            failures.push("a cleared drop target keeps its frame objects")
-        if (root.countUnder(probeRow) !== root.rowIdleCount)
-            failures.push("a cleared drop target keeps its label objects")
+        if (root.dropPhase === 2) {
+            if (probeRow.dropBuilt())
+                failures.push("a cleared drop target keeps its frame objects")
+            if (root.countUnder(probeRow) !== root.rowIdleCount)
+                failures.push("a cleared drop target keeps its label objects")
+            if (failures.length > 0) { root.report(); return }
+            probeRow.hiddenCols = []
+            probeRow.row = ({ n: "a.txt", i: "text-x-generic", p: 420, d: false, s: 13, m: 1758835200, t: false, k: 0, v: 0 })
+            probeRow.dropCopying = false
+            probeRow.dropTarget = false
+            root.dropPhase = 3
+            dropProbe.start()
+            return
+        }
+        if (root.dropPhase === 3) {
+            root.fitBefore = probeRow.nameRight()
+            probeRow.dropTarget = true
+            root.dropPhase = 4
+            dropProbe.start()
+            return
+        }
+        if (!(probeRow.nameRight() < probeRow.dropLabelLeft()))
+            failures.push("a fitting name overprints the drop label")
+        if (probeRow.nameRight() !== root.fitBefore)
+            failures.push("a fitting name re-elides on hover")
+        probeRow.dropTarget = false
+        probeRow.hiddenCols = []
+        root.todayFixture = Flea.ViewState.todayStart
+        Flea.ViewState.state = {}
+        Flea.ViewState.todayStart = root.todayFixture
+        probeRow.row = ({ n: "today.txt", i: "text-x-generic", p: 420, d: false, s: 13, m: root.todayFixture / 1000 + 3600, t: false, k: 0, v: 0 })
+        root.datePhase = 0
+        dateProbe.start()
+    }
+
+    // The today lift reads the drawn date cell with the switch off, on, and on with a stale date.
+    function measureDate() {
+        if (root.datePhase === 0) {
+            if (String(probeRow.cell("date").color) !== String(probeRow.cellInk))
+                failures.push("highlight off draws " + probeRow.cell("date").color + " on today, want cellInk")
+            Flea.ViewState.state = { highlightToday: true }
+            Flea.ViewState.todayStart = root.todayFixture
+            root.datePhase = 1
+            dateProbe.start()
+            return
+        }
+        if (root.datePhase === 1) {
+            if (String(probeRow.cell("date").color) !== String(Flea.Theme.color.foreground))
+                failures.push("highlight on draws " + probeRow.cell("date").color + " on today, want foreground")
+            probeRow.row = ({ n: "old.txt", i: "text-x-generic", p: 420, d: false, s: 13, m: root.todayFixture / 1000 - 3600, t: false, k: 0, v: 0 })
+            root.datePhase = 2
+            dateProbe.start()
+            return
+        }
+        if (String(probeRow.cell("date").color) !== String(probeRow.cellInk))
+            failures.push("highlight on draws " + probeRow.cell("date").color + " on a stale date, want cellInk")
+        Flea.ViewState.state = {}
+        root.report()
+    }
+
+    function report() {
         if (failures.length === 0)
             console.log("ROWCOST PASS row=" + root.rowIdleCount + " grid=" + root.gridIdleCount)
         for (var f = 0; f < failures.length; f++)

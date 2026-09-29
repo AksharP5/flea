@@ -41,12 +41,7 @@ function run(check) {
     // One boundary and not a band: a future stamp counts as recent too.
     check("a future mtime counts as recent",
         RecentDates.isRecent(at(2026, 9, 24, 12, 0, 0) / 1000, start), true)
-    // The switch lives in Row's binding, not in the library: off draws cellInk on today, on draws foreground.
-    var noonSec = at(2026, 9, 23, 12, 0, 0) / 1000
-    check("switch off on today draws cellInk",
-        (false && RecentDates.isRecent(noonSec, start)) ? "foreground" : "cellInk", "cellInk")
-    check("switch on draws foreground",
-        (true && RecentDates.isRecent(noonSec, start)) ? "foreground" : "cellInk", "foreground")
+    // The switch is Row's own binding; tests/rowcost.qml reads the drawn date color with it off and on.
     // Rows without a real mtime never lift: ShareBrowser's share rows carry null.
     check("a null mtime is never recent", RecentDates.isRecent(null, start), false)
     check("a missing mtime is never recent", RecentDates.isRecent(undefined, start), false)
@@ -72,10 +67,15 @@ function run(check) {
     check("Row compares against the window start",
         row.indexOf("todayStart") >= 0, true)
     check("Row reads the switch", row.indexOf("highlightToday") >= 0, true)
-    // One switch-first conjunction in the date cell's own color binding, so an inverted or reordered gate fails.
+    // Anchored switch-first, so an inverted gate or swapped arms fail; the drawn color is pinned in tests/rowcost.qml.
     var dateColor = dateBlock(row)
     check("the off path never enters the library",
-        /ViewState\.highlightToday\s*&&\s*RecentDates\.isRecent\(/.test(dateColor), true)
+        dateColor.indexOf("(ViewState.highlightToday && RecentDates.isRecent(") >= 0, true)
+    check("no inverted switch survives", dateColor.indexOf("!ViewState.highlightToday") < 0, true)
+    check("no negated recency survives", dateColor.indexOf("!RecentDates.isRecent") < 0, true)
+    check("today lifts to foreground, not the reverse",
+        dateColor.indexOf("? Theme.color.foreground : root.cellInk") >= 0, true)
+    check("the reverse lift is gone", dateColor.indexOf("? root.cellInk : Theme.color.foreground") < 0, true)
     check("Row passes no switch into the library", dateColor.indexOf("isRecent(true,") < 0, true)
     check("Row hands no mtime down", row.indexOf("mtime: root.row") < 0, true)
     check("Row holds no timer of its own", countRe(row, /Timer\s*\{/g), 0)

@@ -33,8 +33,6 @@ Item {
     property bool dropTarget: false
     // Whether that drop would copy, so the label can say which; the status bar says the rest.
     property bool dropCopying: false
-    // Room for the drop label at caption type, so a long name ends before "move here" starts.
-    readonly property int dropReserve: Math.ceil(Theme.font.caption * 10)
     // A directory's recursive size, resolved by index in List.qml the same way thumb already is; null until it arrives.
     property var dirSize: null
     // The picker's rows start one slot further in for its check; the window's own leave this at zero.
@@ -225,7 +223,7 @@ Item {
         anchors.left: icon.right
         anchors.leftMargin: Theme.spacing.gap
         anchors.right: mode.left
-        anchors.rightMargin: (root.modeShown ? Theme.spacing.gap : 0) + (root.clipMark.length > 0 ? Theme.spacing.gap + root.clipPx : 0) + (root.dropTarget ? root.dropReserve + Theme.spacing.gap : 0)
+        anchors.rightMargin: (root.modeShown ? Theme.spacing.gap : 0) + (root.clipMark.length > 0 ? Theme.spacing.gap + root.clipPx : 0) + (root.dropTarget ? root.dropExtra() : 0)
         anchors.verticalCenter: parent.verticalCenter
         text: root.elidedName
         matchStart: root.nameRun.start
@@ -462,4 +460,13 @@ Item {
     function dropLabelLeft() { return dropLoader.item ? dropLoader.item.label.x : -1 }
     function dropLabelText() { return dropLoader.item ? dropLoader.item.label.text : "" }
     function nameRight() { return name.x + name.width }
+    // Extra beyond the column gap, so a fitting name keeps its width while a long one clears the label.
+    function dropExtra() {
+        if (!dropLoader.item) return 0
+        var labelW = dropLoader.item.label.implicitWidth
+        var hidden = root.width - Theme.spacing.rowPaddingX - mode.x
+        var base = (root.modeShown ? Theme.spacing.gap : 0) + (root.clipMark.length > 0 ? Theme.spacing.gap + root.clipPx : 0)
+        var need = labelW + Theme.spacing.gap - hidden - base
+        return need > 0 ? need : 0
+    }
 }

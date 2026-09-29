@@ -2869,6 +2869,8 @@ w037w23 moves one ceiling, re-derived with `wc -l`: `ui/ColumnsArea.qml` 435 to 
 
 e26 moves one ceiling, re-derived with `wc -l`: `ui/Row.qml` 454 to 465 for the advloop round 1 fixes (the today switch leaving the library to its caller, the drop label's `dropReserve` the name's own margin spends so a long name never overprints it, and the four function seams the rowcost drop phase reads them through).
 
+e30 moves one ceiling, re-derived with `wc -l`: `ui/Row.qml` 465 to 472 for the advloop round 2 follow-ups (the drop reserve measured from the label's own implicitWidth with the hidden-cell room subtracted, so a fitting name keeps its width, and the dropExtra seam beside the four rowcost readers).
+
 ## The key table is generated
 
 `keys.toml` at the repository root is the single source of truth for every binding.

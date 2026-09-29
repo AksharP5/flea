@@ -13,7 +13,7 @@ function dayStart(nowMs) {
     return new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
 }
 
-// One boundary, not a band: off reads dimmed and a future stamp counts.
+// True when the stamp is on or after today's local midnight.
 function isRecent(mtimeSec, todayStartMs) {
     if (typeof mtimeSec !== "number" || !isFinite(mtimeSec))
         return false
