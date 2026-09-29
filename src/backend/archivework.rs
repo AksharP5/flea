@@ -30,6 +30,12 @@ thread_local! {
     static DRAIN_SECS: std::cell::Cell<u64> = const { std::cell::Cell::new(CANCEL_DRAIN_SECS) };
     // The cap the last job on this thread ran under (None: none yet, Some(None): uncapped), so a test tells convert's runner from an archive's.
     static LAST_CPU: std::cell::Cell<Option<Option<u32>>> = const { std::cell::Cell::new(None) };
+    // Microseconds the runner waits between the jail's spawn and its first cancel poll, so a test can land a cancel while bwrap is still starting.
+    static SPAWN_HOLD_US: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+#[cfg(test)]
+pub(crate) fn set_spawn_hold_us(us: u64) {
+    SPAWN_HOLD_US.with(|c| c.set(us));
 }
 #[cfg(test)]
 pub(crate) fn last_cpu() -> Option<Option<u32>> {
@@ -193,6 +199,8 @@ fn run_boxed_cancellable_inner(what: &str, inner: Vec<String>, read_only: &Path,
     if let Some(pid) = started {
         pid.store(jailed.child.id(), Ordering::SeqCst);
     }
+    #[cfg(test)]
+    std::thread::sleep(Duration::from_micros(SPAWN_HOLD_US.with(|c| c.get())));
     let stderr = jailed.child.stderr.take();
     #[cfg(test)]
     let hold_ms = READER_HOLD_MS.with(|c| c.get());

@@ -50,6 +50,26 @@ fn a_cancelled_child_is_killed_and_reaped_rather_than_left_running() {
     assert!(!proc_entry.exists(), "the owned child was not reaped");
 }
 
+// flake-037: a cancel landing about 1 ms after the spawn, while bwrap is still starting, used to orphan the tool and wait out its 30 s.
+#[test]
+fn a_cancel_during_jail_startup_still_ends_the_tool_promptly() {
+    if crate::backend::sandboxprobe::skipped() { return; }
+    // 800 to 1500 us failed 36 of 40 runs on the control tree, so five rounds make a regression near certain to show.
+    const STARTUP_HOLD_US: u64 = 1000;
+    const ROUNDS: usize = 5;
+    let d = TestDir::new("archworkstartcancel");
+    set_spawn_hold_us(STARTUP_HOLD_US);
+    for _ in 0..ROUNDS {
+        let mut work = Work::new(d.path(), "ext").expect("work");
+        let cancel = AtomicBool::new(true);
+        let began = Instant::now();
+        let e = run_boxed_cancellable("archive", vec!["/usr/bin/sleep".to_string(), format!("30.{}", std::process::id())],
+                                      d.path(), &mut work, &cancel).unwrap_err();
+        assert!(began.elapsed() < Duration::from_secs(10), "a cancel during jail startup waited out the tool: {}", e.msg);
+    }
+    set_spawn_hold_us(0);
+}
+
 // Issue #211: a kernel kill arrives as exit 128+n through bwrap or a real signal, never the old fallback.
 #[test]
 fn a_status_alone_is_read_into_a_sentence_naming_the_signal_or_the_exit() {
