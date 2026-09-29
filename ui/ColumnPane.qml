@@ -31,8 +31,10 @@ Item {
     property bool drawsEmpty: false
     // True when this column draws its size cell, the same flag its rows read as showSize.
     readonly property bool showsSize: root.pane !== null && root.pane !== undefined
-    // One character budget for every row here, so a column lays its names out once.
-    readonly property int nameBudget: Theme.bodyAdvance > 0 ? Math.max(0, Math.floor((Scroll.contentWidth(root.width, Theme.spacing.rowPaddingX) - Theme.spacing.rowPaddingX - Theme.iconSize - Theme.spacing.gap - Theme.spacing.rowPaddingX - Theme.font.caption - (root.showsSize ? Theme.column.size + 2 * Theme.spacing.gap : 0)) / Theme.bodyAdvance)) : -1
+    // One character budget for a row without the chevron, so a column lays its names out once.
+    readonly property int nameBudgetPlain: Theme.bodyAdvance > 0 ? Math.max(0, Math.floor((Scroll.contentWidth(root.width, Theme.spacing.rowPaddingX) - Theme.spacing.rowPaddingX - Theme.iconSize - Theme.spacing.gap - Theme.spacing.rowPaddingX - (root.showsSize ? Theme.column.size + 2 * Theme.spacing.gap : 0)) / Theme.bodyAdvance)) : -1
+    // The same terms plus the chevron slot, for the chosen directory alone.
+    readonly property int nameBudgetChevron: Theme.bodyAdvance > 0 ? Math.max(0, Math.floor((Scroll.contentWidth(root.width, Theme.spacing.rowPaddingX) - Theme.spacing.rowPaddingX - Theme.iconSize - Theme.spacing.gap - Theme.spacing.rowPaddingX - Theme.font.caption - (root.showsSize ? Theme.column.size + 2 * Theme.spacing.gap : 0)) / Theme.bodyAdvance)) : -1
     // True for every shown pane but the rightmost one; the line sits on the pane edge and changes no width.
     property bool showDivider: false
 
@@ -225,7 +227,7 @@ Item {
             lifted: root.liftedName.length > 0 && row !== null && row.n === root.liftedName
             dim: root.dim && !lifted
             // The column's own budget, so no row measures its own text to elide it.
-            nameBudget: root.nameBudget
+            nameBudget: (cell.row && cell.row.d === true && (cell.cursor || cell.lifted)) ? root.nameBudgetChevron : root.nameBudgetPlain
 
             TapHandler {
                 id: tap

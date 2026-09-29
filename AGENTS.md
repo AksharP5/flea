@@ -2870,6 +2870,7 @@ w037w23 moves one ceiling, re-derived with `wc -l`: `ui/ColumnsArea.qml` 435 to 
 e26 moves one ceiling, re-derived with `wc -l`: `ui/Row.qml` 454 to 465 for the advloop round 1 fixes (the today switch leaving the library to its caller, the drop label's `dropReserve` the name's own margin spends so a long name never overprints it, and the four function seams the rowcost drop phase reads them through).
 
 e30 moves one ceiling, re-derived with `wc -l`: `ui/Row.qml` 465 to 472 for the advloop round 2 follow-ups (the drop reserve measured from the label's own implicitWidth with the hidden-cell room subtracted, so a fitting name keeps its width, and the dropExtra seam beside the four rowcost readers).
+e31 moves three ceilings, each re-derived with `wc -l`: `ui/ColumnPane.qml` 346 to 348 for the two per-column budgets (`nameBudgetPlain` without the chevron slot, `nameBudgetChevron` with it) and the delegate pick by the `showChevron` condition; `tests/columnrow-geom.qml` 391 to 396 for the dir row at index 2 with `selectedIndex: 2`, the budget-param fit checks and the plain plus chevron tight checks at 366 and 853, active and peek; `tests/js/names.js` 217 to 221 for the two-budget pins and the chosen-directory handoff check.
 
 ## The key table is generated
 

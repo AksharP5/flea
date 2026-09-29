@@ -12,8 +12,8 @@ ShellRoot {
     property var failures: []
     property string longName: "a-very-long-filename-that-must-elide-in-the-middle-to-keep-its-extension-visible-0123456789abcdef0123456789abcdef0123456789abcdef.png"
     property string shortName: "columnrow-geom.txt"
-    property var activeRows: [{ n: root.longName, d: false, i: "text-x-generic", p: 420, s: 13 }, { n: root.shortName, d: false, i: "text-x-generic", p: 420, s: 13 }]
-    property var peekRows: [{ n: root.longName, d: false, i: "text-x-generic", p: 420, s: 13 }, { n: root.shortName, d: false, i: "text-x-generic", p: 420, s: 13 }]
+    property var activeRows: [{ n: root.longName, d: false, i: "text-x-generic", p: 420, s: 13 }, { n: root.shortName, d: false, i: "text-x-generic", p: 420, s: 13 }, { n: root.longName, d: true, i: "folder", p: 493, s: 0 }]
+    property var peekRows: [{ n: root.longName, d: false, i: "text-x-generic", p: 420, s: 13 }, { n: root.shortName, d: false, i: "text-x-generic", p: 420, s: 13 }, { n: root.longName, d: true, i: "folder", p: 493, s: 0 }]
 
     // A ColumnPane-like parent: a fixed column width, the way the delegate is built.
     Item {
@@ -85,8 +85,8 @@ ShellRoot {
             property string path: "/probe"
             property var rows: []
             property var shown: null
-            property int shownTotal: 2
-            property int total: 2
+            property int shownTotal: 3
+            property int total: 3
             property int held: 0
             property int cursorIndex: -1
             property int renamingIndex: -1
@@ -122,6 +122,7 @@ ShellRoot {
         width: 366
         height: 200
         pane: root.stubPanePlain
+        selectedIndex: 2
     }
 
     Flea.ColumnPane {
@@ -130,6 +131,7 @@ ShellRoot {
         width: 853
         height: 200
         pane: root.stubPanePlain
+        selectedIndex: 2
     }
 
     Flea.ColumnPane {
@@ -146,6 +148,7 @@ ShellRoot {
         width: 366
         height: 200
         rows: root.peekRows
+        selectedIndex: 2
     }
 
     Flea.ColumnPane {
@@ -154,6 +157,7 @@ ShellRoot {
         width: 853
         height: 200
         rows: root.peekRows
+        selectedIndex: 2
     }
 
     // Same font as ColumnRow.nameText, so a budget+1 probe measures the drawn slot.
@@ -225,13 +229,12 @@ ShellRoot {
     }
 
     // A row built by a real ColumnPane fits its handed text: no second elision by Qt.
-    function checkPaneRow(pane, label, index, name, clipped) {
+    function checkPaneRow(pane, label, index, name, clipped, budget) {
         var delegate = pane.itemAtIndex(index)
         if (!delegate) {
             root.fail(label + " builds no delegate at " + index)
             return
         }
-        var budget = pane.nameBudget
         if (!(budget >= 0)) {
             root.fail(label + " hands no budget, got " + budget)
             return
@@ -256,14 +259,14 @@ ShellRoot {
     }
 
     // The budget is the largest that fits: one more cell would overflow the slot.
-    function checkTight(pane, label, name) {
+    function checkTight(pane, label, name, budget, index) {
         var delegate = null
-        try { delegate = pane.itemAtIndex(0) } catch (e) {
+        try { delegate = pane.itemAtIndex(index === undefined ? 0 : index) } catch (e) {
             root.fail(label + " delegate read threw " + e)
             return
         }
         if (!delegate) {
-            root.fail(label + " builds no delegate at 0 for the tight check")
+            root.fail(label + " builds no delegate for the tight check")
             return
         }
         var ni = null
@@ -275,9 +278,9 @@ ShellRoot {
             root.fail(label + " has no drawn name for the tight check")
             return
         }
-        budgetProbe.text = Names.middleElide(name, pane.nameBudget + 1)
+        budgetProbe.text = Names.middleElide(name, budget + 1)
         if (!(budgetProbe.implicitWidth > ni.width + 0.5))
-            root.fail(label + " budget " + pane.nameBudget + " is not tight: budget+1 still fits at " + budgetProbe.implicitWidth + " over " + ni.width)
+            root.fail(label + " budget " + budget + " is not tight: budget+1 still fits at " + budgetProbe.implicitWidth + " over " + ni.width)
     }
 
     // The dim lives on the content item, so read the drawn opacity and not the role.
@@ -310,17 +313,19 @@ ShellRoot {
             root.checkRow(probeFile, "a file row", "columnrow-geom.txt")
             root.checkRow(probeDir, "a directory row", "full")
             root.checkDim()
-            root.checkPaneRow(activeNarrow, "an active column at 366", 0, root.longName, false)
-            root.checkPaneRow(activeWide, "an active column at 853", 0, root.longName, false)
-            root.checkPaneRow(clippedNarrow, "a clipped row at 366", 0, root.longName, true)
-            root.checkPaneRow(peekNarrow, "a peek column at 366", 0, root.longName, false)
-            root.checkPaneRow(peekWide, "a peek column at 853", 0, root.longName, false)
-            root.checkPaneRow(activeNarrow, "a short name at 366", 1, root.shortName, false)
-            root.checkPaneRow(peekNarrow, "a short peek name at 366", 1, root.shortName, false)
-            root.checkTight(activeNarrow, "an active column at 366", root.longName)
-            root.checkTight(activeWide, "an active column at 853", root.longName)
-            root.checkTight(peekNarrow, "a peek column at 366", root.longName)
-            root.checkTight(peekWide, "a peek column at 853", root.longName)
+            root.checkPaneRow(activeNarrow, "an active column at 366", 0, root.longName, false, activeNarrow.nameBudgetPlain)
+            root.checkPaneRow(activeWide, "an active column at 853", 0, root.longName, false, activeWide.nameBudgetPlain)
+            root.checkPaneRow(clippedNarrow, "a clipped row at 366", 0, root.longName, true, clippedNarrow.nameBudgetPlain)
+            root.checkPaneRow(peekNarrow, "a peek column at 366", 0, root.longName, false, peekNarrow.nameBudgetPlain)
+            root.checkPaneRow(peekWide, "a peek column at 853", 0, root.longName, false, peekWide.nameBudgetPlain)
+            root.checkPaneRow(activeNarrow, "a short name at 366", 1, root.shortName, false, activeNarrow.nameBudgetPlain)
+            root.checkPaneRow(peekNarrow, "a short peek name at 366", 1, root.shortName, false, peekNarrow.nameBudgetPlain)
+            root.checkTight(activeNarrow, "an active column at 366", root.longName, activeNarrow.nameBudgetPlain, 0)
+            root.checkTight(activeWide, "an active column at 853", root.longName, activeWide.nameBudgetPlain, 0)
+            root.checkTight(peekNarrow, "a peek column at 366", root.longName, peekNarrow.nameBudgetPlain, 0)
+            root.checkTight(peekWide, "a peek column at 853", root.longName, peekWide.nameBudgetPlain, 0)
+            var chev = [[activeNarrow, "a chevron row at 366"], [activeWide, "a chevron row at 853"], [peekNarrow, "a chevron peek at 366"], [peekWide, "a chevron peek at 853"]]
+            for (var c = 0; c < chev.length; c++) { root.checkPaneRow(chev[c][0], chev[c][1], 2, root.longName, false, chev[c][0].nameBudgetChevron); root.checkTight(chev[c][0], chev[c][1], root.longName, chev[c][0].nameBudgetChevron, 2) }
             var shortDelegate = null
             try { shortDelegate = activeNarrow.itemAtIndex(1) } catch (e) {
                 root.fail("a short name delegate read threw " + e)
@@ -350,7 +355,7 @@ ShellRoot {
                 return
             }
             dynamicConn.target = dynamicName
-            root.dynamicRow.nameBudget = activeNarrow.nameBudget
+            root.dynamicRow.nameBudget = activeNarrow.nameBudgetPlain
             dynamicTimer.start()
         } catch (e) {
             root.fail("measure threw " + e)
@@ -365,7 +370,7 @@ ShellRoot {
             } else {
                 if (root.dynamicTextChanges !== 1)
                     root.fail("a handed-budget row re-sets its text " + root.dynamicTextChanges + " times, want 1")
-                var want = Names.middleElide(root.longName, activeNarrow.nameBudget)
+                var want = Names.middleElide(root.longName, activeNarrow.nameBudgetPlain)
                 var got = null
                 try { got = root.dynamicRow.displayText() } catch (e) {
                     root.fail("a dynamic row text read threw " + e)

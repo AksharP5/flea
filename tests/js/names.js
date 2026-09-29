@@ -203,10 +203,14 @@ function runColumnRowCost(check) {
         row.indexOf("property int nameBudget: -1") >= 0, true)
     check("no row derives its budget from its own laid-out width",
         row.indexOf("nameText.width / Theme.bodyAdvance") < 0, true)
-    check("the pane computes one budget per column",
-        Source.source("ui/ColumnPane.qml").indexOf("readonly property int nameBudget") >= 0, true)
-    check("and hands it to every row it builds",
-        Source.source("ui/ColumnPane.qml").indexOf("nameBudget: root.nameBudget") >= 0, true)
+    check("the pane computes a plain budget per column",
+        Source.source("ui/ColumnPane.qml").indexOf("readonly property int nameBudgetPlain") >= 0, true)
+    check("and a chevron budget per column",
+        Source.source("ui/ColumnPane.qml").indexOf("readonly property int nameBudgetChevron") >= 0, true)
+    check("and hands the chevron budget to the chosen directory alone",
+        Source.source("ui/ColumnPane.qml").indexOf("root.nameBudgetChevron") >= 0
+        && Source.source("ui/ColumnPane.qml").indexOf("root.nameBudgetPlain") >= 0
+        && Source.source("ui/ColumnPane.qml").indexOf("cell.cursor || cell.lifted") >= 0, true)
     check("one content carries the dim",
         row.split("opacity: root.dimOpacity").length - 1, 1)
     check("the middle-elision backstop stays",
