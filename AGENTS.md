@@ -2823,6 +2823,21 @@ e6 columnscost moves one ceiling, each count re-derived with `wc -l`: `ui/Column
 
 e5byid moves one ceiling, re-derived with `wc -l`: `src/gui.rs` 497 to 499 for the `qsregistry::prune_dead` call in `qs_command`, so both `exec_qs` and `pick` pay it. The prune itself is the new `src/qsregistry.rs` at 180, inside both budgets, with `SHELL_ID` and `PICKER_SHELL_ID` beside `paths::ENTRY`; `src/paths.rs` keeps 124 inside the soft budget. Flea deletes its own dead Quickshell registry entries because Quickshell keeps them forever: `prune_dead` removes every dead `by-id` entry of Flea's own shells but the newest `KEEP_DEAD`, dead by Quickshell's own lock test, keeping `qs log`'s last crash reachable.
 
+w5 rowaudit moves no ceiling, each count re-derived with `wc -l`: `ui/Row.qml` keeps 452, `ui/List.qml` keeps 292, `tests/rowcost.qml` 121 to 164 for the clip rare-state phase. Per-row gains since 0.3.6 (98404bc7), each with the commit that added it and its verdict:
+
+| gain | commit | objects at rest | verdict |
+|---|---|---|---|
+| clipMark/clipPx props, List markForRow | b0f33b6 | 0, empty clipboard early-returns | keep |
+| clipLoader Loader, inactive unless marked | b0f33b6 | +1 shell, builds nothing | keep, already deferred |
+| nameBudget/elidedName, elideMiddle | b0f33b6 | 0, fast-path string scan | keep |
+| cellInk/dimOpacity folding cellColor, clipCut | 89115b4 | 0, fewer evaluations | keep, the fold |
+| eight dimOpacity opacities | 89115b4 | 0 | keep |
+| date RecentDates.isRecent call | 04485bf1 | 0, false before the clock when off | keep |
+| Scroll.contentWidth delegate width | a783cc5 | 0 | keep |
+| dirSizes wantsSizes gate | 9e3e199 | 0 | keep |
+
+Nothing was removed: the only object a Row at rest gained is the inactive clipLoader shell, and a List-level delegate variant would trade that one shell for a second delegate shape; the today call and the clipboard lookup both return before any work when their switch is off. `tests/rowcost.qml` pins the rare states instead: a scissors row dims and builds over idle, a copy row builds undimmed, clearing returns to idle.
+
 ## The key table is generated
 
 `keys.toml` at the repository root is the single source of truth for every binding.

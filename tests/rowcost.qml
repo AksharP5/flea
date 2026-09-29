@@ -75,6 +75,16 @@ ShellRoot {
         onTriggered: root.measureRename()
     }
 
+    Timer {
+        id: clipProbe
+        interval: 300
+        repeat: false
+        onTriggered: root.measureClip()
+    }
+
+    property int clipPhase: -1
+    property int clipBuiltCount: -1
+
     function measureIdle() {
         var rowCount = root.countUnder(probeRow)
         var gridCount = root.countUnder(probeTile)
@@ -112,6 +122,39 @@ ShellRoot {
         probeTile.renaming = false
         if (root.editorsUnder(probeTile) !== 0)
             failures.push("tile keeps its RenameField after the rename closed")
+        // Rare states build only while their state is on; the clip mark is next.
+        probeRow.clipMark = "scissors"
+        root.clipPhase = 0
+        clipProbe.start()
+    }
+
+    // A cut row dims and builds its mark over idle, a copy builds undimmed, clearing returns to idle.
+    function measureClip() {
+        if (root.clipPhase === 0) {
+            if (probeRow.dimOpacity === 1)
+                failures.push("a cut row shares no dim with its mark")
+            root.clipBuiltCount = root.countUnder(probeRow)
+            if (root.clipBuiltCount <= root.rowIdleCount)
+                failures.push("a clipboard row builds no mark over the idle count")
+            probeRow.clipMark = "copy"
+            root.clipPhase = 1
+            clipProbe.start()
+            return
+        }
+        if (root.clipPhase === 1) {
+            if (probeRow.dimOpacity !== 1)
+                failures.push("a copied row keeps the cut dim")
+            if (root.countUnder(probeRow) <= root.rowIdleCount)
+                failures.push("a copy mark builds nothing over the idle count")
+            probeRow.clipMark = ""
+            root.clipPhase = 2
+            clipProbe.start()
+            return
+        }
+        if (root.countUnder(probeRow) !== root.rowIdleCount)
+            failures.push("a cleared clipboard row keeps its mark objects")
+        if (probeRow.dimOpacity !== 1)
+            failures.push("a cleared clipboard row keeps the cut dim")
         if (failures.length === 0)
             console.log("ROWCOST PASS row=" + root.rowIdleCount + " grid=" + root.gridIdleCount)
         for (var f = 0; f < failures.length; f++)
