@@ -53,6 +53,9 @@ const BWRAP_FLAGS: &[&str] = &[
     "/tmp",
 ];
 
+// bwrap's status fd, kept by bwrap and closed in the sandboxed child, so only bwrap writes it.
+pub(crate) const STATUS_FD: i32 = 7;
+
 pub fn available() -> bool {
     available_on(&std::env::var("PATH").unwrap_or_default())
 }
@@ -135,6 +138,13 @@ pub fn wrap_readonly(inner: &[String], input: &Path) -> Vec<String> {
     a.push(input.to_string_lossy().to_string());
     a.extend_from_slice(inner);
     a
+}
+
+// Sample input: full ending in ["/usr/bin/sleep","30"], inner_len 2 inserts before those two.
+pub fn add_status(argv: &mut Vec<String>, inner_len: usize) {
+    let at = argv.len().saturating_sub(inner_len.min(argv.len()));
+    argv.insert(at, "--json-status-fd".to_string());
+    argv.insert(at + 1, STATUS_FD.to_string());
 }
 
 #[cfg(test)]

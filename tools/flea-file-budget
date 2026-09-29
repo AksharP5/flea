@@ -24,7 +24,7 @@ src/backend/localsend.rs 403
 src/backend/menu_actions.rs 560
 src/backend/menu_registry.rs 563
 src/backend/meta.rs 436
-src/backend/metareq.rs 423
+src/backend/metareq.rs 424
 src/backend/movebatch.rs 470
 src/backend/movebatch_tests.rs 751
 src/backend/opsdispatch.rs 536
@@ -32,7 +32,7 @@ src/backend/opsreq.rs 513
 src/backend/opsreq/tests.rs 460
 src/backend/proto.rs 287
 src/backend/run.rs 444
-src/backend/thumbs.rs 441
+src/backend/thumbs.rs 442
 src/backend/thumbworker.rs 953
 src/backend/trashbrowse.rs 698
 src/backend/trashdelete.rs 901

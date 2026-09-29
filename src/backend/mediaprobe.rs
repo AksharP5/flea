@@ -2,9 +2,7 @@
 // carries. ffprobe reads the container's own header; nothing is decoded and nothing is written.
 use crate::backend::sandbox;
 use std::io::Read;
-use std::os::unix::process::CommandExt;
 use std::path::Path;
-use std::process::Command;
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
@@ -66,27 +64,25 @@ pub fn probe(path: &Path) -> Media {
     if !sandbox::available() {
         return Media::default();
     }
-    let full = sandbox::wrap_readonly(&inner, path);
-    let mut cmd = Command::new(&full[0]);
-    cmd.args(&full[1..]);
-    cmd.stdin(std::process::Stdio::null());
-    cmd.stdout(std::process::Stdio::piped());
-    cmd.stderr(std::process::Stdio::null());
-    // Its own group, so the watchdog's kill(-pid) has a group to name: a child left in the backend's own group is not a group leader, and -pid would match nothing.
-    cmd.process_group(0);
-    let mut child = match cmd.spawn() {
-        Ok(c) => c,
+    let mut full = sandbox::wrap_readonly(&inner, path);
+    sandbox::add_status(&mut full, inner.len());
+    let mut jailed = match crate::backend::jail::spawn_jailed(&full, |cmd| {
+        cmd.stdin(std::process::Stdio::null());
+        cmd.stdout(std::process::Stdio::piped());
+        cmd.stderr(std::process::Stdio::null());
+    }) {
+        Ok(j) => j,
         Err(_) => return Media::default(),
     };
     // prlimit's --cpu cannot bound a probe blocked in open(2) or read(2), because a blocked process burns no CPU at all.
     let watch = Arc::new(Watch::default());
-    let watchdog = watchdog(child.id() as i32, Arc::clone(&watch));
+    let watchdog = watchdog(jailed.child.id() as i32, Arc::clone(&jailed.sandbox_pid), Arc::clone(&watch));
     let mut stdout = Vec::new();
-    if let Some(mut pipe) = child.stdout.take() {
+    if let Some(mut pipe) = jailed.child.stdout.take() {
         let _ = pipe.read_to_end(&mut stdout);
     }
     // The reap runs with the watchdog still armed, because end of stdout says every writer closed it and not that the child exited, and standing the watchdog down first is what leaves that case unbounded.
-    let status = reap(&mut child, &watch);
+    let status = reap(&mut jailed.child, &watch);
     let _ = watchdog.join();
     match status {
         // A probe that did not exit zero was not answering about this file, so its stdout is not a measurement.
@@ -96,7 +92,7 @@ pub fn probe(path: &Path) -> Media {
 }
 
 // One thread, one timed wait, one signal, waking the instant the probe is reaped rather than at the end of a sleep; the same shape metareq.rs uses to bound an archive listing.
-fn watchdog(pid: i32, watch: Arc<Watch>) -> std::thread::JoinHandle<()> {
+fn watchdog(pid: i32, sandbox_pid: Arc<std::sync::atomic::AtomicI32>, watch: Arc<Watch>) -> std::thread::JoinHandle<()> {
     std::thread::spawn(move || {
         let deadline = Instant::now() + PROBE_LIMIT;
         let mut reaped = watch.reaped.lock().unwrap();
@@ -109,6 +105,11 @@ fn watchdog(pid: i32, watch: Arc<Watch>) -> std::thread::JoinHandle<()> {
         }
         // Signalled with the lock still held, so no reap can free this pid underneath it.
         if !*reaped {
+            // The group ends bwrap, and the sandbox pid ends the jailed tool --new-session hid from it.
+            let sandbox = sandbox_pid.load(std::sync::atomic::Ordering::SeqCst);
+            if sandbox > 0 {
+                unsafe { kill(sandbox, SIGKILL) };
+            }
             unsafe { kill(-pid, SIGKILL) };
         }
     })

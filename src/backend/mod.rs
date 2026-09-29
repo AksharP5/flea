@@ -60,6 +60,7 @@ pub mod thumbspec;
 pub mod thumbargv;
 pub mod thumbcache;
 pub mod sandbox;
+pub mod jail;
 pub mod child;
 pub mod thumbs;
 pub mod thumbreq;

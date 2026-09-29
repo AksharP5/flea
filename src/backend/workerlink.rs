@@ -7,7 +7,7 @@ use crate::backend::thumbworker::{FAILED, NOT_STARTED, NO_LANDLOCK, NO_LIBRARY, 
 use std::os::fd::{AsRawFd, OwnedFd};
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
-use std::process::{Child, Command, Stdio};
+use std::process::Stdio;
 use std::sync::Mutex;
 use std::time::Duration;
 
@@ -38,7 +38,7 @@ extern "C" {
 
 enum State {
     Unstarted,
-    Running { child: Child, requests: OwnedFd },
+    Running { jailed: crate::backend::jail::Jailed, requests: OwnedFd },
     Gone,
 }
 
@@ -132,25 +132,25 @@ impl WorkerLink {
     }
 
     // Started under the lock, so pool threads meeting their first video together start one worker between them.
-    fn spawn() -> Result<(Child, OwnedFd), String> {
+    fn spawn() -> Result<(crate::backend::jail::Jailed, OwnedFd), String> {
         let exe = std::fs::canonicalize("/proc/self/exe").map_err(|e| format!("/proc/self/exe did not resolve: {}", e))?;
         let exe_text = exe.to_str().ok_or("the flea executable's path is not UTF-8")?.to_string();
         let (mine, theirs) = fdpass::pair().map_err(|e| format!("no socket pair: {}", e))?;
-        let argv = sandbox::wrap_worker(&[exe_text, "--thumb-worker".to_string()], &exe);
+        let inner = vec![exe_text, "--thumb-worker".to_string()];
+        let mut argv = sandbox::wrap_worker(&inner, &exe);
+        sandbox::add_status(&mut argv, inner.len());
         // corner: bwrap's --die-with-parent follows the thread that spawns it, and a pool thread lives as long as the backend.
-        let mut child = Command::new(&argv[0])
-            .args(&argv[1..])
-            .stdin(Stdio::from(theirs))
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .map_err(|e| format!("bwrap did not start: {}", e))?;
+        let mut jailed = crate::backend::jail::spawn_jailed(&argv, |cmd| {
+            cmd.stdin(Stdio::from(theirs));
+            cmd.stdout(Stdio::null());
+            cmd.stderr(Stdio::null());
+        })
+        .map_err(|e| format!("bwrap did not start: {}", e))?;
         let heard = read_byte(&mine, READY_LIMIT);
         if matches!(heard, Heard::Byte(READY)) {
-            return Ok((child, mine));
+            return Ok((jailed, mine));
         }
-        let _ = child.kill();
-        let _ = child.wait();
+        crate::backend::jail::kill_tree(&mut jailed);
         Err(why_not(&heard))
     }
 
@@ -159,7 +159,7 @@ impl WorkerLink {
         let mut state = self.state.lock().unwrap();
         if matches!(*state, State::Unstarted) {
             *state = match WorkerLink::spawn() {
-                Ok((child, requests)) => State::Running { child, requests },
+                Ok((jailed, requests)) => State::Running { jailed, requests },
                 Err(why) => {
                     eprintln!("flea: the thumbnail worker did not start ({}), so videos use the thumbnailer program", why);
                     State::Gone
@@ -177,9 +177,8 @@ impl WorkerLink {
     }
 
     fn retire(state: &mut State, why: &str) {
-        if let State::Running { child, .. } = state {
-            let _ = child.kill();
-            let _ = child.wait();
+        if let State::Running { jailed, .. } = state {
+            crate::backend::jail::kill_tree(jailed);
             eprintln!("flea: the thumbnail worker {}, so videos use the thumbnailer program", why);
         }
         *state = State::Gone;
@@ -225,12 +224,21 @@ mod tests {
     use super::*;
     use crate::backend::testdir::TestDir;
     use crate::backend::thumbs::THUMB_SIZE;
+    use std::process::Command;
+
+    // A stand-in jail that was never sandboxed, so retiring it kills only its own child.
+    fn dummy_jailed(child: std::process::Child) -> crate::backend::jail::Jailed {
+        crate::backend::jail::Jailed {
+            child,
+            sandbox_pid: std::sync::Arc::new(std::sync::atomic::AtomicI32::new(crate::backend::jail::GONE)),
+        }
+    }
 
     // Stands in for the worker: answers the one request it is sent with `verdict`, on the reply socket that request carried.
     fn answered_by(verdict: u8) -> (WorkerLink, std::thread::JoinHandle<()>) {
         let (mine, theirs) = fdpass::pair().unwrap();
         let child = Command::new("true").spawn().unwrap();
-        let link = WorkerLink { state: Mutex::new(State::Running { child, requests: mine }) };
+        let link = WorkerLink { state: Mutex::new(State::Running { jailed: dummy_jailed(child), requests: mine }) };
         let answering = std::thread::spawn(move || {
             let request = fdpass::recv(theirs.as_raw_fd()).unwrap().expect("a request");
             let reply = request.fds.into_iter().nth(2).expect("a reply socket");
@@ -265,7 +273,7 @@ mod tests {
         let output = dir.file("out.png", "");
         let (mine, theirs) = fdpass::pair().unwrap();
         let child = Command::new("true").spawn().unwrap();
-        let link = std::sync::Arc::new(WorkerLink { state: Mutex::new(State::Running { child, requests: mine }) });
+        let link = std::sync::Arc::new(WorkerLink { state: Mutex::new(State::Running { jailed: dummy_jailed(child), requests: mine }) });
         for input in [fifo, dir.join("vanished.mp4")] {
             let (done, answer) = std::sync::mpsc::channel();
             let (link, output, shown) = (std::sync::Arc::clone(&link), output.clone(), input.display().to_string());

@@ -185,7 +185,8 @@ pub(crate) fn run_one(tables: &Tables, job: &mut Job) -> Outcome {
         return discard(&temp);
     }
     // corner: a thumbnailer that wrote then renamed would fail against this file bind, and only glycin and ffmpegthumbnailer were probed; see AGENTS.md "Thumbnail pool".
-    let full = sandbox::wrap(&inner, &abs, &temp);
+    let mut full = sandbox::wrap(&inner, &abs, &temp);
+    sandbox::add_status(&mut full, inner.len());
     if let Some(t) = job.trace.as_mut() {
         t.spawned = t.at.elapsed();
     }

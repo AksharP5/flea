@@ -9,7 +9,7 @@ use crate::error::{from_io, FleaError};
 use std::io::{self, Read};
 use std::os::unix::process::ExitStatusExt;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, ExitStatus};
+use std::process::{Command, ExitStatus};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::time::{Duration, Instant};
@@ -144,18 +144,18 @@ fn run_boxed_cancellable_inner(what: &str, inner: Vec<String>, read_only: &Path,
         let tool = inner.first().map_or("", |s| s.as_str());
         return Err(op_err(what, tool, "the sandbox is unavailable: bwrap or prlimit is not on PATH"));
     }
-    let full = sandbox::wrap_archive(&inner, read_only, writable);
-    let mut child = Command::new(&full[0])
-        .args(&full[1..])
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .map_err(|e| from_io(what, &full[0], &e))?;
+    let mut full = sandbox::wrap_archive(&inner, read_only, writable);
+    sandbox::add_status(&mut full, inner.len());
+    let mut jailed = crate::backend::jail::spawn_jailed(&full, |cmd| {
+        cmd.stdin(std::process::Stdio::null());
+        cmd.stdout(std::process::Stdio::null());
+        cmd.stderr(std::process::Stdio::piped());
+    })
+    .map_err(|e| from_io(what, &full[0], &e))?;
     if let Some(pid) = started {
-        pid.store(child.id(), Ordering::SeqCst);
+        pid.store(jailed.child.id(), Ordering::SeqCst);
     }
-    let stderr = child.stderr.take();
+    let stderr = jailed.child.stderr.take();
     let reader = std::thread::spawn(move || {
         let mut text = String::new();
         if let Some(mut pipe) = stderr {
@@ -165,13 +165,11 @@ fn run_boxed_cancellable_inner(what: &str, inner: Vec<String>, read_only: &Path,
     });
     loop {
         if cancel.load(Ordering::Relaxed) {
-            // --die-with-parent takes the decoder; the wait here is what reaps the launcher.
-            child.kill().ok();
-            child.wait().ok();
-            reader.join().ok();
+            // Kills the sandbox init as well as bwrap, and never waits for the stderr drain.
+            crate::backend::jail::kill_tree(&mut jailed);
             return Err(op_err(what, "", "cancelled"));
         }
-        match child.try_wait() {
+        match jailed.child.try_wait() {
             Ok(Some(status)) => {
                 let text = reader.join().unwrap_or_default();
                 if status.success() {
@@ -181,8 +179,7 @@ fn run_boxed_cancellable_inner(what: &str, inner: Vec<String>, read_only: &Path,
             }
             Ok(None) => std::thread::sleep(CANCEL_STEP),
             Err(e) => {
-                child.kill().ok();
-                child.wait().ok();
+                crate::backend::jail::kill_tree(&mut jailed);
                 reader.join().ok();
                 return Err(from_io(what, &full[0], &e));
             }
@@ -228,27 +225,26 @@ fn archive_produced_count_inner(inner: Vec<String>, spec: ListSpec, read_only: &
     if !sandbox::available() {
         return Ok(None);
     }
-    let full = sandbox::wrap_readonly(&inner, read_only);
+    let mut full = sandbox::wrap_readonly(&inner, read_only);
+    sandbox::add_status(&mut full, inner.len());
     // Streamed, not .output(): buffering the whole index here would contradict the streaming
     // contract the parser exists for, and a 200k-entry archive is exactly the case that motivated it.
-    let mut child = match Command::new(&full[0])
-        .args(&full[1..])
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-    {
-        Ok(child) => child,
+    let mut jailed = match crate::backend::jail::spawn_jailed(&full, |cmd| {
+        cmd.stdin(std::process::Stdio::null());
+        cmd.stdout(std::process::Stdio::piped());
+        cmd.stderr(std::process::Stdio::null());
+    }) {
+        Ok(jailed) => jailed,
         Err(_) => return Ok(None),
     };
     if let Some(pid) = started {
-        pid.store(child.id(), Ordering::SeqCst);
+        pid.store(jailed.child.id(), Ordering::SeqCst);
     }
     let deadline = Instant::now() + Duration::from_millis(crate::backend::archivelist::ARCHIVE_READ_MS);
-    let output = match child.stdout.take() {
+    let output = match jailed.child.stdout.take() {
         Some(output) => output,
         None => {
-            kill_and_reap(&mut child);
+            crate::backend::jail::kill_tree(&mut jailed);
             return Ok(None);
         }
     };
@@ -257,11 +253,11 @@ fn archive_produced_count_inner(inner: Vec<String>, spec: ListSpec, read_only: &
     });
     loop {
         if cancelled(cancel) {
-            kill_and_reap(&mut child);
-            let _ = parser.join();
+            // Kills the sandbox init too, and never waits for the parser drain.
+            crate::backend::jail::kill_tree(&mut jailed);
             return Err(op_err("archive", "", "cancelled"));
         }
-        match child.try_wait() {
+        match jailed.child.try_wait() {
             Ok(Some(status)) => {
                 let listed = match parser.join() {
                     Ok(listed) => listed,
@@ -276,14 +272,12 @@ fn archive_produced_count_inner(inner: Vec<String>, spec: ListSpec, read_only: &
                 return Ok(Some(listed.produced_entries));
             }
             Ok(None) if Instant::now() >= deadline => {
-                kill_and_reap(&mut child);
-                let _ = parser.join();
+                crate::backend::jail::kill_tree(&mut jailed);
                 return Ok(None);
             }
             Ok(None) => std::thread::sleep(CANCEL_STEP),
             Err(_) => {
-                kill_and_reap(&mut child);
-                let _ = parser.join();
+                crate::backend::jail::kill_tree(&mut jailed);
                 return Ok(None);
             }
         }
@@ -292,11 +286,6 @@ fn archive_produced_count_inner(inner: Vec<String>, spec: ListSpec, read_only: &
 
 fn cancelled(cancel: &AtomicBool) -> bool {
     cancel.load(Ordering::Relaxed)
-}
-
-fn kill_and_reap(child: &mut Child) {
-    child.kill().ok();
-    child.wait().ok();
 }
 
 struct ReadyReader<R> {

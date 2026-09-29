@@ -10,7 +10,6 @@ use crate::backend::owner;
 use crate::backend::sandbox;
 use crate::json::escape;
 use std::path::Path;
-use std::os::unix::process::CommandExt;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
@@ -110,17 +109,14 @@ fn list_archive(path: &Path, formats: &Formats) -> Contents {
     if !sandbox::available() {
         return failed;
     }
-    let full = sandbox::wrap_readonly(&inner, path);
-    let mut child = match std::process::Command::new(&full[0])
-        .args(&full[1..])
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null())
-        // Its own group, so the watchdog can end the whole tree in one signal.
-        .process_group(0)
-        .spawn()
-    {
-        Ok(c) => c,
+    let mut full = sandbox::wrap_readonly(&inner, path);
+    sandbox::add_status(&mut full, inner.len());
+    let mut jailed = match crate::backend::jail::spawn_jailed(&full, |cmd| {
+        cmd.stdin(std::process::Stdio::null());
+        cmd.stdout(std::process::Stdio::piped());
+        cmd.stderr(std::process::Stdio::null());
+    }) {
+        Ok(j) => j,
         Err(_) => return failed,
     };
     // The parser's own deadline cannot fire while it is blocked inside a read, so a tool that stops
@@ -129,7 +125,8 @@ fn list_archive(path: &Path, formats: &Formats) -> Contents {
     let done = Arc::new(AtomicBool::new(false));
     let watchdog = {
         let done = Arc::clone(&done);
-        let pid = child.id() as i32;
+        let pid = jailed.child.id() as i32;
+        let sandbox_pid = Arc::clone(&jailed.sandbox_pid);
         std::thread::spawn(move || {
             let step = std::time::Duration::from_millis(50);
             let mut waited = std::time::Duration::ZERO;
@@ -142,15 +139,17 @@ fn list_archive(path: &Path, formats: &Formats) -> Contents {
                 waited += step;
             }
             if !done.load(Ordering::Relaxed) {
-                // The GROUP, not the pid: the listing tool runs under bwrap and prlimit, so killing
-                // the direct child leaves a grandchild holding the pipe open and the read still
-                // blocks. Measured: pid alone left a stalled tool running and the request unbounded.
+                // The GROUP ends bwrap, and the sandbox pid ends the tool --new-session hid from it.
                 // Safe: the child is still ours until wait() reaps it, and done gates that.
+                let sandbox = sandbox_pid.load(Ordering::SeqCst);
+                if sandbox > 0 {
+                    unsafe { kill(sandbox, SIGKILL) };
+                }
                 unsafe { kill(-pid, SIGKILL) };
             }
         })
     };
-    let mut contents = match child.stdout.take() {
+    let mut contents = match jailed.child.stdout.take() {
         Some(out) => parse_reader(std::io::BufReader::new(out), &spec),
         None => {
             done.store(true, Ordering::Relaxed);
@@ -158,18 +157,20 @@ fn list_archive(path: &Path, formats: &Formats) -> Contents {
             return failed;
         }
     };
-    // A read cut short at its deadline is the one path where the tool is still alive, so the group
-    // kill has to happen BEFORE the watchdog is stood down. Storing done first disarmed it exactly
-    // there and left only child.kill(), which this file's own comment says is not enough: the tool
-    // runs under prlimit and bwrap and a grandchild survives it.
+    // A read cut short at its deadline is the one path where the tool is still alive, so the kills
+    // happen BEFORE the watchdog is stood down. Storing done first disarmed it exactly there.
     if contents.failed {
-        unsafe { kill(-(child.id() as i32), SIGKILL) };
+        let sandbox = jailed.sandbox_pid.load(Ordering::SeqCst);
+        if sandbox > 0 {
+            unsafe { kill(sandbox, SIGKILL) };
+        }
+        unsafe { kill(-(jailed.child.id() as i32), SIGKILL) };
     }
     done.store(true, Ordering::Relaxed);
     let _ = watchdog.join();
     // The tool's own verdict, because an unreadable archive otherwise answers zero entries and the
     // tile cannot tell that apart from a read that has not happened yet.
-    match child.wait() {
+    match jailed.child.wait() {
         Ok(status) if status.success() => {}
         _ => contents.failed = true,
     }

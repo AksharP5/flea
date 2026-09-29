@@ -3,7 +3,7 @@ use crate::oflags::O_NOFOLLOW;
 use std::io::{self, Read};
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     mpsc::{self, Receiver},
@@ -53,13 +53,14 @@ fn run(path: &Path, arguments: &mut [String], cancel: &AtomicBool) -> io::Result
     let mut wrapped = sandbox::wrap_readonly(arguments, Path::new("/proc/self/fd/0"));
     let destination = wrapped.len() - arguments.len() - 1;
     wrapped[destination] = "/input".into();
-    let mut child = Command::new(&wrapped[0])
-        .args(&wrapped[1..])
-        .stdin(Stdio::from(input))
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()?;
-    let output = child
+    sandbox::add_status(&mut wrapped, arguments.len());
+    let mut jailed = crate::backend::jail::spawn_jailed(&wrapped, |cmd| {
+        cmd.stdin(Stdio::from(input));
+        cmd.stdout(Stdio::piped());
+        cmd.stderr(Stdio::null());
+    })?;
+    let output = jailed
+        .child
         .stdout
         .take()
         .ok_or_else(|| io::Error::other("Preview output unavailable"))?;
@@ -79,11 +80,11 @@ fn run(path: &Path, arguments: &mut [String], cancel: &AtomicBool) -> io::Result
             || overflow.load(Ordering::Relaxed)
             || started.elapsed() > DEADLINE
         {
-            let _ = child.kill();
-            let _ = child.wait();
+            // Ends the sandbox init too, and never waits for the output drain.
+            crate::backend::jail::kill_tree(&mut jailed);
             return Err(io::Error::other("Preview cancelled or exceeded its limit"));
         }
-        if let Some(status) = child.try_wait()? {
+        if let Some(status) = jailed.child.try_wait()? {
             break status;
         }
         std::thread::sleep(Duration::from_millis(10));
