@@ -169,17 +169,18 @@ fn a_tree_copy_records_each_file_once_and_each_directory_once() {
 
 #[test]
 fn a_directory_filled_after_the_copy_is_kept_with_its_reason() {
+    // ENOTEMPTY from Linux errno.h: ErrorKind::DirectoryNotEmpty needs Rust 1.83 over the 1.77 floor.
+    const ENOTEMPTY: i32 = 39;
     let d = TestDir::new("manifestfilled");
     let handle = recorded(&d, &["sub/"]);
-    let root = handle.root.clone();
-    let filled = root.join("sub");
+    let filled = handle.root.join("sub");
     std::fs::write(filled.join("stray.txt"), "someone else put this here").unwrap();
-    assert_eq!(std::fs::remove_dir(&filled).unwrap_err().raw_os_error(), Some(39), "a filled remove_dir is ENOTEMPTY on this kernel");
+    assert_eq!(std::fs::remove_dir(&filled).unwrap_err().raw_os_error(), Some(ENOTEMPTY), "a filled remove_dir is ENOTEMPTY on this kernel");
     let report = match remove_owned(&handle) {
         Outcome::Done(report) => report,
         Outcome::Fallback => panic!("the stream is intact, so the manifest decides"),
     };
     assert_eq!(report.removed, 0, "nothing leaves while a stranger's file stands");
-    assert!(report.kept.iter().any(|k| k.reason == "is not empty"), "the filled directory is kept: {:?}", report.kept.first().map(|k| &k.path));
+    assert!(report.kept.iter().any(|k| k.path == filled && k.reason == "is not empty"), "the filled subdirectory is kept with its reason: {:?}", report.kept.first().map(|k| &k.path));
     assert!(filled.join("stray.txt").exists(), "a stranger's file stands");
 }

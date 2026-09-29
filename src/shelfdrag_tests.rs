@@ -51,8 +51,7 @@ fn an_entry_that_is_not_the_file_it_was_is_refused() {
     let (dir, shelf) = shelf("shelfswapped");
     let one = file(&dir, "one.txt");
     let token = shelf.drag_begin(true, &[one.clone()], 1_000).unwrap();
-    // The same name, another inode: renamed over rather than deleted and rewritten, because a
-    // freed inode is commonly handed straight back to the next file created in the same group.
+    // The same name, another inode: renamed over rather than deleted and rewritten, because a freed inode is commonly handed straight back to the next file created in the same group.
     let other = file(&dir, "other.txt");
     std::fs::write(&other, "another file entirely").unwrap();
     std::fs::rename(&other, &one).unwrap();

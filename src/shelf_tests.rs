@@ -192,7 +192,7 @@ fn absolute_keeps_the_std_contract_it_replaces() {
     assert_eq!(read("//"), b"//");
     assert_eq!(read("///tmp/x"), b"/tmp/x");
     assert!(super::absolute("").is_err(), "an empty path has no absolute form");
-    let mut want = std::env::current_dir().expect("a working directory").as_os_str().as_bytes().to_vec();
-    want.extend_from_slice(b"/rel/path");
+    // Joining off / keeps its sole slash as the separator, so the want is /rel/path and never //rel/path.
+    let want = std::env::current_dir().expect("a working directory").join("rel/path").as_os_str().as_bytes().to_vec();
     assert_eq!(read("rel/path"), want);
 }
