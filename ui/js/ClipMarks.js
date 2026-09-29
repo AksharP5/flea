@@ -5,6 +5,8 @@
 // Sample input: { paths: ["/home/gm/Pictures/phone/IMG_4121.jpg"], moving: true }
 var _cached = null
 var _marks = {}
+// Counts rows reaching the library; production ignores it, tests/listcost.qml asserts on it.
+var markCalls = 0
 
 // One keyed lookup per clipboard, rebuilt when the clipboard object changes; every row after that is a single key read.
 function setFor(clipboard) {
@@ -40,6 +42,7 @@ function markFor(path, clipboard) {
 
 // An empty clipboard costs nothing: its paths are never joined or searched.
 function markForRow(pane, name, clipboard) {
+    markCalls += 1
     if (isEmpty(clipboard)) {
         release()
         return ""

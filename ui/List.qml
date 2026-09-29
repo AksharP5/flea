@@ -19,9 +19,9 @@ ListView {
     property real rowWidth: Scroll.contentWidth(root.width, Theme.spacing.rowPaddingX)
     // Dual mode hides mode and kind on top of the stored set; one array, never one per row.
     property var rowHiddenCols: root.pane && root.pane.dualMode ? ["mode", "kind"].concat(ViewState.hiddenCols) : ViewState.hiddenCols
-    // One keyed lookup per clipboard; the delegate short-circuits on clipEmpty, so empty costs no call per row.
-    property var clipMarks: ClipMarks.setFor(root.pane ? root.pane.clipboard : null)
     property bool clipEmpty: ClipMarks.isEmpty(root.pane ? root.pane.clipboard : null)
+    // The short-circuit below is the only release while empty, so a cut of a large directory frees its lookup here.
+    onClipEmptyChanged: { if (root.clipEmpty) ClipMarks.release() }
 
     // Pane owns cursorIndex, thumbState and dirSizeState; List only computes what changed and hands it back.
     // Both ends of cursorClamped are view positions, not listing rows: under a filter they differ.
