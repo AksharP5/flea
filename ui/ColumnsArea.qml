@@ -180,10 +180,10 @@ Item {
         root.pane.open(base)
     }
 
-    // For ui/Ipc.qml: the peek columns' rows and the child column's empty tile, which pane.visibleItemFor cannot reach.
+    // For ui/Ipc.qml: the peek columns' rows and the child's empty tile; the two eldest answer null while their Loader is unbuilt.
     function parentItemAt(index) { return parentColumn.itemAtIndex(index) }
-    function grandparentItemAt(index) { return grandparentColumn.itemAtIndex(index) }
-    function greatGrandparentItemAt(index) { return greatGrandparentColumn.itemAtIndex(index) }
+    function grandparentItemAt(index) { var col = grandparentLoader.item; return col ? col.itemAtIndex(index) : null }
+    function greatGrandparentItemAt(index) { var col = greatGrandparentLoader.item; return col ? col.itemAtIndex(index) : null }
     function childItemAt(index) { return childColumn.itemAtIndex(index) }
     function childEmptyItem() { return childColumn.emptyItem }
     function frameItem() { return preview.frameItem }
@@ -305,34 +305,40 @@ Item {
     Row {
         anchors.fill: parent
 
-        // The great-grandparent, only on a window wide enough for five columns.
-        Flea.ColumnPane {
-            id: greatGrandparentColumn
-            visible: root.showGreatGrandparent
+        // The great-grandparent, built only on a window wide enough for five columns, so the shipped 3 never builds it.
+        Loader {
+            id: greatGrandparentLoader
+            active: root.showGreatGrandparent
             width: root.showGreatGrandparent ? root.columnWidth : 0
             height: parent.height
-            rows: root.showGreatGrandparent ? root.rowsFor(root.greatGrandparentPath) : []
-            lockedMode: root.deniedMode(root.greatGrandparentPath)
-            drawsEmpty: root.answered(root.greatGrandparentPath)
-            liftedName: Nav.leafOf(root.grandparentPath)
-            dim: true
-            onActivated: function (name, isDir) { root.activateNeighbour(root.greatGrandparentPath, name, isDir) }
-            onNeighbourMenuRequested: function (name) { root.menuOnNeighbour(root.greatGrandparentPath, name) }
+            sourceComponent: Flea.ColumnPane {
+                anchors.fill: parent
+                rows: root.rowsFor(root.greatGrandparentPath)
+                lockedMode: root.deniedMode(root.greatGrandparentPath)
+                drawsEmpty: root.answered(root.greatGrandparentPath)
+                liftedName: Nav.leafOf(root.grandparentPath)
+                dim: true
+                onActivated: function (name, isDir) { root.activateNeighbour(root.greatGrandparentPath, name, isDir) }
+                onNeighbourMenuRequested: function (name) { root.menuOnNeighbour(root.greatGrandparentPath, name) }
+            }
         }
 
-        // The grandparent, only on a window wide enough for four columns.
-        Flea.ColumnPane {
-            id: grandparentColumn
-            visible: root.showGrandparent
+        // The grandparent, built only on a window wide enough for four columns, for the same reason.
+        Loader {
+            id: grandparentLoader
+            active: root.showGrandparent
             width: root.showGrandparent ? root.columnWidth : 0
             height: parent.height
-            rows: root.showGrandparent ? root.rowsFor(root.grandparentPath) : []
-            lockedMode: root.deniedMode(root.grandparentPath)
-            drawsEmpty: root.answered(root.grandparentPath)
-            liftedName: Nav.leafOf(root.parentPath)
-            dim: true
-            onActivated: function (name, isDir) { root.activateNeighbour(root.grandparentPath, name, isDir) }
-            onNeighbourMenuRequested: function (name) { root.menuOnNeighbour(root.grandparentPath, name) }
+            sourceComponent: Flea.ColumnPane {
+                anchors.fill: parent
+                rows: root.rowsFor(root.grandparentPath)
+                lockedMode: root.deniedMode(root.grandparentPath)
+                drawsEmpty: root.answered(root.grandparentPath)
+                liftedName: Nav.leafOf(root.parentPath)
+                dim: true
+                onActivated: function (name, isDir) { root.activateNeighbour(root.grandparentPath, name, isDir) }
+                onNeighbourMenuRequested: function (name) { root.menuOnNeighbour(root.grandparentPath, name) }
+            }
         }
 
         // The parent shows the current directory among its siblings; below 900 px it hides.

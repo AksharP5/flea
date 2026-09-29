@@ -129,13 +129,13 @@ Item {
         elide: Text.ElideMiddle
     }
 
-    // Built only on a clipboard row: a Glyph per row costs a Shape, and the x tracks the rendered text end.
+    // Built only on a clipboard row; off it the x is a constant, so no row reads its name geometry.
     Loader {
         id: clipLoader
         active: root.clipMark.length > 0
         width: root.clipPx
         height: root.clipPx
-        x: nameText.x + Math.min(nameText.implicitWidth, nameText.width) + Theme.spacing.gap
+        x: root.clipMark.length > 0 ? nameText.x + Math.min(nameText.implicitWidth, nameText.width) + Theme.spacing.gap : 0
         anchors.verticalCenter: parent.verticalCenter
         // The board's own nudge: the mark sits one pixel above the text centre line.
         anchors.verticalCenterOffset: -1

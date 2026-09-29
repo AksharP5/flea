@@ -53,6 +53,7 @@ tests/js/ops.js 390
 tests/js/status.js 354
 ui/Backend.qml 431
 ui/ChromeBar.qml 477
+ui/ColumnsArea.qml 406
 ui/ContextMenu.qml 579
 ui/ConvertDialog.qml 440
 ui/Ipc.qml 818
