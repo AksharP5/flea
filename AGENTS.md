@@ -2862,6 +2862,8 @@ e19 round 2 moves one recorded ceiling down, each count re-derived with `wc -l`:
 
 e24 moves one ceiling, re-derived with `wc -l`: `ui/Row.qml` 452 to 453 for the one-line short-circuit comment, so the off path never enters the today library; the binding reads the switch first and the call carries `true`.
 
+The drop-frame merge records one ceiling, re-derived with `wc -l`: `ui/Row.qml` 453 to 454, the frame and label now one Loader (a row at rest builds 18 objects, the 0.3.6 count, pinned in tests/rowcost.qml) and the two one-line comments that keep the frame token and the label placement.
+
 ## The key table is generated
 
 `keys.toml` at the repository root is the single source of truth for every binding.
