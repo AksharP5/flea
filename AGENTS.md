@@ -2801,7 +2801,7 @@ f037cancel moves two ceilings, each re-derived with `wc -l`: `src/backend/metare
 
 f037cancelfix moves three ceilings, each re-derived with `wc -l`: `src/backend/jail.rs` 192 to 387 for the CLOEXEC status pipe, the owned-pid kill gate with its tests, the pre-kill bounded wait with the EOF 0-store and the named reader and gone bounds; `src/backend/metareq.rs` 424 to 416 for routing both sandbox kills through that gate and collapsing two stacked comments; and `src/backend/mediaprobe.rs` 219 to 216 for routing its watchdog kill through the same gate. `src/backend/sandbox.rs` keeps 300 and `src/backend/child.rs` keeps 272, both re-derived, over the soft budget and under the hard cap. The sentinel naming leaves `src/backend/jail.rs` at 389. Later work, the #211 archive jail split then U3, leaves `src/backend/sandbox.rs` at 365.
 
-f037u11 moves three ceilings, each re-derived with `wc -l`: `src/backend/run.rs` 444 to 461 for the quit drain setting each detached flag and waiting past the cancel drain bound beside the slot and the thumbnail queue, `src/backend/opsdispatch.rs` 536 to 538 for the detached registry field and its init, and `src/backend/opsreq/tests.rs` 460 to 461 for the convert call's two new arguments. The tracker itself went to `src/backend/opscancel.rs`, 87 to 134 inside both budgets beside `Live`, the flag threading keeps `src/backend/archivereq.rs` at 373 and `src/backend/archivework.rs` at 353 over the soft budget and under the hard cap, the archive tests moved out of line the way `opsreq/tests.rs` already was, leaving `src/backend/archiveops.rs` at 140 with its tests in the new `src/backend/archiveops_tests.rs` at 264, and the quit tests went to the new `src/backend/archivequit_tests.rs` at 164 inside both budgets rather than into either file. Round 2 widens the registry to converts, which keep their CPU cap on the cancellable runner and get no UI cancel, and pins the quit wait past the cancel drain bound. Round 3 removes the dead blocking runner convert vacated and re-drives the cap pin through the runner convert uses, with a burner that counts its own CPU time.
+f037u11 moves three ceilings, each re-derived with `wc -l`: `src/backend/run.rs` 444 to 453 for the quit drain cancelling the slot and each detached job under one shutdown budget on a 50 ms re-check tick beside the thumbnail queue, `src/backend/opsdispatch.rs` 536 to 538 for the detached registry field and its init, and `src/backend/opsreq/tests.rs` 460 to 461 for the convert call's two new arguments. The tracker itself went to `src/backend/opscancel.rs`, 87 to 134 inside both budgets beside `Live`, the flag threading keeps `src/backend/archivereq.rs` at 375 and `src/backend/archivework.rs` at 353 over the soft budget and under the hard cap, the archive tests moved out of line the way `opsreq/tests.rs` already was, leaving `src/backend/archiveops.rs` at 140 with its tests in the new `src/backend/archiveops_tests.rs` at 264, and the quit tests went to the new `src/backend/archivequit_tests.rs` at 350, over the soft budget and under the hard cap. Round 2 widens the registry to converts, which keep their CPU cap on the cancellable runner and get no UI cancel. Round 3 removes the dead blocking runner convert vacated and re-drives the cap pin through the runner convert uses, with a burner that counts its own CPU time. Round 4 keeps the one 25 s budget under the UI's 30 s quit deadline, sends each terminal line before its registry removal, re-reads the registry on a 50 ms tick so an id that leaves just after its line cannot stall the drain, and pins convert's cap.
 
 ## The key table is generated
 
@@ -3925,15 +3925,15 @@ bomb.
 **Extract and compress run without the CPU cap, and that is issue #211.** `wrap` is
 the decoder's wrapper. `sandbox::wrap_archive` is the one `run_boxed_cancellable` builds for
 both archive jobs, the same flags and the same 2 GiB address-space cap with the `--cpu`
-argument left out, and `prlimit` stays outermost so that cap still arrives. `run_boxed`
-serves convert alone now and keeps the decoder's `--cpu=30`, because convert decodes
-untrusted input and has no cancel. A legitimate compress past 30 CPU
+argument left out, and `prlimit` stays outermost so that cap still arrives. Convert runs
+on the capped cancellable runner now and keeps the decoder's `--cpu=30`, because convert decodes
+untrusted input and has no UI cancel. A legitimate compress past 30 CPU
 seconds is work rather than a runaway, the ticket's own finding for extract. Extract carries
 the operator's cancel, which kills and reaps the child and discards the staging directory.
 When the archive tool has not exited ten seconds after the cancel, its work
 folder is left in place rather than deleted under a live writer, and the err names that folder.
-Compress carries a flag nothing sets yet, so it runs until the tool finishes and its cancel
-is post-0.4.0 design work. The ticket is a 55 GiB Zip64,
+Compress carries a quit-set flag, so a cancelled compress stops with the job; a UI cancel
+for it is post-0.4.0 design work. The ticket is a 55 GiB Zip64,
 74 GiB unpacked in 676 members, whose legitimate extract died under `prlimit --cpu=30`
 after 30 s with status 137 and about 24 GiB of the staging tree written and nothing on
 stderr, and the status bar reported that as
@@ -3945,7 +3945,7 @@ die the same way. **No CPU-second
 number replaces 30**, because every finite one is smaller than the next archive somebody brings, and a
 slow unpack is legitimate work rather than the runaway this bound exists for. What bounds an
 extract is the address-space cap, `--die-with-parent` and the operator's cancel. A compress
-has the first two and no cancel yet, so a hostile one runs until the tool finishes. **The index read keeps the decoder's wrapper
+has the first two and the quit's cancel, so a hostile one runs until the tool finishes or a quit stops it. **The index read keeps the decoder's wrapper
 deliberately**, and its own bound is why: `archivelist.rs` stops a read at `ARCHIVE_READ_MS`, 2 s of
 wall clock, `archive_produced_count_inner` answers `None` for a read that failed, timed out or was
 killed, and `extract` already reads that as unverified rather than as a failure, so a cap biting there
@@ -3960,7 +3960,7 @@ better diagnosis for a genuinely bad archive, and a blank or whitespace-only std
 an empty message. **What this costs is accepted and stated.** The 30 s cap was incidentally a bound on
 how much of the disk one hostile archive could fill before it was killed. An extract now runs until
 the operator's Cancel reaches it, which is exactly what `7z x` on the same file outside Flea does.
-A compress runs until the tool finishes, with no cancel yet. A
+A compress runs until the tool finishes or a quit cancels it, with no UI cancel yet. A
 memory bomb is still refused, by the address-space cap.
 
 The flags, and why each is there:
@@ -5214,10 +5214,10 @@ item finishes; it does not here, because a cancel that waits out a multi-gigabyt
 and a half-written file is not a result anyone asked for. A `quit` or a closed stdin cancels the same
 way and waits for the terminal line, so shutting down mid-copy leaves nothing half-written either.
 A `transfercancel` naming a compress or convert id still does nothing, there is no UI cancel for
-either, but a quit or a closed stdin sets each detached flag and waits past the cancel drain bound,
-so each compress and convert `Work` cleanup runs before the process exits and no `.flea-work-*`
-folder is left behind. A job still running past that bound keeps its folder in place and its
-terminal `err` names it.
+either, but a quit or a closed stdin sets each detached flag and drains them under the one 25 s
+shutdown budget, so each compress and convert `Work` cleanup runs before the process exits and
+no `.flea-work-*` folder is left behind. A job still running past that budget keeps its folder
+in place and its terminal `err` names it.
 
 **Testing them is `tests/ops.sh`**, which drives the real binary over a FIFO rather than a pipe: an
 operation answers asynchronously, so a piped script would send `undo` before the operation it meant to

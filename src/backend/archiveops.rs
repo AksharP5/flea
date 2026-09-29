@@ -18,7 +18,7 @@ pub fn compress(formats: &Formats, parent: &Path, names: &[String], format: &str
     if dest.symlink_metadata().is_ok() {
         return Err(op_err("archive", &dest.to_string_lossy(), "that destination already exists"));
     }
-    // A quit sets this flag, so a compress waiting for the slot never starts a child.
+    // A quit landing between registration and this check never starts a child.
     if cancel.load(Ordering::Relaxed) {
         return Err(op_err("archive", &dest.to_string_lossy(), "cancelled"));
     }

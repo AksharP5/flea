@@ -85,9 +85,7 @@ pub(crate) fn run_archive(id: usize, compressing: bool, paths: Vec<String>, form
     } else {
         extract(formats, &archive, &dest, &cancel)
     };
-    if let Some(tracked) = jobs {
-        tracked.remove(id);
-    }
+    // The line goes out before the id is forgotten, so a drain that sees an empty registry never misses it.
     let line = match result {
         Ok(verified) => archivedone_line(id, true, verified, ""),
         Err(e) => archivedone_line(id, false, true, &e.msg),
@@ -95,6 +93,9 @@ pub(crate) fn run_archive(id: usize, compressing: bool, paths: Vec<String>, form
     // An extract frees the slot its terminal line took; a compress claims none.
     let message = if compressing { OpMsg::Meta { line } } else { OpMsg::SlotDone { line } };
     let _ = tx.send(message);
+    if let Some(tracked) = jobs {
+        tracked.remove(id);
+    }
 }
 
 pub(crate) fn run_convert(id: usize, request_id: usize, input: PathBuf, dest: PathBuf, strip: bool, tx: Sender<OpMsg>, selection: Option<Vec<Selected>>,
@@ -102,9 +103,7 @@ pub(crate) fn run_convert(id: usize, request_id: usize, input: PathBuf, dest: Pa
     let result = validate_sources(selection.as_deref(), std::slice::from_ref(&input))
         .map_err(|error| op_err("convert", &input.to_string_lossy(), &error))
         .and_then(|()| convert_one(&input, &dest, strip, &cancel));
-    if let Some(tracked) = jobs {
-        tracked.remove(id);
-    }
+    // The line goes out before the id is forgotten, so a drain that sees an empty registry never misses it.
     let line = match result {
         Ok(()) => convertdone_line(id, request_id, &input.to_string_lossy(), true, &dest.to_string_lossy(), "", false),
         Err(e) => {
@@ -114,6 +113,9 @@ pub(crate) fn run_convert(id: usize, request_id: usize, input: PathBuf, dest: Pa
         }
     };
     let _ = tx.send(OpMsg::Meta { line });
+    if let Some(tracked) = jobs {
+        tracked.remove(id);
+    }
 }
 
 // The dispatch half, kept beside the work so run.rs's own match stays one line per request.

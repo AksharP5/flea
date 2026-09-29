@@ -30,17 +30,19 @@ use crate::error::FleaError;
 use crate::heap;
 use std::io::{self, BufWriter, Write};
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::{channel, Receiver, TryRecvError};
+use std::sync::mpsc::{channel, Receiver, RecvTimeoutError, TryRecvError};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 // Wider pools settle sooner and answer input later: 6 settles the media fixture ahead of strata for 5.5 ms of input under a full pool; see AGENTS.md "Thumbnail requests".
 const THUMB_WORKERS: usize = 6;
 // The whole shutdown budget: a running job is killed at the pool's own 20 s deadline, so waiting longer than that can never cut one short.
-const DRAIN_LIMIT: Duration = Duration::from_secs(25);
-// A cancelled detached job needs the cancel drain bound to kill, reap and drain its reader, plus a second for its terminal line to cross the channel.
-pub(crate) const DETACHED_WAIT: Duration =
-    Duration::from_secs(crate::backend::archivework::CANCEL_DRAIN_SECS + 1);
+pub(crate) const DRAIN_LIMIT: Duration = Duration::from_secs(25);
+// The UI gives up on a silent child after this; the budget above stays under it (ui/Backend.qml quitDeadline).
+pub(crate) const UI_QUIT_DEADLINE_SECS: u64 = 30;
+const _: () = assert!(DRAIN_LIMIT.as_secs() < UI_QUIT_DEADLINE_SECS);
+// A detached job forgets its id just after sending its line, so the drain re-reads the registry on this tick as well as on each event.
+const DRAIN_TICK: Duration = Duration::from_millis(50);
 
 // The loop stops on Quit; every other request continues it, because errors are responses.
 #[derive(PartialEq)]
@@ -404,28 +406,30 @@ fn tick_walkers(out: &mut BufWriter<io::Stdout>, st: &mut State, pool: &Pool) {
 }
 
 // A worker inside a child owns a temp file in the shared cache that only its own return publishes or removes; see AGENTS.md "Thumbnail requests".
-fn drain(
-    out: &mut BufWriter<io::Stdout>,
+pub(crate) fn drain(
+    out: &mut impl Write,
     st: &mut State,
     ops: &mut Ops,
     rx: &Receiver<Event>,
     pool: &Pool,
     cache: &Cache,
 ) {
-    let start = Instant::now();
-    // A clean shutdown cancels the slot operation, so a cancelled copy removes its partial destination.
+    let deadline = Instant::now() + DRAIN_LIMIT;
+    // A clean shutdown cancels the slot operation and each detached job, so a cancelled copy removes its partial destination and each Work cleanup runs.
     if let Some(id) = ops.live.running() {
         ops.live.cancel(id);
     }
-    // A quit sets each detached flag and waits past the cancel drain bound, so each Work cleanup runs.
-    drain_detached(out, ops, rx, start + DETACHED_WAIT);
-    let deadline = Instant::now() + DRAIN_LIMIT;
+    ops.detached.cancel_all();
     while st.outstanding > 0 || ops.live.running().is_some() || !ops.detached.is_empty() {
-        match rx.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
+        let left = deadline.saturating_duration_since(Instant::now());
+        if left.is_zero() {
+            break;
+        }
+        match rx.recv_timeout(left.min(DRAIN_TICK)) {
             Ok(Event::Thumb(d)) => report_done(out, st, d),
             Ok(Event::Op(m)) => report_op(out, ops, m),
-            Ok(_) => {}
-            Err(_) => break,
+            Ok(_) | Err(RecvTimeoutError::Timeout) => {}
+            Err(RecvTimeoutError::Disconnected) => break,
         }
     }
     pool.cancel_all();
@@ -438,18 +442,6 @@ fn drain(
         writeln!(out, "{}", thumbed_line(row, "", 0.0)).ok();
     }
     out.flush().ok();
-}
-
-// Cancelling the detached jobs and pumping their terminal lines is this helper's whole job.
-pub(crate) fn drain_detached(out: &mut impl Write, ops: &mut Ops, rx: &Receiver<Event>, end: Instant) {
-    ops.detached.cancel_all();
-    while !ops.detached.is_empty() {
-        match rx.recv_timeout(end.saturating_duration_since(Instant::now())) {
-            Ok(Event::Op(m)) => report_op(out, ops, m),
-            Ok(_) => {}
-            Err(_) => break,
-        }
-    }
 }
 
 pub fn write_window(out: &mut impl Write, st: &State, start: usize, count: usize, tb: &Tables) {

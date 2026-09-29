@@ -31,7 +31,7 @@ src/backend/opsdispatch.rs 538
 src/backend/opsreq.rs 513
 src/backend/opsreq/tests.rs 461
 src/backend/proto.rs 287
-src/backend/run.rs 461
+src/backend/run.rs 453
 src/backend/thumbs.rs 442
 src/backend/thumbworker.rs 953
 src/backend/trashbrowse.rs 698
