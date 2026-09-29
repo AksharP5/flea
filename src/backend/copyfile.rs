@@ -474,8 +474,7 @@ pub(crate) fn move_cross_device(src: &Path, dst: &Path, p: &mut Progress) -> Res
     Ok(())
 }
 
-// The folders copy_any touched, or the parent with no context; a failure keeps the source.
-// flush_dirs_for settles held files with its syncfs first, so the source goes only after the bytes.
+// The folders copy_any touched; held files settle first so the source goes only after the bytes.
 fn confirm_dest(p: &mut Progress, dst: &Path) -> Result<(), FleaError> {
     let failed = match p.durability.as_mut() {
         Some(durability) => durability.flush_dirs_for(dst).is_err(),

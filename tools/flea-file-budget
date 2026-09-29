@@ -11,10 +11,10 @@ known_over_cap="shelf/Model.js 669
 shelf/Panel.qml 430
 shelf/ShelfCard.qml 443
 shelf/ShelfService.qml 481
-src/backend/copyfile.rs 525
+src/backend/copyfile.rs 524
 src/backend/copyfile_tests.rs 460
-src/backend/durable.rs 630
-src/backend/durable_tests.rs 999
+src/backend/durable.rs 631
+src/backend/durable_tests.rs 1054
 src/backend/fsinforeq.rs 407
 src/backend/jump_tests.rs 403
 src/backend/renamecompat.rs 447
@@ -25,8 +25,8 @@ src/backend/menu_actions.rs 560
 src/backend/menu_registry.rs 563
 src/backend/meta.rs 436
 src/backend/metareq.rs 424
-src/backend/movebatch.rs 470
-src/backend/movebatch_tests.rs 751
+src/backend/movebatch.rs 469
+src/backend/movebatch_tests.rs 752
 src/backend/opsdispatch.rs 536
 src/backend/opsreq.rs 513
 src/backend/opsreq/tests.rs 460

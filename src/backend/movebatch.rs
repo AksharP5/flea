@@ -174,8 +174,7 @@ fn journal_partial(
     Ok(())
 }
 
-// The folders a batch filled, confirmed once instead of once per item; a failure keeps every source.
-// flush_dirs_for_many settles held files with its syncfs first, so sources go only after the bytes.
+// The folders a batch filled, confirmed once; held files settle first so sources go after the bytes.
 fn confirm_batch(durability: &mut Durability, dsts: &[PathBuf]) -> Result<(), FleaError> {
     let failed = if durability.durable {
         durability.flush_dirs_for_many(dsts).is_err()
