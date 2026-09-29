@@ -71,7 +71,7 @@ pub fn wrap(inner: &[String], input: &Path, out: &Path) -> Vec<String> {
     wrap_with(inner, input, out, Some(CPU_SECONDS))
 }
 
-// Issue #211: the extract-only jail, same boundary and address-space cap but no CPU cap.
+// Issue #211: the archive jail for extract and compress, same boundary and address-space cap but no CPU cap.
 pub fn wrap_archive(inner: &[String], input: &Path, out: &Path) -> Vec<String> {
     wrap_with(inner, input, out, None)
 }

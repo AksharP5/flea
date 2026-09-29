@@ -619,7 +619,8 @@ removed: a partial file by `copy_file`, a partly-copied directory by `copy_dir`.
 at the destination is not a result anyone asked for. That item is reported `ok:false` with an `err` of
 `cancelled`; every item not yet started is counted in `skipped`. A cancelled extract stops and reaps
 its sandboxed child, removes its staging directory and publishes no destination, so the same rule holds
-there without a partial tree.
+there without a partial tree. When the archive tool has not exited ten seconds after the cancel, its work
+folder is left in place rather than deleted under a live writer, and the `err` names that folder.
 
 A `quit`, or stdin closing, cancels a running operation the same way and waits for its terminal line
 before the process exits, so shutting down mid-copy also leaves nothing half-written behind.
