@@ -69,8 +69,7 @@ fn a_drag_of_nothing_is_refused_before_a_token_exists() {
 fn a_drag_records_the_absolute_path_the_pile_holds() {
     let (dir, shelf) = shelf("shelfrelative");
     let one = file(&dir, "one.txt");
-    // Spelled with a redundant component, which is what absolute() takes back out: a token
-    // that kept the spelling it was handed would answer with a path the pile never held.
+    // Spelled with a redundant component, which is what absolute() takes back out: a token that kept the spelling it was handed would answer with a path the pile never held.
     let spelled = format!("{}/./{}", dir.path().display(), "one.txt");
     let token = shelf.drag_begin(true, &[spelled], 1_000).unwrap();
     assert_eq!(shelf.redeem(&token, 1_100).unwrap().paths, vec![one]);
