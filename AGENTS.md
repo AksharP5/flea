@@ -907,6 +907,12 @@ lands the value already held owes nothing at all. `tests/uiwriter.sh` drives two
 state file both ways round and holds a queued writer at the door while the CLI writes under it, and
 `tests/js/uistate.js` pins the patch bytes.
 
+**The two map-valued keys merge per entry.** A `folderSorts` patch entry names one
+folder and a `columnWidths` patch entry names one column edge, so one window's write keeps
+what another wrote since its read. A null `folderSorts` entry forgets that path instead,
+and only a patch may send one. A re-sort moves its folder to the newest end of the map.
+Past the 500 cap the oldest entries go and the newest stay.
+
 **The window's read is the settled file, and not a raw one.** `main()` calls `Store::settle` before
 it hands off to `qs`: an empty patch through the same lock and the same per-key validation, so
 whenever that settle succeeded on a document it could read, a value a hand edit left in a key this
@@ -2114,7 +2120,8 @@ typing and selection band gates the z key passes.
 F037qml moves three ceilings, each re-derived with `wc -l`: `ui/StatusBar.qml` 451
 to 457 for honouring every centre role instead of collapsing to foreground,
 `ui/TrashView.qml` 474 to 476 for the named press scale, and `ui/Theme.qml` 405 to
-415 for the body-face advance and the clamped stored column widths.
+415 for the body-face advance and the clamped stored column widths. Later work leaves
+`ui/StatusBar.qml` at 456 and `ui/TrashView.qml` at 475, each re-derived with `wc -l`.
 
 Integrated on the 0.3.6 branch after #194, the hidden-rail eject takes `ui/WindowBody.qml` from 497 to 507, re-derived
 with `wc -l` on the integrated branch.
@@ -2583,7 +2590,7 @@ Sorting moves five recorded ceilings, each re-derived with `wc -l` at the commit
 it. `src/uischema.rs` enters the tool's list at 403 for `hiddenLast`, `rememberSort` and the
 `folderSorts` map with its shape, defaults and cap constants. `src/uistate.rs` 442 to 475 for the
 `FolderSorts` rule, its place-to-order validation and the oldest-first truncation past 500.
-`ui/Backend.qml` 435 to 436 for the folder-order resolution, the remember and forget writers and
+`ui/Backend.qml` 400 to 425 for the folder-order resolution, the remember and forget writers and
 the `hiddenLast` both requests carry. `ui/Pane.qml` 702 to 704 for the `hasFolderSort` binding
 into the menu and the folder-aware `resetSort`. `ui/ContextMenu.qml` 570 to 572 for the
 `hasFolderSort` property the Sort by flyout reads. The map itself went to the new
@@ -2740,9 +2747,9 @@ the start and the stamp at 32 lines, `ui/Row.qml` hands them down at 412 of its 
 421, `ui/ViewState.qml` owns the midnight timer at 393 under the hard cap, and
 `ui/js/Settings.js` takes the View row at 427, exactly its recorded ceiling.
 
-On the 0.3.7 branch, today dates join the clipboard marks in `ui/Row.qml`, which goes from 453 to 456, re-derived with `wc -l` on the integrated branch.
+On the 0.3.7 branch, today dates join the clipboard marks in `ui/Row.qml`, which goes from 453 to 456, re-derived with `wc -l` on the integrated branch. Later work leaves it at 444.
 
-Density040 and GridStops move one recorded ceiling, re-derived with `wc -l`: `ui/js/Settings.js` 427 to 428 for the Tight density row with its hint and the Huge and Largest thumbnail stops. The maths went to the new `ui/js/Density.js`, 46 lines inside both budgets, rather than into `Theme.qml`, which stands at 400 at the hard cap; `ui/js/GridGeometry.js` takes the cell height at 22, `ui/GridTile.qml` at 203, `ui/GridArea.qml` at 277, `ui/ViewState.qml` at 395 and `src/uischema.rs` at 408, all inside their budgets.
+Density040 and GridStops move one recorded ceiling, re-derived with `wc -l`: `ui/js/Settings.js` 427 to 428 for the Tight density row with its hint and the Huge and Largest thumbnail stops. The maths went to the new `ui/js/Density.js`, 46 lines inside both budgets, rather than into `Theme.qml`, which stands at 400 at the hard cap; `ui/js/GridGeometry.js` takes the cell height at 22, `ui/GridTile.qml` at 203, `ui/GridArea.qml` at 277, `ui/ViewState.qml` at 395 and `src/uischema.rs` at 408, the last inside its recorded ceiling rather than any soft budget. Later work leaves `ui/js/Density.js` at 44, `ui/js/GridGeometry.js` at 21, `ui/GridArea.qml` at 279 and `ui/ViewState.qml` at 398, each re-derived with `wc -l`.
 
 Buttons040 variant A moves four recorded ceilings, each re-derived with `wc -l` at the commit that
 recorded it. `ui/OpenWithDialog.qml` 588 to 592 for the fixed Open primary, the search field's focus
@@ -2751,6 +2758,7 @@ the octal field's ring. `ui/TrashView.qml` 467 to 474 for the dead Up at 0.55 an
 `ui/ChromeBar.qml` 438 to 448 for the path field's ring. The control itself went to the reworked
 `ui/DialogButton.qml` at 111 lines, its decisions to the new `ui/js/Buttons.js` at 45 lines and its
 suite to `tests/js/buttons.js` at 41 lines, each inside both budgets, rather than into any dialog;
+later work leaves them at 107, 52 and 54, each re-derived with `wc -l`.
 `ui/TransferCard.qml` falls to 239 and `ui/PickerSave.qml` to 177 as their hand-built buttons
 leave, and `ui/MenuActionDialog.qml` stands at 307, over the soft budget and under the hard cap.
 
@@ -2767,29 +2775,31 @@ The count, clamp and fit live in `ui/js/Columns.js` at 139 lines, the fit string
 its own `ui/qmldir` line, `ui/Header.qml` takes the handles and the fits at 346 lines and
 `ui/ColumnsArea.qml` the ancestor columns at 373 lines, all inside their budgets; `ui/Theme.qml`
 reads the stored widths at 399 lines, one over its last note and still under the hard cap.
+Later work leaves `src/uischema.rs` at 421, `ui/Header.qml` at 355, `ui/js/ColumnFit.js` at 30
+and `ui/ResizeHandle.qml` at 37, each re-derived with `wc -l`.
 
 0.3.7 integration records `ui/Theme.qml` at 401, re-derived with `wc -l`, where the button system and the
 list columns each added their tokens.
 
-The 0.3.7 replay onto the 0.3.6 head moves 8 ceilings, each re-derived with `wc -l`: `ui/ContextMenu.qml` 578 to 579, `ui/Ipc.qml` 813 to 818, `ui/Pane.qml` 724 to 728, `ui/js/Settings.js` 431 to 432, `ui/js/Menu.js` 335 to 338, `ui/js/Focus.js` 359 to 365, `ui/ChromeBar.qml` 468 to 477, `ui/Theme.qml` 401 to 405.
+The 0.3.7 replay onto the 0.3.6 head moves 8 ceilings, each re-derived with `wc -l`: `ui/ContextMenu.qml` 578 to 579, `ui/Ipc.qml` 813 to 818, `ui/Pane.qml` 724 to 728, `ui/js/Settings.js` 431 to 432, `ui/js/Menu.js` 335 to 338, `ui/js/Focus.js` 359 to 365, `ui/ChromeBar.qml` 468 to 477, `ui/Theme.qml` 401 to 405. Later work leaves `ui/js/Menu.js` at 337, `ui/js/Focus.js` at 364 and `ui/Theme.qml` at 415, each re-derived with `wc -l`.
 
-f037jump moves one ceiling, re-derived with `wc -l`: `ui/ChromeBar.qml` 477 to 478 for the one-line comment on the editor frame's single-hairline bottom inset, which centres the field in the strip so the folder-jump dropdown sits flush under it the way the Jump board draws it.
+f037jump moves one ceiling, re-derived with `wc -l`: `ui/ChromeBar.qml` 477 to 478 for the one-line comment on the editor frame's single-hairline bottom inset, which centres the field in the strip so the folder-jump dropdown sits flush under it the way the Jump board draws it. The comment-style pass leaves it at 477.
 
 f037logic moves three ceilings, each re-derived with `wc -l`: `src/uistate.rs` 518 to 554 for the per-entry folderSorts healing on read, the whole-pixel width rule and the tests pinning both, `ui/Backend.qml` 425 to 426 for the `hiddenLast` the peek request carries, and `src/backend/proto.rs` 285 to 287, under the hard cap, for the same field parsed off the wire.
 
-f037r6 records one ceiling, re-derived with `wc -l`: `tests/js/columns.js` 298 to 317 for the first-echo peek key and the scoped re-ask checks, crossing the 300 hard cap and recorded rather than split; `ui/js/Names.js` 125 to 199 and `tests/js/names.js` 106 to 128 stay inside their budgets, `src/backend/peek.rs` 217 to 230 stays inside the soft budget, `ui/js/Columns.js` 178 to 184 stays inside its budget, `ui/Backend.qml` falls 426 to 424 inside its recorded 426, `ui/ColumnsArea.qml` keeps 400 at the hard cap and `ui/GridTile.qml` keeps 203.
+f037r6 records one ceiling, re-derived with `wc -l`: `tests/js/columns.js` 298 to 317 for the first-echo peek key and the scoped re-ask checks, crossing the 300 hard cap and recorded rather than split; `ui/js/Names.js` 125 to 199 and `tests/js/names.js` 106 to 128 stay inside their budgets, `src/backend/peek.rs` 217 to 230 stays inside the soft budget, `ui/js/Columns.js` 178 to 184 stays inside its budget, `ui/Backend.qml` falls 426 to 424 inside its recorded 426, `ui/ColumnsArea.qml` keeps 400 at the hard cap and `ui/GridTile.qml` keeps 203. Later work leaves `tests/js/columns.js` at 310, `ui/js/Names.js` at 204 and `ui/js/Columns.js` at 183, each re-derived with `wc -l`.
 
-f037hasvk moves two ceilings, each re-derived with `wc -l`: `src/vulkan.rs` 620 to 722 for the hasvk-only decision (`is_hasvk_library`, `is_hasvk_intel`, `hasvk_only`) with its sysfs-fixture tests, and `src/gui.rs` 432 to 485 for the automatic-arm `LaunchRenderer` with its four probe tests; the file keeps one subject, what the launcher hands `qs`, and the decision adds no probe and no sysfs read to the launch.
+f037hasvk moves two ceilings, each re-derived with `wc -l`: `src/vulkan.rs` 620 to 722 for the hasvk-only decision (`is_hasvk_library`, `is_hasvk_intel`, `hasvk_only`) with its sysfs-fixture tests, and `src/gui.rs` 432 to 485 for the automatic-arm `LaunchRenderer` with its three probe tests; the file keeps one subject, what the launcher hands `qs`, and the decision adds no probe and no sysfs read to the launch.
 
-The advloop round 1 fixes move four ceilings, each re-derived with `wc -l`: `src/gui.rs` 485 to 497 for the renderer arms applied through `apply_renderer` and the tests that read their environment, `src/uistate.rs` 554 to 625 for map patches merged per entry with null forgets and their tests, `src/vulkan.rs` 722 to 728 for the CPU-type device skip, and `ui/Backend.qml` 426 to 431 for the map-entry writers and the listed path the sort reset reads.
+The advloop round 1 fixes move four ceilings, each re-derived with `wc -l`: `src/gui.rs` 485 to 497 for the renderer arms applied through `apply_renderer` and the tests that read their environment, `src/uistate.rs` 554 to 625 for map patches merged per entry with null forgets and their tests, `src/vulkan.rs` 722 to 728 for the CPU-type device skip, and `ui/Backend.qml` 425 to 431 for the map-entry writers and the listed path the sort reset reads. The true chain, read off each commit piped to `wc -l`, is Sorting 1a4fb969 400 to 425 and f037logic 458113df 425 to 426 and f037r6 4639025a 426 to 424 and round 1 b49d0e6a 425 to 431.
 
 f037move moves five ceilings, each re-derived with `wc -l`: `src/backend/durable.rs` 439 to 574 for batch_syncfs with held descriptors, scoped release, syncfs_dir and its seams, `src/backend/copyfile.rs` 491 to 534 for the held success path and the batch-aware single-item confirm, `src/backend/movebatch.rs` 466 to 478 for the release plus syncfs confirm and the test-only remove log, `src/backend/durable_tests.rs` 766 to 830 for the mountinfo classification, large-file hold and finish-drain pins, and `src/backend/movebatch_tests.rs` 528 to 709 for the 64-file order log, failed-syncfs, cancel, copy-error and non-block pins; `src/backend/mountinfo.rs` 168 to 170 stays inside the soft budget for the entry source, `src/backend/opsreq.rs` keeps 512 inside its recorded 513 for the mut finish.
 
 f037movefix moves six ceilings, each re-derived with `wc -l`: `src/backend/durable.rs` 574 to 631 for the settle_held primitive every confirm calls, the hold-at-cap syncfs with its sticky unsettled flag, the begin_from mountinfo helper and the success-only syncfs count, `src/backend/copyfile.rs` 534 to 524 for the primitive-owned single-item confirm, `src/backend/movebatch.rs` 478 to 469 for the primitive-owned batch confirm, `src/backend/durable_tests.rs` 830 to 1121 for the hold-at-cap, settle-order, rename, redo, failed-syncfs, failed-cap-finish, begin-order, sticky-drain and per-primitive drained-confirm pins, `src/backend/copyfile_tests.rs` 412 to 460 for the batch move_cross_device pins, and `src/backend/movebatch_tests.rs` 709 to 751 for the failed-cap 64-file pin; `src/backend/mountinfo.rs` keeps 170 inside the soft budget, and `src/backend/opsreq.rs` keeps 512 inside its recorded 513.
 
-f037cancel moves two ceilings, each re-derived with `wc -l`: `src/backend/metareq.rs` 423 to 424 for the sandbox-pid watchdog kill beside the group kill, and `src/backend/thumbs.rs` 441 to 442 for the status-fd argv on the exec path; the kill tree itself is the new `src/backend/jail.rs` at 192, inside both budgets, `src/backend/sandbox.rs` keeps 300 inside the hard cap for the status-fd argv helper, and `src/backend/archivework.rs`, `src/backend/child.rs`, `src/backend/mediaprobe.rs`, `src/backend/workerlink.rs` and `src/tui/job.rs` stay inside their budgets.
+f037cancel moves two ceilings, each re-derived with `wc -l`: `src/backend/metareq.rs` 423 to 424 for the sandbox-pid watchdog kill beside the group kill, and `src/backend/thumbs.rs` 441 to 442 for the status-fd argv on the exec path; the kill tree itself is the new `src/backend/jail.rs` at 192, inside both budgets, `src/backend/sandbox.rs` keeps 365 inside the hard cap for the status-fd argv helper, and `src/backend/archivework.rs`, `src/backend/child.rs`, `src/backend/mediaprobe.rs`, `src/backend/workerlink.rs` and `src/tui/job.rs` stay inside their budgets.
 
-f037cancelfix moves three ceilings, each re-derived with `wc -l`: `src/backend/jail.rs` 192 to 387 for the CLOEXEC status pipe, the owned-pid kill gate with its tests, the pre-kill bounded wait with the EOF 0-store and the named reader and gone bounds; `src/backend/metareq.rs` 424 to 416 for routing both sandbox kills through that gate and collapsing two stacked comments; and `src/backend/mediaprobe.rs` 219 to 216 for routing its watchdog kill through the same gate. `src/backend/sandbox.rs` keeps 300 and `src/backend/child.rs` keeps 272, both re-derived, over the soft budget and under the hard cap.
+f037cancelfix moves three ceilings, each re-derived with `wc -l`: `src/backend/jail.rs` 192 to 387 for the CLOEXEC status pipe, the owned-pid kill gate with its tests, the pre-kill bounded wait with the EOF 0-store and the named reader and gone bounds; `src/backend/metareq.rs` 424 to 416 for routing both sandbox kills through that gate and collapsing two stacked comments; and `src/backend/mediaprobe.rs` 219 to 216 for routing its watchdog kill through the same gate. `src/backend/sandbox.rs` keeps 365 and `src/backend/child.rs` keeps 272, both re-derived, over the soft budget and under the hard cap. The sentinel naming leaves `src/backend/jail.rs` at 389.
 
 ## The key table is generated
 
@@ -3911,25 +3921,27 @@ when somebody brings a measurement. It is still finite and still refuses a decom
 bomb.
 
 **Extract and compress run without the CPU cap, and that is issue #211.** `wrap` is
-the decoder's wrapper; `sandbox::wrap_archive` is the one `run_boxed_cancellable` builds for
-both archive jobs, while `run_boxed` (convert alone now) keeps the decoder's `--cpu=30`,
-because convert decodes untrusted input and has no cancel. A legitimate compress past 30 CPU
-seconds is work rather than a runaway, the ticket's own finding for extract. Compress runs
-uncapped on that same runner, and an operator cancel for it is post-0.4.0 design work. For
-the rest this paragraph stands as written:
-it is the same flags, the same
-read-only input, the same single writable path and the same 2 GiB address-space cap with the `--cpu`
-argument left out, `prlimit` still outermost so that cap still arrives. The ticket is a 55 GiB Zip64,
-74 GiB unpacked in 676 members, whose legitimate extract `prlimit --cpu=30` killed after 30 s: status
-137, about 24 GiB of the staging tree written, nothing on stderr, and the status bar reported that as
-**"The archive tool failed."** — a sentence that names a bad archive for a job the kernel killed.
-Neither zstd nor the tool choice is the cause, as the ticket's own measurements say: libarchive 3.8.9
-reads the archive's method 93, a one-member extract of that member inside this jail is reported to
-succeed, and `7z` would be launched through the same wrapper and die the same way. **No CPU-second
+the decoder's wrapper. `sandbox::wrap_archive` is the one `run_boxed_cancellable` builds for
+both archive jobs, the same flags and the same 2 GiB address-space cap with the `--cpu`
+argument left out, and `prlimit` stays outermost so that cap still arrives. `run_boxed`
+serves convert alone now and keeps the decoder's `--cpu=30`, because convert decodes
+untrusted input and has no cancel. A legitimate compress past 30 CPU
+seconds is work rather than a runaway, the ticket's own finding for extract. Extract carries
+the operator's cancel, which kills and reaps the child and discards the staging directory.
+Compress carries a flag nothing sets yet, so it runs until the tool finishes and its cancel
+is post-0.4.0 design work. The ticket is a 55 GiB Zip64,
+74 GiB unpacked in 676 members, whose legitimate extract died under `prlimit --cpu=30`
+after 30 s with status 137 and about 24 GiB of the staging tree written and nothing on
+stderr, and the status bar reported that as
+**"The archive tool failed."**: a sentence that names a bad archive for a job the kernel killed.
+Neither zstd nor the tool choice is the cause, as the ticket's own measurements say.
+`libarchive` 3.8.9 reads the archive's method 93, a one-member extract of that member inside
+this jail is reported to succeed, and `7z` would be launched through the same wrapper and
+die the same way. **No CPU-second
 number replaces 30**, because every finite one is smaller than the next archive somebody brings, and a
-slow unpack is legitimate work rather than the runaway this bound exists for; what bounds the archive
-class is the address-space cap, `--die-with-parent` and the operator's cancel, which kills and reaps
-the child and discards the staging directory. **The index read keeps the decoder's wrapper
+slow unpack is legitimate work rather than the runaway this bound exists for. What bounds an
+extract is the address-space cap, `--die-with-parent` and the operator's cancel. A compress
+has the first two and no cancel yet, so a hostile one runs until the tool finishes. **The index read keeps the decoder's wrapper
 deliberately**, and its own bound is why: `archivelist.rs` stops a read at `ARCHIVE_READ_MS`, 2 s of
 wall clock, `archive_produced_count_inner` answers `None` for a read that failed, timed out or was
 killed, and `extract` already reads that as unverified rather than as a failure, so a cap biting there
@@ -3941,9 +3953,10 @@ signal for its own death (measured here; see "Thumbnail pool"), so 137 is report
 signal SIGKILL (9)", a real signal as the same sentence, and any other non-zero exit as "exited with
 status N". The tool's own last non-empty line of stderr still wins over both, because that is the
 better diagnosis for a genuinely bad archive, and a blank or whitespace-only stderr no longer becomes
-an empty message. **What this costs is accepted and stated**: the 30 s cap was incidentally a bound on
-how much of the disk one hostile archive could fill before it was killed, so that job now runs until
-the operator's Cancel reaches it, which is exactly what `7z x` on the same file outside Flea does; a
+an empty message. **What this costs is accepted and stated.** The 30 s cap was incidentally a bound on
+how much of the disk one hostile archive could fill before it was killed. An extract now runs until
+the operator's Cancel reaches it, which is exactly what `7z x` on the same file outside Flea does.
+A compress runs until the tool finishes, with no cancel yet. A
 memory bomb is still refused, by the address-space cap.
 
 The flags, and why each is there:

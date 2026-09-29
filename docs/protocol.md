@@ -64,11 +64,12 @@ directories first, without kind groups. Unlike an explicit `sort`, a `list` may
 omit `by`. An invalid ordering key refuses the new listing and keeps the previous
 directory and rows.
 
-Optional `hiddenLast`, `false` unless `true`: with it on, every dotfile follows
-every visible entry for each of the four keys in both directions, and
-`foldersFirst` still orders each block, so visible folders come first, then
-visible files, then hidden folders, then hidden files. Off keeps today's order,
-where a leading dot sorts first. Absent is off, so an older client keeps it.
+Optional `hiddenLast`, `false` unless `true`: with it on, dotfiles form an outer
+partition, a visible block then a hidden block, for each of the four keys in both
+directions, and `foldersFirst` or `groupByKind` orders inside each block, so visible
+folders come first, then visible files, then hidden folders, then hidden files. Off
+leaves dotfiles to follow the sort key like any other name. Absent is off, so an
+older client keeps it.
 
 `hidden` of `false`, or a missing `hidden`, drops every name starting with `.` before
 it ever reaches the listing: the filter runs inside the scan itself, not as a later
@@ -198,8 +199,8 @@ defaults to `false`; when true it takes precedence over `foldersFirst` and fixes
 three groups in this order: folders, images (MIME type starts with `image/`), then
 all remaining files. Groups do not reverse with `desc`. Kind grouping uses filename
 MIME lookup, not content probing. `hiddenLast` defaults to `false`; when true it
-takes precedence over both and fixes two blocks in this order: visible entries,
-then dotfiles, in both directions. Neither block reverses with `desc`.
+is an outer partition, a visible block then a hidden block, and `foldersFirst`
+or `groupByKind` orders inside each block. Neither block reverses with `desc`.
 
 Inside each group, or across the whole listing when ungrouped, the key decides and
 the name order breaks ties, so two equal sizes list the same way every run, and
@@ -1355,10 +1356,10 @@ failed carries `"failed":true`, with `"mode":<uint>` beside it under the same ru
 uses, so a column can tell an unreadable directory from an empty one instead of drawing both as the
 empty state. A `peeked` line that succeeded carries neither field, whatever `n` is.
 
-Two more `peek` fields are worth naming for the same reason. Every `peeked` line, failed or not,
+More `peek` fields are worth naming for the same reason. Every `peeked` line, failed or not,
 echoes the `hidden`, `hiddenLast` and `first` its request carried, because three clients read this wire at once: `ui/ColumnsArea.qml`
-peeks the pane's ancestors with the listing's own flags and the pane's window size, `ui/NetworkMounts.qml` peeks with 1 and 512,
-and the path bar's Tab peeks with whatever the typed leaf asks for. `path` alone cannot tell one client's reply from another's, and `path`
+peeks the pane's ancestors with the listing's own flags and the pane's window size, `ui/NetworkMounts.qml` peeks with a first of 1 or of 512,
+and the path bar's Tab peeks with whatever the typed leaf asks for. The repair legs ask 512 and the folder check asks 1. `path` alone cannot tell one client's reply from another's, and `path`
 plus `hidden` plus `hiddenLast` plus `first` can, which is all the correlation any needs: the same quad answers the same rows,
 so no request id has to be threaded through. A client that ignores the fields reads the line exactly
 as it did before. A `peek` request carries optional `hiddenLast`, `false` unless `true`: with
