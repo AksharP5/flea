@@ -3375,9 +3375,9 @@ waits for its consumer.
   reported. Without `ViewState`'s `onRunningChanged` arm the first three checks go red and the
   second run stays green, which is the exact shape of the defect it was written for.
 - `./tests/ui.sh` drives the real window through `omarchy-drive` and takes a case name to run
-  one of the `case_*` functions, defined in the file or in a sourced `tests/ui-*.sh` library (a
-  later definition wins, which is how `renamelife` reaches `tests/ui-rename-design.sh`); the file's
-  own usage line lists the entry points. With no argument it runs its `wanted` list and
+  one of the `case_*` functions, defined in the file or in a sourced `tests/ui-*.sh` library
+  (`renamelife`, for one, lives in `tests/ui-rename-design.sh`); the file's own usage line lists
+  the entry points. With no argument it runs its `wanted` list and
   then three whole-run checks, a backend drain, a log grep and a cache count, so a clean run
   prints `0 of N checks failed`, with N three more than the length of that list. Neither the list nor either
   number is written out here: both went stale the first time a case was added.
