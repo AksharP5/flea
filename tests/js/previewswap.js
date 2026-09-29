@@ -1,6 +1,8 @@
 .import "../../ui/js/PreviewSwap.js" as PreviewSwap
 .import "../../ui/js/Facts.js" as Facts
 .import "../../ui/js/Swap.js" as Swap
+.import "../../ui/js/Columns.js" as Columns
+.import "sourcefixture.js" as Source
 
 // The preview swap, AGENTS.md "The preview swap": its moves, its cap, its frame kinds and what each surface waits for.
 
@@ -67,4 +69,27 @@ function run(check) {
           PreviewSwap.lookReady("pdf", true, false, false) + "|" + PreviewSwap.lookReady("pdf", true, true, false), "false|true")
     check("or once the document is refused", PreviewSwap.lookReady("This file could not be read.", true, false, true), true)
     check("anything else not loading is whole", PreviewSwap.lookReady("image", false, false, false), true)
+    runFolderDataHold(check)
+}
+
+// A folder peek in Columns holds by data, not by picture: an unanswered folder keeps the
+// old column with no swap hold, and the landed peek shows it with its rows in one pass.
+function runFolderDataHold(check) {
+    check("an unanswered folder defers by data", Columns.folderDataHold(true, false), true)
+    check("an answered folder lands at once", Columns.folderDataHold(true, true), false)
+    check("a file never defers by data", Columns.folderDataHold(false, false)
+        + "|" + Columns.folderDataHold(false, true), "false|false")
+    check("a landed peek shows the folder it waited for", Columns.showFolderOnPeek("/a", "/b", true), true)
+    check("an already shown folder shows nothing new", Columns.showFolderOnPeek("/a", "/a", true), false)
+    check("a still outstanding peek leaves the old column up", Columns.showFolderOnPeek("/a", "/b", false), false)
+    check("no cursor folder shows nothing", Columns.showFolderOnPeek("", "/b", true), false)
+    var area = Source.source("ui/ColumnsArea.qml")
+    check("a move onto an unanswered folder takes the data hold", area.indexOf("Columns.folderDataHold(") >= 0, true)
+    check("and restarts the fallback instead of a picture", area.indexOf("folderFallback.restart()") >= 0, true)
+    check("while every other move stops it", area.indexOf("folderFallback.stop()") >= 0, true)
+    check("and no folder arm starts the swap", area.indexOf("if (root.cursorIsDir)\n            thirdSwap.start(false)") < 0, true)
+    check("the fallback is a single shot at the listing swap cap", area.indexOf("interval: Swap.HOLD_MS") >= 0, true)
+    check("and shows the pending column when the peek is late", area.indexOf("id: folderFallback") >= 0
+        && area.indexOf("onTriggered: if (root.cursorIsDir && !root.answered(root.childPath)) root.showCursorRow()") >= 0, true)
+    check("a landed peek shows the folder it waited for", area.indexOf("Columns.showFolderOnPeek(") >= 0, true)
 }

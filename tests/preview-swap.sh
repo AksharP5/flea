@@ -70,7 +70,7 @@ run_surface() {
 
 # Sample input, one harness line: 'PREVIEWSWAP DONE holds=18 fallbacks=0 bursts=0 held=210 mid=0 loading=0'.
 judge() {
-    local surface="$1" direct="$2" out="$3" log="$4" done holds fallbacks bursts held mid loading
+    local surface="$1" direct="$2" out="$3" log="$4" done holds fallbacks bursts held mid loading wanted
     done=$(grep -a 'PREVIEWSWAP DONE' "$log" | tail -1)
     [ -n "$done" ] || { bad "$surface: no DONE line to judge"; return; }
     holds=$(printf '%s' "$done" | sed -n 's/.*holds=\([0-9]*\).*/\1/p')
@@ -87,7 +87,9 @@ judge() {
         else bad "$surface: mutating without a hold drew no mid frame, so the harness cannot see the defect"; fi
         return
     fi
-    [ "${holds:-0}" -ge 18 ] || { bad "$surface: took $holds hold(s), not one per move"; return; }
+    # The column holds 17 file moves by picture and 1 folder move by data; Quick Look holds all 18.
+    if [ "$surface" == column ]; then wanted=17; else wanted=18; fi
+    [ "${holds:-0}" -eq "$wanted" ] || { bad "$surface: took $holds hold(s), expected $wanted (folder moves take none)"; return; }
     if [ "${mid:-1}" -eq 0 ]; then ok "$surface: 18 moves drew no half-built frame";
     else bad "$surface: 18 moves drew $mid half-built frame(s)"; fi
     if [ "${fallbacks:-1}" -eq 0 ]; then ok "$surface: no hold ran past the cap";

@@ -225,3 +225,15 @@ function names(s) {
     }
     return out.join(",")
 }
+
+// An unanswered folder keeps the old column by data, never by picture.
+// Sample input: folderDataHold(true, false) is true.
+function folderDataHold(cursorIsDir, answered) {
+    return cursorIsDir === true && answered !== true
+}
+
+// A landed peek shows the cursor folder while it is still the one waiting.
+// Sample input: showFolderOnPeek("/a", "/b", true) is true.
+function showFolderOnPeek(childPath, shownChildPath, answered) {
+    return answered === true && childPath.length > 0 && childPath !== shownChildPath
+}

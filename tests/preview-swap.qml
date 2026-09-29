@@ -29,6 +29,8 @@ ShellRoot {
     property bool simReady: true
     property int pending: 0
     property int seq: 0
+    // A column folder move holds by data: the old color stays until the peek lands.
+    property string pendingFolder: ""
 
     function log(line) { console.log("PREVIEWSWAP " + line) }
     function quit() { Quickshell.execDetached(["kill", String(Quickshell.processId)]) }
@@ -105,10 +107,17 @@ ShellRoot {
     }
 
     // One move: hold the old picture, mutate under it, start the cap, land ready.
+    // A column folder move takes no hold: the old color stays by data until the peek lands.
     function move(kindIndex) {
         var kind = shell.kinds[kindIndex]
         var key = "/previews\n" + kindIndex
         var isPdf = kind === "pdf"
+        if (!shell.direct && shell.surfaceKind === "column" && kind === "folder") {
+            shell.pendingFolder = kind
+            landTimer.interval = 60
+            landTimer.restart()
+            return
+        }
         var apply = function () {
             shell.currentKind = kind
             shell.simReady = false
@@ -137,6 +146,14 @@ ShellRoot {
         id: landTimer
         repeat: false
         onTriggered: {
+            // The data-held folder lands with its rows in one pass, still under no picture.
+            if (shell.pendingFolder !== "") {
+                shell.currentKind = shell.pendingFolder
+                shell.pendingFolder = ""
+                shell.simReady = true
+                settleTimer.restart()
+                return
+            }
             shell.simReady = true
             if (shell.swap)
                 shell.swap.check()

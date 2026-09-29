@@ -467,10 +467,13 @@ over the picture.
 The column holds with `burstEnds: true` on the key `path + "\n" + cursorIndex`. The hold starts on the
 move, the settle runs from the key through `armSettle` and is not pushed back one frame, and `clear`
 runs after the capture so `pending` makes `Facts.state(null, loading)` return LOADING. A folder shows
-through the deferred `shownIsDir` and `shownChildPath`; a folder whose peek already answered lands at
-once with no hold. A different key during a column hold is held j: it gives the picture up, the
+through the deferred `shownIsDir` and `shownChildPath` and never holds a picture: a move onto a folder
+whose peek is outstanding keeps the old column by data, and the landed peek shows it with its rows in
+the same pass; a folder whose peek already answered lands at once with no hold. Each folder move restarts
+a single-shot fallback at `Swap.HOLD_MS`, which shows the pending (empty-held) state when the peek is late.
+A different key during a column hold is held j: it gives the picture up, the
 loading state stays live with `heldOff` until `loadSelection`, which holds again with `atWork`. The
-cap is `Swap.HOLD_MS` counted from the start of the preview's own work, `load()` or the folder peek,
+cap is `Swap.HOLD_MS` counted from the start of the preview's own work, `load()` or the folder fallback,
 plus `DOCUMENT_SETTLE_MS` (120) for a PDF. Quick Look holds in `follow()` with no apply, `load()`
 mutates under the picture and then calls `start(isPdf)`, held j joins the hold with the old preview
 staying, and `close()` calls `cancel()` so nothing queued runs. Space's own open has no hold and draws
@@ -2846,6 +2849,8 @@ ddtarget moves one ceiling, re-derived with `wc -l`: `ui/js/Focus.js` 364 to 365
 pathretry moves two ceilings, each re-derived with `wc -l`: `ui/ChromeBar.qml` 477 to 479 for the `pathFailed` bool and the `shouldNavigate` gates on `commitEdit` and the jump's `onChosen`, and `ui/WindowBody.qml` 546 to 547 in the budget for a file that measured 545 to 547, its hunk adding the comment plus the binding and nothing else. The retry input is the failed listing and not the shown one: `ui/js/Nav.js` `pathFailed` answers true only on `listingState` `error` with no search, no Trash and no listing in flight, so the same line retries an error and stays a no-op settled, in Trash, in search and in flight, while a different path always navigates into `Nav.open`'s own refusal there. The decision itself is `ui/js/PathBar.js` `shouldNavigate`, 228 lines over the soft budget and under the hard cap; `ui/js/Nav.js` keeps 279 over soft for the eight-line `pathFailed`; `tests/js/pathbar.js` takes the nineteen checks at 251 over soft.
 
 trashrow moves one ceiling, re-derived with `wc -l`: `ui/Sidebar.qml` 566 to 567 for the `RailKeys` import the Trash row cursor rule reads; the rule itself is `RailKeys.trashCursor`, tested in `tests/js/railkeys.js`.
+
+w037w17 moves one ceiling, re-derived with `wc -l`: `ui/ColumnsArea.qml` 410 to 425 for the folder data hold (the `Swap` import, the single-shot `folderFallback` at `Swap.HOLD_MS`, the `folderDataHold` early return with its restart, the stop on every other move, and the `showFolderOnPeek` landing in `onPeeked`); `ui/js/Columns.js` 227 to 239 for `folderDataHold` and `showFolderOnPeek`, over the soft budget and under the hard cap, and `tests/js/previewswap.js` 70 to 95 inside both budgets.
 
 ## The key table is generated
 

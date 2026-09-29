@@ -5,6 +5,7 @@ import "js/Columns.js" as Columns
 import "js/ExtThumbs.js" as ExtThumbs
 import "js/Focus.js" as Focus
 import "js/Nav.js" as Nav
+import "js/Swap.js" as Swap
 import "js/Tap.js" as Tap
 
 // The Miller three-pane. The parent and the child are read with peek, which never touches the pane's
@@ -117,10 +118,17 @@ Item {
         root.shownChildPath = root.childPath
     }
 
+    // An unanswered folder shows its pending state at the cap, the picture cap's own fallback.
+    Timer {
+        id: folderFallback
+        interval: Swap.HOLD_MS
+        repeat: false
+        onTriggered: if (root.cursorIsDir && !root.answered(root.childPath)) root.showCursorRow()
+    }
+
     // A folder whose rows are already here lands at once; any other change of what the third column shows is held.
-    // A hold is taken only when a load will follow: a peek for a folder, or a file's settle in
-    // automatic mode on a held-off class; a manual load, a hidden preview column or a held frame
-    // lands at once, or the cap would never arm and the frozen picture would block the pointer.
+    // A hold is taken only when a file load will follow; an unanswered folder is held by data instead.
+    // A manual load, a hidden preview column or a held frame lands at once, or the cap would never arm and the frozen picture would block the pointer.
     function moveThird() {
         if (root.cursorIsDir === root.shownIsDir && root.childPath === root.shownChildPath
                 && (root.cursorRow !== null) === root.shownHasRow)
@@ -130,8 +138,13 @@ Item {
         // for it the way a load does and onStorageKnownChanged decides when it lands.
         var held = ExtThumbs.manualHold(root.pane.storageClass, ViewState.preview)
         var fileLoad = !root.cursorIsDir && ViewState.previewColumn && ViewState.previewAutomatic && !held
-        var folderLoad = root.cursorIsDir && !root.answered(root.childPath)
-        if (!fileLoad && !folderLoad) {
+        // An unanswered folder keeps the old column by data: no picture, no show yet.
+        if (Columns.folderDataHold(root.cursorIsDir, root.answered(root.childPath))) {
+            folderFallback.restart()
+            return
+        }
+        folderFallback.stop()
+        if (!fileLoad) {
             // A hold already live owns the picture, so the no-load change joins it under
             // the cap; landing it at once would freeze the column and block the pointer.
             if (!idle) {
@@ -145,11 +158,8 @@ Item {
             return
         }
         thirdSwap.hold(root.showCursorRow, root.swapKey())
-        // A folder's own work is its peek, asked already; a file's starts with its settle, which runs from the key.
-        if (root.cursorIsDir)
-            thirdSwap.start(false)
-        else
-            preview.armSettle()
+        // A file's work starts with its settle, which runs from the key.
+        preview.armSettle()
     }
 
     function swapKey() { return root.pane.path + "\n" + root.pane.cursorIndex }
@@ -291,6 +301,11 @@ Item {
                 root.denials = locked
             }
             root.peekVersion += 1
+            // The waiting folder lands with its rows in the same pass, so no frame is mid-built.
+            if (Columns.showFolderOnPeek(root.childPath, root.shownChildPath, root.answered(root.childPath)))
+                root.showCursorRow()
+            if (root.answered(root.childPath))
+                folderFallback.stop()
         }
     }
 
