@@ -456,7 +456,7 @@ FocusScope {
     PointHandler {
         id: focusPointer
         acceptedButtons: Qt.AllButtons
-        onActiveChanged: if (active && focusPointer.point.position.x >= root.sidebarWidth) root.focusRequested()
+        onActiveChanged: if (active && focusPointer.point.position.x >= root.sidebarWidth) { root.focusView = Focus.LIST; root.focusRequested() }
     }
 
     Flea.Header {
