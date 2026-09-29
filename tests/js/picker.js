@@ -144,11 +144,12 @@ function run(check) {
     check("a double click with no first tap sends nothing", Picker.doubleAction(single, file, "/a/b.txt", "", []), "none")
     check("a double click on no row sends nothing", Picker.doubleAction(single, null, "/a/b.txt", "/a/b.txt", []), "none")
 
-    // Issue #224: the chips take room first and the path gives way, keeping its minimum.
+    // Issue #221: a second tap on another path is a single tap.
     check("a second tap on the same path counts as a double", Picker.sameTap("/a/b.txt", "/a/b.txt"), true)
     check("a second tap on another path is a single tap", Picker.sameTap("/a/b.txt", "/a/c.txt"), false)
     check("a second tap with no first tap is a single tap", Picker.sameTap("", "/a/b.txt"), false)
     check("a second tap with no path is a single tap", Picker.sameTap("/a/b.txt", ""), false)
+    // Issue #224: the chips take room first and the path gives way, keeping its minimum.
     check("a strip that fits takes it all", Picker.chipStripWidth(300, 100, 96), 100)
     check("chips take room first and the path keeps its minimum", Picker.chipStripWidth(300, 400, 96), 204)
     check("a strip wider than the free width still scrolls", Picker.chipStripWidth(200, 400, 96), 104)

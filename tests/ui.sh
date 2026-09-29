@@ -3575,14 +3575,31 @@ case_reclick() {
     settle
     [[ "$(ipc cursor)" == "40" ]] || fail "reclick: the cursor is $(ipc cursor), not row 40"
     [[ "$(ipc selectedIndices)" == "40" ]] || fail "reclick: row 40 is not selected, got $(ipc selectedIndices)"
+    # Both taps below fire on release with no double-click deferral, so each half polls for the tap's own signal instead of waiting out an interval.
+    local tap_signal_timeout_s=5
+    local here_target rail_before deadline
+    here_target=$(rail_row_of 'Reclick here')
+    # The reach control is vacuous when the rail cursor already sits on the tapped row, so read it first and step it off with Home when it does.
+    rail_before=$(ipc railCursor)
+    if [[ "$rail_before" == "$here_target" ]]; then
+        key -k Tab >/dev/null; settle
+        [[ "$(ipc focusView)" == "rail" ]] || fail "reclick: Tab did not reach the rail, focus is $(ipc focusView)"
+        key -k Home >/dev/null; settle
+        rail_before=$(ipc railCursor)
+        [[ "$rail_before" != "$here_target" ]] || fail "reclick: the rail cursor would not leave row $here_target, so the reach control stays vacuous"
+        key -k Escape >/dev/null; settle
+        [[ "$(ipc focusView)" == "list" ]] || fail "reclick: Escape did not leave the rail, focus is $(ipc focusView)"
+    fi
     local req cur sel cy
     req=$(ipc listRequests); cur=$(ipc cursor); sel=$(ipc selectedIndices); cy=$(ipc listContentY)
     (( cy > 0 )) || fail "reclick: row 40 left contentY at $cy, so the scroll assertion is vacuous"
-    click_rail_row "$(rail_row_of 'Reclick here')" left
-    # A rail tap resolves past Qt's 400 ms double-click interval (392 to 433 ms measured in AGENTS.md), so the no-op reads wait it out.
-    settle
-    sleep 0.6
-    [[ "$(ipc railCursor)" == "$(rail_row_of 'Reclick here')" ]] \
+    click_rail_row "$here_target" left
+    deadline=$(( $(date +%s%3N) + tap_signal_timeout_s * 1000 ))
+    while (( $(date +%s%3N) < deadline )); do
+        [[ "$(ipc railCursor)" == "$here_target" ]] && break
+        sleep 0.1
+    done
+    [[ "$(ipc railCursor)" == "$here_target" ]] \
         || fail "reclick: the rail tap never reached the rail, cursor is $(ipc railCursor)"
     [[ "$(ipc path)" == "$dir" ]] || fail "reclick: a rail click on the shown folder left $dir for $(ipc path)"
     [[ "$(ipc listRequests)" == "$req" ]] || fail "reclick: a rail click on the shown folder re-listed, $req then $(ipc listRequests)"
@@ -3604,16 +3621,23 @@ case_reclick() {
         || fail "reclick: columns setup left cursor $(ipc cursor) selected $(ipc selectedIndices)"
     req=$(ipc listRequests); cur=$(ipc cursor); sel=$(ipc selectedIndices); cy=$(ipc viewContentY)
     (( cy > 0 )) || fail "reclick: row 40 left the active column at $cy, so the scroll assertion is vacuous"
+    # Focus off the list first, so the tap has a signal to change: the pane press handler returns focus to the list.
+    key -k Tab >/dev/null; settle
+    [[ "$(ipc focusView)" == "rail" ]] || fail "reclick: Tab did not reach the rail, focus is $(ipc focusView)"
     local fx fy wx wy
     read -r fx fy <<< "$(ipc columnParentRowCentre 0)"
     [[ -n "$fy" ]] || fail "reclick: the parent column shows no row 0 for the lit aaa row"
     read -r wx wy _ww _wh < <(window_box) || fail "native window coordinates unavailable"
     omarchy-drive click "$((wx + fx))" "$((wy + fy))" left >/dev/null
-    # Same deferred-tap wait as the rail half: the lit-row tap resolves past the 400 ms double-click interval before the no-op reads.
+    deadline=$(( $(date +%s%3N) + tap_signal_timeout_s * 1000 ))
+    while (( $(date +%s%3N) < deadline )); do
+        [[ "$(ipc focusView)" == "list" ]] && break
+        sleep 0.1
+    done
+    [[ "$(ipc focusView)" == "list" ]] \
+        || fail "reclick: the parent-column tap never reached the pane, focus is $(ipc focusView)"
+    # One turn for the release's activate to run before the no-op reads.
     settle
-    sleep 0.6
-    [[ -n "$(ipc columnParentRowCentre 0)" ]] \
-        || fail "reclick: the lit parent row is gone, so the tap may have landed on no row at all"
     [[ "$(ipc path)" == "$dir/aaa" ]] || fail "reclick: a tap on the lit parent row left $dir/aaa for $(ipc path)"
     [[ "$(ipc listRequests)" == "$req" ]] || fail "reclick: a tap on the lit parent row re-listed, $req then $(ipc listRequests)"
     [[ "$(ipc cursor)" == "$cur" ]] || fail "reclick: a tap on the lit parent row moved the cursor to $(ipc cursor)"
