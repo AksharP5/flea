@@ -57,8 +57,7 @@ function run(check) {
     check("and re-arming there waits out the day",
         RecentDates.msUntilMidnight(at(2026, 9, 24, 0, 1, 0)), 24 * 60 * 60 * 1000 - 60000)
 
-    // The wiring the window carries: one midnight timer for the whole window, one numeric compare per row, no per-row timer or Date.
-    // The date cell is a plain Text inside Row.qml now, so the same behaviour is pinned against the row itself.
+    // One midnight timer for the whole window and one numeric compare per row, pinned against Row.qml's own date cell.
     var row = Source.source("ui/Row.qml")
     var viewState = Source.source("ui/ViewState.qml")
     check("Row draws the today lift itself", countRe(row, /RecentDates\.isRecent/g), 1)

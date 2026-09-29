@@ -79,7 +79,7 @@ Item {
     readonly property color dim: Qt.darker(Theme.color.foreground, 1.4)
     // One ink for the four cells, a lifted row taking foreground per Task 2, shared so one evaluation serves four.
     readonly property color cellInk: root.lifted || root.foregroundMetadata ? Theme.color.foreground : root.dim
-    // One dim for every dimmed child, so one ternary serves eight opacities instead of eight.
+    // A cut row dims its content, never the state fills, and every dimmed child reads this one value.
     readonly property real dimOpacity: root.clipMark === "scissors" ? Theme.disabledOpacity : 1
     // A thumbnail path is not a thumbnail: the cache file can be evicted between the pane's answer
     // and the decode, and a row whose Image failed to load has to be marked by its kind instead.
@@ -272,7 +272,7 @@ Item {
         }
     }
 
-    // The four metadata cells, one Text each, bound straight to the row with one shared ink and one shared dim.
+    // The four metadata cells bind straight to the row; a hidden column holds no text, because a laid-out Text costs memory drawn or not.
     Text {
         id: mode
         opacity: root.dimOpacity

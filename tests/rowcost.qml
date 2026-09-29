@@ -4,9 +4,7 @@ import QtQuick
 import Quickshell
 import "flea" as Flea
 
-// Rowcost: each list row and grid tile builds no more than it needs. One Row and one GridTile
-// are built the way ui/List.qml and ui/GridArea.qml build them, then each delegate's tree
-// (children and resources, recursively) is counted against the counts measured at 89115b45.
+// Rowcost: one Row and one GridTile, built as ui/List.qml and ui/GridArea.qml build them, are counted against the measured objects.
 ShellRoot {
     id: root
 

@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
-# A list row and a grid tile build no more than they need: one Row and one GridTile
-# are built the way the list and the grid build them, and their object trees are counted.
-# Offscreen and with no compositor, so this needs neither the display nor the display lock.
+# A list row and a grid tile build no more than they need, counted offscreen with no display or display lock.
 set -u
 . "$(dirname "$0")/../tools/flea-sandbox-guard"
 cd "$(dirname "$0")/.." || exit 1
@@ -29,7 +27,7 @@ output=$(env -u DISPLAY -u WAYLAND_DISPLAY -u HYPRLAND_INSTANCE_SIGNATURE \
     QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1 \
     timeout 20 qs -p "$test_root/config" 2>&1)
 
-# Sample input, one probe line: "  INFO qml: ROWCOST PASS row=24 grid=18"
+# Sample input, one probe line: "  INFO qml: ROWCOST PASS row=19 grid=14"
 pass_count=$(printf '%s\n' "$output" | grep -c 'ROWCOST PASS')
 fail_count=$(printf '%s\n' "$output" | grep -c 'ROWCOST FAIL')
 if [ "$pass_count" -ne 1 ] || [ "$fail_count" -ne 0 ]; then
