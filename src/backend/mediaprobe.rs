@@ -106,10 +106,7 @@ fn watchdog(pid: i32, sandbox_pid: Arc<std::sync::atomic::AtomicI32>, watch: Arc
         // Signalled with the lock still held, so no reap can free this pid underneath it.
         if !*reaped {
             // The group ends bwrap, and the sandbox pid ends the jailed tool --new-session hid from it.
-            let sandbox = sandbox_pid.load(std::sync::atomic::Ordering::SeqCst);
-            if sandbox > 0 {
-                unsafe { kill(sandbox, SIGKILL) };
-            }
+            crate::backend::jail::kill_sandbox(&sandbox_pid, pid);
             unsafe { kill(-pid, SIGKILL) };
         }
     })

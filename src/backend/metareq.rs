@@ -139,12 +139,8 @@ fn list_archive(path: &Path, formats: &Formats) -> Contents {
                 waited += step;
             }
             if !done.load(Ordering::Relaxed) {
-                // The GROUP ends bwrap, and the sandbox pid ends the tool --new-session hid from it.
-                // Safe: the child is still ours until wait() reaps it, and done gates that.
-                let sandbox = sandbox_pid.load(Ordering::SeqCst);
-                if sandbox > 0 {
-                    unsafe { kill(sandbox, SIGKILL) };
-                }
+                // The group ends bwrap and the sandbox pid ends the tool --new-session hid; the child is still ours until wait() reaps it.
+                crate::backend::jail::kill_sandbox(&sandbox_pid, pid);
                 unsafe { kill(-pid, SIGKILL) };
             }
         })
@@ -157,13 +153,9 @@ fn list_archive(path: &Path, formats: &Formats) -> Contents {
             return failed;
         }
     };
-    // A read cut short at its deadline is the one path where the tool is still alive, so the kills
-    // happen BEFORE the watchdog is stood down. Storing done first disarmed it exactly there.
+    // A read cut short at its deadline leaves the tool alive, so the kills happen BEFORE done stands the watchdog down.
     if contents.failed {
-        let sandbox = jailed.sandbox_pid.load(Ordering::SeqCst);
-        if sandbox > 0 {
-            unsafe { kill(sandbox, SIGKILL) };
-        }
+        crate::backend::jail::kill_sandbox(&jailed.sandbox_pid, jailed.child.id() as i32);
         unsafe { kill(-(jailed.child.id() as i32), SIGKILL) };
     }
     done.store(true, Ordering::Relaxed);

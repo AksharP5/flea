@@ -2784,6 +2784,8 @@ f037movefix moves five ceilings, each re-derived with `wc -l`: `src/backend/dura
 
 f037cancel moves two ceilings, each re-derived with `wc -l`: `src/backend/metareq.rs` 423 to 424 for the sandbox-pid watchdog kill beside the group kill, and `src/backend/thumbs.rs` 441 to 442 for the status-fd argv on the exec path; the kill tree itself is the new `src/backend/jail.rs` at 192, inside both budgets, `src/backend/sandbox.rs` keeps 300 inside the hard cap for the status-fd argv helper, and `src/backend/archivework.rs`, `src/backend/child.rs`, `src/backend/mediaprobe.rs`, `src/backend/workerlink.rs` and `src/tui/job.rs` stay inside their budgets.
 
+f037cancelfix moves three ceilings, each re-derived with `wc -l`: `src/backend/jail.rs` 192 to 387 for the CLOEXEC status pipe, the owned-pid kill gate with its tests, the pre-kill bounded wait with the EOF 0-store and the named reader and gone bounds; `src/backend/metareq.rs` 424 to 416 for routing both sandbox kills through that gate and collapsing two stacked comments; and `src/backend/mediaprobe.rs` 219 to 216 for routing its watchdog kill through the same gate. `src/backend/sandbox.rs` keeps 300 and `src/backend/child.rs` keeps 272, both re-derived, over the soft budget and under the hard cap.
+
 ## The key table is generated
 
 `keys.toml` at the repository root is the single source of truth for every binding.
@@ -3956,6 +3958,12 @@ The flags, and why each is there:
   needs.
 - `--proc /proc` and `--dev /dev` are the minimal kernel interfaces a decoder expects.
 - `--tmpfs /tmp` gives it scratch space that is discarded with the namespace.
+- `--json-status-fd 7` names the sandbox init: bwrap writes `{"child-pid": N}` there, so a cancel
+  landing during startup, before `--die-with-parent` is armed, kills that pid as well as bwrap
+  instead of leaving the tool running. The pipe is made with `pipe2` `O_CLOEXEC` and only fd 7
+  survives exec through the child's own `dup2`, so a spawn from any other backend thread mid-jail
+  inherits nothing; a reported pid is killed only while `/proc/<pid>/stat` still names this jail's
+  bwrap as its parent (field 4), and a forged one is refused.
 - `--ro-bind <input> <input>` is the one file it may read.
 - `--bind <out> <out>` is the one path it may write, which production makes the temp file itself.
 
@@ -4003,6 +4011,16 @@ and `glycin-thumbnailer` was re-checked against a 1x1 PNG when the pool started 
 caller may still pass a directory, which is the looser bind and what a thumbnailer that wrote
 to a temporary name and renamed would need; only those two thumbnailers were probed.
 
+**A cancel kills the sandbox init as well as bwrap (`src/backend/jail.rs`).** `spawn_jailed`
+learns the init pid from `--json-status-fd`, and `kill_tree` waits a bounded 200 ms (`STATUS_WAIT_MS`)
+for that pid when none is stored yet, SIGKILLs it only while `/proc/<pid>/stat` still names this
+jail's bwrap as its parent (field 4, so a forged pid is refused), then the launcher process group
+and the child, reaps bwrap and waits up to 2 s (`WAIT_GONE_SECS`) for the killed pid to vanish.
+The wait ends at once when the reader sees EOF, which it records as 0 when no pid arrived; there is
+no kill after the reap, since the kernel reparents the init there and no parent check can pass.
+The metareq and mediaprobe watchdogs kill through the same gate while the child is still alive,
+and the reader thread is built with `Builder::spawn`, whose error kills the started child and
+answers the caller's `NotStarted`.
 **A video the worker takes is confined without this argv.** `sandbox::wrap_worker` runs
 `flea --thumb-worker` under the same flags minus the two binds and minus `prlimit`, and each child
 it forks sets the same two limits itself through an `extern "C"` `setrlimit` from the system libc
