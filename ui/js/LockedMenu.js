@@ -9,6 +9,9 @@
 // ui/js/Menu.js INVENTORY order, one group, so the menu never reorders under its caller.
 var LOCKED_IDS = ["openTerminal", "permissions", "copypath"]
 
+// The bar's sentence when every locked id is hidden, naming the switch that brings them back.
+var LOCKED_REFUSAL = "Open in terminal, Permissions and Copy path are hidden in Settings > Menus."
+
 // Sample input: { lockedMode: 0o040700, hiddenActions: [] }
 function lockedEntries(p) {
     var out = [], group = ""
@@ -29,6 +32,11 @@ function lockedEntries(p) {
         out.push(entry)
     }
     return out
+}
+
+// Sample input: { lockedMode: 0o040700, hiddenActions: ["openTerminal", "permissions", "copypath"] }
+function lockedRefusal(p) {
+    return lockedEntries(p).length === 0 ? LOCKED_REFUSAL : ""
 }
 
 // The mode is the locked directory's own, so ownership decides: a denial on owner-readable

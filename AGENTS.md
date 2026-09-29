@@ -2873,6 +2873,8 @@ e26 moves one ceiling, re-derived with `wc -l`: `ui/Row.qml` 454 to 465 for the 
 e30 moves one ceiling, re-derived with `wc -l`: `ui/Row.qml` 465 to 472 for the advloop round 2 follow-ups (the drop reserve measured from the label's own implicitWidth with the hidden-cell room subtracted, so a fitting name keeps its width, and the dropExtra seam beside the four rowcost readers).
 e31 moves three ceilings, each re-derived with `wc -l`: `ui/ColumnPane.qml` 346 to 348 for the two per-column budgets (`nameBudgetPlain` without the chevron slot, `nameBudgetChevron` with it) and the delegate pick by the `showChevron` condition; `tests/columnrow-geom.qml` 391 to 396 for the dir row at index 2 with `selectedIndex: 2`, the budget-param fit checks and the plain plus chevron tight checks at 366 and 853, active and peek; `tests/js/names.js` 217 to 221 for the two-budget pins and the chosen-directory handoff check.
 
+w037w26 moves one ceiling, re-derived with `wc -l`: `ui/ContextMenu.qml` 579 to 582 for the locked-empty refusal gate (the `lockedRefusal` read in `openLocked` that emits `refused` instead of placing an empty frame); `ui/js/LockedMenu.js` 43 to 51 for `LOCKED_REFUSAL` with `lockedRefusal`, `tests/js/menu.js` 263 to 273 for the shipped-hidden refusal pins, all inside their budgets.
+
 ## The key table is generated
 
 `keys.toml` at the repository root is the single source of truth for every binding.

@@ -216,6 +216,9 @@ Item {
     // below acts on that folder alone, through ui/Pane.qml's locked dispatch rather than the
     // snapshot the cursor rows take.
     function openLocked(path, mode, scenePoint) {
+        // An empty locked menu opens no frame; the bar names the Menus switch that brings the rows back.
+        var refusal = LockedMenu.lockedRefusal({ lockedMode: mode, hiddenActions: ViewState.menuHidden })
+        if (refusal.length > 0) { root.refused(refusal); return }
         root.clearRail()
         root.forHeader = false
         root.hasRow = false

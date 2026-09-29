@@ -187,6 +187,16 @@ function run(check) {
           refusal(entry(unreadable, "permissions")), "true|true|undefined")
     check("hiding Open in terminal takes it off the Locked tile as well",
           entry(LockedMenu.lockedEntries({ lockedMode: 0o040000, hiddenActions: ["openTerminal"] }), "openTerminal").action, undefined)
+    var shippedHidden = ["delete", "openTerminal", "placeMenu", "runScript", "moveto", "copyto", "properties", "permissions", "copypath", "extThumbs"]
+    check("the shipped hidden set leaves the Locked tile with no row",
+          LockedMenu.lockedEntries({ lockedMode: 0o040000, hiddenActions: shippedHidden }).length, 0)
+    check("and it refuses with the Menus switch sentence",
+          LockedMenu.lockedRefusal({ lockedMode: 0o040000, hiddenActions: shippedHidden }),
+          "Open in terminal, Permissions and Copy path are hidden in Settings > Menus.")
+    check("one row shown yields that row alone",
+          actions(LockedMenu.lockedEntries({ lockedMode: 0o040000, hiddenActions: ["openTerminal", "permissions"] })), "copypath")
+    check("and it refuses nothing then",
+          LockedMenu.lockedRefusal({ lockedMode: 0o040000, hiddenActions: ["openTerminal", "permissions"] }), "")
     check("menu fits at pointer", Menu.clamp(20, 80, 300), 20)
     check("menu flips before shifting", Menu.clamp(270, 80, 300), 190)
     check("oversized menu pins to near edge", Menu.clamp(30, 500, 300), 0)

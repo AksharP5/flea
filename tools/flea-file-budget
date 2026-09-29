@@ -55,7 +55,7 @@ tests/js/status.js 354
 ui/Backend.qml 431
 ui/ChromeBar.qml 478
 ui/ColumnsArea.qml 440
-ui/ContextMenu.qml 579
+ui/ContextMenu.qml 582
 ui/ConvertDialog.qml 440
 ui/Ipc.qml 818
 ui/NetworkDialog.qml 449
