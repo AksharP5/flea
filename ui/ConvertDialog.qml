@@ -1,7 +1,6 @@
 import QtQuick
 import qs.Commons
 import "." as Flea
-import "js/Buttons.js" as Buttons
 import "js/Convert.js" as Convert
 
 // The one popup in the whole design. Every other operation answers in the status bar; this one asks two questions first, so it is the exception the operations design names rather than a pattern.
