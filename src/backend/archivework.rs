@@ -18,23 +18,23 @@ use std::time::{Duration, Instant};
 pub(crate) const WORK_PREFIX: &str = ".flea-work-";
 // A cancel is observed within this; a killed child is reaped on the next round.
 const CANCEL_STEP: Duration = Duration::from_millis(50);
+// How long a cancel waits for the jail's last writer to reach EOF before it answers.
+const CANCEL_DRAIN_SECS: u64 = 10;
+// The EOF wait polls at this step, so a fast EOF answers promptly rather than at the bound.
+const CANCEL_DRAIN_STEP: Duration = Duration::from_millis(10);
 
 pub struct Work {
     pub dir: PathBuf,
 }
 
-// Archive and convert run concurrently by design, so the pid alone does not name a job: two of them
-// beside the same destination would claim one path, and the second's cleanup would destroy the
-// first's in-flight output. The counter is what makes a name belong to one job.
+// Concurrent jobs share a destination, so a counter names each work directory rather than the pid alone.
 static WORK_SEQ: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
-// A name already taken means a leftover from a killed run, and stepping past it is bounded so a
-// directory full of them cannot spin.
+// A taken name is a killed run's leftover, so the search for a free one is bounded.
 const WORK_ATTEMPTS: usize = 64;
 
 impl Work {
-    // create_dir, not create_dir_all: a name already taken is a collision and must never merge, and
-    // create_new semantics are also what stops this from adopting somebody else's live directory.
+    // create_dir alone: a taken name is a collision and must never merge with a live directory.
     pub fn new(beside: &Path, tag: &str) -> Result<Work, FleaError> {
         let mut last = String::new();
         for _ in 0..WORK_ATTEMPTS {
@@ -42,8 +42,7 @@ impl Work {
             let dir = beside.join(format!("{}{}-{}-{}", WORK_PREFIX, tag, std::process::id(), seq));
             match std::fs::create_dir(&dir) {
                 Ok(()) => return Ok(Work { dir }),
-                // Nothing is ever removed here: a name in use may be a live sibling's, and the only
-                // safe answer to a taken name is a different name.
+                // A taken name may be a live sibling's, so the only safe answer is a different name.
                 Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
                     last = dir.to_string_lossy().to_string();
                 }
@@ -75,6 +74,9 @@ fn signal_name(signal: i32) -> Option<&'static str> {
     }
 }
 
+// bwrap renders a tool the kernel killed as exit 128+n, so this offset recovers the signal.
+const BWRAP_SIGNAL_BASE: i32 = 128;
+
 // Issue #211: stderr's last non-blank line diagnoses a bad archive; otherwise the status names the signal.
 fn failure_message(what: &str, status: &ExitStatus, stderr: &str) -> String {
     // A blank line is not a diagnosis.
@@ -90,15 +92,14 @@ fn failure_message(what: &str, status: &ExitStatus, stderr: &str) -> String {
     }
     match status.code() {
         // 128+n is bwrap's rendering of a signal; an unknown one stays an exit status.
-        Some(code) if signal_name(code - 128).is_some() => killed(code - 128),
+        Some(code) if signal_name(code - BWRAP_SIGNAL_BASE).is_some() => killed(code - BWRAP_SIGNAL_BASE),
         Some(code) => format!("the {} tool exited with status {}", what, code),
         // Unreachable in practice; this function always answers a sentence rather than panicking.
         None => format!("the {} tool failed", what),
     }
 }
 
-// Success is read off the filesystem; `what` names the operation so a convert failure says convert.
-// Only the cancellable extract runs uncapped; compress and convert keep the decoder CPU cap.
+// Success is read off the filesystem; archive jobs run uncapped and cancellable, convert keeps the decoder CPU cap.
 pub fn run_boxed(what: &str, inner: Vec<String>, read_only: &Path, writable: &Path) -> Result<(), FleaError> {
     run_boxed_inner(what, inner, read_only, writable, Some(sandbox::CPU_SECONDS))
 }
@@ -131,6 +132,17 @@ fn run_boxed_inner(what: &str, inner: Vec<String>, read_only: &Path, writable: &
     Err(op_err(what, "", &failure_message(what, &out.status, &stderr)))
 }
 
+
+// A writer past the kill can still hold stderr open, and its EOF means every writer exited.
+fn drain_reader(reader: std::thread::JoinHandle<String>) {
+    let eof = Instant::now() + Duration::from_secs(CANCEL_DRAIN_SECS);
+    while !reader.is_finished() && Instant::now() < eof {
+        std::thread::sleep(CANCEL_DRAIN_STEP);
+    }
+    if reader.is_finished() {
+        reader.join().ok();
+    }
+}
 
 // run_boxed, watched for a cancel: kill and reap here, so nothing is renamed and stderr is drained.
 pub fn run_boxed_cancellable(what: &str, inner: Vec<String>, read_only: &Path, writable: &Path,
@@ -165,8 +177,8 @@ fn run_boxed_cancellable_inner(what: &str, inner: Vec<String>, read_only: &Path,
     });
     loop {
         if cancel.load(Ordering::Relaxed) {
-            // Kills the sandbox init as well as bwrap, and never waits for the stderr drain.
             crate::backend::jail::kill_tree(&mut jailed);
+            drain_reader(reader);
             return Err(op_err(what, "", "cancelled"));
         }
         match jailed.child.try_wait() {
@@ -197,11 +209,7 @@ pub fn is_empty_dir(dir: &Path) -> bool {
     std::fs::read_dir(dir).map(|mut e| e.next().is_none()).unwrap_or(true)
 }
 
-// How many members the index names that should have produced something in the destination, per
-// Row::produces_destination_entry, or None when the index could not be read at all. None is the
-// honest answer for a listing that failed, timed out or was truncated, because a count of zero from a
-// read that never finished is indistinguishable from an archive holding nothing, and reading the
-// first as the second is what restored the defect this check exists for.
+// How many members the index names that should appear in the destination, or None for an index that could not be read: a zero from an unfinished read is not an empty result.
 #[cfg(test)]
 pub fn archive_produced_count(formats: &Formats, archive: &Path) -> Option<usize> {
     let cancel = AtomicBool::new(false);
@@ -227,8 +235,7 @@ fn archive_produced_count_inner(inner: Vec<String>, spec: ListSpec, read_only: &
     }
     let mut full = sandbox::wrap_readonly(&inner, read_only);
     sandbox::add_status(&mut full, inner.len());
-    // Streamed, not .output(): buffering the whole index here would contradict the streaming
-    // contract the parser exists for, and a 200k-entry archive is exactly the case that motivated it.
+    // Streamed, not .output(): a 200k-entry index must never be buffered whole.
     let mut jailed = match crate::backend::jail::spawn_jailed(&full, |cmd| {
         cmd.stdin(std::process::Stdio::null());
         cmd.stdout(std::process::Stdio::piped());

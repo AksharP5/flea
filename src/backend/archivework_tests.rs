@@ -1,4 +1,6 @@
 use super::*;
+use crate::backend::archive::Formats;
+use crate::backend::archiveops::compress;
 use crate::backend::testdir::TestDir;
 
 #[test]
@@ -129,18 +131,20 @@ fn a_cancelled_index_reader_kills_and_reaps_a_child_blocked_on_stdout() {
     assert!(!proc_entry.exists(), "the blocked verification child was not reaped");
 }
 
-// Issue #211 correction: only extract runs uncapped, so a 3 s burner completes there and not boxed (1 s seam).
+// Issue #211 correction: only the archive jail runs uncapped, so a probe asserting no CPU cap
+// completes there and the same 3 s burner is stopped boxed (1 s seam). The probe is the point: a
+// burner that merely finishes cannot go red, because it finishes under --cpu=30 too.
 #[test]
 fn a_job_past_the_thumbnail_cpu_cap_completes_uncapped_but_not_boxed() {
     if crate::backend::sandboxprobe::skipped() { return; }
     let d = TestDir::new("archcpucap");
     let work = Work::new(d.path(), "cpu").expect("work");
+    let cancel = AtomicBool::new(false);
+    run_boxed_cancellable("archive", uncapped_probe(), d.path(), &work.dir, &cancel)
+        .expect("the archive jail carries no CPU cap");
     // Burns about 3 CPU seconds, then exits 0: past a 1 s cap, well under none.
     let burner = || vec!["/usr/bin/python3".to_string(), "-c".to_string(),
         "import time; s=time.time(); x=0\nwhile time.time()-s < 3: x+=1".to_string()];
-    let cancel = AtomicBool::new(false);
-    run_boxed_cancellable("archive", burner(), d.path(), &work.dir, &cancel)
-        .expect("an extract past the thumbnail cap still completes");
     let stopped = run_boxed_with_cpu("archive", burner(), d.path(), &work.dir, 1).unwrap_err();
     assert!(stopped.msg.contains("killed by signal"),
             "a boxed job past its bound must be stopped, not silent: {}", stopped.msg);
@@ -160,4 +164,107 @@ fn two_work_directories_beside_the_same_destination_never_share_a_path() {
     assert!(first.dir.join("in-flight").is_file(), "a third job must not destroy either");
     assert_ne!(third.dir, first.dir);
     assert_ne!(third.dir, second.dir);
+}
+
+// bsdtar builds the fixtures and runs inside the jail, which binds /usr read-only, so a host
+// without it can build neither. Skips the way sandboxprobe does, naming the test it belongs to.
+fn bsdtar_or_skip() -> bool {
+    if std::process::Command::new("bsdtar").arg("--version").output().map(|o| o.status.success()).unwrap_or(false) {
+        return true;
+    }
+    let who = std::thread::current().name().unwrap_or("a sandboxed test").to_string();
+    let line = format!("SKIP {who}: no bsdtar on this box, so no archive fixture can be built\n");
+    let _ = std::io::Write::write_all(&mut std::io::stderr(), line.as_bytes());
+    false
+}
+
+// Exits 0 only where RLIMIT_CPU is unlimited, so a capped jail fails it outright.
+fn uncapped_probe() -> Vec<String> {
+    vec!["/usr/bin/python3".to_string(), "-c".to_string(),
+        "import resource,sys; sys.exit(0 if resource.getrlimit(resource.RLIMIT_CPU)[0]==resource.RLIM_INFINITY else 1)".to_string()]
+}
+
+// The compressor shares the extract's uncapped jail: the probe through the exact runner compress
+// calls reports no CPU cap, and a real compress through compress() still publishes.
+#[test]
+fn the_compressor_shares_the_extracts_uncapped_jail() {
+    if crate::backend::sandboxprobe::skipped() || !bsdtar_or_skip() { return; }
+    let d = TestDir::new("archcompressjail");
+    let work = Work::new(d.path(), "cpu").expect("work");
+    let cancel = AtomicBool::new(false);
+    run_boxed_cancellable("archive", uncapped_probe(), d.path(), &work.dir, &cancel)
+        .expect("the archive jail carries no CPU cap");
+    let formats = Formats::from_tools(true, true);
+    d.dir("src");
+    d.file("src/a.txt", "body");
+    let dest = d.join("out.zip");
+    compress(&formats, d.path(), &["src".to_string()], "zip", &dest).expect("a small compress publishes");
+    assert!(dest.is_file(), "and its destination really landed");
+}
+
+// X1: a cancel answers only after the jail's last writer reaches EOF, bounded. A sleeping stdout
+// writer stands in for a writer past the kill; no jail here, so this runs everywhere.
+#[test]
+fn a_cancel_drains_the_last_writer_before_it_answers() {
+    let mut writer = std::process::Command::new("/usr/bin/sleep")
+        .arg("1")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .expect("sleep did not start");
+    let out = writer.stdout.take().expect("piped stdout");
+    let reader = std::thread::spawn(move || {
+        let mut out = out;
+        let mut text = String::new();
+        std::io::Read::read_to_string(&mut out, &mut text).ok();
+        text
+    });
+    let began = Instant::now();
+    drain_reader(reader);
+    let waited = began.elapsed();
+    let _ = writer.wait();
+    assert!(waited >= Duration::from_millis(900), "the drain answered before the writer's EOF, {waited:?}");
+    assert!(waited < Duration::from_secs(CANCEL_DRAIN_SECS), "the drain waited past its bound, {waited:?}");
+}
+
+// No live process still carries the token in its command line after the kill and the reap.
+fn no_cmdline_carries(token: &str) -> bool {
+    let Ok(proc_) = std::fs::read_dir("/proc") else { return true };
+    for entry in proc_.flatten() {
+        if !entry.file_name().to_string_lossy().bytes().all(|b| b.is_ascii_digit()) { continue; }
+        if let Ok(cmd) = std::fs::read(entry.path().join("cmdline")) {
+            if String::from_utf8_lossy(&cmd).contains(token) { return false; }
+        }
+    }
+    true
+}
+
+// The cancel answers through the real jail with a grandchild outside the killed group: the tool
+// is reaped by token and the answer stays within the drain bound either way.
+#[test]
+fn a_cancel_reaps_a_grandchild_outside_the_killed_group() {
+    if crate::backend::sandboxprobe::skipped() { return; }
+    let d = TestDir::new("archcancelsetsid");
+    let work = Work::new(d.path(), "set").expect("work");
+    let token = format!("40.{}", std::process::id());
+    let inner = vec!["/usr/bin/sh".to_string(), "-c".to_string(),
+        format!("/usr/bin/setsid /usr/bin/sleep 1 & exec /usr/bin/sleep {token}")];
+    let cancel = Arc::new(AtomicBool::new(false));
+    let flag = Arc::clone(&cancel);
+    let started = Arc::new(AtomicU32::new(0));
+    let child_pid = Arc::clone(&started);
+    let notifier = std::thread::spawn(move || {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while child_pid.load(Ordering::SeqCst) == 0 && Instant::now() < deadline {
+            std::thread::yield_now();
+        }
+        flag.store(true, Ordering::Relaxed);
+    });
+    let began = Instant::now();
+    let error = run_boxed_cancellable_observed("archive", inner, d.path(), &work.dir, &cancel, &started).unwrap_err();
+    notifier.join().expect("the cancellation notifier finished");
+    assert_eq!(error.msg, "cancelled");
+    assert!(began.elapsed() < Duration::from_secs(CANCEL_DRAIN_SECS), "a cancelled job was waited out");
+    assert!(no_cmdline_carries(&token), "the jailed tool outlived its cancel carrying {token}");
 }

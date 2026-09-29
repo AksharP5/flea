@@ -19,11 +19,7 @@ const BWRAP_FLAGS: &[&str] = &[
     "--setenv",
     "LC_ALL",
     "C.UTF-8",
-    // Issue #17, CoreyH's second report: glibc gives each thread that mallocs its own arena and
-    // reserves 64 MiB of address space for it whatever it uses, up to eight per core. The tools in
-    // here thread on the core count, so a 32-core box reserves the whole 2 GiB cap in arenas alone
-    // and the next thread stack cannot map: glycin aborts, and ImageMagick dies with nothing on
-    // stderr. Capping the arenas is what removes those reservations; the tools keep their threads.
+    // Threaded tools reserve whole arenas per thread, so MALLOC_ARENA_MAX=2 keeps them mappable under the 2 GiB cap (issue #17).
     "--setenv",
     "MALLOC_ARENA_MAX",
     "2",
@@ -60,8 +56,7 @@ pub fn available() -> bool {
     available_on(&std::env::var("PATH").unwrap_or_default())
 }
 
-// Split from available() so a test can ask the rule without setting PATH for every thread beside it.
-// Sample input: "/usr/local/bin:/usr/bin:/bin"
+// Split from available() so a test can probe the rule; sample input: "/usr/local/bin:/usr/bin:/bin".
 fn available_on(path: &str) -> bool {
     let has = |prog: &str| {
         path.split(':')
@@ -121,8 +116,7 @@ pub fn wrap_worker(inner: &[String], exe: &Path) -> Vec<String> {
     a
 }
 
-// The same boundary with nothing writable at all, for a probe that answers on stdout rather than
-// into a file. ffprobe parses the same untrusted media a thumbnailer does and gets the same jail.
+// The same boundary with nothing writable, for a probe answering on stdout: ffprobe parses untrusted media too.
 pub fn wrap_readonly(inner: &[String], input: &Path) -> Vec<String> {
     let head_and_binds = 8;
     let mut a: Vec<String> = Vec::with_capacity(inner.len() + BWRAP_FLAGS.len() + head_and_binds);
@@ -154,8 +148,7 @@ mod tests {
 
     // Written out rather than derived from the constant: a test that recomputes the value it checks cannot fail when that value is wrong.
     const TWO_GIB: &str = "--as=2147483648";
-    // The same 2 GiB as the kernel reports it, written out for the same reason: the argv above and the
-    // limit below are two spellings of one number and a test derived from either could not see it change.
+    // The kernel's own spelling of 2 GiB, written out so neither spelling can drift unseen.
     const TWO_GIB_TEXT: &str = "2147483648";
     // /proc reports VmPeak and VmRSS in kibibytes, and the reservations below are sized in mebibytes.
     const KIB_PER_GIB: u64 = 1024 * 1024;

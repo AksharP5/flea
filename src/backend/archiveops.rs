@@ -13,13 +13,8 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 // One archive out of a selection that all shares a parent, which is what a listing selection is.
-pub fn compress(
-    formats: &Formats,
-    parent: &Path,
-    names: &[String],
-    format: &str,
-    dest: &Path,
-) -> Result<(), FleaError> {
+pub fn compress(formats: &Formats, parent: &Path, names: &[String], format: &str,
+                dest: &Path) -> Result<(), FleaError> {
     if dest.symlink_metadata().is_ok() {
         return Err(op_err("archive", &dest.to_string_lossy(), "that destination already exists"));
     }
@@ -29,7 +24,10 @@ pub fn compress(
         Some(a) => a,
         None => return Err(op_err("archive", format, "this box offers no tool for that format")),
     };
-    run_boxed("archive", inner, parent, &work.dir)?;
+    // Compress has no operator cancel yet, so this flag is never set.
+    let cancel = AtomicBool::new(false);
+    // Uncapped like the extract: a legitimate compress past 30 CPU seconds is work, not a runaway.
+    run_boxed_cancellable("archive", inner, parent, &work.dir, &cancel)?;
     if staged.symlink_metadata().is_err() {
         return Err(op_err("archive", format, "the archive tool wrote nothing"));
     }

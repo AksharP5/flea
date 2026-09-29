@@ -3910,10 +3910,13 @@ accepted, because the rung here is the smallest thing that works and the number 
 when somebody brings a measurement. It is still finite and still refuses a decompression
 bomb.
 
-**Only the extract runs without the CPU cap, and that is issue #211.** `wrap` is
+**Extract and compress run without the CPU cap, and that is issue #211.** `wrap` is
 the decoder's wrapper; `sandbox::wrap_archive` is the one `run_boxed_cancellable` builds for
-extract, while `run_boxed` (compress and convert) keeps the decoder's `--cpu=30`, because neither
-has a cancel and convert decodes untrusted input. For the rest this paragraph stands as written:
+both archive jobs, while `run_boxed` (convert alone now) keeps the decoder's `--cpu=30`,
+because convert decodes untrusted input and has no cancel. A legitimate compress past 30 CPU
+seconds is work rather than a runaway, the ticket's own finding for extract. Compress runs
+uncapped on that same runner, and an operator cancel for it is post-0.4.0 design work. For
+the rest this paragraph stands as written:
 it is the same flags, the same
 read-only input, the same single writable path and the same 2 GiB address-space cap with the `--cpu`
 argument left out, `prlimit` still outermost so that cap still arrives. The ticket is a 55 GiB Zip64,
