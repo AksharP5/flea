@@ -37,10 +37,10 @@ function names(list) {
     return out
 }
 
-// A stub pane for Nav.showing, which is what backs ChromeBar's showingPath binding.
-function showingPane(path, state, inFlight) {
-    return { path: path, listInFlight: inFlight, searchMode: "",
-             trash: { opened: false }, listingState: state }
+// A stub pane for Nav.pathFailed, which is what backs ChromeBar's pathFailed binding.
+function showingPane(path, state, inFlight, trashOpened, searchMode) {
+    return { path: path, listInFlight: inFlight, searchMode: searchMode || "",
+             trash: { opened: trashOpened === true }, listingState: state }
 }
 
 function run(check) {
@@ -113,23 +113,43 @@ function run(check) {
     check("an empty line is not a refusal, so it stays silent", PathBar.refused("   "), false)
     check("an ordinary path is not a refusal either", PathBar.refused("/etc"), false)
 
-    // The re-typed-folder rule, wired as ChromeBar binds it: Nav.showing feeds shouldNavigate.
-    check("an error state is not shown", Nav.showing(showingPane(HOME, "error", false), HOME), false)
-    check("a ready state is shown", Nav.showing(showingPane(HOME, "ready", false), HOME), true)
-    check("an empty state is shown", Nav.showing(showingPane(HOME, "empty", false), HOME), true)
-    check("a listing in flight is not shown", Nav.showing(showingPane(HOME, "ready", true), HOME), false)
-    check("an error state on the same path navigates",
-          PathBar.shouldNavigate(HOME, HOME, Nav.showing(showingPane(HOME, "error", false), HOME)), true)
+    // The re-typed-folder rule, wired as ChromeBar binds it: Nav.pathFailed feeds shouldNavigate.
+    check("an error listing failed", Nav.pathFailed(showingPane(HOME, "error", false)), true)
+    check("a ready listing did not fail", Nav.pathFailed(showingPane(HOME, "ready", false)), false)
+    check("an empty listing did not fail", Nav.pathFailed(showingPane(HOME, "empty", false)), false)
+    check("a listing in flight did not fail", Nav.pathFailed(showingPane(HOME, "error", true)), false)
+    check("Trash never retries", Nav.pathFailed(showingPane(HOME, "error", false, true)), false)
+    check("a search never retries", Nav.pathFailed(showingPane(HOME, "error", false, false, "query")), false)
+    check("an error on the same path navigates",
+          PathBar.shouldNavigate(HOME, HOME, Nav.pathFailed(showingPane(HOME, "error", false))), true)
     check("a ready listing on the same path is a no-op",
-          PathBar.shouldNavigate(HOME, HOME, Nav.showing(showingPane(HOME, "ready", false), HOME)), false)
+          PathBar.shouldNavigate(HOME, HOME, Nav.pathFailed(showingPane(HOME, "ready", false))), false)
     check("an empty listing on the same path is a no-op",
-          PathBar.shouldNavigate("/etc", "/etc", Nav.showing(showingPane("/etc", "empty", false), "/etc")), false)
-    check("a listing in flight navigates to Nav.open, which refuses it",
-          PathBar.shouldNavigate(HOME, HOME, Nav.showing(showingPane(HOME, "ready", true), HOME)), true)
-    check("another path navigates settled or not",
+          PathBar.shouldNavigate("/etc", "/etc", Nav.pathFailed(showingPane("/etc", "empty", false))), false)
+    check("Trash on the same line is a no-op",
+          PathBar.shouldNavigate("Trash", "Trash", Nav.pathFailed(showingPane(HOME, "error", false, true))), false)
+    check("a search on the same path is a no-op",
+          PathBar.shouldNavigate(HOME, HOME, Nav.pathFailed(showingPane(HOME, "error", false, false, "query"))), false)
+    check("the same path in flight is a no-op",
+          PathBar.shouldNavigate(HOME, HOME, Nav.pathFailed(showingPane(HOME, "ready", true))), false)
+    check("another path navigates failed or not",
           PathBar.shouldNavigate("/etc", HOME, true) && PathBar.shouldNavigate("/etc", HOME, false), true)
+    check("a different path in flight still navigates to Nav.open, which refuses it",
+          PathBar.shouldNavigate("/etc", HOME, Nav.pathFailed(showingPane(HOME, "ready", true))), true)
     check("an empty line closes only",
           PathBar.shouldNavigate("", HOME, true) || PathBar.shouldNavigate("", HOME, false), false)
+    check("WindowBody binds the retry to the failed listing",
+          Source.source("ui/WindowBody.qml").indexOf("pathFailed: Nav.pathFailed(view.currentPane)") >= 0, true)
+    check("ChromeBar gates the commit on that flag",
+          Source.source("ui/ChromeBar.qml").indexOf("PathBar.shouldNavigate(target, root.path, root.pathFailed)") >= 0, true)
+    // Nav.open refuses while a listing is in flight, which is what a different-path Enter meets there.
+    var refused = { said: "", opened: false }
+    var flightPane = { listInFlight: true, path: HOME, history: [], forwardHistory: [],
+        message: function (text) { refused.said = text },
+        openWithoutHistory: function () { refused.opened = true } }
+    Nav.open(flightPane, "/etc")
+    check("a path entered in flight is refused", refused.said, "A directory is already loading.")
+    check("and no listing starts behind it", refused.opened, false)
 
     // Where a completion reads, which is the head of the line and never the half-typed leaf.
     check("the completion directory is the head of the line",

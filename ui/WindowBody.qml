@@ -114,8 +114,8 @@ Rectangle {
         anchors.top: parent.top
         path: view.currentPane.trash.opened ? "Trash"
             : view.currentPane.path
-        // Settled on the drawn path, so the bar keeps its same-path no-op; an error retries.
-        showingPath: Nav.showing(view.currentPane, view.currentPane.path)
+        // True only when the drawn path's listing failed, so the bar retries it and nothing else.
+        pathFailed: Nav.pathFailed(view.currentPane)
         home: view.currentPane.home
         canGoBack: view.currentPane.canGoBack
         canGoUp: view.currentPane.canGoUp

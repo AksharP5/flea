@@ -26,8 +26,7 @@ function messaged(sidebar, isError) {
     if (isError && sidebar) sidebar.focusOnOpen = false
 }
 
-// The Trash row's accent rung reads as "open", so it draws the cursor only while Trash is
-// open, while the rail has focus, or while the rail menu is open on it; leaving Trash darkens it.
+// The Trash row's accent reads as open, so the cursor shows only while Trash is open, focused, or menu-held.
 function trashCursor(trashActive, isCursor, focused, menuOnRow) {
     if (trashActive) return true
     if (!isCursor) return false

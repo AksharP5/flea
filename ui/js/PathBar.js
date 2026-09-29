@@ -194,15 +194,15 @@ function complete(text, names) {
     return { text: parts.head + tail, matches: matched.length }
 }
 
-// Sample input: shouldNavigate("/etc", "/etc", true) is false, the settled no-op.
+// Sample input: shouldNavigate("/etc", "/etc", false) is false, the settled no-op.
 // Whether a committed target lists again. The settled same-path no-op keeps the selection.
-function shouldNavigate(target, current, showing) {
+function shouldNavigate(target, current, failed) {
     // An empty line closes the bar and navigates nowhere, the rule commitEdit already kept.
     if (String(target).length === 0) {
         return false
     }
-    // The same path re-lists only when the pane is not settled on it, so an error retries.
-    if (String(target) === String(current) && showing) {
+    // The same path re-lists only when its listing failed, so an error retries and all else is a no-op.
+    if (String(target) === String(current) && !failed) {
         return false
     }
     return true
