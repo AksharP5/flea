@@ -5,6 +5,7 @@ arg=${1:-}
 if [ -n "$arg" ]; then tree=$(realpath -m -- "$arg") || exit 1; else tree=""; fi
 cd "$(dirname "$0")/.." || exit 1
 if [ -z "$tree" ]; then tree=$PWD; fi
+# The scan finds a margin in a 12-line window after an anchor, which grep cannot express, so it is python.
 python3 - "$tree" <<'PY'
 # Each check reads the literal the layout reads, so a margin moved in QML moves the number here.
 import re, sys
@@ -44,13 +45,17 @@ chrome = lines_of('ui/ChromeBar.qml')
 jump = lines_of('ui/PathJump.qml')
 
 slot = after(chrome, 'id: pathArea', r'anchors\.bottomMargin:\s*(.+?)\s*$')
+slotTopHits = after(chrome, 'id: pathArea', r'anchors\.topMargin:\s*(.+?)\s*$')
 frame_top = after(chrome, "rename editor's own frame", r'anchors\.topMargin:\s*(.+?)\s*$')
 frame_bot = after(chrome, "rename editor's own frame", r'anchors\.bottomMargin:\s*(.+?)\s*$')
-off = after(jump, 'y: root.parent', r'root\.parent\.height\s*\+\s*(Theme\.spacing\.hairline(?:\s*\*\s*\d+)?)')
+off = after(jump, 'y: root.parent', r'root\.parent\.height\s*\+\s*(.+?)\s*(?::\s*0\s*)?$')
 for label, hits in (('path slot bottom', slot), ('field top', frame_top),
                     ('field bottom', frame_bot), ('dropdown offset', off)):
     if len(hits) != 1:
         fail('expected one %s margin, found %d' % (label, len(hits)))
+if len(slotTopHits) > 1:
+    fail('expected at most one path slot top margin, found %d' % len(slotTopHits))
+slotTop = mult(slotTopHits[0][1]) if slotTopHits else 0
 
 slotBot, frameTop, frameBot, dropOff = (mult(slot[0][1]), mult(frame_top[0][1]),
                                         mult(frame_bot[0][1]), mult(off[0][1]))
@@ -59,7 +64,7 @@ if dropOff != slotBot:
     fail('the dropdown top misses the strip edge by %d hairline(s), so it covers the rule or floats' % (dropOff - slotBot))
 if gap != 2:
     fail('the field-to-dropdown gap is %d hairlines, the board draws 2' % gap)
-if frameTop != slotBot + frameBot:
-    fail('the field sits %d above and %d below centre, the board centres it' % (frameTop, slotBot + frameBot))
+if frameTop + slotTop != slotBot + frameBot:
+    fail('the field sits %d above and %d below centre, the board centres it' % (frameTop + slotTop, slotBot + frameBot))
 print('jump-gap: top=%d bottom=%d slot=%d off=%d gap=%d, the board draws 2' % (frameTop, frameBot, slotBot, dropOff, gap))
 PY

@@ -1232,15 +1232,21 @@ within1() { local got=$1 want=$2; (( got >= want - 1 && got <= want + 1 )); }
 scrolllane_bar() {
     local what="$1" view_right=$2 pad=$3 state bx by bw bh kx ky kw kh inset
     state=$(ipc scrollbarState)
+    [[ "$(jq -r '.visible' <<< "$state")" == "true" ]] \
+        || fail "scrolllane: $what bar is hidden, the fixture does not scroll this view"
     # Sample input: scrollbarState .rect prints "1234 200 12 800".
     read -r bx by bw bh <<< "$(jq -r '.rect' <<< "$state")"
     # Sample input: scrollbarState .knobRect prints "1236 200 8 100".
     read -r kx ky kw kh <<< "$(jq -r '.knobRect' <<< "$state")"
+    [[ "$bx" =~ ^-?[0-9]+$ && "$by" =~ ^-?[0-9]+$ && "$bw" =~ ^[0-9]+$ && "$bh" =~ ^[0-9]+$ ]] \
+        || fail "scrolllane: $what bar rect answered '$bx $by $bw $bh'"
+    [[ "$kx" =~ ^-?[0-9]+$ && "$ky" =~ ^-?[0-9]+$ && "$kw" =~ ^[0-9]+$ && "$kh" =~ ^[0-9]+$ ]] \
+        || fail "scrolllane: $what knob rect answered '$kx $ky $kw $kh'"
     (( bx + bw >= view_right - 1 && bx + bw <= view_right + 1 )) \
         || fail "scrolllane: $what bar ends at $((bx + bw)), the view at $view_right"
     (( bw == pad )) || fail "scrolllane: $what bar is $bw wide, the lane is $pad"
     inset=$(( bx + bw - (kx + kw) ))
-    (( inset >= 1 && inset <= 4 )) \
+    within1 "$inset" 2 \
         || fail "scrolllane: $what knob sits $inset px inside the lane, not 2"
     (( kx >= bx )) || fail "scrolllane: $what knob starts left of its lane"
 }
@@ -1250,6 +1256,8 @@ scrolllane_list() {
     local base=$1 pad=$2 ax ay aw ah rx ry rw rh area_right row_right left hx hw kind_right
     # Sample input: listAreaRect prints "0 100 732 500", rowRect 0 prints "14 100 718 37".
     read -r ax ay aw ah <<< "$(ipc listAreaRect)"
+    [[ "$ax" =~ ^-?[0-9]+$ && "$ay" =~ ^-?[0-9]+$ && "$aw" =~ ^[0-9]+$ && "$ah" =~ ^[0-9]+$ ]] \
+        || fail "scrolllane: base $base list listAreaRect answered '$ax $ay $aw $ah'"
     read -r rx ry rw rh <<< "$(ipc rowRect 0)"
     [[ "$rx" =~ ^-?[0-9]+$ && "$rw" =~ ^[0-9]+$ ]] \
         || fail "scrolllane: base $base list rowRect 0 answered '$rx $ry $rw $rh'"
@@ -1258,8 +1266,12 @@ scrolllane_list() {
         || fail "scrolllane: base $base rows end $((area_right - row_right)) px short of the view, not the $pad px lane"
     scrolllane_bar "base $base list" "$area_right" "$pad"
     left=$(ipc headerLeft)
+    [[ "$left" =~ ^-?[0-9]+$ ]] \
+        || fail "scrolllane: base $base list headerLeft answered '$left'"
     # Sample input: headerCellRect kind prints "602|130".
     IFS='|' read -r hx hw <<< "$(ipc headerCellRect kind)"
+    [[ "$hx" =~ ^-?[0-9]+$ && "$hw" =~ ^[0-9]+$ ]] \
+        || fail "scrolllane: base $base list headerCellRect kind answered '$hx|$hw'"
     kind_right=$((left + hx + hw))
     within1 "$kind_right" $((row_right - pad)) \
         || fail "scrolllane: base $base header Kind ends at $kind_right, rows end at $row_right with a $pad px padding"
@@ -1269,6 +1281,8 @@ scrolllane_list() {
 scrolllane_grid() {
     local base=$1 pad=$2 ax ay aw ah area_right columns tx ty tw th lx ly lw lh last_right
     read -r ax ay aw ah <<< "$(ipc listAreaRect)"
+    [[ "$ax" =~ ^-?[0-9]+$ && "$ay" =~ ^-?[0-9]+$ && "$aw" =~ ^[0-9]+$ && "$ah" =~ ^[0-9]+$ ]] \
+        || fail "scrolllane: base $base grid listAreaRect answered '$ax $ay $aw $ah'"
     area_right=$((ax + aw))
     columns=$(ipc gridColumns)
     [[ "$columns" =~ ^[0-9]+$ && "$columns" -ge 1 ]] \
@@ -1280,6 +1294,8 @@ scrolllane_grid() {
     last_right=$((lx + lw))
     (( last_right <= area_right - pad + 1 )) \
         || fail "scrolllane: base $base grid tiles reach $last_right, the lane starts at $((area_right - pad))"
+    (( last_right >= area_right - pad - tw )) \
+        || fail "scrolllane: base $base grid tiles end at $last_right, a tile short of the $((area_right - pad)) lane"
     (( columns * tw <= aw - pad )) \
         || fail "scrolllane: base $base $columns tiles at $tw px overrun the $aw px view less the $pad px lane"
     scrolllane_bar "base $base grid" "$area_right" "$pad"
@@ -1289,6 +1305,8 @@ scrolllane_grid() {
 scrolllane_columns() {
     local base=$1 pad=$2 ax ay aw ah col count rx ry rw rh
     read -r ax ay aw ah <<< "$(ipc listAreaRect)"
+    [[ "$ax" =~ ^-?[0-9]+$ && "$ay" =~ ^-?[0-9]+$ && "$aw" =~ ^[0-9]+$ && "$ah" =~ ^[0-9]+$ ]] \
+        || fail "scrolllane: base $base columns listAreaRect answered '$ax $ay $aw $ah'"
     count=$(ipc columnCount)
     [[ "$count" =~ ^[0-9]+$ && "$count" -ge 2 && "$count" -le 5 ]] \
         || fail "scrolllane: base $base columns draws $count columns"
@@ -1308,7 +1326,7 @@ case_scrolllane() {
     local dir="$fixture_root/scrolllane"
     sandbox_scratch "$dir"
     local i
-    for i in $(seq -w 1 30); do printf 'body\n' > "$dir/file-$i.txt"; done
+    for i in $(seq -w 1 200); do printf 'body\n' > "$dir/file-$i.txt"; done
     local fixture_home="$fixture_root/scrolllane-home" real_home="$HOME"
     fixture_home_make "$fixture_home"
     mkdir -p "$fixture_home/.config/omarchy"
@@ -1316,7 +1334,7 @@ case_scrolllane() {
     local base pad prev_pad="" pad_12="" pad_14=""
     for base in 12 14; do
         printf '[font]\nbase-size = %s\n' "$base" > "$fixture_home/.config/omarchy/shell.toml"
-        seed_ui_state "$fixture_root/scrolllane-state-$base" '{"view":"list"}'
+        seed_ui_state "$fixture_root/scrolllane-state-$base" '{"view":"list","columns":["name","mode","size","date","kind"]}'
         export HOME="$fixture_home"
         launch "$dir"
         export HOME="$real_home"
@@ -4417,7 +4435,7 @@ case_columnautofit() {
     # 999,950 bytes renders as "1000.0 kB", wider than the "1.5 GB" above, and sorts last so it starts off screen.
     truncate -s 999950 "$dir/zzz-wide.bin"
     # Kind alone is widened: every other column keeps its floor, so the set still draws whole.
-    seed_ui_state "$fixture_root/columnautofit-state" '{"view":"list","columnWidths":{"kind":200}}'
+    seed_ui_state "$fixture_root/columnautofit-state" '{"view":"list","columns":["name","mode","size","date","kind"],"columnWidths":{"kind":200}}'
     launch "$dir"
     wait_listing 405
     local before_mark before_w
@@ -4456,16 +4474,31 @@ case_columnautofit() {
     read -r cx cy <<< "$(ipc headerCellCentre size)"
     [[ -n "$cx" && -n "$cy" ]] || fail "columnautofit: the size header has no centre"
     IFS='|' read -r _x cell_w <<< "$(ipc headerCellRect size)"
+    [[ "$cell_w" =~ ^[0-9]+$ ]] \
+        || fail "columnautofit: the size header answered '$cell_w' before the first fit"
+    local size_before="$cell_w"
     edge_x=$(( cx - cell_w / 2 ))
     omarchy-drive click "$(( wx + edge_x ))" "$(( wy + cy ))" left --double >/dev/null
     settle
-    local narrow_w
+    local narrow_w narrow_stored
     # Sample input: "$(ipc headerCellRect size)" prints "400|70".
     IFS='|' read -r _x narrow_w <<< "$(ipc headerCellRect size)"
     printf 'COLUMNAUTOFIT size first=%s\n' "$narrow_w"
+    [[ "$narrow_w" =~ ^[0-9]+$ && "$narrow_w" != "$size_before" ]] \
+        || fail "columnautofit: the first size fit never ran, width stayed at $narrow_w from $size_before"
+    narrow_stored=""
+    for _attempt in $(seq 1 60); do
+        narrow_stored=$(jq -er '.columnWidths.size // empty' "$XDG_STATE_HOME/flea/ui.json" 2>/dev/null || true)
+        [[ "$narrow_stored" == "$narrow_w" ]] && break
+        sleep 0.05
+    done
+    [[ "$narrow_stored" == "$narrow_w" ]] \
+        || fail "columnautofit: ui.json remembers size as $narrow_stored, the header draws $narrow_w"
     local held_before held_after
     # Sample input: ipc listingWindowState | jq -r '.held' answers "12".
     held_before=$(ipc listingWindowState | jq -r '.held')
+    [[ "$held_before" =~ ^[0-9]+$ ]] \
+        || fail "columnautofit: the held window answered '$held_before' before G, not a row"
     key G >/dev/null
     settle
     for _attempt in $(seq 1 60); do
@@ -4474,7 +4507,8 @@ case_columnautofit() {
         [[ "$held_after" =~ ^[0-9]+$ && "$held_after" != "$held_before" ]] && break
         sleep 0.05
     done
-    [[ "$held_after" != "$held_before" ]] || fail "columnautofit: the held window never left the first screenful, held is $held_after"
+    [[ "$held_before" =~ ^[0-9]+$ && "$held_after" =~ ^[0-9]+$ && "$held_after" != "$held_before" ]] \
+        || fail "columnautofit: the held window never left the first screenful, held is $held_after from $held_before"
     read -r cx cy <<< "$(ipc headerCellCentre size)"
     IFS='|' read -r _x cell_w <<< "$(ipc headerCellRect size)"
     edge_x=$(( cx - cell_w / 2 ))
@@ -4489,32 +4523,59 @@ case_columnautofit() {
     [[ "$(ipc sortMark)" == "$before_mark" ]] \
         || fail "columnautofit: fitting size sorted, mark is $(ipc sortMark)"
 
-    # F4 fits every drawn column in one write: stored is seeded to the rail maximum no fit can produce, so every drawn column must change to what the header draws; a second F4 is a no-op.
-    "$flea_bin" --ui-state '{"columnWidths":{"mode":480,"size":480,"date":480,"kind":480}}' >/dev/null \
-        || fail "columnautofit: could not seed stored widths to the rail maximum"
+    # F4 fits every drawn column in one write. ViewState reads ui.json once at startup, so the
+    # seed is written while no window runs and the window is relaunched onto it; the seed width is
+    # a share of the measured list area, so all four drawn columns still fit at the fixture window.
+    read -r _f4_ax _f4_ay _f4_aw _f4_ah <<< "$(ipc listAreaRect)"
+    [[ "$_f4_aw" =~ ^[0-9]+$ && "$_f4_aw" -ge 600 ]] \
+        || fail "columnautofit: the list area answered '$_f4_ax $_f4_ay $_f4_aw $_f4_ah', so no fitting seed can be derived"
+    local _f4_seed=$(( _f4_aw / 8 ))
+    (( _f4_seed >= 49 && _f4_seed <= 480 )) \
+        || fail "columnautofit: the derived seed $_f4_seed is outside the stored width range"
+    kill_flea
+    "$flea_bin" --ui-state "{\"columnWidths\":{\"mode\":$_f4_seed,\"size\":$_f4_seed,\"date\":$_f4_seed,\"kind\":$_f4_seed}}" >/dev/null \
+        || fail "columnautofit: could not seed stored widths to the fitting width $_f4_seed"
+    launch "$dir"
+    wait_listing 405
     settle
     local _seed_ok=0
     for _attempt in $(seq 1 60); do
         _seed_ok=1
         for _f4key in mode size date kind; do
-            # Sample input: "$(ipc headerCellRect "$_f4key")" prints "602|480".
+            # Sample input: "$(ipc headerCellRect size)" prints "400|125" once the seed draws.
             IFS='|' read -r _x _drawn <<< "$(ipc headerCellRect "$_f4key")"
             [[ "$_drawn" =~ ^[0-9]+$ && "$_drawn" != "0" ]] || continue
-            [[ "$_drawn" == "480" ]] || _seed_ok=0
+            [[ "$_drawn" == "$_f4_seed" ]] || _seed_ok=0
         done
         (( _seed_ok == 1 )) && break
         sleep 0.05
     done
     (( _seed_ok == 1 )) \
-        || fail "columnautofit: seeding stored widths to 480 did not draw, widths $(ipc columnWidths)"
-    local widths_before widths_once widths_twice
+        || fail "columnautofit: seeding stored widths to $_f4_seed did not draw, widths $(ipc columnWidths)"
+    local widths_before widths_once widths_twice drawn_before drawn_after
     widths_before=$(ipc columnWidths)
+    drawn_before=""
+    for _f4key in mode size date kind; do
+        IFS='|' read -r _x _drawn <<< "$(ipc headerCellRect "$_f4key")"
+        [[ "$_drawn" =~ ^[0-9]+$ && "$_drawn" != "0" ]] || continue
+        drawn_before="$drawn_before $_f4key"
+    done
+    [[ -n "$drawn_before" ]] \
+        || fail "columnautofit: no drawn column to fit, widths $widths_before"
     key -k F4 >/dev/null
     settle
     widths_once=$(ipc columnWidths)
     printf 'COLUMNAUTOFIT f4=%s\n' "$widths_once"
     shot columnautofit-f4
-    local _f4key _drawn _have _was _fitted_n=0
+    drawn_after=""
+    for _f4key in mode size date kind; do
+        IFS='|' read -r _x _drawn <<< "$(ipc headerCellRect "$_f4key")"
+        [[ "$_drawn" =~ ^[0-9]+$ && "$_drawn" != "0" ]] || continue
+        drawn_after="$drawn_after $_f4key"
+    done
+    [[ "$drawn_after" == "$drawn_before" ]] \
+        || fail "columnautofit: F4 changed the drawn column set from [$drawn_before ] to [$drawn_after ]"
+    local _f4key _drawn _have _was _stored _fitted_n=0
     for _f4key in mode size date kind; do
         # Sample input: "$(ipc headerCellRect "$_f4key")" prints "602|70".
         IFS='|' read -r _x _drawn <<< "$(ipc headerCellRect "$_f4key")"
@@ -4524,6 +4585,14 @@ case_columnautofit() {
         _was=$(jq -r --arg k "$_f4key" '.[$k] // empty' <<< "$widths_before")
         [[ "$_have" == "$_drawn" ]] \
             || fail "columnautofit: F4 left $_f4key stored as '$_have' while the header draws $_drawn"
+        _stored=""
+        for _attempt in $(seq 1 60); do
+            _stored=$(jq -er --arg k "$_f4key" '.columnWidths[$k] // empty' "$XDG_STATE_HOME/flea/ui.json" 2>/dev/null || true)
+            [[ "$_stored" == "$_have" ]] && break
+            sleep 0.05
+        done
+        [[ "$_stored" == "$_have" ]] \
+            || fail "columnautofit: F4 left $_f4key stored as '$_have' in the window, ui.json remembers '$_stored'"
         [[ "$_have" != "$_was" ]] \
             || fail "columnautofit: F4 left $_f4key at its seeded '$_was', so it fitted nothing there"
         _fitted_n=$((_fitted_n + 1))
