@@ -110,8 +110,7 @@ Item {
         }
     }
 
-    // corner: a filename is arbitrary text, so PlainText, the same rule every name on this surface follows.
-    // Long names elide in the middle, so the extension stays visible, per Names040.
+    // corner: arbitrary filename text draws PlainText and elides in the middle per Names040.
     Text {
         id: nameText
         anchors.left: markSlot.right

@@ -1,7 +1,6 @@
 import QtQuick
 
-// One list-row metadata cell: the kind column. Root is the Text itself, so replacing
-// ui/Row.qml's inline kind Text with RowKind builds the same one object.
+// One list-row metadata cell: the kind column with the Text itself as root.
 Text {
     id: root
 

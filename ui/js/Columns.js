@@ -113,8 +113,7 @@ function cappedLimit(limit) {
     return n
 }
 
-// One integer for a window of this width, never above the limit. Resizing re-lays the
-// columns in one frame and re-reads nothing: the listing is untouched, only ancestors peek.
+// One integer for a window of this width; resizing re-lays columns without re-reading.
 function columnCountForWidth(width, limit) {
     var count = width < COUNT_NARROW_AT ? 2 : width < COUNT_4_AT ? 3
         : width < COUNT_5_AT ? 4 : 5

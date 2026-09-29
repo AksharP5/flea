@@ -32,8 +32,7 @@ function bounded(value, originY, contentHeight, viewHeight) {
     return Math.max(minimum, Math.min(maximum, value))
 }
 
-// The lane every scrolling listing reserves at its right edge: rowPaddingX wide, whether or not
-// the bar shows, so rows never reflow and the last column never sits under the bar.
+// The lane every listing reserves at its right edge so rows never reflow under the bar.
 // Sample input: lane(14) is 14, the board's own lane at base size 14.
 function lane(rowPaddingX) {
     return Math.max(0, Number(rowPaddingX) || 0)

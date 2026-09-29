@@ -210,8 +210,7 @@ Item {
             width: parent.width
             height: cancelButton.implicitHeight
 
-            // Variant A: the card's Cancel is the one control every dialog draws,
-            // a foreground label in a muted frame and never a muted x mark.
+            // Variant A: the card's Cancel is the one control every dialog draws.
             Flea.DialogButton {
                 id: cancelButton
                 anchors.right: parent.right

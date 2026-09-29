@@ -61,8 +61,7 @@ ListView {
         // index is where the row is drawn; listingIndex is the row the backend numbers, and under a
         // filter the two are different. Everything that leaves this delegate takes the listing one.
         readonly property int listingIndex: Filter.at(root.pane.shown, index)
-        // The scroll lane stays clear at the right edge, rowPaddingX wide whether or not the bar
-        // shows, so rows never reflow and the last column never sits under the bar.
+        // The scroll lane stays clear so rows never reflow under the bar.
         width: Scroll.contentWidth(root.width, Theme.spacing.rowPaddingX)
         row: root.pane.rowFor(listingIndex)
         cursor: listingIndex === root.pane.cursorIndex
@@ -72,8 +71,7 @@ ListView {
         hovered: hover.hovered
         thumb: root.thumbFor(listingIndex)
         selected: root.pane.isSelected(listingIndex)
-        // The clipboard's mark for this row, one lookup each, and only for rows a
-        // delegate is holding: the model is a count, so nothing off screen checks.
+        // The clipboard mark is looked up only for rows a delegate holds.
         clipMark: ClipMarks.markForRow(root.pane, cell.row ? cell.row.n : "", root.pane.clipboard)
         kindNames: root.pane.kindNames
         dirSize: root.dirSizeFor(listingIndex)

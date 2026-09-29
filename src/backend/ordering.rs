@@ -277,9 +277,7 @@ mod tests {
         assert!(!mid.partial && mid.bytes > 100, "the seed is the whole walk, not a floor");
     }
 
-    // Hidden files last, issue 70: with the flag on, a dotfile follows every visible entry for
-    // each of the four keys in both directions, and folders first still orders each block. Off,
-    // a leading dot sorts first, which is today's order.
+    // Hidden files last (issue 70): a dotfile follows every visible entry for each key in both directions.
     #[test]
     fn hidden_last_places_dotfiles_after_visible_for_every_key_in_both_directions() {
         let d = TestDir::new("ordering-hiddenlast");
@@ -289,8 +287,7 @@ mod tests {
         d.file(".bashrc", "x");
         d.file("photo.jpg", &"x".repeat(8));
         d.file(".shot.jpg", &"x".repeat(1024));
-        // Distinct mtimes interleaving hidden and visible, so no mtime order ties into name
-        // order: without them every entry shares one second and desc mirrors asc exactly.
+        // Distinct mtimes keep the mtime order from tying into name order.
         for (name, date) in [("notes.md", "2020-01-01"), ("Work", "2020-01-02"),
                              (".bashrc", "2020-01-03"), (".cache", "2020-01-04"),
                              ("photo.jpg", "2020-01-05"), (".shot.jpg", "2020-01-06")] {
@@ -338,13 +335,11 @@ mod tests {
                 }
             }
         }
-        // Folders first still orders each block: visible folders, visible files, hidden folders,
-        // hidden files, the board's own specimen order.
+        // Folders first orders each block: visible folders, visible files, hidden folders, hidden files.
         let mut l = pushed();
         ordered(&mut l, d.path(), &db, "name", false, true, false, true).unwrap();
         assert_eq!(names(&l), ["Work", "notes.md", "photo.jpg", ".cache", ".bashrc", ".shot.jpg"]);
-        // Both directions keep the partition: descending reverses inside each block, and folders
-        // still lead each block the way they do with the flag off.
+        // Both directions keep the partition; descending reverses only inside each block.
         let mut down = pushed();
         ordered(&mut down, d.path(), &db, "name", true, true, false, true).unwrap();
         assert_eq!(names(&down), ["Work", "photo.jpg", "notes.md", ".cache", ".shot.jpg", ".bashrc"]);

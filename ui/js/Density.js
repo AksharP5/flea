@@ -35,8 +35,7 @@ function glyphCap(pixels) {
     return Math.min(pixels, GLYPH_CAP)
 }
 
-// Grid and columns follow the same stop: the grid's vertical pad tracks the
-// density with Compact anchored at today's pad, so the shipped tiles hold.
+// The grid's vertical pad tracks density with Compact anchored at today's pad.
 var GRID_BASE = 0.5
 
 // Sample input: gridPadY(14, "compact") is 14, gridPadY(14, "tight") is 7.

@@ -11,8 +11,7 @@ Item {
     // A destructive action rests as the error label in a muted frame, never primary.
     property bool destructive: false
     property real horizontalPadding: Theme.spacing.gap
-    // An action this dialog cannot take right now. The ink says so and the press
-    // does nothing, rather than a live control that answers nothing.
+    // An unavailable action shows muted ink and its press does nothing.
     property bool available: true
     // The keyboard's own signal. Callers whose focus sits on a wrapper pass it down.
     property bool focused: root.activeFocus

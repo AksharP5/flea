@@ -10,8 +10,7 @@ Text {
     property real dateWidth: Theme.column.date
     property color ink: Theme.color.foreground
     property string cellText: ""
-    // The switch and the window-level local-midnight boundary from ViewState, plus
-    // this row's own backend mtime in seconds; the compare is one number, no Date.
+    // ViewState's switch and midnight boundary plus this row's mtime; the compare is one number.
     property bool highlightToday: false
     property double todayStart: 0
     property var mtime: null

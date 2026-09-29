@@ -1450,8 +1450,7 @@ label = "context menu"
 frontend = "all"
 context = "listing,rail"
 
-# ListColumns040: F4 fits every drawn list column to the widest held value, the keyboard
-# twin of the header's double click. GUI only: the terminal's columns are its own grid.
+# ListColumns040: F4 fits every drawn list column, the keyboard twin of the header's double click (GUI only).
 [[preset]]
 name = "all"
 mods = "none"

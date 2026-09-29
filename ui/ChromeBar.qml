@@ -304,8 +304,7 @@ Item {
 
         }
 
-        // The rename editor's own frame, at chrome scale: the ring says which strip has the
-        // keyboard, and the fill covers the two Texts underneath rather than relying on their visible.
+        // The rename editor's own frame covers the two Texts underneath at chrome scale.
         Rectangle {
             visible: root.editing
             anchors.fill: parent

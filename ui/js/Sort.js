@@ -32,11 +32,9 @@ function reverseOrder(by, desc) {
     return { key: by, desc: !desc }
 }
 
-// ui/Header.qml's click. Only ORDERS may leave this file, except the flyout's own forget row,
-// which names no order and returns its folder to the default instead of re-sorting it.
+// ui/Header.qml's click: only ORDERS leave this file except the forget row.
 function column(pane, key) {
-    // The flyout's last row, issue 179: forget the folder and list it again on the default.
-    // A browse, which lists without sorting, never reaches here and writes nothing.
+    // The flyout's last row (issue 179) forgets the folder and lists it on the default.
     if (key === "__default__") {
         if (pane.backend && pane.backend.forgetFolderSort)
             pane.backend.forgetFolderSort(pane.path)

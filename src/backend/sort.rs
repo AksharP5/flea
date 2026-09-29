@@ -113,8 +113,7 @@ pub fn sort_by_name(l: &mut Listing, desc: bool, hidden_last: bool) -> f64 {
     l.spans.sort_by(|a, b| {
         let an = &names[a.off as usize..(a.off + a.len) as usize];
         let bn = &names[b.off as usize..(b.off + b.len) as usize];
-        // Hidden entries follow every visible one in both directions, the way folders lead in
-        // both: neither partition reverses, only the names inside each block do.
+        // Hidden entries follow every visible one in both directions; only names inside each block reverse.
         if hidden_last {
             match (is_hidden(an), is_hidden(bn)) {
                 (true, false) => return Ordering::Greater,
@@ -267,8 +266,7 @@ mod tests {
         assert_eq!(ordered(&[".b", "a", ".a"]), vec![".a", ".b", "a"]);
     }
 
-    // Hidden files last: with the flag on a dotfile follows every visible entry in both
-    // directions, and folders first still leads each block. Off keeps the order above.
+    // Hidden files last: a dotfile follows every visible entry in both directions with folders first kept.
     #[test]
     fn hidden_last_keeps_dotfiles_after_visible_with_folders_first_on_and_off() {
         fn placed(names: &[(&str, bool)], desc: bool, hidden_last: bool) -> Vec<String> {

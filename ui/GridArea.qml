@@ -40,8 +40,7 @@ GridView {
     signal dirSizesApplied(var ask)
     signal dirSizesCancelled()
 
-    // Counted on the width less one gap, the inset that keeps a tile frame off both edge lines,
-    // and less the scroll lane, so no tile sits under the bar.
+    // Tile columns leave one gap, both edge insets and the scroll lane.
     readonly property int columns: GridGeometry.columnsFor(root.width, Theme.grid.minCellWidth,
         ViewState.thumbnailPixels, Theme.spacing.rowPaddingX, Theme.spacing.gap, Theme.spacing.rowPaddingX)
     readonly property int tileRows: Math.max(1, Math.ceil(root.pane.shownTotal / root.columns))
@@ -118,8 +117,7 @@ GridView {
         thumb: Thumbs.allowed(row, ViewState.thumbnailMode) ? Thumbs.fileFor(root.pane.thumbState, listingIndex) : ""
         renaming: listingIndex >= 0 && listingIndex === root.pane.renamingIndex
         renamePane: root.pane
-        // The clipboard's mark for this tile, one lookup each, and only for tiles a
-        // delegate is holding: the model is a count, so nothing off screen checks.
+        // The clipboard mark is looked up only for tiles a delegate holds.
         clipMark: ClipMarks.markForRow(root.pane, cell.row ? cell.row.n : "", root.pane.clipboard)
         onRenameCommitted: function(newName) { root.pane.commitRename(newName) }
         onRenameAbandoned: root.pane.renamingIndex = -1
