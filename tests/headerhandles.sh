@@ -28,7 +28,7 @@ output=$(env -u DISPLAY -u WAYLAND_DISPLAY -u HYPRLAND_INSTANCE_SIGNATURE \
     QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1 \
     timeout 20 qs -p "$test_root/config" 2>&1)
 
-# Sample input, one probe line: "  INFO qml: HEADERHANDLES PASS list=4 columns=0 grid=0"
+# Sample input, one probe line: "  INFO qml: HEADERHANDLES PASS list=4 shown=2 columns=0 grid=0 dual=0 search=0 nopane=0"
 pass_count=$(printf '%s\n' "$output" | grep -c 'HEADERHANDLES PASS')
 fail_count=$(printf '%s\n' "$output" | grep -c 'HEADERHANDLES FAIL')
 if [ "$pass_count" -ne 1 ] || [ "$fail_count" -ne 0 ]; then
