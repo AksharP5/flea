@@ -2845,6 +2845,8 @@ ddtarget moves one ceiling, re-derived with `wc -l`: `ui/js/Focus.js` 364 to 365
 
 pathretry moves two ceilings, each re-derived with `wc -l`: `ui/ChromeBar.qml` 477 to 479 for the `showingPath` bool and the `shouldNavigate` gates on `commitEdit` and the jump's `onChosen`, and `ui/WindowBody.qml` 546 to 547 for the `Nav.showing` binding on the one ChromeBar the window owns. The decision itself went to the new `ui/js/PathBar.js` `shouldNavigate`, 228 lines over the soft budget and under the hard cap, rather than into `ui/js/Nav.js`, which keeps 271 over soft; `tests/js/pathbar.js` takes the ten checks at 231 over soft.
 
+trashrow moves one ceiling, re-derived with `wc -l`: `ui/Sidebar.qml` 566 to 567 for the `RailKeys` import the Trash row cursor rule reads; the rule itself is `RailKeys.trashCursor`, tested in `tests/js/railkeys.js`.
+
 ## The key table is generated
 
 `keys.toml` at the repository root is the single source of truth for every binding.
