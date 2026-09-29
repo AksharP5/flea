@@ -427,4 +427,25 @@ function run(check) {
     check("a hide with the list focused moves nothing", settled.focusView + "|" + settled.listArea.focused, "list|false")
     check("tab with a hidden rail stays in the list", Focus.next("list", false), "list")
     check("tab with an auto-hide rail reveals it", Focus.next("list", true), "rail")
+
+    // Both panes share the hidden state, so only the active pane answers a hide with its own listing.
+    for (var mode of ["list", "grid", "columns"]) {
+        var acting = chromePane("rail")
+        acting.viewMode = mode
+        acting.paneFocused = true
+        acting.listArea = { focused: false, forceActiveFocus: function () { this.focused = true } }
+        Focus.railHidden(acting)
+        check("an active " + mode + " pane takes its own listing on a hide", acting.focusView + "|" + acting.listArea.focused, "list|true")
+    }
+    var idle = chromePane("rail")
+    idle.paneFocused = false
+    idle.listArea = { focused: false, forceActiveFocus: function () { this.focused = true } }
+    Focus.railHidden(idle)
+    check("an inactive pane keeps its rail view on a hide", idle.focusView, "rail")
+    check("and takes no actual focus for it", idle.listArea.focused, false)
+    var calm = chromePane("list")
+    calm.paneFocused = true
+    calm.listArea = { focused: false, forceActiveFocus: function () { this.focused = true } }
+    Focus.railHidden(calm)
+    check("an already-list pane moves nothing on a hide", calm.focusView + "|" + calm.listArea.focused, "list|false")
 }

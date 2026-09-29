@@ -32,7 +32,8 @@ function next(current, sidebar) {
 
 // Hiding the rail while it holds the keyboard strands focusView, so the listing takes the logical view and the actual focus together.
 function railHidden(root) {
-    if (root.focusView !== RAIL) return
+    // Both panes share the hidden state, so only the active one answers it; undefined stays compatible with fixtures that predate the flag.
+    if (root.paneFocused === false || root.focusView !== RAIL) return
     root.focusView = LIST
     if (root.listArea) root.listArea.forceActiveFocus()
 }
