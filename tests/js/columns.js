@@ -1,6 +1,7 @@
 .import "../../ui/js/Columns.js" as Columns
 .import "../../ui/js/ColumnFit.js" as ColumnFit
 .import "../../ui/js/Picker.js" as Picker
+.import "../../ui/js/Nav.js" as Nav
 .import "sourcefixture.js" as Source
 
 // Below about 659 px of window the four fixed columns claimed the whole row and the filename had a
@@ -122,6 +123,7 @@ function run(check) {
     runPeekPending(check)
     runHeaderDrag(check)
     runColumnsLimitWire(check)
+    runColRoot(check)
 }
 
 // ColumnsWidth board (#167, #69): the columns count follows the window width, 2 below 900 up to 5 from 2300, capped by the View limit shipping at 3.
@@ -290,10 +292,51 @@ function runPicker(check) {
     check("no width at all draws Mode or Kind in the chooser", everDrawn, false)
 }
 
+// w8 colroot: at / no ancestor column repeats the active one, so the parent slot stays
+// blank and Left stays a no-op; each depth below adds one distinct ancestor.
+function runColRoot(check) {
+    check("at / no ancestor column is shown", Columns.ancestors("/", 3).join("|"), "")
+    check("at /home only the parent (/) is", Columns.ancestors("/home", 3).join("|"), "/")
+    check("at /home/gm parent and grandparent are", Columns.ancestors("/home/gm", 3).join("|"), "/|/home")
+    check("one ancestor asked is the parent", Columns.ancestors("/home/gm", 1).join("|"), "/home")
+    check("three deep names three ancestors", Columns.ancestors("/a/b/c", 3).join("|"), "/|/a|/a/b")
+    check("the root shows no parent", Columns.ancestorShown("/", 1), false)
+    check("a child of the root shows its parent", Columns.ancestorShown("/home", 1), true)
+    check("a child of the root shows no grandparent", Columns.ancestorShown("/home", 2), false)
+    check("depth two shows two ancestors", Columns.ancestorShown("/home/gm", 2), true)
+    check("depth two shows no third ancestor", Columns.ancestorShown("/home/gm", 3), false)
+    var distinct = true
+    var paths = ["/", "/home", "/home/gm", "/a/b/c/d"]
+    for (var i = 0; i < paths.length; i++) {
+        var chain = Columns.ancestors(paths[i], 3).concat([paths[i]])
+        for (var j = 0; j + 1 < chain.length; j++)
+            if (chain[j] === chain[j + 1])
+                distinct = false
+    }
+    check("no shown ancestor ever equals the column to its right", distinct, true)
+    var atRoot = { path: "/", listingPath: "", listingState: "", listInFlight: false, pendingSelect: "kept", opened: [] }
+    atRoot.open = function (target) { atRoot.opened.push(target) }
+    Nav.parent(atRoot)
+    check("left at / opens nothing", atRoot.opened.length, 0)
+    check("and plants no select on the climb that did not happen", atRoot.pendingSelect, "kept")
+    var area = Source.source("ui/ColumnsArea.qml")
+    check("the area gates the parent column on its ancestor",
+        area.indexOf("root.showParent && root.parentShown") >= 0, true)
+    check("the area gates the grandparent column on its ancestor",
+        area.indexOf("root.showGrandparent && root.grandparentShown") >= 0, true)
+    check("the area gates the great-grandparent column on its ancestor",
+        area.indexOf("root.showGreatGrandparent && root.greatGrandparentShown") >= 0, true)
+    check("the area asks no ancestor it does not show",
+        area.indexOf("root.showParent && root.parentShown") >= 0
+        && area.indexOf("root.showGrandparent && root.grandparentShown") >= 0
+        && area.indexOf("root.showGreatGrandparent && root.greatGrandparentShown") >= 0, true)
+    check("the parent reader answers null while its ancestor is hidden",
+        area.indexOf("(root.showParent && root.parentShown) ? parentColumn.itemAtIndex(index) : null") >= 0, true)
+}
+
 // The user's own hidden set, subtracted from what the width affords: a hidden column never draws,
 // and width still wins, so a column shown while the pane is too narrow stays dropped. The keys are
 // the same "mode"/"size"/"date"/"kind" the header menu's col:<key> actions carry.
-
 function runHidden(check) {
     var none = Columns.set(2000, BOX, [])
     check("an empty hidden set draws every column the width affords",

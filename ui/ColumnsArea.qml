@@ -56,6 +56,10 @@ Item {
     readonly property bool showGreatGrandparent: root.columnCount >= 5
     readonly property bool showGrandparent: root.columnCount >= 4
     readonly property bool showParent: root.columnCount >= 3
+    // The climb stops at /, so a shown slot with no distinct ancestor stays blank and keeps its width.
+    readonly property bool parentShown: Columns.ancestorShown(root.pane.path, 1)
+    readonly property bool grandparentShown: Columns.ancestorShown(root.pane.path, 2)
+    readonly property bool greatGrandparentShown: Columns.ancestorShown(root.pane.path, 3)
     readonly property int shownBefore: (root.showGreatGrandparent ? 1 : 0) + (root.showGrandparent ? 1 : 0) + (root.showParent ? 1 : 0) + 1
     readonly property int activeX: (root.shownBefore - 1) * root.columnWidth
 
@@ -92,11 +96,11 @@ Item {
 
     // Hidden view asks nothing; every move while visible asks both neighbours.
     function refreshNeighbours() { if (!root.visible) return
-        if (root.showGreatGrandparent)
+        if (root.showGreatGrandparent && root.greatGrandparentShown)
             root.ask(root.greatGrandparentPath)
-        if (root.showGrandparent)
+        if (root.showGrandparent && root.grandparentShown)
             root.ask(root.grandparentPath)
-        if (root.showParent)
+        if (root.showParent && root.parentShown)
             root.ask(root.parentPath)
         root.ask(root.childPath)
         root.askMeta()
@@ -181,9 +185,9 @@ Item {
     }
 
     // For ui/Ipc.qml: the peek columns' rows and the child's empty tile; the two eldest answer null while their Loader is unbuilt.
-    function parentItemAt(index) { return parentColumn.itemAtIndex(index) }
-    function grandparentItemAt(index) { var col = grandparentLoader.item; return col ? col.itemAtIndex(index) : null }
-    function greatGrandparentItemAt(index) { var col = greatGrandparentLoader.item; return col ? col.itemAtIndex(index) : null }
+    function parentItemAt(index) { return (root.showParent && root.parentShown) ? parentColumn.itemAtIndex(index) : null }
+    function grandparentItemAt(index) { var col = grandparentLoader.item; return (root.showGrandparent && root.grandparentShown && col) ? col.itemAtIndex(index) : null }
+    function greatGrandparentItemAt(index) { var col = greatGrandparentLoader.item; return (root.showGreatGrandparent && root.greatGrandparentShown && col) ? col.itemAtIndex(index) : null }
     function childItemAt(index) { return childColumn.itemAtIndex(index) }
     function childEmptyItem() { return childColumn.emptyItem }
     function frameItem() { return preview.frameItem }
@@ -313,10 +317,10 @@ Item {
             height: parent.height
             sourceComponent: Flea.ColumnPane {
                 anchors.fill: parent
-                rows: root.rowsFor(root.greatGrandparentPath)
-                lockedMode: root.deniedMode(root.greatGrandparentPath)
-                drawsEmpty: root.answered(root.greatGrandparentPath)
-                liftedName: Nav.leafOf(root.grandparentPath)
+                rows: root.greatGrandparentShown ? root.rowsFor(root.greatGrandparentPath) : []
+                lockedMode: root.greatGrandparentShown ? root.deniedMode(root.greatGrandparentPath) : -1
+                drawsEmpty: root.greatGrandparentShown && root.answered(root.greatGrandparentPath)
+                liftedName: root.greatGrandparentShown ? Nav.leafOf(root.grandparentPath) : ""
                 dim: true
                 onActivated: function (name, isDir) { root.activateNeighbour(root.greatGrandparentPath, name, isDir) }
                 onNeighbourMenuRequested: function (name) { root.menuOnNeighbour(root.greatGrandparentPath, name) }
@@ -331,10 +335,10 @@ Item {
             height: parent.height
             sourceComponent: Flea.ColumnPane {
                 anchors.fill: parent
-                rows: root.rowsFor(root.grandparentPath)
-                lockedMode: root.deniedMode(root.grandparentPath)
-                drawsEmpty: root.answered(root.grandparentPath)
-                liftedName: Nav.leafOf(root.parentPath)
+                rows: root.grandparentShown ? root.rowsFor(root.grandparentPath) : []
+                lockedMode: root.grandparentShown ? root.deniedMode(root.grandparentPath) : -1
+                drawsEmpty: root.grandparentShown && root.answered(root.grandparentPath)
+                liftedName: root.grandparentShown ? Nav.leafOf(root.parentPath) : ""
                 dim: true
                 onActivated: function (name, isDir) { root.activateNeighbour(root.grandparentPath, name, isDir) }
                 onNeighbourMenuRequested: function (name) { root.menuOnNeighbour(root.grandparentPath, name) }
@@ -347,10 +351,10 @@ Item {
             visible: root.showParent
             width: root.showParent ? root.columnWidth : 0
             height: parent.height
-            rows: root.showParent ? root.rowsFor(root.parentPath) : []
-            lockedMode: root.deniedMode(root.parentPath)
-            drawsEmpty: root.answered(root.parentPath)
-            liftedName: Nav.leafOf(root.pane.path)
+            rows: (root.showParent && root.parentShown) ? root.rowsFor(root.parentPath) : []
+            lockedMode: (root.showParent && root.parentShown) ? root.deniedMode(root.parentPath) : -1
+            drawsEmpty: root.parentShown && root.answered(root.parentPath)
+            liftedName: root.parentShown ? Nav.leafOf(root.pane.path) : ""
             dim: true
             onActivated: function (name, isDir) { root.activateNeighbour(root.parentPath, name, isDir) }
             onNeighbourMenuRequested: function (name) { root.menuOnNeighbour(root.parentPath, name) }

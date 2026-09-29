@@ -2838,6 +2838,8 @@ w5 rowaudit moves no ceiling, each count re-derived with `wc -l`: `ui/Row.qml` k
 
 Nothing was removed: the only object a Row at rest gained is the inactive clipLoader shell, and a List-level delegate variant would trade that one shell for a second delegate shape; the today call and the clipboard lookup both return before any work when their switch is off. `tests/rowcost.qml` pins the rare states instead: a scissors row dims and builds over idle, a copy row builds undimmed, clearing returns to idle.
 
+w8 colroot moves two ceilings, each re-derived with `wc -l`: `ui/ColumnsArea.qml` 406 to 410 for the root-stops-the-climb gate (parentShown/grandparentShown/greatGrandparentShown off `Columns.ancestorShown`, the refreshNeighbours ask gate, the blank-but-width-kept ancestor slots and the null-while-hidden Ipc readers); `tests/js/columns.js` 313 to 356 for the w8 checks (ancestors at /, /home, /home/gm, the no-equal-neighbour sweep, Left at / opening nothing and the area gating pins). `ui/js/Columns.js` 185 to 227 for ancestorParent/ancestors/ancestorShown, over the soft budget and under the hard cap.
+
 ## The key table is generated
 
 `keys.toml` at the repository root is the single source of truth for every binding.

@@ -135,6 +135,48 @@ function ancestorsForCount(count) {
     return Math.min(n, COUNT_MAX) - 2
 }
 
+// The parent one step up, with a trailing slash trimmed except at the root itself.
+// Sample input: ancestorParent("/home/") is "/".
+function ancestorParent(path) {
+    var text = String(path)
+    if (text.length > 1 && text.charAt(text.length - 1) === "/")
+        text = text.substring(0, text.length - 1)
+    var cut = text.lastIndexOf("/")
+    return cut <= 0 ? "/" : text.substring(0, cut)
+}
+
+// The nearest distinct ancestors of a path, oldest first, stopping where the climb stops.
+// Sample input: ancestors("/home/gm", 3) is ["/", "/home"].
+function ancestors(path, count) {
+    var n = Math.floor(Number(count))
+    if (!(n >= 1))
+        return []
+    var text = String(path)
+    if (text.length === 0)
+        return []
+    if (text.length > 1 && text.charAt(text.length - 1) === "/")
+        text = text.substring(0, text.length - 1)
+    var near = []
+    var cur = text
+    for (var i = 0; i < n; i++) {
+        var p = ancestorParent(cur)
+        if (p === cur || near.indexOf(p) >= 0)
+            break
+        near.push(p)
+        cur = p
+    }
+    return near.reverse()
+}
+
+// True while an ancestor column of this depth names a directory of its own.
+// Sample input: ancestorShown("/home", 2) is false.
+function ancestorShown(path, depth) {
+    var d = Math.floor(Number(depth))
+    if (!(d >= 1))
+        return false
+    return ancestors(path, d).length >= d
+}
+
 // ui.json carries whatever a hand edit wrote, so only a finite number is a stored width; anything else keeps the measured one.
 // Sample input: storedNumber("120") is NaN, storedNumber(120.6) is 121.
 function storedNumber(raw) {
