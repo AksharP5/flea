@@ -14,14 +14,6 @@ Item {
 
     width: 9 // ui/Header.qml offsets each zone by floor(width / 2), so this is the only number.
 
-    Rectangle {
-        anchors.centerIn: parent
-        width: Theme.spacing.hairline
-        height: parent.height
-        color: Theme.color.accent
-        visible: zone.containsMouse || root.hot
-    }
-
     MouseArea {
         id: zone
         anchors.fill: parent
@@ -33,5 +25,17 @@ Item {
         onReleased: root.released()
         onCanceled: root.released()
         onDoubleClicked: root.doubleClicked()
+    }
+
+    // The accent line shows only while hovered or dragged, so it builds only then; the zone stays live at rest.
+    Loader {
+        anchors.fill: parent
+        active: zone.containsMouse || root.hot
+        sourceComponent: Rectangle {
+            anchors.centerIn: parent
+            width: Theme.spacing.hairline
+            height: parent.height
+            color: Theme.color.accent
+        }
     }
 }

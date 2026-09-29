@@ -2778,6 +2778,11 @@ reads the stored widths at 399 lines, one over its last note and still under the
 Later work leaves `src/uischema.rs` at 421, `ui/Header.qml` at 355, `ui/js/ColumnFit.js` at 30
 and `ui/ResizeHandle.qml` at 37, each re-derived with `wc -l`.
 
+w037w2 takes `ui/Header.qml` 355 to 364 for the fit-metrics Loader with its sync-read
+comment and the two autofit deactivations, and `ui/ResizeHandle.qml` 37 to 41 for the
+accent-line Loader with its rest-only comment, each re-derived with `wc -l`; the suite is
+the new `tests/headercost.sh` with `tests/headercost.qml` at 130, inside both budgets.
+
 0.3.7 integration records `ui/Theme.qml` at 401, re-derived with `wc -l`, where the button system and the
 list columns each added their tokens.
 

@@ -212,11 +212,15 @@ Item {
         onDoubleClicked: root.autofitColumn("kind")
     }
 
-    // Caption type, the same face the rows measure their cells in.
-    TextMetrics {
-        id: fitMetrics
-        font.family: Theme.font.family
-        font.pixelSize: Theme.font.caption
+    // Caption type, the same face the rows measure their cells in; built only while a fit
+    // measures, so a header at rest carries no metrics object.
+    Loader {
+        id: fitLoader
+        active: false
+        sourceComponent: TextMetrics {
+            font.family: Theme.font.family
+            font.pixelSize: Theme.font.caption
+        }
     }
 
     Rectangle {
@@ -284,15 +288,18 @@ Item {
     }
 
     // The strings ui/Row.qml draws, measured in the cells' own face over the held rows only.
+    // The loader builds synchronously, so its item is ready in this same turn.
     function fittedWidth(key) {
         var widths = []
+        fitLoader.active = true
+        var metrics = fitLoader.item
         for (var i = 0; i < root.pane.rows.length; i++) {
             var row = root.pane.rows[i]
             if (!row)
                 continue
-            fitMetrics.text = ColumnFit.cellText(key, row, root.pane.kindNames,
+            metrics.text = ColumnFit.cellText(key, row, root.pane.kindNames,
                 ColumnFit.dirSizeFor(root.pane.dirSizeState, root.pane.held, i))
-            widths.push(Math.ceil(fitMetrics.advanceWidth))
+            widths.push(Math.ceil(metrics.advanceWidth))
         }
         if (widths.length === 0)
             return -1
@@ -306,6 +313,7 @@ Item {
         if (!root.pane || root.dualMode || !root.sortable || !root.cols[key])
             return
         var next = root.fittedWidth(key)
+        fitLoader.active = false
         if (next >= 0)
             root.writeWidth(key, next)
     }
@@ -329,6 +337,7 @@ Item {
                 changed = true
             }
         }
+        fitLoader.active = false
         if (changed)
             ViewState.changeMapEntries("columnWidths", leaf, obj)
     }
