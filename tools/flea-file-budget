@@ -26,7 +26,7 @@ src/backend/menu_registry.rs 563
 src/backend/meta.rs 436
 src/backend/metareq.rs 424
 src/backend/movebatch.rs 469
-src/backend/movebatch_tests.rs 752
+src/backend/movebatch_tests.rs 751
 src/backend/opsdispatch.rs 536
 src/backend/opsreq.rs 513
 src/backend/opsreq/tests.rs 460
