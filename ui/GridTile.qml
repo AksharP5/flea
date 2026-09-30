@@ -30,7 +30,7 @@ Item {
     readonly property int clipPx: 12
     readonly property string editorText: renameLoader.item ? renameLoader.item.current : ""
     readonly property Item editorField: renameLoader.item as Item
-    readonly property real renameExtraHeight: root.renaming && renameLoader.item ? Math.max(0, renameLoader.item.implicitHeight - Theme.grid.captionHeight - Density.gridPadY(Theme.spacing.rowPaddingX, ViewState.density)) : 0
+    readonly property real renameExtraHeight: root.renaming && renameLoader.item ? Math.max(0, renameLoader.item.implicitHeight - Math.max(Theme.grid.captionHeight, Math.ceil(nameLabel.contentHeight)) - Density.gridPadY(Theme.spacing.rowPaddingX, ViewState.density)) : 0
     signal renameCommitted(string newName)
     signal renameAbandoned()
     function commitEditor() { return renameLoader.item ? renameLoader.item.commit() : false }
@@ -121,7 +121,8 @@ Item {
         anchors.right: parent.right
         anchors.leftMargin: Theme.spacing.gap
         anchors.rightMargin: Theme.spacing.gap + (root.clipMark.length > 0 ? Theme.spacing.gap + root.clipPx : 0)
-        height: root.dropTarget ? Theme.grid.captionLineHeight : Theme.grid.captionHeight
+        // The slot fits the laid-out text, keeping the token reserve as its minimum.
+        height: Math.max(root.dropTarget ? Theme.grid.captionLineHeight : Theme.grid.captionHeight, Math.ceil(contentHeight))
         horizontalAlignment: Text.AlignHCenter
         text: root.row ? GridNames.gridCaption(root.row.n, root.captionPerLine, root.captionLines) : ""
         color: Theme.color.foreground
