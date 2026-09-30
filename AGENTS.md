@@ -6911,3 +6911,6 @@ e47 takes tests/js/columns.js 544 to 555 for the folder-hold early-return pins (
 e47 R2 takes tests/js/columns.js 555 to 556 for the structural-only relabels and the preview-swap Qt harness pin; the real folder-guard execution is tests/preview-swap.qml 250 to 379 (three isolated swaps, held check, held cap, unheld positive control) with its judge in tests/preview-swap.sh.
 
 w55 takes ui/js/Names.js 250 to 259 for the fitting fast-name early returns (middleElide returns a short fast name off one isFastText scan, gridCaption returns a fast name fitting one line with the one-cell elide kept, each scan reused for the store below), over the soft budget and under the hard cap; tests/js/names.js keeps 222 with no added line.
+
+
+w51 moves fit-only metrics and imports to ui/FitMetrics.qml (22 lines), loaded only during Header fitting (391 lines, under the 400-line hard cap). tests/headercost.qml (358 lines) exercises real Qt creation, synchronous fitting, one F4 update, held offsets and release; native empty Loader source values are compared as URLs converted to strings. Caption widths can both clamp to 48 pixels, so the held-offset check asserts the exact selected byte count beside the independent clamped-width calculation.

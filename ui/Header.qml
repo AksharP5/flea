@@ -2,7 +2,6 @@ import QtQuick
 import qs.Commons
 import qs.Ui
 import "." as Flea
-import "js/ColumnFit.js" as ColumnFit
 import "js/Columns.js" as Columns
 
 // The column header renders sort state and owns none of it, so Pane stays the one state owner.
@@ -215,14 +214,11 @@ Item {
         }
     }
 
-    // Built only while a fit measures, in the cells' own caption face, so rest carries no metrics object.
+    // Built only while a fit measures, from the fit-only file, so rest carries no metrics object.
     Loader {
         id: fitLoader
         active: false
-        sourceComponent: TextMetrics {
-            font.family: Theme.font.family
-            font.pixelSize: Theme.font.caption
-        }
+        source: ""
     }
 
     Rectangle {
@@ -289,18 +285,33 @@ Item {
         root.dragMoved = false
     }
 
-    // The strings ui/Row.qml draws over the held rows only; the loader builds synchronously, so its item is ready in this same turn.
-    function fittedWidth(key) {
-        var widths = []
+    // The fit-only file builds synchronously, so the same call can consume its item.
+    function ensureFit() {
+        if (fitLoader.item !== null)
+            return fitLoader.item
+        fitLoader.source = Qt.resolvedUrl("FitMetrics.qml")
         fitLoader.active = true
-        var metrics = fitLoader.item
+        return fitLoader.item
+    }
+
+    // Releasing clears the item, so rest carries no metrics object after a fit.
+    function releaseFit() {
+        fitLoader.active = false
+        fitLoader.source = ""
+    }
+
+    // The strings ui/Row.qml draws over the held rows only; one F4 reuses one item.
+    function fittedWidth(key) {
+        var item = root.ensureFit()
+        if (item === null)
+            return -1
+        var widths = []
         for (var i = 0; i < root.pane.rows.length; i++) {
             var row = root.pane.rows[i]
             if (!row)
                 continue
-            metrics.text = ColumnFit.cellText(key, row, root.pane.kindNames,
-                ColumnFit.dirSizeFor(root.pane.dirSizeState, root.pane.held, i))
-            widths.push(Math.ceil(metrics.advanceWidth))
+            widths.push(item.cellWidth(key, row, root.pane.kindNames,
+                item.dirSizeFor(root.pane.dirSizeState, root.pane.held, i)))
         }
         if (widths.length === 0)
             return -1
@@ -311,10 +322,12 @@ Item {
     function autofitColumn(key) {
         root.dragKey = ""
         root.dragMoved = false
-        if (!root.pane || root.dualMode || !root.sortable || !root.cols[key])
+        if (!root.pane || root.dualMode || !root.sortable || !root.cols[key]) {
+            root.releaseFit()
             return
+        }
         var next = root.fittedWidth(key)
-        fitLoader.active = false
+        root.releaseFit()
         if (next >= 0)
             root.writeWidth(key, next)
     }
@@ -328,6 +341,10 @@ Item {
         for (var k in stored) obj[k] = stored[k]
         var changed = false
         var keys = ["mode", "size", "date", "kind"]
+        if (root.ensureFit() === null) {
+            root.releaseFit()
+            return
+        }
         for (var i = 0; i < keys.length; i++) {
             if (!root.cols[keys[i]])
                 continue
@@ -338,7 +355,7 @@ Item {
                 changed = true
             }
         }
-        fitLoader.active = false
+        root.releaseFit()
         if (changed)
             ViewState.changeMapEntries("columnWidths", leaf, obj)
     }
