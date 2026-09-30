@@ -4,8 +4,8 @@ import "." as Flea
 import "js/Density.js" as Density
 import "js/Drag.js" as DragOps
 import "js/Format.js" as Format
+import "js/GridNames.js" as GridNames
 import "js/Icons.js" as Icons
-import "js/Names.js" as Names
 
 // One grid cell: the same mark the list row draws, in a larger slot, with the name under it.
 Item {
@@ -123,7 +123,7 @@ Item {
         anchors.rightMargin: Theme.spacing.gap + (root.clipMark.length > 0 ? Theme.spacing.gap + root.clipPx : 0)
         height: root.dropTarget ? Theme.grid.captionLineHeight : Theme.grid.captionHeight
         horizontalAlignment: Text.AlignHCenter
-        text: root.row ? Names.gridCaption(root.row.n, root.captionPerLine, root.captionLines) : ""
+        text: root.row ? GridNames.gridCaption(root.row.n, root.captionPerLine, root.captionLines) : ""
         color: Theme.color.foreground
         font.family: Theme.font.family
         font.pixelSize: Theme.font.bodySmall
@@ -142,7 +142,7 @@ Item {
         width: root.clipPx
         height: root.clipPx
         // One gap past the centred last line's own right end, capped at the strip the margin reserves.
-        x: Math.min(nameLabel.x + (nameLabel.width + Names.lastLineCells(nameLabel.text) * Theme.bodySmallAdvance) / 2 + Theme.spacing.gap, nameLabel.x + nameLabel.width + Theme.spacing.gap)
+        x: Math.min(nameLabel.x + (nameLabel.width + GridNames.lastLineCells(nameLabel.text) * Theme.bodySmallAdvance) / 2 + Theme.spacing.gap, nameLabel.x + nameLabel.width + Theme.spacing.gap)
         y: nameLabel.y + Math.min(nameLabel.text.split("\n").length, root.captionLines) * Theme.grid.captionLineHeight - (Theme.grid.captionLineHeight + root.clipPx) / 2 - 1
         sourceComponent: Flea.Glyph {
             width: root.clipPx

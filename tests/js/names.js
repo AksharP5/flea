@@ -1,4 +1,5 @@
 .import "../../ui/js/Names.js" as Names
+.import "../../ui/js/GridNames.js" as GridNames
 .import "sourcefixture.js" as Source
 .import "namesreference.js" as Ref
 
@@ -33,7 +34,7 @@ function run(check) {
     check("a pair straddling the cut stays whole",
           Names.middleElide("ab📷cdefghij", 6), "ab…ij")
     check("a combining mark rides with its base through the cut",
-          Names.elideChars(Names.charsOf("abcde\u0301x"), 5, 16).join(""), "ab…e\u0301x")
+          GridNames.elideChars(Names.charsOf("abcde\u0301x"), 5, 16).join(""), "ab…e\u0301x")
     check("a tiny width keeps one character each side",
           Names.middleElide("abcdefghij", 3), "a…j")
     check("a two-wide budget keeps the head and the mark",
@@ -41,6 +42,7 @@ function run(check) {
     runGridCaption(check)
     runEquivalence(check)
     runNonFinite(check)
+    runLaziness(check)
 }
 
 // The grid caption carries Flea's own breaks, so Qt's word wrap never strands a token on line 2.
@@ -57,37 +59,37 @@ function runGridCaption(check) {
                 return false
         return true
     }
-    var board = Names.gridCaption(full, 16, 2)
+    var board = GridNames.gridCaption(full, 16, 2)
     check("the board sample breaks deterministically",
           board, "screenshot-2026-\n…he-bench-v3.png")
     check("every board line fits one line", fits(board, 16), true)
     check("the extension's dot never breaks when an earlier separator fits",
-          Names.gridCaption("my-vacation-1.jpeg", 16, 2), "my-vacation-\n1.jpeg")
-    var token = Names.gridCaption("a verylongnamewithoutanyspacesatall.png", 16, 2)
+          GridNames.gridCaption("my-vacation-1.jpeg", 16, 2), "my-vacation-\n1.jpeg")
+    var token = GridNames.gridCaption("a verylongnamewithoutanyspacesatall.png", 16, 2)
     check("a short word then a long token keeps the extension",
           token, "a verylongnamewi\n…spacesatall.png")
     check("every token line fits one line", fits(token, 16), true)
     check("a name that fits in one line gains no break",
-          Names.gridCaption("IMG_4121.jpg", 16, 2), "IMG_4121.jpg")
+          GridNames.gridCaption("IMG_4121.jpg", 16, 2), "IMG_4121.jpg")
     check("an empty name stays empty",
-          Names.gridCaption("", 16, 2), "")
-    var plain = Names.gridCaption("a-very-long-filename-with-no-extension-at-all", 20, 2)
+          GridNames.gridCaption("", 16, 2), "")
+    var plain = GridNames.gridCaption("a-very-long-filename-with-no-extension-at-all", 20, 2)
     check("a name with no extension still breaks and fits", fits(plain, 20), true)
     check("a name with no extension elides only when it cannot fit",
           plain.indexOf("…") >= 0, true)
-    var tiny = Names.gridCaption("abcd", 1, 2)
+    var tiny = GridNames.gridCaption("abcd", 1, 2)
     check("a line length of 1 fits every line", fits(tiny, 1), true)
     check("a line length of 1 still answers two lines", linesOf(tiny).length, 2)
-    var single = Names.gridCaption(full, 16, 1)
+    var single = GridNames.gridCaption(full, 16, 1)
     check("one line takes no break", single.indexOf("\n") >= 0, false)
     check("one line fits and keeps the extension",
           fits(single, 16) && single.slice(-4) === ".png", true)
-    var party = Names.gridCaption("🎉birthdaypartyphotos.jpg", 16, 2)
+    var party = GridNames.gridCaption("🎉birthdaypartyphotos.jpg", 16, 2)
     check("an emoji stem keeps its extension on the last line",
           linesOf(party)[linesOf(party).length - 1].slice(-4), ".jpg")
     check("no emoji line exceeds its cells", fits(party, 16), true)
     var cjkStem = "中中中中中中中中中中中中中中中中中中中中"
-    var cjk = Names.gridCaption(cjkStem + ".pdf", 16, 2)
+    var cjk = GridNames.gridCaption(cjkStem + ".pdf", 16, 2)
     check("a CJK stem keeps its extension on the last line",
           linesOf(cjk)[linesOf(cjk).length - 1].slice(-4), ".pdf")
     check("no CJK line exceeds its cells", fits(cjk, 16), true)
@@ -95,15 +97,15 @@ function runGridCaption(check) {
     check("a CJK glyph counts two cells", Names.cellWidthOf("中"), 2)
     check("a narrow glyph counts one cell", Names.cellWidthOf("a"), 1)
     check("the last line counts its cells, not its chars",
-          Names.lastLineCells("ab\nc🎉"), 3)
+          GridNames.lastLineCells("ab\nc🎉"), 3)
     check("a dead width hands the whole name back",
-          Names.gridCaption(full, 0, 2), full)
+          GridNames.gridCaption(full, 0, 2), full)
     check("a dead line count hands the whole name back",
-          Names.gridCaption(full, 16, 0), full)
+          GridNames.gridCaption(full, 16, 0), full)
     check("gridBudget is gone", typeof Names.gridBudget, "undefined")
     var tile = Source.source("ui/GridTile.qml")
     check("the caption breaks through the wrap-safe helper",
-          tile.indexOf("Names.gridCaption") >= 0, true)
+          tile.indexOf("GridNames.gridCaption") >= 0, true)
     check("the wrap guess is gone",
           tile.indexOf("Names.gridBudget") >= 0, false)
     check("the caption budgets off the face it draws",
@@ -118,13 +120,13 @@ function runGridCaption(check) {
     check("WrapAnywhere sits on the caption label, ahead of the tooltip",
           labelAt >= 0 && tipAt > labelAt && wrapAt >= labelAt && wrapAt < tipAt, true)
     check("the mark sits past the last line rather than the widest one",
-          tile.indexOf("Names.lastLineCells(nameLabel.text)") >= 0, true)
+          tile.indexOf("GridNames.lastLineCells(nameLabel.text)") >= 0, true)
     check("the widest-line guess is gone",
           tile.indexOf("nameLabel.contentWidth") < 0, true)
     // A wide glyph that cannot straddle the first line's end must not cost the extension its last chars.
     var wide = [["中".repeat(13) + ".png", 15, ".png"], ["a" + "中".repeat(13) + "b.pdf", 16, ".pdf"], ["abc" + "中".repeat(12) + "x.jpg", 16, ".jpg"]]
     for (var w = 0; w < wide.length; w++) {
-        var cap = Names.gridCaption(wide[w][0], wide[w][1], 2), parts = cap.split("\n")
+        var cap = GridNames.gridCaption(wide[w][0], wide[w][1], 2), parts = cap.split("\n")
         check("a straddling wide name keeps " + wide[w][2], parts[parts.length - 1].slice(-wide[w][2].length), wide[w][2])
         check("and every line fits its cells for " + wide[w][2], parts.every(function (l) { return Names.cellsOf(Names.charsOf(l)) <= wide[w][1] }), true)
     }
@@ -176,9 +178,9 @@ function runEquivalence(check) {
             same(Names.middleElide(names[n], budgets[b]), Ref.middleElide(names[n], budgets[b]), "middleElide")
         for (var p = 0; p < pers.length; p++)
             for (var c = 0; c < counts.length; c++)
-                same(Names.gridCaption(names[n], pers[p], counts[c]), Ref.gridCaption(names[n], pers[p], counts[c]), "gridCaption")
-        same(Names.lastLineCells(names[n]), Ref.lastLineCells(names[n]), "lastLineCells")
-        same(Names.lastLineCells("ab\n" + names[n]), Ref.lastLineCells("ab\n" + names[n]), "lastLineCells-cut")
+                same(GridNames.gridCaption(names[n], pers[p], counts[c]), Ref.gridCaption(names[n], pers[p], counts[c]), "gridCaption")
+        same(GridNames.lastLineCells(names[n]), Ref.lastLineCells(names[n]), "lastLineCells")
+        same(GridNames.lastLineCells("ab\n" + names[n]), Ref.lastLineCells("ab\n" + names[n]), "lastLineCells-cut")
     }
     check("every output equals the frozen reference over " + total + " cases", mism, 0)
     check("first mismatch", first, "none")
@@ -189,10 +191,10 @@ function runNonFinite(check) {
     check("middleElide hands NaN through", Names.middleElide("abcdef", NaN), "abcdef")
     check("middleElide hands undefined through", Names.middleElide("abcdef", undefined), "abcdef")
     check("middleElide hands Infinity through", Names.middleElide("a".repeat(40), Infinity), "a".repeat(40))
-    check("gridCaption hands a NaN width through", Names.gridCaption("abcdef", NaN, 2), "abcdef")
-    check("gridCaption hands a NaN line count through", Names.gridCaption("abcdef", 16, NaN), "abcdef")
-    check("gridCaption hands Infinity through", Names.gridCaption("a".repeat(40), Infinity, 2), "a".repeat(40))
-    check("gridCaption hands an infinite line count through", Names.gridCaption("a".repeat(40), 16, Infinity), "a".repeat(40))
+    check("gridCaption hands a NaN width through", GridNames.gridCaption("abcdef", NaN, 2), "abcdef")
+    check("gridCaption hands a NaN line count through", GridNames.gridCaption("abcdef", 16, NaN), "abcdef")
+    check("gridCaption hands Infinity through", GridNames.gridCaption("a".repeat(40), Infinity, 2), "a".repeat(40))
+    check("gridCaption hands an infinite line count through", GridNames.gridCaption("a".repeat(40), 16, Infinity), "a".repeat(40))
     runColumnRowCost(check)
 }
 
@@ -219,4 +221,30 @@ function runColumnRowCost(check) {
     var list = Source.source("ui/Row.qml")
     check("a list row with an empty clipboard reads no name geometry",
         list.indexOf("id: clipLoader") < 0 && list.indexOf("x: name.x + Math.min(name.implicitWidth") >= 0, true)
+}
+
+// Grid-only code sits behind the Grid loader; Row and ColumnRow never import it.
+function runLaziness(check) {
+    check("Names keeps the shared middle elide", typeof Names.middleElide, "function")
+    check("Names no longer answers a grid caption", typeof Names.gridCaption, "undefined")
+    check("Names no longer answers the last line", typeof Names.lastLineCells, "undefined")
+    check("Names no longer answers the grid elide", typeof Names.elideChars, "undefined")
+    check("GridNames answers the grid caption", typeof GridNames.gridCaption, "function")
+    check("GridNames answers the last line", typeof GridNames.lastLineCells, "function")
+    var shared = Source.source("ui/js/Names.js")
+    check("Names never imports its Grid split", shared.indexOf("GridNames") < 0, true)
+    check("Names holds no grid caption", shared.indexOf("gridCaption") < 0, true)
+    check("Names holds no last-line helper", shared.indexOf("lastLineCells") < 0, true)
+    var split = Source.source("ui/js/GridNames.js")
+    check("the split imports the shared library", split.indexOf('.import "Names.js"') >= 0, true)
+    check("the split holds the grid caption", split.indexOf("function gridCaption") >= 0, true)
+    var tile = Source.source("ui/GridTile.qml")
+    check("the tile loads the Grid split", tile.indexOf('js/GridNames.js') >= 0, true)
+    check("the tile no longer loads the shared names", tile.indexOf('js/Names.js') < 0, true)
+    var row = Source.source("ui/Row.qml")
+    check("a list row never loads the Grid split", row.indexOf("GridNames") < 0, true)
+    check("a list row never calls a grid caption", row.indexOf("gridCaption") < 0, true)
+    var column = Source.source("ui/ColumnRow.qml")
+    check("a column row never loads the Grid split", column.indexOf("GridNames") < 0, true)
+    check("a column row never calls a grid caption", column.indexOf("gridCaption") < 0, true)
 }
