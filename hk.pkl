@@ -1,0 +1,49 @@
+// Read-only hooks for hk 2.4.0, run offline with HK_PKL_OFFLINE=1.
+//   HK_PKL_OFFLINE=1 hk check --all        full local gate
+//   HK_PKL_OFFLINE=1 hk validate            config only
+amends "package://github.com/jdx/hk/releases/download/v2.4.0/hk@2.4.0#/Config.pkl"
+
+min_hk_version = "2.4.0"
+
+hooks {
+  ["pre-commit"] {
+    fix = false
+    stage = false
+    stash = "none"
+    steps {
+      // First: with stash none Clippy reads the working tree, so unstaged gate inputs would mask staged bytes.
+      ["partial-index-guard"] {
+        check = "tools/flea-hook-check guard"
+      }
+      // Both read guarded inputs, so neither runs before the guard has passed.
+      ["clippy"] {
+        depends = "partial-index-guard"
+        check = "tools/flea-clippy tools/clippy-baseline.txt .flea-local/sandbox/tmp/hk-clippy"
+      }
+      ["file-budget"] {
+        depends = "partial-index-guard"
+        check = "tools/flea-file-budget"
+      }
+    }
+  }
+  ["commit-msg"] {
+    steps {
+      // A structured command keeps the hook's file argument one literal argv entry on every filename.
+      ["commit-rules"] {
+        check = new Command {
+          argv = List("tools/flea-commit-msg", "{{commit_msg_file}}")
+        }
+      }
+    }
+  }
+  ["check"] {
+    steps {
+      ["clippy"] {
+        check = "tools/flea-clippy tools/clippy-baseline.txt .flea-local/sandbox/tmp/hk-clippy"
+      }
+      ["file-budget"] {
+        check = "tools/flea-file-budget"
+      }
+    }
+  }
+}

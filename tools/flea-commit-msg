@@ -1,0 +1,152 @@
+#!/usr/bin/python3
+# Judges one proposed message file through the shared commit-rules policy.
+#   tools/flea-commit-msg COMMIT_MSG_FILE
+import os
+import subprocess
+import sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+
+
+def die(msg):
+    print("FAIL commit-msg could not judge the message: " + msg)
+    print("commit-msg: ERROR " + msg)
+    sys.exit(2)
+
+
+# Sample input (a config value): "strip"
+def repo_config(key):
+    try:
+        out = subprocess.run(["git", "config", "--get", key], capture_output=True, text=True, check=False)
+    except OSError as e:
+        die(f"git config did not start: {e}")
+    if out.returncode == 1:
+        return None
+    if out.returncode != 0:
+        die(f"git config --get {key} exited {out.returncode}")
+    return out.stdout.strip()
+
+
+# Sample input (a hook file body): "fix(a): b\n\nBody.\n# Please enter the commit message\n"
+# One canonical form for every cleanup mode, so any later cleanup stores exactly these bytes.
+def normalize(text, comment):
+    lines = text.split("\n")
+    while lines and lines[0].strip() == "":
+        lines.pop(0)
+    while lines and lines[-1].strip() == "":
+        lines.pop()
+    out, prev_blank = [], False
+    for line in (l.rstrip() for l in lines):
+        if line.strip() == "" and prev_blank:
+            continue
+        out.append(line)
+        prev_blank = line.strip() == ""
+    marker = comment + " ------------------------ >8 ------------------------"
+    cut = next((i for i, l in enumerate(out) if l == marker), None)
+    if cut is not None:
+        out = out[:cut]
+        while out and out[-1].strip() == "":
+            out.pop()
+    kept = [l for l in out if not l.startswith(comment)]
+    return "\n".join(kept) + ("\n" if kept else "")
+
+
+# Sample input (a message path): ".git/COMMIT_EDITMSG"
+# Temp beside the target plus rename, so a reader never sees a partial message.
+def write_back(path, full):
+    tmp = f"{path}.flea-msg.{os.getpid()}.tmp"
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(full)
+        os.chmod(tmp, os.stat(path).st_mode & 0o777)
+        os.replace(tmp, path)
+    except OSError as e:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        die(f"cannot write back {path}: {e}")
+
+
+# Sample input (a git var ident): "GM <gianmarcomorales@icloud.com> 1759183380 -0400"
+def split_ident(word, value):
+    if "\x00" in value:
+        die(f"{word} holds a NUL byte")
+    value = value.strip()
+    if "<" not in value or ">" not in value:
+        die(f"{word} is not a 'name <mail> stamp' ident: {value[:80]}")
+    name, rest = value.split("<", 1)
+    mail = rest.split(">", 1)[0]
+    name = name.strip()
+    if not name or not mail:
+        die(f"{word} names no name or mail: {value[:80]}")
+    return name, mail
+
+
+def main():
+    if len(sys.argv) != 2:
+        die("usage: flea-commit-msg COMMIT_MSG_FILE")
+    path = sys.argv[1]
+    if not path or "\x00" in path:
+        die("no commit message file was given")
+    try:
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
+    except OSError as e:
+        die(f"cannot read {path}: {e}")
+    except UnicodeDecodeError as e:
+        die(f"{path} is not valid UTF-8: {e}")
+    if "\x00" in text:
+        die(f"{path} holds a NUL byte")
+    try:
+        sys.path.insert(0, HERE)
+        import importlib.util
+        from importlib.machinery import SourceFileLoader
+
+        # Extensionless tool file, so the loader is named explicitly rather than guessed from a suffix.
+        # No bytecode beside the tool: the hook must not litter the checkout.
+        sys.dont_write_bytecode = True
+        loader = SourceFileLoader("flea_commit_rules", os.path.join(HERE, "flea-commit-rules"))
+        spec = importlib.util.spec_from_loader("flea_commit_rules", loader)
+        rules = importlib.util.module_from_spec(spec)
+        loader.exec_module(rules)
+    except OSError as e:
+        die(f"cannot load tools/flea-commit-rules: {e}")
+    try:
+        an_raw = subprocess.run(["git", "var", "GIT_AUTHOR_IDENT"],
+                                capture_output=True, text=True, check=False)
+        cn_raw = subprocess.run(["git", "var", "GIT_COMMITTER_IDENT"],
+                                capture_output=True, text=True, check=False)
+    except OSError as e:
+        die(f"git var did not start: {e}")
+    if an_raw.returncode != 0:
+        die(f"git var GIT_AUTHOR_IDENT exited {an_raw.returncode}")
+    if cn_raw.returncode != 0:
+        die(f"git var GIT_COMMITTER_IDENT exited {cn_raw.returncode}")
+    try:
+        an, ae = split_ident("GIT_AUTHOR_IDENT", an_raw.stdout)
+        cn, ce = split_ident("GIT_COMMITTER_IDENT", cn_raw.stdout)
+    except UnicodeDecodeError as e:
+        die(f"git var output is not valid UTF-8: {e}")
+    cleanup = repo_config("commit.cleanup") or "strip"
+    if cleanup not in ("verbatim", "whitespace", "strip", "scissors"):
+        die(f"commit.cleanup {cleanup!r} cannot be applied safely")
+    comment = repo_config("core.commentChar") or "#"
+    if len(comment) != 1 or comment == "auto":
+        die(f"core.commentChar {comment!r} cannot be applied safely")
+    full = normalize(text, comment)
+    fails = rules.check_one("proposed", an, ae, cn, ce, "", full)
+    for one in fails:
+        print("FAIL proposed " + one)
+    if fails:
+        print(f"commit-msg: FAIL fails={len(fails)}")
+        sys.exit(1)
+    # The validated bytes go back so every cleanup mode stores exactly what was judged.
+    if full != text:
+        write_back(path, full)
+    print("commit-msg: PASS fails=0")
+    sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()

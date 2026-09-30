@@ -1,0 +1,305 @@
+#!/usr/bin/python3
+# Judges this tree's clippy JSON against BASELINE, never its human text.
+#   tools/flea-clippy BASELINE OUTDIR
+import fcntl
+import json
+import os
+import re
+import subprocess
+import sys
+
+DENY = ("correctness", "suspicious")
+GROUPS = ("cargo", "complexity", "correctness", "nursery", "pedantic", "perf", "restriction", "style", "suspicious")
+
+
+def die(msg):
+    print("FAIL clippy could not judge the tree: " + msg)
+    print("clippy: ERROR " + msg)
+    sys.exit(2)
+
+
+# Sample input (clippy-driver -W help): "                           clippy::correctness  clippy::approx-constant, clippy::eq-op"
+def lint_groups(help_text):
+    groups = {}
+    section = False
+    for line in help_text.splitlines():
+        if line.startswith("Lint groups loaded by this crate:"):
+            section = True
+            continue
+        if not section:
+            continue
+        m = re.match(r"^\s+clippy::([a-z]+)\s{2,}(\S.*)$", line)
+        if not m or m.group(1) not in GROUPS:
+            continue
+        for name in m.group(2).split(","):
+            name = name.strip()
+            if name.startswith("clippy::"):
+                groups["clippy::" + name[len("clippy::"):].replace("-", "_")] = m.group(1)
+    return groups
+
+
+# Sample input (clippy-baseline.txt): "clippy::bool_assert_comparison|style|10"
+def read_baseline(path):
+    base = {}
+    try:
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
+    except OSError as e:
+        die(f"cannot read baseline {path}: {e}")
+    except UnicodeDecodeError as e:
+        die(f"baseline {path} is not valid UTF-8: {e}")
+    for n, line in enumerate(text.splitlines(), 1):
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split("|")
+        if len(parts) != 3 or not parts[2].isdigit():
+            die(f"{path}:{n} is not 'lint|group|count': {line}")
+        lint, group, count = parts
+        if not lint.startswith("clippy::"):
+            die(f"{path}:{n} names no clippy lint: {line}")
+        if group in DENY:
+            die(f"{path}:{n} lists denied group '{group}': the baseline never lists correctness or suspicious")
+        if group not in GROUPS:
+            die(f"{path}:{n} names unknown group '{group}': {line}")
+        if lint in base:
+            die(f"{path}:{n} repeats lint '{lint}'")
+        base[lint] = (group, int(count))
+    return base
+
+
+# Only these reason names come out of cargo; anything else is not a stream this tool can judge.
+KNOWN_REASONS = ("compiler-artifact", "compiler-message", "build-script-executed", "build-finished")
+# Only these diagnostic levels come out of rustc; an unknown string is malformed, not a skip.
+KNOWN_LEVELS = ("warning", "error", "note", "help", "failure-note")
+
+
+# Sample input (a span list): '[{"is_primary":true,"file_name":"src/a.rs","line_start":3,"column_start":4}]'
+# A span-less warning is legitimate; the caller keys those on text so distinct findings never merge.
+def primary_where(spans):
+    if not isinstance(spans, list):
+        return ("bad", None)
+    for span in spans:
+        if not isinstance(span, dict):
+            return ("bad", None)
+    for span in spans:
+        if span.get("is_primary"):
+            if not isinstance(span.get("file_name"), str):
+                return ("bad", None)
+            if not isinstance(span.get("line_start"), int) or isinstance(span.get("line_start"), bool):
+                return ("bad", None)
+            if not isinstance(span.get("column_start"), int) or isinstance(span.get("column_start"), bool):
+                return ("bad", None)
+            return ("ok", f"{span['file_name']}:{span['line_start']}:{span['column_start']}")
+    return ("nospan", None)
+
+
+def main():
+    if len(sys.argv) != 3:
+        die("usage: flea-clippy BASELINE OUTDIR")
+    baseline_path, outdir = sys.argv[1], sys.argv[2]
+    base = read_baseline(baseline_path)
+    try:
+        os.makedirs(outdir, exist_ok=True)
+    except OSError as e:
+        die(f"cannot create {outdir}: {e}")
+    stream = os.path.join(outdir, "clippy.json")
+    # One gate per OUTDIR: concurrent calls serialize here so no run parses another's stream.
+    try:
+        lock = open(os.path.join(outdir, ".clippy-lock"), "w")
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+    except OSError as e:
+        die(f"cannot lock {outdir}: {e}")
+    try:
+        with open(stream, "w") as out, open(os.path.join(outdir, "clippy-cargo.log"), "w") as err:
+            rc = subprocess.call(
+                ["cargo", "clippy", "--locked", "--all-targets", "--message-format=json", "--",
+                 # Correctness stays a warning here so every target is checked; this script denies it.
+                 "-W", "clippy::correctness"],
+                stdout=out, stderr=err)
+    except OSError as e:
+        die(f"cargo clippy did not start: {e}")
+    try:
+        helped = subprocess.run(["clippy-driver", "-W", "help"], capture_output=True, text=True)
+    except OSError as e:
+        die(f"clippy-driver did not start: {e}")
+    if helped.returncode != 0:
+        die(f"clippy-driver -W help exited {helped.returncode}; see clippy-cargo.log")
+    with open(os.path.join(outdir, "clippy-lints.txt"), "w") as f:
+        f.write(helped.stdout)
+    groups = lint_groups(helped.stdout)
+    for g in DENY:
+        if g not in groups.values():
+            die(f"clippy-driver -W help named no clippy::{g} lints, so the gate has nothing to deny")
+    for lint in sorted(base):
+        if lint not in groups:
+            die(f"baseline lists '{lint}', which clippy-driver -W help does not list")
+
+    findings = {}
+    finished = None
+    checked = 0
+    errors = []
+    unknown = []
+    malformed = 0
+    # Sample stream record: '{"reason":"compiler-message","message":{"level":"warning","code":{"code":"clippy::len_zero"},"spans":[{"is_primary":true,"file_name":"src/a.rs","line_start":1,"column_start":2}],"message":"length check"}}'
+    with open(stream, encoding="utf-8") as f:
+        for n, line in enumerate(f, 1):
+            if not line.strip():
+                continue
+            if not line.startswith("{"):
+                malformed += 1
+                continue
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError:
+                malformed += 1
+                continue
+            if not isinstance(rec, dict):
+                malformed += 1
+                continue
+            reason = rec.get("reason")
+            if reason not in KNOWN_REASONS:
+                malformed += 1
+                continue
+            if reason == "build-finished":
+                finished = rec.get("success")
+                if not isinstance(finished, bool):
+                    malformed += 1
+                    finished = None
+                    continue
+            elif reason == "compiler-artifact":
+                target = rec.get("target")
+                if not isinstance(target, dict):
+                    malformed += 1
+                    continue
+                name = target.get("name")
+                if name is not None and not isinstance(name, str):
+                    malformed += 1
+                    continue
+                if name == "flea":
+                    checked += 1
+            elif reason == "build-script-executed":
+                continue
+            elif reason == "compiler-message":
+                msg = rec.get("message")
+                if not isinstance(msg, dict):
+                    malformed += 1
+                    continue
+                level = msg.get("level")
+                if level not in KNOWN_LEVELS:
+                    malformed += 1
+                    continue
+                if level not in ("warning", "error"):
+                    continue
+                raw_code = msg.get("code")
+                if raw_code is None:
+                    code = "uncoded"
+                elif isinstance(raw_code, dict):
+                    inner = raw_code.get("code")
+                    if inner is None:
+                        code = "uncoded"
+                    elif not isinstance(inner, str):
+                        malformed += 1
+                        continue
+                    else:
+                        code = inner
+                else:
+                    malformed += 1
+                    continue
+                text = msg.get("message")
+                if not isinstance(text, str):
+                    malformed += 1
+                    continue
+                if "spans" not in msg:
+                    malformed += 1
+                    continue
+                status, where = primary_where(msg["spans"])
+                if status == "bad":
+                    malformed += 1
+                    continue
+                if status == "nospan":
+                    where = "(no span)"
+                    key = (code, where, text)
+                else:
+                    key = (code, where, "")
+                if code == "uncoded" and level == "error":
+                    errors.append(f"{where} {text}")
+                    continue
+                if code.startswith("clippy::"):
+                    group = groups.get(code)
+                    if group is None:
+                        unknown.append(f"{code} {where}")
+                        continue
+                else:
+                    group = "rustc"
+                findings[key] = (group, level, text.replace("\t", " ").replace("\n", " "))
+
+    if malformed:
+        die(f"{malformed} line(s) in clippy.json were not valid cargo records; see clippy-cargo.log")
+    if unknown:
+        for u in unknown:
+            print("FAIL clippy unknown lint: " + u)
+        die(f"{len(unknown)} finding(s) name a lint clippy-driver -W help does not list")
+    if errors:
+        for e in errors:
+            print("FAIL clippy could not compile: " + e)
+        print(f"clippy: ERROR {len(errors)} compile error(s), cargo rc={rc}")
+        sys.exit(2)
+    if rc != 0:
+        die(f"cargo clippy exited {rc}, build-finished={finished}, flea targets checked={checked}; see clippy-cargo.log")
+    if finished is not True or checked == 0:
+        die(f"cargo clippy rc={rc}, build-finished={finished}, flea targets checked={checked}; see clippy-cargo.log")
+
+    counts = {}
+    lint_group = {}
+    by_lint = {}
+    with open(os.path.join(outdir, "clippy-findings.tsv"), "w", encoding="utf-8") as f:
+        for (code, where, _), (group, level, text) in sorted(findings.items()):
+            f.write(f"{group}\t{code}\t{where}\t{level}\t{text}\n")
+            counts[code] = counts.get(code, 0) + 1
+            lint_group[code] = group
+            by_lint.setdefault(code, []).append(where)
+    with open(os.path.join(outdir, "clippy-counts.txt"), "w", encoding="utf-8") as f:
+        f.write("# lint|group|count (data): today's ratcheted counts; correctness and suspicious are denied, never listed\n")
+        for code in sorted(counts):
+            if lint_group[code] not in DENY:
+                f.write(f"{code}|{lint_group[code]}|{counts[code]}\n")
+
+    denied = rose = fell = 0
+    per_group = {}
+    for code in sorted(counts):
+        group = lint_group[code]
+        per_group[group] = per_group.get(group, 0) + counts[code]
+        if group in DENY:
+            for where in by_lint[code]:
+                denied += 1
+                print(f"FAIL deny {code} ({group}) {where}")
+            continue
+        if group == "rustc":
+            rose += 1
+            print(f"FAIL rustc {code} {counts[code]} finding(s): {', '.join(by_lint[code])}")
+            continue
+        had_group, had = base.get(code, (group, 0))
+        if had_group != group:
+            die(f"baseline lists {code} under '{had_group}' but clippy says '{group}'")
+        if counts[code] > had:
+            rose += 1
+            print(f"FAIL rose {code} ({group}) {had} -> {counts[code]}: {', '.join(by_lint[code])}")
+        elif counts[code] < had:
+            fell += 1
+            print(f"LOWER {code} ({group}) {had} -> {counts[code]}: lower the baseline")
+    for code in sorted(base):
+        if code not in counts and base[code][1] > 0:
+            fell += 1
+            print(f"LOWER {code} {base[code][1]} -> 0: lower the baseline")
+    print("groups: " + " ".join(f"{g}={per_group.get(g, 0)}" for g in
+                                 ("correctness", "suspicious", "style", "complexity", "perf", "pedantic",
+                                  "nursery", "restriction", "cargo", "unknown", "rustc")))
+    status = "FAIL" if denied or rose else "PASS"
+    print(f"clippy: {status} denied={denied} rose={rose} fell={fell} findings={sum(counts.values())} "
+          f"lints={len(counts)} cargo_rc={rc}")
+    sys.exit(1 if status == "FAIL" else 0)
+
+
+if __name__ == "__main__":
+    main()

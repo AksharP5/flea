@@ -1,0 +1,92 @@
+#!/usr/bin/python3
+# Refuses a pre-commit that would judge working-tree bytes instead of the staged commit, without touching the index.
+#   tools/flea-hook-check guard | hook <name> [args...]
+import fnmatch
+import os
+import shutil
+import subprocess
+import sys
+
+# Sample input (a repo-relative name): "src/backend/run.rs"
+RELEVANT = ("src/*", "ui/*", "tests/*", "tools/*", "Cargo.*", "hk.pkl", "keys.toml", "AGENTS.md",
+            "build.rs", "*/build.rs", "rust-toolchain*", "*/rust-toolchain*", ".cargo/*", "*/.cargo/*")
+
+
+def die(msg):
+    print("flea-hook-check: refused: " + msg, file=sys.stderr)
+    sys.exit(2)
+
+
+def relevant(name):
+    return any(fnmatch.fnmatchcase(name, pat) for pat in RELEVANT)
+
+
+# Sample input (an arg list): ["diff", "--cached", "--name-only", "-z"]
+def git(args):
+    try:
+        out = subprocess.run(["git"] + args, capture_output=True, check=False)
+    except OSError as e:
+        die(f"git did not start: {e}")
+    if out.returncode != 0:
+        die(f"git {' '.join(args)} exited {out.returncode}")
+    return out.stdout
+
+
+# Sample input (NUL-separated bytes): b"src/a.rs\x00src/b.rs\x00"
+def names(raw):
+    if not raw:
+        return []
+    parts = raw.split(b"\0")
+    if parts[-1:] != [b""]:
+        die("a git name stream did not end in NUL")
+    parts.pop()
+    if any(p == b"" for p in parts):
+        die("a git name stream holds an empty name")
+    return [p.decode("utf-8", "surrogateescape") for p in parts]
+
+
+def guard():
+    git(["rev-parse", "--is-inside-work-tree"])
+    # No staged-only shortcut: an amend commits the old index, so relevant worktree bytes mask it too.
+    for hit in names(git(["diff", "--name-only", "-z"])):
+        if relevant(hit):
+            refuse(hit)
+    for hit in names(git(["ls-files", "--others", "--exclude-standard", "-z"])):
+        if relevant(hit):
+            refuse(hit)
+    # Ignored inputs bypass the query above but not the compiler: an ignored src module or an
+    # ignored .cargo config is still read. Runtime artifacts live under these two and are skipped,
+    # which also keeps the hook's own OUTDIR from refusing the next commit.
+    for hit in names(git(["ls-files", "--others", "--ignored", "--exclude-standard", "-z"])):
+        if relevant(hit) and hit.split("/", 1)[0] not in ("target", ".flea-local"):
+            refuse(hit)
+
+
+def refuse(hit):
+    print(f"flea-hook-check: refused: {hit} is not fully staged, so the hook would judge working-tree"
+          " bytes rather than the staged commit; stage it, or remove or restore it, and retry", file=sys.stderr)
+    sys.exit(1)
+
+
+def hook(args):
+    if not args:
+        die("hook needs a hook name")
+    os.environ.setdefault("HK_PKL_OFFLINE", "1")
+    if shutil.which("hk") is None:
+        die("hk is not on PATH")
+    os.execvp("hk", ["hk", "run"] + args)
+
+
+def main():
+    if len(sys.argv) < 2:
+        die("want 'guard' or 'hook <name>'")
+    if sys.argv[1] == "guard" and len(sys.argv) == 2:
+        guard()
+    elif sys.argv[1] == "hook":
+        hook(sys.argv[2:])
+    else:
+        die("want 'guard' or 'hook <name>'")
+
+
+if __name__ == "__main__":
+    main()

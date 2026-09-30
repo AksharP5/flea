@@ -1,0 +1,613 @@
+#!/bin/bash
+# Gates the shared hook checkers through marked-root fixtures.
+# Cases marked STUB use a stub transport; cases marked REAL execute git and hk where present.
+set -u
+# The cd comes first: the trap below deletes a path under TMPDIR, never the caller's tree.
+cd "$(dirname "$0")/.." || exit 1
+repo=$PWD
+
+root=$(mktemp -d "${TMPDIR:-/tmp}/flea-hook-gate.XXXXXX") || exit 1
+# Every delete in this suite is checked absolute and inside this root before the trap is installed.
+case $root in
+  /*/flea-hook-gate.?*) ;;
+  *) echo "FAIL: mktemp -d gave '$root', refusing to own it"; exit 1 ;;
+esac
+touch "$root/.flea-hook-gate-root" || exit 1
+trap 'case "$root" in /*/flea-hook-gate.?*) rm -rf -- "$root" ;; esac' EXIT
+
+# A private HOME so git and hk never read or write the operator's own config, state or hooks.
+export HOME="$root/home"
+mkdir -p "$HOME" "$root/out" "$root/fix"
+export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null
+export HK_PKL_OFFLINE=1
+# The adapter reads identity from git var, which honours these four over any config file.
+export GIT_AUTHOR_NAME=GM GIT_AUTHOR_EMAIL=gianmarcomorales@icloud.com
+export GIT_COMMITTER_NAME=GM GIT_COMMITTER_EMAIL=gianmarcomorales@icloud.com
+
+fail=0
+check() {
+  local label="$1" expected="$2" actual="$3"
+  if [ "$expected" != "$actual" ]; then
+    echo "FAIL $label: expected exit $expected, got $actual"
+    fail=1
+  else
+    echo "ok   $label"
+  fi
+}
+expect_grep() {
+  local label="$1" file="$2" pattern="$3"
+  if grep -qF "$pattern" "$file"; then
+    echo "ok   $label"
+  else
+    echo "FAIL $label: no line '$pattern' in $file"
+    fail=1
+  fi
+}
+
+# One COMMITS_Z record out of shell-quoted fields; %B is passed through verbatim.
+zrec() {
+  python3 -c 'import sys; sys.stdout.buffer.write(b"\x1f".join(a.encode() for a in sys.argv[1:]) + b"\0")' "$@"
+}
+
+SHA=$(python3 -c 'print("a" * 40)')
+GOOD_B=$'fix(hooks): gate the shared checkers through one hook\n\nFirst body line.\nSecond body line.'
+
+# Commit rules over a staged log, the same shape the CI lane stages.
+zrec "$SHA" GM gianmarcomorales@icloud.com GM gianmarcomorales@icloud.com "" "$GOOD_B" > "$root/fix/good.z"
+"$repo/tools/flea-commit-rules" "$root/fix/good.z" "$root/out" > "$root/fix/good.out" 2>&1
+check "commit-rules accepts a good GM commit" 0 $?
+expect_grep "commit-rules summary is PASS" "$root/fix/good.out" "commit-rules: PASS fails=0 commits=1"
+
+zrec "$SHA" Someone x@y.z GM gianmarcomorales@icloud.com "" "$GOOD_B" > "$root/fix/ident.z"
+"$repo/tools/flea-commit-rules" "$root/fix/ident.z" "$root/out" > "$root/fix/ident.out" 2>&1
+check "commit-rules rejects a wrong identity" 1 $?
+expect_grep "commit-rules names the identity" "$root/fix/ident.out" "identity an=Someone <x@y.z>"
+
+LONG_B=$'fix(hooks): a subject that runs past sixty characters and keeps going\n\nFirst body line.\nSecond body line.'
+zrec "$SHA" GM gianmarcomorales@icloud.com GM gianmarcomorales@icloud.com "" "$LONG_B" > "$root/fix/long.z"
+"$repo/tools/flea-commit-rules" "$root/fix/long.z" "$root/out" > "$root/fix/long.out" 2>&1
+check "commit-rules rejects a long subject" 1 $?
+expect_grep "commit-rules counts the subject" "$root/fix/long.out" "want at most 60"
+
+zrec "$SHA" GM gianmarcomorales@icloud.com GM gianmarcomorales@icloud.com "" "fix(hooks): one line and no body" > "$root/fix/body.z"
+"$repo/tools/flea-commit-rules" "$root/fix/body.z" "$root/out" > "$root/fix/body.out" 2>&1
+check "commit-rules rejects a missing body" 1 $?
+expect_grep "commit-rules wants the blank line" "$root/fix/body.out" "body needs one blank line after the subject"
+
+ATTR_B=$'fix(hooks): a fine subject\n\nFirst body line.\nGenerated with Claude.\n'
+zrec "$SHA" GM gianmarcomorales@icloud.com GM gianmarcomorales@icloud.com "" "$ATTR_B" > "$root/fix/attr.z"
+"$repo/tools/flea-commit-rules" "$root/fix/attr.z" "$root/out" > "$root/fix/attr.out" 2>&1
+check "commit-rules rejects AI attribution" 1 $?
+expect_grep "commit-rules names the attribution" "$root/fix/attr.out" "attribution 'claude'"
+
+CREDIT_B=$'fix(hooks): gate human credit\n\nFirst body line.\nSecond body line.\n\nCo-authored-by: Ada Lovelace <ada@example.com>'
+zrec "$SHA" GM gianmarcomorales@icloud.com GM gianmarcomorales@icloud.com "" "$CREDIT_B" > "$root/fix/credit.z"
+"$repo/tools/flea-commit-rules" "$root/fix/credit.z" "$root/out" > "$root/fix/credit.out" 2>&1
+check "commit-rules accepts a human credit trailer" 0 $?
+BADCREDIT_B=$'fix(hooks): gate human credit\n\nFirst body line.\nSecond body line.\nCo-authored-by: ada'
+zrec "$SHA" GM gianmarcomorales@icloud.com GM gianmarcomorales@icloud.com "" "$BADCREDIT_B" > "$root/fix/badcredit.z"
+"$repo/tools/flea-commit-rules" "$root/fix/badcredit.z" "$root/out" > "$root/fix/badcredit.out" 2>&1
+check "commit-rules rejects a malformed credit trailer" 1 $?
+expect_grep "commit-rules names the malformed trailer" "$root/fix/badcredit.out" "malformed co-authored-by trailer"
+MIDBODY_B=$'fix(hooks): gate human credit\n\nCo-authored-by: Ada Lovelace <ada@example.com>\nSecond body line.'
+zrec "$SHA" GM gianmarcomorales@icloud.com GM gianmarcomorales@icloud.com "" "$MIDBODY_B" > "$root/fix/midbody.z"
+"$repo/tools/flea-commit-rules" "$root/fix/midbody.z" "$root/out" > "$root/fix/midbody.out" 2>&1
+check "commit-rules rejects a misplaced credit line" 1 $?
+expect_grep "commit-rules names the misplaced line" "$root/fix/midbody.out" "misplaced co-authored-by line"
+AICREDIT_B=$'fix(hooks): gate human credit\n\nFirst body line.\nSecond body line.\nCo-authored-by: Claude <noreply@anthropic.com>'
+zrec "$SHA" GM gianmarcomorales@icloud.com GM gianmarcomorales@icloud.com "" "$AICREDIT_B" > "$root/fix/aicredit.z"
+"$repo/tools/flea-commit-rules" "$root/fix/aicredit.z" "$root/out" > "$root/fix/aicredit.out" 2>&1
+check "commit-rules rejects an AI credit trailer" 1 $?
+expect_grep "commit-rules names the AI credit" "$root/fix/aicredit.out" "names an AI author"
+
+EM_B=$'fix(hooks): a fine subject\n\nFirst body \u2014 line.\nSecond body line.'
+zrec "$SHA" GM gianmarcomorales@icloud.com GM gianmarcomorales@icloud.com "" "$EM_B" > "$root/fix/em.z"
+"$repo/tools/flea-commit-rules" "$root/fix/em.z" "$root/out" > "$root/fix/em.out" 2>&1
+check "commit-rules rejects an em dash" 1 $?
+expect_grep "commit-rules names the em dash" "$root/fix/em.out" "em dash U+2014"
+
+TRAIL_B=$'fix(hooks): a fine subject\n\nFirst body line.\nSecond body line.\n\n(cherry picked from commit 876774988e2051f26c26e7237617e3ae9ad77a67)'
+zrec "$SHA" GM gianmarcomorales@icloud.com GM gianmarcomorales@icloud.com "" "$TRAIL_B" > "$root/fix/trail.z"
+"$repo/tools/flea-commit-rules" "$root/fix/trail.z" "$root/out" > "$root/fix/trail.out" 2>&1
+check "commit-rules excludes the cherry-pick trailer" 0 $?
+
+DOUBLECP_B=$'fix(hooks): a fine subject\n\nFirst body line.\n(cherry picked from commit 876774988e2051f26c26e7237617e3ae9ad77a67)\n(cherry picked from commit 876774988e2051f26c26e7237617e3ae9ad77a67)'
+zrec "$SHA" GM gianmarcomorales@icloud.com GM gianmarcomorales@icloud.com "" "$DOUBLECP_B" > "$root/fix/doublecp.z"
+"$repo/tools/flea-commit-rules" "$root/fix/doublecp.z" "$root/out" > "$root/fix/doublecp.out" 2>&1
+check "commit-rules counts a second cherry-pick line as body" 0 $?
+
+CLAUDEMD_B=$'fix(hooks): mention the workflow\n\nSee CLAUDE.md for the workflow.\nSecond body line.'
+zrec "$SHA" GM gianmarcomorales@icloud.com GM gianmarcomorales@icloud.com "" "$CLAUDEMD_B" > "$root/fix/claudemd.z"
+"$repo/tools/flea-commit-rules" "$root/fix/claudemd.z" "$root/out" > "$root/fix/claudemd.out" 2>&1
+check "commit-rules passes a CLAUDE.md mention" 0 $?
+
+CODEX_B=$'fix(hooks): mention the tool\n\nMentioned Codex in the design notes.\nSecond body line.'
+zrec "$SHA" GM gianmarcomorales@icloud.com GM gianmarcomorales@icloud.com "" "$CODEX_B" > "$root/fix/codex.z"
+"$repo/tools/flea-commit-rules" "$root/fix/codex.z" "$root/out" > "$root/fix/codex.out" 2>&1
+check "commit-rules passes a Codex mention" 0 $?
+
+PAIR_B=$'fix(hooks): pair work\n\nPair-programmed with Codex on this.\nSecond body line.'
+zrec "$SHA" GM gianmarcomorales@icloud.com GM gianmarcomorales@icloud.com "" "$PAIR_B" > "$root/fix/pair.z"
+"$repo/tools/flea-commit-rules" "$root/fix/pair.z" "$root/out" > "$root/fix/pair.out" 2>&1
+check "commit-rules rejects verb-scoped AI credit" 1 $?
+expect_grep "commit-rules names the provider" "$root/fix/pair.out" "attribution 'codex'"
+
+ONECHAR_B=$'fix: x\n\nBody one.\nBody two.'
+zrec "$SHA" GM gianmarcomorales@icloud.com GM gianmarcomorales@icloud.com "" "$ONECHAR_B" > "$root/fix/onechar.z"
+"$repo/tools/flea-commit-rules" "$root/fix/onechar.z" "$root/out" > "$root/fix/onechar.out" 2>&1
+check "commit-rules accepts a one-character description" 0 $?
+
+WATCH_B=$'fix(hooks): watch test\n\nSaw \U0000231A today.\nSecond body line.'
+zrec "$SHA" GM gianmarcomorales@icloud.com GM gianmarcomorales@icloud.com "" "$WATCH_B" > "$root/fix/watch.z"
+"$repo/tools/flea-commit-rules" "$root/fix/watch.z" "$root/out" > "$root/fix/watch.out" 2>&1
+check "commit-rules rejects the watch emoji" 1 $?
+expect_grep "commit-rules names the watch" "$root/fix/watch.out" "emoji U+231A"
+
+CJK_B=$'fix(hooks): cjk test\n\nSaw \U00020BB7 today.\nSecond body line.'
+zrec "$SHA" GM gianmarcomorales@icloud.com GM gianmarcomorales@icloud.com "" "$CJK_B" > "$root/fix/cjk.z"
+"$repo/tools/flea-commit-rules" "$root/fix/cjk.z" "$root/out" > "$root/fix/cjk.out" 2>&1
+check "commit-rules passes supplementary CJK" 0 $?
+
+PLAIN_B=$'fix(hooks): plain test\n\nFixed #42 and 100 items.\nSecond body line.'
+zrec "$SHA" GM gianmarcomorales@icloud.com GM gianmarcomorales@icloud.com "" "$PLAIN_B" > "$root/fix/plain.z"
+"$repo/tools/flea-commit-rules" "$root/fix/plain.z" "$root/out" > "$root/fix/plain.out" 2>&1
+check "commit-rules passes digits and hash as text" 0 $?
+
+zrec "$SHA" GM gianmarcomorales@icloud.com GM gianmarcomorales@icloud.com "" > "$root/fix/short.z"
+"$repo/tools/flea-commit-rules" "$root/fix/short.z" "$root/out" > "$root/fix/short.out" 2>&1
+check "commit-rules refuses a malformed record" 2 $?
+expect_grep "commit-rules says ERROR" "$root/fix/short.out" "commit-rules: ERROR"
+
+(cd "$root/fix" && python3 -c 'open("bin.z", "wb").write(b"\xff\xfe bad \x1f bytes\0")')
+"$repo/tools/flea-commit-rules" "$root/fix/bin.z" "$root/out" > "$root/fix/bin.out" 2>&1
+check "commit-rules refuses a non-UTF8 log" 2 $?
+expect_grep "commit-rules says UTF-8" "$root/fix/bin.out" "not valid UTF-8"
+
+: > "$root/fix/empty.z"
+"$repo/tools/flea-commit-rules" "$root/fix/empty.z" "$root/out" > "$root/fix/empty.out" 2>&1
+check "commit-rules refuses an empty log" 2 $?
+expect_grep "commit-rules says ERROR" "$root/fix/empty.out" "holds no commit records to judge"
+python3 -c 'import sys; sys.stdout.buffer.write(open(sys.argv[1], "rb").read().rstrip(b"\0"))' "$root/fix/good.z" > "$root/fix/nonul.z"
+"$repo/tools/flea-commit-rules" "$root/fix/nonul.z" "$root/out" > "$root/fix/nonul.out" 2>&1
+check "commit-rules refuses a stream missing its final NUL" 2 $?
+expect_grep "commit-rules says ERROR" "$root/fix/nonul.out" "does not end in a record NUL"
+python3 -c 'import sys; d = open(sys.argv[1], "rb").read(); open(sys.argv[2], "wb").write(d + b"\0" + d)' "$root/fix/good.z" "$root/fix/hollow.z"
+"$repo/tools/flea-commit-rules" "$root/fix/hollow.z" "$root/out" > "$root/fix/hollow.out" 2>&1
+check "commit-rules refuses an interior empty record" 2 $?
+expect_grep "commit-rules says ERROR" "$root/fix/hollow.out" "holds an empty record"
+(cd "$repo" && git log -z --format='%H%x1f%an%x1f%ae%x1f%cn%x1f%ce%x1f%P%x1f%B' -1 HEAD > "$root/fix/real.z")
+"$repo/tools/flea-commit-rules" "$root/fix/real.z" "$root/out" > "$root/fix/real.out" 2>&1
+if [ $? -eq 2 ]; then echo "FAIL commit-rules errored on a real git log stream"; fail=1; else echo "ok   commit-rules judges a real git log stream"; fi
+if grep -q "could not judge" "$root/fix/real.out"; then echo "FAIL commit-rules refused a real git log stream"; fail=1; else echo "ok   commit-rules parsed the real stream"; fi
+
+# The commit-msg adapter against the hook's own file and git var identity.
+printf 'fix(hooks): judge the proposed message\n\nFirst body line.\nSecond body line.\n# a git comment line\n' > "$root/fix/msg.txt"
+"$repo/tools/flea-commit-msg" "$root/fix/msg.txt" > "$root/fix/msg.out" 2>&1
+check "commit-msg accepts a good message" 0 $?
+expect_grep "commit-msg summary is PASS" "$root/fix/msg.out" "commit-msg: PASS fails=0"
+
+printf 'fix(hooks): judge the proposed message\n\nFirst body line.\nSecond body line.\n' > "$root/fix/odd; mesg.txt"
+"$repo/tools/flea-commit-msg" "$root/fix/odd; mesg.txt" > "$root/fix/odd.out" 2>&1
+check "commit-msg takes a spaced name literally" 0 $?
+
+# A metacharacter name must reach the adapter unchanged and execute nothing.
+printf 'fix(hooks): judge the proposed message\n\nFirst body line.\nSecond body line.\n' > "$root/fix/we ird;\$(touch MARKER)\`x\`.txt"
+"$repo/tools/flea-commit-msg" "$root/fix/we ird;\$(touch MARKER)\`x\`.txt" > "$root/fix/meta.out" 2>&1
+check "commit-msg takes a metacharacter name literally" 0 $?
+[ -e "$root/fix/MARKER" ] && { echo "FAIL commit-msg executed a metacharacter name"; fail=1; } || echo "ok   commit-msg executed nothing"
+
+# Normalization follows the repo's own cleanup and comment char; agreement with git is asserted.
+mkdir -p "$root/norm" && (cd "$root/norm" && git init -q -b main . && git config user.name GM && git config user.email gianmarcomorales@icloud.com)
+agree() {
+  (cd "$root/norm" && git log -1 -z --format='%H%x1f%an%x1f%ae%x1f%cn%x1f%ce%x1f%P%x1f%B' > "$root/fix/agree.z")
+  "$repo/tools/flea-commit-rules" "$root/fix/agree.z" "$root/out" > "$root/fix/agree.out" 2>&1
+  echo $?
+}
+(cd "$root/norm" && printf 'fix(hooks): comment char override\n\nFirst body line.\nSecond body line.\n# Generated with Claude\n' > msg.txt && "$repo/tools/flea-commit-msg" msg.txt > "$root/fix/n0.out" 2>&1)
+check "commit-msg strips hash comments by default" 0 $?
+(cd "$root/norm" && git config core.commentChar ";" && printf 'fix(hooks): comment char override\n\nFirst body line.\nSecond body line.\n# Generated with Claude\n' > msg-n1.txt && cp msg-n1.txt "$root/fix/n1-before.txt" && "$repo/tools/flea-commit-msg" msg-n1.txt > "$root/fix/n1.out" 2>&1)
+check "commit-msg keeps a hash line under semicolon comments" 1 $?
+expect_grep "commit-msg judges committed bytes" "$root/fix/n1.out" "attribution 'claude'"
+if cmp -s "$root/norm/msg-n1.txt" "$root/fix/n1-before.txt"; then echo "ok   commit-msg leaves a refused file untouched"; else echo "FAIL commit-msg rewrote a refused file"; fail=1; fi
+# The repair: a passed message is written back, so default Git-F stores exactly what was judged.
+(cd "$root/norm" && git config --unset core.commentChar && printf 'fix(hooks): stored agreement\n\nFirst body line.\nSecond body line.\n# Please enter the commit message.\n' > agree-msg.txt && "$repo/tools/flea-commit-msg" agree-msg.txt > "$root/fix/n0b.out" 2>&1)
+check "commit-msg passes a commented good message" 0 $?
+if grep -q "^#" "$root/norm/agree-msg.txt"; then echo "FAIL commit-msg left the comment in the file"; fail=1; else echo "ok   commit-msg wrote validated bytes back"; fi
+(cd "$root/norm" && echo z > f2.txt && git add f2.txt && git commit -qF agree-msg.txt && [ "$(agree)" = 0 ]) && echo "ok   stored message agrees with the adapter" || { echo "FAIL stored message disagrees with the adapter"; fail=1; }
+(cd "$root/norm" && printf 'fix(hooks): trailer writeback\n\nFirst body line.\nSecond body line.\n# a comment\n\nCo-authored-by: Ada Lovelace <ada@example.com>\n' > trail-msg.txt && "$repo/tools/flea-commit-msg" trail-msg.txt > "$root/fix/n0c.out" 2>&1)
+check "commit-msg passes comments beside a human trailer" 0 $?
+expect_grep "commit-msg keeps the trailer" "$root/norm/trail-msg.txt" "Co-authored-by: Ada Lovelace <ada@example.com>"
+(cd "$root/norm" && echo w > f3.txt && git add f3.txt && git commit -qF trail-msg.txt && [ "$(agree)" = 0 ]) && echo "ok   stored trailer agrees with the adapter" || { echo "FAIL stored trailer disagrees with the adapter"; fail=1; }
+(cd "$root/norm" && echo x > f.txt && git add f.txt && git commit -qF msg-n1.txt) > /dev/null 2>&1 || true
+[ "$(agree)" = 1 ] && echo "ok   range checker agrees on the committed bytes" || { echo "FAIL range checker disagrees with the adapter"; fail=1; }
+(cd "$root/norm" && printf 'fix(hooks): semicolon note\n\nFirst body line.\nSecond body line.\n; internal note\n' > msg2.txt && "$repo/tools/flea-commit-msg" msg2.txt > "$root/fix/n2.out" 2>&1)
+check "commit-msg strips the configured comment char" 0 $?
+(cd "$root/norm" && git add f.txt 2>/dev/null; echo y >> f.txt && git add f.txt && git commit -qF msg2.txt && [ "$(agree)" = 0 ]) && echo "ok   range checker agrees on the stripped note" || { echo "FAIL range checker disagrees on the stripped note"; fail=1; }
+(cd "$root/norm" && git config commit.cleanup verbatim && printf 'fix(hooks): verbatim note\n\nFirst body line.\nSecond body line.\n# kept note\n' > msg3.txt && "$repo/tools/flea-commit-msg" msg3.txt > "$root/fix/n3.out" 2>&1)
+check "commit-msg canonicalizes verbatim bytes too" 0 $?
+if grep -q "^#" "$root/norm/msg3.txt"; then echo "FAIL commit-msg left the comment for verbatim"; fail=1; else echo "ok   commit-msg wrote canonical bytes back"; fi
+(cd "$root/norm" && echo v3 > f3.txt && git add f3.txt && git commit -q --cleanup=verbatim -F msg3.txt && [ "$(agree)" = 0 ]) && echo "ok   stored verbatim bytes agree" || { echo "FAIL stored verbatim bytes disagree"; fail=1; }
+(cd "$root/norm" && git config commit.cleanup whitespace && printf 'fix(hooks): whitespace note\n\nFirst body line.\nSecond body line.\n# kept line\n' > msg4.txt && "$repo/tools/flea-commit-msg" msg4.txt > "$root/fix/n4w.out" 2>&1)
+check "commit-msg keeps hash lines under whitespace cleanup" 0 $?
+(cd "$root/norm" && echo v > f4.txt && git add f4.txt && git commit -qF msg4.txt && [ "$(agree)" = 0 ]) && echo "ok   stored whitespace bytes agree" || { echo "FAIL stored whitespace bytes disagree"; fail=1; }
+# The root residual: repo verbatim, two body lines with a hash second, CLI strip.
+for repo_mode in verbatim whitespace default; do
+  (cd "$root/norm" && git config --unset commit.cleanup 2>/dev/null || true
+   [ "$repo_mode" = default ] || git config commit.cleanup "$repo_mode"
+   printf 'fix(hooks): root residual\n\nFirst body line.\n# second is a comment\n' > root-ex.txt
+   cp root-ex.txt "$root/fix/root-before.txt"
+   "$repo/tools/flea-commit-msg" root-ex.txt > "$root/fix/root-$repo_mode.out" 2>&1)
+  check "commit-msg refuses the root residual under repo $repo_mode" 1 $?
+done
+if cmp -s "$root/norm/root-ex.txt" "$root/fix/root-before.txt"; then echo "ok   commit-msg leaves the refused residual untouched"; else echo "FAIL commit-msg rewrote a refused residual"; fail=1; fi
+for cli_mode in strip scissors verbatim default; do
+  (cd "$root/norm" && git config --unset commit.cleanup 2>/dev/null || true
+   printf 'fix(hooks): matrix valid\n\nFirst body line.\nSecond body line.\n# a comment\n' > matrix.txt
+   "$repo/tools/flea-commit-msg" matrix.txt > "$root/fix/matrix-$cli_mode.out" 2>&1)
+  check "commit-msg passes the matrix message for CLI $cli_mode" 0 $?
+  (cd "$root/norm" && echo "$cli_mode" >> fmatrix.txt && git add fmatrix.txt && if [ "$cli_mode" = default ]; then git commit -qF matrix.txt; else git commit -q --cleanup="$cli_mode" -F matrix.txt; fi && [ "$(agree)" = 0 ]) && echo "ok   CLI $cli_mode stores agreed bytes" || { echo "FAIL CLI $cli_mode stored disagreed bytes"; fail=1; }
+done
+(cd "$root/norm" && git config --unset commit.cleanup 2>/dev/null || true; git config core.commentChar auto && "$repo/tools/flea-commit-msg" msg.txt > "$root/fix/n4.out" 2>&1)
+check "commit-msg refuses an auto comment char" 2 $?
+expect_grep "commit-msg will not guess" "$root/fix/n4.out" "cannot be applied safely"
+(cd "$root/norm" && git config --unset core.commentChar) || true
+
+printf 'wip\n' > "$root/fix/wip.txt"
+"$repo/tools/flea-commit-msg" "$root/fix/wip.txt" > "$root/fix/wip.out" 2>&1
+check "commit-msg rejects a bad message" 1 $?
+expect_grep "commit-msg names the subject" "$root/fix/wip.out" "FAIL proposed subject not conventional: wip"
+
+printf 'fix(hooks): judge the proposed message\n\nFirst body line.\nSecond body line.\n\nCo-authored-by: Ada Lovelace <ada@example.com>\n' > "$root/fix/credit-msg.txt"
+"$repo/tools/flea-commit-msg" "$root/fix/credit-msg.txt" > "$root/fix/credit-msg.out" 2>&1
+check "commit-msg accepts a human credit trailer" 0 $?
+printf 'fix(hooks): judge the proposed message\n\nFirst body line.\nSecond body line.\nCo-authored-by: ada\n' > "$root/fix/badcredit-msg.txt"
+"$repo/tools/flea-commit-msg" "$root/fix/badcredit-msg.txt" > "$root/fix/badcredit-msg.out" 2>&1
+check "commit-msg rejects a malformed credit trailer" 1 $?
+printf 'fix(hooks): judge the proposed message\n\nFirst body line.\nSecond body line.\nCo-authored-by: Claude <noreply@anthropic.com>\n' > "$root/fix/aicredit-msg.txt"
+"$repo/tools/flea-commit-msg" "$root/fix/aicredit-msg.txt" > "$root/fix/aicredit-msg.out" 2>&1
+check "commit-msg rejects an AI credit trailer" 1 $?
+
+"$repo/tools/flea-commit-msg" "$root/fix/no-such-file.txt" > "$root/fix/missing.out" 2>&1
+check "commit-msg refuses a missing file" 2 $?
+expect_grep "commit-msg says ERROR" "$root/fix/missing.out" "commit-msg: ERROR"
+
+# The partial-index guard in a real tiny git fixture. Covered inputs live under the
+# same shapes the guard watches (src/, AGENTS.md); notes.txt matches no pattern.
+mkdir -p "$root/guard/src" && (cd "$root/guard" && git init -q -b main . && git config user.name GM && git config user.email gianmarcomorales@icloud.com)
+(cd "$root/guard" && echo 'fn main(){}' > src/a.rs && echo x > notes.txt && echo doc > AGENTS.md && git add src/a.rs notes.txt AGENTS.md && git commit -qm 'test(hooks): seed the guard fixture
+
+First body line.
+Second body line.')
+(cd "$root/guard" && "$repo/tools/flea-hook-check" guard) > "$root/fix/g0.out" 2>&1
+check "guard passes a clean tree" 0 $?
+(cd "$root/guard" && echo '// staged' >> src/a.rs && git add src/a.rs && "$repo/tools/flea-hook-check" guard) > "$root/fix/g1.out" 2>&1
+check "guard passes staged-only changes" 0 $?
+(cd "$root/guard" && echo '// unstaged' >> src/a.rs && "$repo/tools/flea-hook-check" guard) > "$root/fix/g2.out" 2>&1
+check "guard refuses staged bytes masked by unstaged ones" 1 $?
+expect_grep "guard explains in one sentence" "$root/fix/g2.out" "would judge working-tree bytes rather than the staged commit"
+(cd "$root/guard" && git reset -q && git checkout -q -- src/a.rs && echo y >> notes.txt && git add notes.txt && echo z >> notes.txt && "$repo/tools/flea-hook-check" guard) > "$root/fix/g3.out" 2>&1
+check "guard passes when only irrelevant names are dirty" 0 $?
+(cd "$root/guard" && git reset -q && git checkout -q -- notes.txt && echo doc2 >> AGENTS.md && echo y >> notes.txt && git add notes.txt && "$repo/tools/flea-hook-check" guard) > "$root/fix/g4.out" 2>&1
+check "guard refuses a masked AGENTS.md" 1 $?
+(cd "$root/guard" && git reset -q && git checkout -q -- AGENTS.md notes.txt && echo y >> notes.txt && git add notes.txt && touch "src/we
+ird.rs" && "$repo/tools/flea-hook-check" guard) > "$root/fix/g5.out" 2>&1
+check "guard refuses an unstaged newline path" 1 $?
+expect_grep "guard explains the newline path" "$root/fix/g5.out" "would judge working-tree bytes rather than the staged commit"
+(cd "$root/guard" && rm -f "src/we
+ird.rs" && echo 'fn new(){}' > src/newmod.rs && "$repo/tools/flea-hook-check" guard) > "$root/fix/g6.out" 2>&1
+check "guard refuses an untracked compiled module" 1 $?
+expect_grep "guard explains the untracked module" "$root/fix/g6.out" "src/newmod.rs is not fully staged"
+(cd "$root/guard" && GIT_DIR="$root/none" "$repo/tools/flea-hook-check" guard) > "$root/fix/g7.out" 2>&1
+check "guard fails closed when git fails" 2 $?
+expect_grep "guard says ERROR" "$root/fix/g7.out" "flea-hook-check: refused: git "
+(cd "$root/guard" && rm -f src/newmod.rs && echo 'fn main(){}' > build.rs && git add build.rs notes.txt && echo '// unstaged' >> build.rs && "$repo/tools/flea-hook-check" guard) > "$root/fix/g8.out" 2>&1
+check "guard refuses masked build configuration" 1 $?
+expect_grep "guard names build.rs" "$root/fix/g8.out" "build.rs is not fully staged"
+(cd "$root/guard" && rm -f build.rs && git reset -q && git checkout -q -- . && echo '// amend shape' >> src/a.rs && "$repo/tools/flea-hook-check" guard) > "$root/fix/g9.out" 2>&1
+check "guard refuses with a clean index over a dirty tree" 1 $?
+expect_grep "guard explains the amend shape" "$root/fix/g9.out" "would judge working-tree bytes rather than the staged commit"
+(cd "$root/guard" && rm -f build.rs && git reset -q && git checkout -q -- . && printf 'src/ignored-mod.rs\n.cargo/config.toml\n' > .gitignore && echo y >> notes.txt && git add notes.txt && echo 'fn ignored(){}' > src/ignored-mod.rs && "$repo/tools/flea-hook-check" guard) > "$root/fix/g10.out" 2>&1
+check "guard refuses an ignored src module" 1 $?
+expect_grep "guard names the ignored module" "$root/fix/g10.out" "src/ignored-mod.rs is not fully staged"
+(cd "$root/guard" && rm -f src/ignored-mod.rs && mkdir -p .cargo && echo '[lint]' > .cargo/config.toml && "$repo/tools/flea-hook-check" guard) > "$root/fix/g11.out" 2>&1
+check "guard refuses an ignored cargo config" 1 $?
+expect_grep "guard names the cargo config" "$root/fix/g11.out" ".cargo/config.toml is not fully staged"
+(cd "$root/guard" && rm -rf .cargo && mkdir -p target .flea-local && echo x > target/x.rmeta && echo y > .flea-local/y && "$repo/tools/flea-hook-check" guard) > "$root/fix/g12.out" 2>&1
+check "guard passes ignored runtime artifacts" 0 $?
+
+# The installer in a real tiny git fixture.
+mkdir -p "$root/inst" && (cd "$root/inst" && git init -q -b main .)
+if command -v hk >/dev/null 2>&1 && [ "$(hk --version)" = "hk 2.4.0" ]; then
+  (cd "$root/inst" && "$repo/tools/flea-hooks-install") > "$root/fix/i0.out" 2>&1
+  check "installer plants both legacy shims" 0 $?
+  [ -x "$root/inst/.git/hooks/pre-commit" ] && [ -x "$root/inst/.git/hooks/commit-msg" ] || { echo "FAIL installer left a shim missing or unexecutable"; fail=1; }
+  echo "ok   installer leaves executable shims"
+  (cd "$root/inst" && echo '# operator hook' > .git/hooks/pre-commit && "$repo/tools/flea-hooks-install") > "$root/fix/i1.out" 2>&1
+  check "installer refuses an unrelated hook" 2 $?
+  expect_grep "installer names the file" "$root/fix/i1.out" "is not a flea hook"
+  if grep -q '# operator hook' "$root/inst/.git/hooks/pre-commit"; then echo "ok   installer left the operator hook byte-identical"; else echo "FAIL installer touched the operator hook"; fail=1; fi
+else
+  echo "SKIP installer live cases: no pinned hk 2.4.0 on PATH"
+fi
+# A wrong hk version refuses without writing, through a stub on PATH only.
+mkdir -p "$root/verstub" && printf '#!/bin/bash\necho "hk 9.9.9"\n' > "$root/verstub/hk" && chmod +x "$root/verstub/hk"
+mkdir -p "$root/ver" && (cd "$root/ver" && git init -q -b main .)
+(cd "$root/ver" && PATH="$root/verstub:$PATH" "$repo/tools/flea-hooks-install") > "$root/fix/i2.out" 2>&1
+check "installer refuses an unexpected hk version" 2 $?
+expect_grep "installer names the versions" "$root/fix/i2.out" "want 'hk 2.4.0'"
+[ -e "$root/ver/.git/hooks/pre-commit" ] && { echo "FAIL installer wrote a shim behind a refused version"; fail=1; } || echo "ok   installer wrote nothing behind a refused version"
+# A configured hooks path points outside the repo; the installer refuses before writing anything.
+mkdir -p "$root/pinstub" && printf '#!/bin/bash\necho "hk 2.4.0"\n' > "$root/pinstub/hk" && chmod +x "$root/pinstub/hk"
+mkdir -p "$root/hcfg/home" "$root/hcfg/repo" && (cd "$root/hcfg/repo" && git init -q -b main .)
+printf '[core]\n\thooksPath = /tmp/elsewhere-hooks\n' > "$root/hcfg/home/.gitconfig"
+(cd "$root/hcfg/repo" && HOME="$root/hcfg/home" GIT_CONFIG_GLOBAL="$root/hcfg/home/.gitconfig" PATH="$root/pinstub:$PATH" "$repo/tools/flea-hooks-install") > "$root/fix/i3.out" 2>&1
+check "installer refuses a configured hooks path" 2 $?
+expect_grep "installer names the path" "$root/fix/i3.out" "core.hooksPath is set to '/tmp/elsewhere-hooks'"
+[ -e "$root/hcfg/repo/.git/hooks/pre-commit" ] && { echo "FAIL installer wrote behind a foreign hooks path"; fail=1; } || echo "ok   installer wrote nothing behind a foreign hooks path"
+
+# STUB clippy transport: a stub cargo replays a stream, a stub clippy-driver replays a help text.
+mkdir -p "$root/stubbin"
+cat > "$root/stubbin/cargo" <<'EOF'
+#!/bin/bash
+cat "$CLIPPY_STREAM"
+exit "${CLIPPY_RC:-0}"
+EOF
+cat > "$root/stubbin/clippy-driver" <<'EOF'
+#!/bin/bash
+cat "$CLIPPY_HELP"
+exit 0
+EOF
+chmod +x "$root/stubbin/cargo" "$root/stubbin/clippy-driver"
+printf 'Lint groups loaded by this crate:\n   clippy::correctness  clippy::approx_constant, clippy::seed_lint\n   clippy::suspicious  clippy::seed_susp\n   clippy::style  clippy::bool_assert_comparison, clippy::seed_spanless\n' > "$root/stub-help.txt"
+# The stub inventory is smaller than the real one, so stub runs judge against a stub baseline.
+printf 'clippy::bool_assert_comparison|style|10\nclippy::seed_spanless|style|0\n' > "$root/stub-baseline.txt"
+stub_clippy() {
+  CLIPPY_STREAM="$1" CLIPPY_RC="${2:-0}" CLIPPY_HELP="$root/stub-help.txt" PATH="$root/stubbin:$PATH" \
+    "$repo/tools/flea-clippy" "$root/stub-baseline.txt" "$3"
+}
+: > "$root/stub-empty.json"
+stub_clippy "$root/stub-empty.json" 0 "$root/out/s-empty" > "$root/fix/s-empty.out" 2>&1
+check "STUB clippy refuses a missing build-finished" 2 $?
+printf 'garbage line\n' > "$root/stub-garbage.json"
+stub_clippy "$root/stub-garbage.json" 0 "$root/out/s-garbage" > "$root/fix/s-garbage.out" 2>&1
+check "STUB clippy refuses non-blank garbage JSON" 2 $?
+expect_grep "STUB clippy names the garbage" "$root/fix/s-garbage.out" "were not valid cargo records"
+printf '{"reason":"compiler-message"}\n{"reason":"build-finished","success":true}\n' > "$root/stub-noshape.json"
+stub_clippy "$root/stub-noshape.json" 0 "$root/out/s-noshape" > "$root/fix/s-noshape.out" 2>&1
+check "STUB clippy refuses a malformed record shape" 2 $?
+printf '{"reason":"compiler-message","message":{"level":"warning","code":{"code":"clippy::no_such_lint"},"spans":[],"message":"x"}}\n{"reason":"compiler-artifact","target":{"name":"flea"}}\n{"reason":"build-finished","success":true}\n' > "$root/stub-unknown.json"
+stub_clippy "$root/stub-unknown.json" 0 "$root/out/s-unknown" > "$root/fix/s-unknown.out" 2>&1
+check "STUB clippy refuses an unknown lint" 2 $?
+printf '{"reason":"nonsense","anything":"wrong"}\n{"reason":"compiler-artifact","target":{"name":"flea"}}\n{"reason":"build-finished","success":true}\n' > "$root/stub-reason.json"
+stub_clippy "$root/stub-reason.json" 0 "$root/out/s-reason" > "$root/fix/s-reason.out" 2>&1
+check "STUB clippy refuses an unknown reason" 2 $?
+expect_grep "STUB clippy says ERROR" "$root/fix/s-reason.out" "clippy: ERROR"
+printf '{"reason":"compiler-message","message":{"level":null}}\n{"reason":"compiler-artifact","target":{"name":"flea"}}\n{"reason":"build-finished","success":true}\n' > "$root/stub-level.json"
+stub_clippy "$root/stub-level.json" 0 "$root/out/s-level" > "$root/fix/s-level.out" 2>&1
+check "STUB clippy refuses a null level" 2 $?
+expect_grep "STUB clippy says ERROR" "$root/fix/s-level.out" "clippy: ERROR"
+printf '{"reason":"compiler-message","message":{"level":"nonsense","code":{"code":"clippy::seed_spanless"},"spans":[],"message":"m"}}\n{"reason":"compiler-artifact","target":{"name":"flea"}}\n{"reason":"build-finished","success":true}\n' > "$root/stub-level-s.json"
+stub_clippy "$root/stub-level-s.json" 0 "$root/out/s-level-s" > "$root/fix/s-level-s.out" 2>&1
+check "STUB clippy refuses an unknown level string" 2 $?
+expect_grep "STUB clippy says ERROR" "$root/fix/s-level-s.out" "clippy: ERROR"
+python3 - <<PY > "$root/stub-spans.json"
+import json
+base = {"level": "warning", "code": {"code": "clippy::seed_spanless"}, "message": "m"}
+lines = [
+    {"reason": "compiler-message", "message": dict(base, spans="x")},
+    {"reason": "compiler-artifact", "target": {"name": "flea"}},
+    {"reason": "build-finished", "success": True},
+]
+print("\n".join(json.dumps(l) for l in lines))
+PY
+stub_clippy "$root/stub-spans.json" 0 "$root/out/s-spans" > "$root/fix/s-spans.out" 2>&1
+check "STUB clippy refuses non-list spans" 2 $?
+python3 - <<PY > "$root/stub-span-el.json"
+import json
+lines = [
+    {"reason": "compiler-message", "message": {"level": "warning", "code": {"code": "clippy::seed_spanless"},
+      "spans": [{"is_primary": True}], "message": "m"}},
+    {"reason": "compiler-artifact", "target": {"name": "flea"}},
+    {"reason": "build-finished", "success": True},
+]
+print("\n".join(json.dumps(l) for l in lines))
+PY
+stub_clippy "$root/stub-span-el.json" 0 "$root/out/s-span-el" > "$root/fix/s-span-el.out" 2>&1
+check "STUB clippy refuses a primary span without a location" 2 $?
+printf '{"reason":"compiler-message","message":{"level":"warning","code":"clippy::seed_spanless","spans":[],"message":"m"}}\n{"reason":"compiler-artifact","target":{"name":"flea"}}\n{"reason":"build-finished","success":true}\n' > "$root/stub-code.json"
+stub_clippy "$root/stub-code.json" 0 "$root/out/s-code" > "$root/fix/s-code.out" 2>&1
+check "STUB clippy refuses a non-dict code" 2 $?
+printf '{"reason":"compiler-message","message":{"level":"warning","code":{"code":7},"spans":[],"message":"m"}}\n{"reason":"compiler-artifact","target":{"name":"flea"}}\n{"reason":"build-finished","success":true}\n' > "$root/stub-code7.json"
+stub_clippy "$root/stub-code7.json" 0 "$root/out/s-code7" > "$root/fix/s-code7.out" 2>&1
+check "STUB clippy refuses a non-string code" 2 $?
+printf '{"reason":"compiler-artifact","target":{"name":"flea"}}\n{"reason":"build-finished"}\n' > "$root/stub-success.json"
+stub_clippy "$root/stub-success.json" 0 "$root/out/s-success" > "$root/fix/s-success.out" 2>&1
+check "STUB clippy refuses a success-less build-finished" 2 $?
+python3 - <<PY > "$root/stub-nospan.json"
+import json
+lines = []
+for text in ("first span-less warning", "second span-less warning"):
+    lines.append({"reason": "compiler-message", "message": {"level": "warning",
+      "code": {"code": "clippy::seed_spanless"}, "spans": [], "message": text}})
+lines.append({"reason": "compiler-artifact", "target": {"name": "flea"}})
+lines.append({"reason": "build-finished", "success": True})
+print("\n".join(json.dumps(l) for l in lines))
+PY
+stub_clippy "$root/stub-nospan.json" 0 "$root/out/s-nospan" > "$root/fix/s-nospan.out" 2>&1
+check "STUB clippy keeps distinct span-less warnings apart" 1 $?
+expect_grep "STUB clippy counts both findings" "$root/fix/s-nospan.out" "findings=2"
+printf '{"reason":"compiler-artifact","target":{"name":"flea"}}\n{"reason":"build-finished","success":true}\n' > "$root/stub-clean.json"
+stub_clippy "$root/stub-clean.json" 1 "$root/out/s-rc" > "$root/fix/s-rc.out" 2>&1
+check "STUB clippy refuses a nonzero cargo exit" 2 $?
+printf '{"reason":"compiler-artifact","target":{"name":"flea"}}\n' > "$root/stub-nofinish.json"
+stub_clippy "$root/stub-nofinish.json" 0 "$root/out/s-nofinish" > "$root/fix/s-nofinish.out" 2>&1
+check "STUB clippy refuses a checked target with no build-finished" 2 $?
+(cd "$root/fix" && python3 -c 'open("bin-base.txt", "wb").write(b"clippy::len_zero|style|\xff\n")')
+CLIPPY_STREAM="$root/stub-clean.json" CLIPPY_RC=0 CLIPPY_HELP="$root/stub-help.txt" PATH="$root/stubbin:$PATH" \
+  "$repo/tools/flea-clippy" "$root/fix/bin-base.txt" "$root/out/s-binbase" > "$root/fix/s-binbase.out" 2>&1
+check "STUB clippy refuses a non-UTF8 baseline" 2 $?
+expect_grep "STUB clippy says UTF-8" "$root/fix/s-binbase.out" "not valid UTF-8"
+mkdir -p "$root/nodriver" && cp "$root/stubbin/cargo" "$root/nodriver/cargo" && chmod +x "$root/nodriver/cargo"
+CLIPPY_STREAM="$root/stub-clean.json" CLIPPY_RC=0 CLIPPY_HELP="$root/stub-help.txt" PATH="$root/nodriver:/usr/bin:/bin" \
+  "$repo/tools/flea-clippy" "$repo/tools/clippy-baseline.txt" "$root/out/s-nodriver" > "$root/fix/s-nodriver.out" 2>&1
+check "STUB clippy refuses a missing clippy-driver" 2 $?
+expect_grep "STUB clippy names the driver" "$root/fix/s-nodriver.out" "clippy-driver did not start"
+printf 'clippy::no_such_lint|style|1\n' > "$root/fix/odd-base.txt"
+stub_clippy_base() {
+  CLIPPY_STREAM="$1" CLIPPY_RC="${2:-0}" CLIPPY_HELP="$root/stub-help.txt" PATH="$root/stubbin:$PATH" \
+    "$repo/tools/flea-clippy" "$root/fix/odd-base.txt" "$3"
+}
+stub_clippy_base "$root/stub-clean.json" 0 "$root/out/s-odd" > "$root/fix/s-odd.out" 2>&1
+check "STUB clippy refuses a baseline lint outside the inventory" 2 $?
+expect_grep "STUB clippy names the lint" "$root/fix/s-odd.out" "does not list"
+# Concurrent calls on one OUTDIR serialize: the denied stream stays denied in both orders.
+python3 - <<PY > "$root/stub-deny.json"
+import json
+lines = []
+lines.append({"reason": "compiler-message", "message": {"level": "warning", "code": {"code": "clippy::seed_lint"},
+  "spans": [{"is_primary": True, "file_name": "src/a.rs", "line_start": 3, "column_start": 4}], "message": "seed"}})
+lines.append({"reason": "compiler-artifact", "target": {"name": "flea"}})
+lines.append({"reason": "build-finished", "success": True})
+print("\n".join(json.dumps(l) for l in lines))
+PY
+cat > "$root/stubbin/cargo-conc" <<'EOF'
+#!/bin/bash
+touch "$CONC_MINE"
+for i in $(seq 1 100); do [ -e "$CONC_PEER" ] && break; sleep 0.1; done
+cat "$CLIPPY_STREAM"
+EOF
+chmod +x "$root/stubbin/cargo-conc"
+mkdir -p "$root/concbin" && cp "$root/stubbin/cargo-conc" "$root/concbin/cargo" && cp "$root/stubbin/clippy-driver" "$root/concbin/clippy-driver" && chmod +x "$root/concbin/cargo" "$root/concbin/clippy-driver"
+conc_clippy() {
+  CONC_MINE="$root/conc-$1" CONC_PEER="$root/conc-$2" CLIPPY_STREAM="$3" CLIPPY_HELP="$root/stub-help.txt" PATH="$root/concbin:$PATH" \
+    "$repo/tools/flea-clippy" "$root/stub-baseline.txt" "$root/out/s-conc" > "$root/fix/s-conc-$1.out" 2>&1
+  echo "$1:$?" > "$root/fix/conc-$1.rc"
+}
+rm -f "$root/conc-deny" "$root/conc-clean"
+conc_clippy deny clean "$root/stub-deny.json" &
+conc_clippy clean deny "$root/stub-clean.json" &
+wait
+check "STUB concurrent denied call exits 1" 1 "$(cut -d: -f2 < "$root/fix/conc-deny.rc")"
+check "STUB concurrent clean call exits 0" 0 "$(cut -d: -f2 < "$root/fix/conc-clean.rc")"
+expect_grep "STUB concurrent denied call stays denied" "$root/fix/s-conc-deny.out" "FAIL deny clippy::seed_lint"
+expect_grep "STUB concurrent clean call stays clean" "$root/fix/s-conc-clean.out" "clippy: PASS"
+stub_clippy "$root/stub-deny.json" 0 "$root/out/s-deny" > "$root/fix/s-deny.out" 2>&1
+check "STUB clippy denies a correctness seed" 1 $?
+expect_grep "STUB clippy prints the denied finding" "$root/fix/s-deny.out" "FAIL deny clippy::seed_lint (correctness) src/a.rs:3:4"
+python3 - <<PY > "$root/stub-rose.json"
+import json
+lines = []
+for i in range(1, 13):
+    lines.append({"reason": "compiler-message", "message": {"level": "warning",
+      "code": {"code": "clippy::bool_assert_comparison"},
+      "spans": [{"is_primary": True, "file_name": "src/b.rs", "line_start": i, "column_start": 1}], "message": "m"}})
+lines.append({"reason": "compiler-artifact", "target": {"name": "flea"}})
+lines.append({"reason": "build-finished", "success": True})
+print("\n".join(json.dumps(l) for l in lines))
+PY
+stub_clippy "$root/stub-rose.json" 0 "$root/out/s-rose" > "$root/fix/s-rose.out" 2>&1
+check "STUB clippy fails a risen ratchet" 1 $?
+expect_grep "STUB clippy prints every risen location" "$root/fix/s-rose.out" "src/b.rs:12:1"
+if grep -q "and .* more" "$root/fix/s-rose.out"; then echo "FAIL STUB clippy capped a FAIL line"; fail=1; else echo "ok   STUB clippy caps no FAIL line"; fi
+stub_clippy "$root/stub-clean.json" 0 "$root/out/s-pass" > "$root/fix/s-pass.out" 2>&1
+check "STUB clippy passes a clean stream" 0 $?
+expect_grep "STUB clippy summary is PASS" "$root/fix/s-pass.out" "clippy: PASS"
+
+# REAL hk and git hooks where the pinned hk exists.
+if command -v hk >/dev/null 2>&1 && [ "$(hk --version)" = "hk 2.4.0" ]; then
+  (cd "$repo" && hk validate) > "$root/fix/hkv.out" 2>&1
+  check "REAL hk validates the shipped hk.pkl" 0 $?
+  mkdir -p "$root/hook" && (cd "$root/hook" && git init -q -b main . && git config user.name GM && git config user.email gianmarcomorales@icloud.com)
+  # The legacy shim resolves tools/ off the fixture top, so the fixture links the tree under test.
+  ln -s "$repo/tools" "$root/hook/tools"
+  (cd "$root/hook" && cat > hk.pkl <<EOF
+amends "package://github.com/jdx/hk/releases/download/v2.4.0/hk@2.4.0#/Config.pkl"
+min_hk_version = "2.4.0"
+hooks {
+  ["pre-commit"] {
+    fix = false
+    stage = false
+    stash = "none"
+    steps {
+      ["partial-index-guard"] {
+        check = "$repo/tools/flea-hook-check guard"
+      }
+      ["clippy-spy"] {
+        depends = "partial-index-guard"
+        check = "touch clippy-spy-ran"
+      }
+    }
+  }
+  ["commit-msg"] {
+    steps {
+      ["commit-rules"] {
+        check = new Command {
+          argv = List("$repo/tools/flea-commit-msg", "{{commit_msg_file}}")
+        }
+      }
+    }
+  }
+}
+EOF
+  "$repo/tools/flea-hooks-install" >/dev/null 2>&1)
+  (cd "$root/hook" && mkdir -p src && echo 'fn main(){}' > src/a.rs && git add src/a.rs hk.pkl && printf 'test(hooks): land through the real hook\n\nFirst body line.\nSecond body line.\n' > msg.txt && git commit -qF msg.txt) > "$root/fix/h0.out" 2>&1
+  check "REAL git lands a good commit through both hooks" 0 $?
+  (cd "$root/hook" && echo x >> src/a.rs && git add src/a.rs && printf 'wip\n' > msg.txt && git commit -qF msg.txt) > "$root/fix/h1.out" 2>&1
+  if [ $? -eq 0 ]; then echo "FAIL REAL git let a bad message through the hook"; fail=1; else echo "ok   REAL git blocks a bad message in the hook"; fi
+  (cd "$root/hook" && git log --oneline | wc -l | grep -q '^1$') && echo "ok   REAL git kept one commit" || { echo "FAIL REAL git kept no single commit"; fail=1; }
+  (cd "$root/hook" && echo '// unstaged' >> src/a.rs && git commit -qF msg.txt) > "$root/fix/h2.out" 2>&1
+  if [ $? -eq 0 ]; then echo "FAIL REAL git let a masked commit through the guard"; fail=1; else echo "ok   REAL git refuses a masked commit in the guard"; fi
+  expect_grep "REAL guard explains itself" "$root/fix/h2.out" "would judge working-tree bytes rather than the staged commit"
+  (cd "$root/hook" && git reset -q && git checkout -q -- src/a.rs && echo y >> src/a.rs && git add src/a.rs && printf 'test(hooks): an odd path still lands\n\nFirst body line.\nSecond body line.\n' > 'odd msg;$(touch MARKER).txt' && git commit -qF 'odd msg;$(touch MARKER).txt') > "$root/fix/h3.out" 2>&1
+  check "REAL git lands a commit filed under a metacharacter name" 0 $?
+  [ -e "$root/hook/MARKER" ] && { echo "FAIL REAL hook executed a metacharacter name"; fail=1; } || echo "ok   REAL hook executed nothing"
+  (cd "$root/hook" && printf 'test(hooks): hook argv stays literal\n\nFirst body line.\nSecond body line.\n' > 'argv;$(touch MARKER).txt' && hk run commit-msg 'argv;$(touch MARKER).txt') > "$root/fix/h3b.out" 2>&1
+  check "REAL hk passes the metacharacter path literally" 0 $?
+  [ -e "$root/hook/MARKER" ] && { echo "FAIL REAL hk interpolated hook argv"; fail=1; } || echo "ok   REAL hk interpolated nothing"
+  # RED-DEMO, contained: a shell string parses after substitution, so unquoted interpolation executes.
+  (cd "$root/hook" && rm -f MARKER && sh -c 'cmd="\"$0\" $1"; eval "$cmd"' "$repo/tools/flea-commit-msg" 'argv;$(touch MARKER).txt') > "$root/fix/reddemo.out" 2>&1 || true
+  [ -e "$root/hook/MARKER" ] && echo "ok   RED-DEMO unquoted interpolation executes" || { echo "FAIL RED-DEMO hazard did not reproduce"; fail=1; }
+  rm -f "$root/hook/MARKER"
+  (cd "$root/hook" && echo '// worktree only' >> src/a.rs && git commit -q --amend --no-edit) > "$root/fix/h4.out" 2>&1
+  if [ $? -eq 0 ]; then echo "FAIL REAL amend judged masked working-tree bytes"; fail=1; else echo "ok   REAL amend refuses before Clippy runs"; fi
+  expect_grep "REAL amend explains itself" "$root/fix/h4.out" "would judge working-tree bytes rather than the staged commit"
+  (cd "$root/hook" && rm -f clippy-spy-ran && git add src/a.rs && printf 'test(hooks): unmasked commit runs the spy\n\nFirst body line.\nSecond body line.\n' > msg.txt && git commit -qF msg.txt) > "$root/fix/h5.out" 2>&1
+  check "REAL unmasked commit executes the dependent spy" 0 $?
+  [ -e "$root/hook/clippy-spy-ran" ] && echo "ok   REAL spy ran behind the guard" || { echo "FAIL REAL spy never ran unmasked"; fail=1; }
+  (cd "$root/hook" && rm -f clippy-spy-ran && echo '// masked' >> src/a.rs && git commit -q --amend --no-edit) > "$root/fix/h6.out" 2>&1
+  if [ $? -eq 0 ]; then echo "FAIL REAL masked amend landed"; fail=1; else echo "ok   REAL masked amend refused"; fi
+  [ -e "$root/hook/clippy-spy-ran" ] && { echo "FAIL REAL spy ran on masked bytes"; fail=1; } || echo "ok   REAL spy never ran masked"
+  (cd "$root/hook" && cat > hk.pkl <<EOF
+amends "package://github.com/jdx/hk/releases/download/v2.4.0/hk@2.4.0#/Config.pkl"
+min_hk_version = "2.4.0"
+hooks {
+  ["pre-commit"] {
+    fix = false
+    stage = false
+    stash = "none"
+    steps {
+      ["clippy-spy"] {
+        check = "touch clippy-spy-ran"
+      }
+    }
+  }
+  ["commit-msg"] {
+    steps {
+      ["commit-rules"] {
+        check = new Command {
+          argv = List("$repo/tools/flea-commit-msg", "{{commit_msg_file}}")
+        }
+      }
+    }
+  }
+}
+EOF
+  rm -f clippy-spy-ran && git commit -q --amend --no-edit) > "$root/fix/h7.out" 2>&1
+  check "mutation control lands the amend without the guard" 0 $?
+  [ -e "$root/hook/clippy-spy-ran" ] && echo "ok   mutation control proves the guard was load-bearing" || { echo "FAIL mutation control ran no spy"; fail=1; }
+else
+  echo "SKIP REAL hk and git hook cases: no pinned hk 2.4.0 on PATH"
+fi
+
+if [ "$fail" -eq 0 ]; then echo "hook-gate: PASS"; else echo "hook-gate: FAIL"; fi
+exit "$fail"

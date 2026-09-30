@@ -1,0 +1,209 @@
+#!/usr/bin/python3
+# Checks one NUL-separated commit log against the shared message policy.
+#   tools/flea-commit-rules COMMITS_Z OUTDIR
+import os
+import re
+import sys
+
+WANT_AN = "GM"
+WANT_AE = "gianmarcomorales@icloud.com"
+ATTR_PROVIDERS = ("claude", "anthropic", "codex", "openai")
+ATTR_VERBS = ("generat", "author", "written", "wrote", "creat", "assist", "pair", "collaborat", "co-author", "thanks to")
+# Sample input (a subject line): "fix(columns): keep the old preview while a folder waits"
+SUBJECT_RE = re.compile(r"^[a-z]+(?:\([A-Za-z0-9_./-]+\))?: .*\S$")
+# Sample input (a trailer line): "(cherry picked from commit 876774988e2051f26c26e7237617e3ae9ad77a67)"
+TRAILER_RE = re.compile(r"^\(cherry picked from commit [0-9a-f]{40}\)$")
+# Sample input (a credit value): "Ada Lovelace <ada@example.com>"
+CREDIT_RE = re.compile(r"^Co-authored-by: (.+) <(\S+@\S+)>$")
+AI_CREDIT = ("anthropic", "generated with", "[bot]")
+ATTRIBUTION = ("co-authored-by", "claude", "generated with", "anthropic")
+EM_DASH = "\u2014"
+VS16 = "\ufe0f"
+ZWJ = "\u200d"
+
+
+def die(msg):
+    print("FAIL commit-rules could not judge the log: " + msg)
+    print("commit-rules: ERROR " + msg)
+    sys.exit(2)
+
+
+# Sample input (one NUL record split on 0x1f): ["46e3b9c8...", "GM", "gianmarcomorales@icloud.com", "GM", "...", "a3f0434...", "test(ci): ...\n\nBody line."]
+# Sample input (one record split on 0x1f): ["46e3b9c8...", "GM", "gianmarcomorales@icloud.com", "GM", "...", "a3f0434...", "test(ci): ...\n\nBody."]
+# Real git log -z ends every record in NUL and holds no empty record; anything else is unjudgeable.
+def split_records(data):
+    recs = []
+    if not data.endswith("\0"):
+        die("the log does not end in a record NUL")
+    for raw in data.split("\0")[:-1]:
+        if raw == "":
+            die("the log holds an empty record")
+        parts = raw.split("\x1f")
+        if len(parts) != 7:
+            die(f"one record holds {len(parts)} field(s), want 7 (H, an, ae, cn, ce, P, B)")
+        recs.append(parts)
+    return recs
+
+
+# Sample input (a credit trailer): "Co-authored-by: Ada Lovelace <ada@example.com>"
+# A well-formed human credit passes; an AI, bot, or misshapen one fails with its reason.
+def credit_error(line):
+    value = line.split(":", 1)[1].strip()
+    if not CREDIT_RE.match("Co-authored-by: " + value):
+        return "malformed co-authored-by trailer"
+    name = value.split("<", 1)[0].strip().lower()
+    low = value.lower()
+    if any(n in name for n in ("claude", "codex", "openai", "anthropic")):
+        return "attribution 'co-authored-by' names an AI author"
+    if any(n in low for n in AI_CREDIT):
+        return "attribution 'co-authored-by' names an AI author"
+    return ""
+
+
+# Sample input (a full %B body): "fix(a): b\n\nFirst body line.\nSecond body line.\n\n(cherry picked from commit 876774988e2051f26c26e7237617e3ae9ad77a67)"
+def body_lines(full):
+    lines = full.splitlines()
+    if not lines:
+        return None, ["empty message"]
+    if len(lines) < 2 or lines[1] != "":
+        return None, ["body needs one blank line after the subject"]
+    body = lines[2:]
+    errs = []
+    if body and TRAILER_RE.match(body[-1]):
+        body = body[:-1]
+        if body and body[-1] == "":
+            body = body[:-1]
+    while body and body[-1].lower().startswith("co-authored-by:"):
+        err = credit_error(body[-1])
+        if err:
+            errs.append(err)
+        body = body[:-1]
+        if body and body[-1] == "":
+            body = body[:-1]
+    if not 2 <= len(body) <= 4:
+        errs.append(f"body holds {len(body)} line(s), want 2 to 4")
+    elif any(b == "" for b in body):
+        errs.append("body holds a blank line")
+    return body, errs
+
+
+# Sample input (a prose line): "Generated with Claude while testing."
+# A provider name alone is a technical mention; beside authorship wording it is attribution.
+def attribution_hit(line):
+    low = line.lower()
+    if low.startswith("co-authored-by:"):
+        return "misplaced co-authored-by line"
+    if "[bot]" in low:
+        return "attribution '[bot]'"
+    for provider in ATTR_PROVIDERS:
+        if provider in low and any(v in low for v in ATTR_VERBS):
+            return f"attribution {provider!r}"
+    return ""
+
+
+# Frozen Emoji_Presentation runs from emoji-data 17.0.0; digits, # and * stay ordinary text.
+PRESENTATION_RUNS = (
+    (0x231A, 0x231B), (0x23E9, 0x23EC), (0x23F0, 0x23F0), (0x23F3, 0x23F3),
+    (0x25FD, 0x25FE), (0x2614, 0x2615), (0x2648, 0x2653), (0x267F, 0x267F),
+    (0x2693, 0x2693), (0x26A1, 0x26A1), (0x26AA, 0x26AB), (0x26BD, 0x26BE),
+    (0x26C4, 0x26C5), (0x26CE, 0x26CE), (0x26D4, 0x26D4), (0x26EA, 0x26EA),
+    (0x26F2, 0x26F3), (0x26F5, 0x26F5), (0x26FA, 0x26FA), (0x26FD, 0x26FD),
+    (0x2705, 0x2705), (0x270A, 0x270B), (0x2728, 0x2728), (0x274C, 0x274C),
+    (0x274E, 0x274E), (0x2753, 0x2755), (0x2757, 0x2757), (0x2795, 0x2797),
+    (0x27B0, 0x27B0), (0x27BF, 0x27BF), (0x2B1B, 0x2B1C), (0x2B50, 0x2B50),
+    (0x2B55, 0x2B55), (0x1F004, 0x1F004), (0x1F0CF, 0x1F0CF), (0x1F18E, 0x1F18E),
+    (0x1F191, 0x1F19A), (0x1F1E6, 0x1F1FF), (0x1F201, 0x1F201), (0x1F21A, 0x1F21A),
+    (0x1F22F, 0x1F22F), (0x1F232, 0x1F236), (0x1F238, 0x1F23A), (0x1F250, 0x1F251),
+    (0x1F300, 0x1F320), (0x1F32D, 0x1F335), (0x1F337, 0x1F37C), (0x1F37E, 0x1F393),
+    (0x1F3A0, 0x1F3CA), (0x1F3CF, 0x1F3D3), (0x1F3E0, 0x1F3F0), (0x1F3F4, 0x1F3F4),
+    (0x1F3F8, 0x1F43E), (0x1F440, 0x1F440), (0x1F442, 0x1F4FC), (0x1F4FF, 0x1F53D),
+    (0x1F54B, 0x1F54E), (0x1F550, 0x1F567), (0x1F57A, 0x1F57A), (0x1F595, 0x1F596),
+    (0x1F5A4, 0x1F5A4), (0x1F5FB, 0x1F64F), (0x1F680, 0x1F6C5), (0x1F6CC, 0x1F6CC),
+    (0x1F6D0, 0x1F6D2), (0x1F6D5, 0x1F6D8), (0x1F6DC, 0x1F6DF), (0x1F6EB, 0x1F6EC),
+    (0x1F6F4, 0x1F6FC), (0x1F7E0, 0x1F7EB), (0x1F7F0, 0x1F7F0), (0x1F90C, 0x1F93A),
+    (0x1F93C, 0x1F945), (0x1F947, 0x1F9FF), (0x1FA70, 0x1FA7C), (0x1FA80, 0x1FA8A),
+    (0x1FA8E, 0x1FAC6), (0x1FAC8, 0x1FAC8), (0x1FACD, 0x1FADC), (0x1FADF, 0x1FAEA),
+    (0x1FAEF, 0x1FAF8),
+)
+
+
+# Sample input (an emoji body): "fix(a): b\n\nFirst \U0001F600 line.\nSecond body line."
+def has_emoji(text):
+    for ch in text:
+        o = ord(ch)
+        if ch == EM_DASH:
+            return "em dash U+2014"
+        if ch == VS16:
+            return "variation selector U+FE0F"
+        if ch == ZWJ:
+            return "joiner U+200D"
+        if any(a <= o <= b for a, b in PRESENTATION_RUNS):
+            return f"emoji U+{o:04X}"
+    return ""
+
+
+def check_one(sha, an, ae, cn, ce, parents, full):
+    fails = []
+    if an != WANT_AN or ae != WANT_AE or cn != WANT_AN or ce != WANT_AE:
+        fails.append(f"identity an={an} <{ae}> cn={cn} <{ce}>, want GM <{WANT_AE}>")
+    lines = full.splitlines()
+    subject = lines[0] if lines else ""
+    if not SUBJECT_RE.match(subject):
+        fails.append(f"subject not conventional: {subject[:80]}")
+    if len(subject) > 60:
+        fails.append(f"subject holds {len(subject)} char(s), want at most 60")
+    body, berr = body_lines(full)
+    fails.extend(berr)
+    for line in [subject] + (body or []):
+        hit = attribution_hit(line)
+        if hit:
+            fails.append(hit)
+            break
+    if EM_DASH in full:
+        fails.append("em dash U+2014")
+    else:
+        em = has_emoji(full)
+        if em:
+            fails.append(em)
+    return fails
+
+
+def main():
+    if len(sys.argv) != 3:
+        die("usage: flea-commit-rules COMMITS_Z OUTDIR")
+    zpath, outdir = sys.argv[1], sys.argv[2]
+    try:
+        with open(zpath, encoding="utf-8") as f:
+            data = f.read()
+    except OSError as e:
+        die(f"cannot read {zpath}: {e}")
+    except UnicodeDecodeError as e:
+        die(f"{zpath} is not valid UTF-8: {e}")
+    try:
+        os.makedirs(outdir, exist_ok=True)
+    except OSError as e:
+        die(f"cannot create {outdir}: {e}")
+    if not data:
+        die(f"{zpath} holds no commit records to judge")
+    try:
+        recs = split_records(data)
+    except UnicodeDecodeError as e:
+        die(f"{zpath} is not valid UTF-8: {e}")
+    if not recs:
+        die(f"{zpath} holds no commit records to judge")
+    fails = 0
+    with open(os.path.join(outdir, "commits-findings.tsv"), "w", encoding="utf-8") as out:
+        for sha, an, ae, cn, ce, parents, full in recs:
+            if not re.fullmatch(r"[0-9a-f]{40}", sha):
+                die(f"record names no 40-hex commit: {sha[:40]}")
+            for one in check_one(sha, an, ae, cn, ce, parents, full):
+                fails += 1
+                print(f"FAIL {sha[:12]} {one}")
+                out.write(f"{sha}\t{one}\n")
+    status = "FAIL" if fails else "PASS"
+    print(f"commit-rules: {status} fails={fails} commits={len(recs)}")
+    sys.exit(1 if fails else 0)
+
+
+if __name__ == "__main__":
+    main()
