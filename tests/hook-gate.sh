@@ -154,6 +154,28 @@ zrec "$SHA" GM gianmarcomorales@icloud.com GM gianmarcomorales@icloud.com "" "$G
 check "commit-rules rejects ChatGPT prose credit" 1 $?
 expect_grep "commit-rules names the ChatGPT prose" "$root/fix/gptprose.out" "attribution 'chatgpt'"
 
+FILENAME_B=$'docs: update CLAUDE.md author rules\n\nKeep the shared hook message contract.\nCheck the exact stored commit bytes.'
+zrec "$SHA" GM gianmarcomorales@icloud.com GM gianmarcomorales@icloud.com "" "$FILENAME_B" > "$root/fix/filename.z"
+"$repo/tools/flea-commit-rules" "$root/fix/filename.z" "$root/out" > "$root/fix/filename.out" 2>&1
+check "commit-rules passes a filename beside policy prose" 0 $?
+
+LIMING_B=$'fix(hooks): keep credit policy\n\nKeep the shared hook message contract.\nCheck the exact stored commit bytes.\n\nCo-authored-by: \u674e\u660e <li@example.com>'
+zrec "$SHA" GM gianmarcomorales@icloud.com GM gianmarcomorales@icloud.com "" "$LIMING_B" > "$root/fix/liming.z"
+"$repo/tools/flea-commit-rules" "$root/fix/liming.z" "$root/out" > "$root/fix/liming.out" 2>&1
+check "commit-rules accepts a non-Latin human credit" 0 $?
+
+HYPHENAI_B=$'fix(hooks): keep credit policy\n\nKeep the shared hook message contract.\nCheck the exact stored commit bytes.\n\nCo-authored-by: ChatGPT-4o <noreply@openai.com>'
+zrec "$SHA" GM gianmarcomorales@icloud.com GM gianmarcomorales@icloud.com "" "$HYPHENAI_B" > "$root/fix/hyphenai.z"
+"$repo/tools/flea-commit-rules" "$root/fix/hyphenai.z" "$root/out" > "$root/fix/hyphenai.out" 2>&1
+check "commit-rules rejects a hyphen-qualified AI credit" 1 $?
+expect_grep "commit-rules names the hyphenated credit" "$root/fix/hyphenai.out" "names an AI author"
+
+USCOREAI_B=$'fix(hooks): keep credit policy\n\nKeep the shared hook message contract.\nCheck the exact stored commit bytes.\n\nCo-authored-by: ChatGPT_4o <noreply@openai.com>'
+zrec "$SHA" GM gianmarcomorales@icloud.com GM gianmarcomorales@icloud.com "" "$USCOREAI_B" > "$root/fix/uscoreai.z"
+"$repo/tools/flea-commit-rules" "$root/fix/uscoreai.z" "$root/out" > "$root/fix/uscoreai.out" 2>&1
+check "commit-rules rejects an underscore-qualified AI credit" 1 $?
+expect_grep "commit-rules names the underscore credit" "$root/fix/uscoreai.out" "names an AI author"
+
 OAICREDIT_B=$'fix(hooks): gate human credit\n\nFirst body line.\nSecond body line.\nCo-authored-by: OpenAI Codex <noreply@openai.com>'
 zrec "$SHA" GM gianmarcomorales@icloud.com GM gianmarcomorales@icloud.com "" "$OAICREDIT_B" > "$root/fix/oaicredit.z"
 "$repo/tools/flea-commit-rules" "$root/fix/oaicredit.z" "$root/out" > "$root/fix/oaicredit.out" 2>&1
@@ -377,6 +399,12 @@ expect_grep "commit-msg names the subject" "$root/fix/wip.out" "FAIL proposed su
 printf 'fix(hooks): judge the proposed message\n\nFirst body line.\nSecond body line.\n\nCo-authored-by: Ada Lovelace <ada@example.com>\n' > "$root/fix/credit-msg.txt"
 "$repo/tools/flea-commit-msg" "$root/fix/credit-msg.txt" > "$root/fix/credit-msg.out" 2>&1
 check "commit-msg accepts a human credit trailer" 0 $?
+printf 'fix(hooks): judge the proposed message\n\nFirst body line.\nSecond body line.\n\nCo-authored-by: \u674e\u660e <li@example.com>\n' > "$root/fix/liming-msg.txt"
+"$repo/tools/flea-commit-msg" "$root/fix/liming-msg.txt" > "$root/fix/liming-msg.out" 2>&1
+check "commit-msg accepts a non-Latin human credit" 0 $?
+printf 'fix(hooks): judge the proposed message\n\nFirst body line.\nSecond body line.\n\nCo-authored-by: ChatGPT_4o <noreply@openai.com>\n' > "$root/fix/uscoreai-msg.txt"
+"$repo/tools/flea-commit-msg" "$root/fix/uscoreai-msg.txt" > "$root/fix/uscoreai-msg.out" 2>&1
+check "commit-msg rejects an underscore-qualified AI credit" 1 $?
 printf 'fix(hooks): judge the proposed message\n\nFirst body line.\nSecond body line.\nCo-authored-by: ada\n' > "$root/fix/badcredit-msg.txt"
 "$repo/tools/flea-commit-msg" "$root/fix/badcredit-msg.txt" > "$root/fix/badcredit-msg.out" 2>&1
 check "commit-msg rejects a malformed credit trailer" 1 $?

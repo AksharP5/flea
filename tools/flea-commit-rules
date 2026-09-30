@@ -56,8 +56,7 @@ def credit_error(line):
     value = line.split(":", 1)[1].strip()
     if not CREDIT_RE.match("Co-authored-by: " + value):
         return "malformed co-authored-by trailer"
-    words = [re.sub(r"^[^a-z0-9]+|[^a-z0-9]+$", "", w) for w in value.split("<", 1)[0].lower().split()]
-    words = [w for w in words if w]
+    words = [w for w in re.split(r"[\W_]+", value.split("<", 1)[0].lower()) if w]
     if not words:
         return "malformed co-authored-by trailer"
     pairs = list(zip(words, words[1:]))
@@ -103,15 +102,16 @@ def body_lines(full):
 
 
 # Sample input (a prose line): "Generated with Claude while testing."
-# Providers match as complete tokens, so Claudette and CLAUDE.md stay technical mentions.
+# Dotted filename spans are masked first, so a provider inside one never reads as a mention.
 def attribution_hit(line):
     low = line.lower()
     if low.startswith("co-authored-by:"):
         return "misplaced co-authored-by line"
     if "[bot]" in low:
         return "attribution '[bot]'"
+    text = re.sub(r"\w+\.\w+", " ", low)
     for provider in ATTR_PROVIDERS:
-        if re.search(r"\b" + provider + r"\b", low) and any(re.search(v, low) for v in ATTR_VERBS):
+        if re.search(r"\b" + provider + r"\b", text) and any(re.search(v, text) for v in ATTR_VERBS):
             return f"attribution {provider!r}"
     return ""
 

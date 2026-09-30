@@ -89,7 +89,9 @@ as body. Attribution is phrase-scoped on complete word tokens: generated with, b
 using beside a provider name fails, while billing nouns, API credit displays and other
 technical mentions of CLAUDE.md, Claude, Anthropic, Codex or provider
 tools in ordinary prose pass, and a human name that merely contains one stays human.
-A credit naming a machine brand fails whatever qualifier follows it: ChatGPT and Codex
+Dotted filename spans are masked before scanning, and credit names split on any
+non-word run plus underscore, so hyphen and underscore qualifiers cannot smuggle a brand past while non-Latin
+human names pass untouched. A credit naming a machine brand fails whatever qualifier follows it: ChatGPT and Codex
 alone, the Claude Code and OpenAI Codex compounds, one exact AI name, or two AI
 tokens; a company email address never classifies its holder, and a human word
 beside one AI token stays human. Emoji follows frozen Unicode 17 Emoji_Presentation
