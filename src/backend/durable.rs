@@ -24,6 +24,8 @@ thread_local! {
     static RANGE_LOG: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
     // The syncfs leg answering failure, so a batch confirm keeps every source.
     static FAIL_SYNCFS: Cell<bool> = const { Cell::new(false) };
+    // The clone leg answering failure, so a batch confirm keeps every source after draining.
+    static FAIL_CLONE: Cell<bool> = const { Cell::new(false) };
     // Completed syncfs calls, so a batch pins one per confirm.
     static SYNCFS_FLUSHES: Cell<usize> = const { Cell::new(0) };
     // Files released on the calling thread, so scoped closes still count.
@@ -184,30 +186,49 @@ impl Durability {
         self.held.push(file);
         if self.held.len() >= HELD_CAP {
             // Never more than one batch ahead of the drive; a failed settle stays sticky inside settle_held.
-            let anchor = self.last.clone();
-            let _ = self.settle_held(anchor.as_deref());
+            let _ = self.settle_held();
         }
     }
 
-    // A confirm settles what the copy held: closes land first, then one syncfs confirms them.
-    fn settle_held(&mut self, anchor: Option<&Path>) -> std::io::Result<()> {
-        // Held files always drain first, so no descriptor stays open past a failed syncfs.
+    // A confirm clones the first held file before any close, so syncfs keeps its pre-write baseline.
+    fn settle_held(&mut self) -> std::io::Result<()> {
         let had = !self.held.is_empty();
-        if had {
-            self.release_held();
-        }
-        if self.unsettled {
-            return Err(std::io::Error::new(std::io::ErrorKind::Other, "unconfirmed batch"));
-        }
-        if !had || !self.batch_syncfs {
+        if !had {
+            if self.unsettled {
+                return Err(std::io::Error::new(std::io::ErrorKind::Other, "unconfirmed batch"));
+            }
             return Ok(());
         }
-        // The anchor rides the destination; without one the first touched folder is on the same filesystem.
-        let path = anchor.map(|p| p.to_path_buf()).or_else(|| self.ordered().first().cloned());
-        let result = match path {
-            Some(p) => syncfs_dir(&p),
-            None => Ok(()),
+        if self.unsettled {
+            self.release_held();
+            return Err(std::io::Error::new(std::io::ErrorKind::Other, "unconfirmed batch"));
+        }
+        if !self.batch_syncfs {
+            self.release_held();
+            return Ok(());
+        }
+        // One clone shares the first file's pre-write description; its last close waits for syncfs.
+        #[cfg(test)]
+        if FAIL_CLONE.with(|v| v.get()) {
+            self.release_held();
+            self.unsettled = true;
+            return Err(std::io::Error::new(std::io::ErrorKind::Other, "unconfirmed batch"));
+        }
+        let clone = match self.held.first().and_then(|f| f.try_clone().ok()) {
+            Some(c) => c,
+            None => {
+                self.release_held();
+                self.unsettled = true;
+                return Err(std::io::Error::new(std::io::ErrorKind::Other, "unconfirmed batch"));
+            }
         };
+        #[cfg(test)]
+        ORDER_LOG.with(|v| v.borrow_mut().push("clone".to_string()));
+        self.release_held();
+        let result = syncfs_fd(&clone);
+        drop(clone);
+        #[cfg(test)]
+        ORDER_LOG.with(|v| v.borrow_mut().push("clone-drop".to_string()));
         // Held files are already released, so only the sticky flag stops the next confirm.
         if result.is_err() {
             self.unsettled = true;
@@ -272,8 +293,7 @@ impl Durability {
 
     // Only dst's touched folders; held files settle first so no source goes before its bytes.
     pub fn flush_dirs_for(&mut self, dst: &Path) -> std::io::Result<()> {
-        let anchor = dst.parent().unwrap_or(dst).to_path_buf();
-        self.settle_held(Some(&anchor))?;
+        self.settle_held()?;
         let mut first: Option<std::io::Error> = None;
         for dir in self.ordered() {
             if dir.starts_with(dst) || Some(dir.as_path()) == dst.parent() {
@@ -290,8 +310,7 @@ impl Durability {
 
     // One confirm for a whole batch; held files settle first so no source goes before its bytes.
     pub fn flush_dirs_for_many(&mut self, dsts: &[PathBuf]) -> std::io::Result<()> {
-        let anchor = dsts.first().and_then(|dst| dst.parent()).unwrap_or(Path::new("/")).to_path_buf();
-        self.settle_held(Some(&anchor))?;
+        self.settle_held()?;
         let mut first: Option<std::io::Error> = None;
         for dir in self.ordered() {
             let wanted = dsts.iter().any(|dst| dir.starts_with(dst) || Some(dir.as_path()) == dst.parent());
@@ -309,9 +328,7 @@ impl Durability {
 
     // Every touched directory, best effort; held files settle first so no source goes early.
     pub fn flush_dirs(&mut self) -> std::io::Result<()> {
-        // The anchor is a touched folder on the destination filesystem, never a source side.
-        let anchor = self.ordered().first().cloned();
-        self.settle_held(anchor.as_deref())?;
+        self.settle_held()?;
         let mut first: Option<std::io::Error> = None;
         for dir in self.ordered() {
             if let Err(e) = fsync_dir(&dir) {
@@ -412,15 +429,14 @@ pub fn fsync_dir(path: &Path) -> std::io::Result<()> {
     std::fs::File::open(path)?.sync_all()
 }
 
-// One filesystem-wide confirm after a batch's closes, so vfat's per-close flush never runs.
-pub fn syncfs_dir(path: &Path) -> std::io::Result<()> {
+// One filesystem-wide confirm on the pre-write fd, so vfat's per-close flush never runs.
+fn syncfs_fd(file: &std::fs::File) -> std::io::Result<()> {
     // Refused before counting, so a failed confirm never reads as confirmed.
     #[cfg(test)]
     if FAIL_SYNCFS.with(|v| v.get()) {
         return Err(std::io::Error::new(std::io::ErrorKind::Other, "simulated syncfs failure"));
     }
     use std::os::unix::io::AsRawFd;
-    let file = std::fs::File::open(path)?;
     let rc = unsafe { syncfs(file.as_raw_fd()) };
     if rc != 0 {
         return Err(std::io::Error::last_os_error());
@@ -432,6 +448,12 @@ pub fn syncfs_dir(path: &Path) -> std::io::Result<()> {
         ORDER_LOG.with(|v| v.borrow_mut().push("syncfs".to_string()));
     }
     Ok(())
+}
+
+// One filesystem-wide confirm after a batch's closes, so vfat's per-close flush never runs.
+pub fn syncfs_dir(path: &Path) -> std::io::Result<()> {
+    let file = std::fs::File::open(path)?;
+    syncfs_fd(&file)
 }
 
 // Sample input: "smb-share:server=nas,share=media" answers "media".
@@ -521,6 +543,7 @@ pub fn test_reset() {
     RANGE_WAITS.with(|v| v.set(0));
     RANGE_LOG.with(|v| v.borrow_mut().clear());
     FAIL_SYNCFS.with(|v| v.set(false));
+    FAIL_CLONE.with(|v| v.set(false));
     SYNCFS_FLUSHES.with(|v| v.set(0));
     RELEASES.with(|v| v.set(0));
     ORDER_LOG.with(|v| v.borrow_mut().clear());
@@ -537,6 +560,7 @@ pub fn test_reset_counts() {
     RANGE_WAITS.with(|v| v.set(0));
     RANGE_LOG.with(|v| v.borrow_mut().clear());
     FAIL_SYNCFS.with(|v| v.set(false));
+    FAIL_CLONE.with(|v| v.set(false));
     SYNCFS_FLUSHES.with(|v| v.set(0));
     RELEASES.with(|v| v.set(0));
     ORDER_LOG.with(|v| v.borrow_mut().clear());
@@ -613,6 +637,12 @@ pub fn test_set_fail_files(fail: bool) {
 #[cfg(test)]
 pub fn test_set_fail_syncfs(fail: bool) {
     FAIL_SYNCFS.with(|v| v.set(fail));
+}
+
+// The clone leg answers failure, so a batch keeps every source after draining.
+#[cfg(test)]
+pub fn test_set_fail_clone(fail: bool) {
+    FAIL_CLONE.with(|v| v.set(fail));
 }
 
 // Injected mountinfo text answers the next begin, None takes it away again.

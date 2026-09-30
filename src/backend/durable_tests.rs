@@ -1119,3 +1119,130 @@ fn a_sticky_unsettled_still_drains_later_holds() {
     assert!(durability.flush_dirs().is_err(), "every later confirm fails sticky");
     test_reset();
 }
+
+// The clone of the first held file confirms the batch, then drops after syncfs.
+#[test]
+fn clone_of_first_held_file_confirms_batch_then_drops() {
+    test_reset();
+    let d = TestDir::new("durable-clone-life");
+    let out = d.dir("out");
+    test_mark_durable(&out);
+    test_set_fake_mountinfo(Some(&vfat_body_for(&out)));
+    let mut durability = Durability::begin(&out);
+    test_set_fake_mountinfo(None);
+    assert!(durability.batch_syncfs, "a fake vfat stick batches");
+    let flag = std::sync::atomic::AtomicBool::new(false);
+    let mut sink = |_: u64, _: u64| {};
+    for name in ["a.txt", "b.txt"] {
+        let src = d.file(name, "body");
+        let mut p = quiet(&flag, &mut sink, &mut durability);
+        crate::backend::copyfile::copy_any(&src, &out.join(name), &mut p).expect("copy");
+        drop(p);
+    }
+    assert_eq!(durability.held_len(), 2, "two files held");
+    durability.flush_dirs().expect("confirm");
+    assert_eq!(durability.held_len(), 0, "a confirm drains the held set");
+    assert_eq!(test_syncfs_count(), 1, "one syncfs on the clone: {:?}", test_order());
+    let order = test_order();
+    let clone_at = order.iter().position(|s| s == "clone").expect("clone before any close");
+    let syncfs_at = order.iter().position(|s| s == "syncfs").expect("one syncfs in the order");
+    let drop_at = order.iter().position(|s| s == "clone-drop").expect("clone drops after syncfs");
+    let dir_at = order.iter().position(|s| s == "dir").expect("one folder fsync in the order");
+    assert_eq!(clone_at, 0, "clone first, sharing the pre-write description: {:?}", order);
+    assert!(order.iter().take(syncfs_at).filter(|s| *s == "release").count() == 2, "both closes land before syncfs: {:?}", order);
+    assert!(syncfs_at < drop_at && drop_at <= dir_at, "syncfs, clone drop, folder fsync: {:?}", order);
+    test_reset();
+}
+
+// A clone refused keeps every batch source after draining; injected, never a kernel proof.
+#[test]
+fn clone_failure_keeps_every_batch_source_drained() {
+    use std::sync::mpsc::channel;
+    test_reset();
+    let d = TestDir::new("durable-clone-fail");
+    let srcdir = d.dir("src");
+    let out = d.dir("out");
+    test_mark_durable(&out);
+    test_set_fake_mountinfo(Some(&vfat_body_for(&out)));
+    let mut durability = Durability::begin(&out);
+    test_set_fake_mountinfo(None);
+    assert!(durability.batch_syncfs, "a fake vfat stick batches");
+    let flag = std::sync::atomic::AtomicBool::new(false);
+    let settled = std::sync::atomic::AtomicU64::new(0);
+    let mut batch = crate::backend::movebatch::MoveBatch::new();
+    let (tx, rx) = channel();
+    let mut steps = Vec::new();
+    for n in 0..2 {
+        let src = srcdir.join(format!("f{n}.txt"));
+        std::fs::write(&src, "body").unwrap();
+        let source = crate::backend::undo::ItemIdentity::inspect(&src).expect("source recorded");
+        let name = src.file_name().unwrap().to_string_lossy().to_string();
+        match crate::backend::movebatch::stage_copy(1, n, &name, &src, &out.join(format!("f{n}.txt")), source, &flag, &tx, &settled, &mut steps, &mut durability, &mut batch) {
+            crate::backend::movebatch::MoveOutcome::Deferred => {}
+            crate::backend::movebatch::MoveOutcome::Done(r) => panic!("staging copies, got {:?}", r.map(|_| "ok")),
+        }
+    }
+    test_set_fail_clone(true);
+    let (counts, retry) = crate::backend::movebatch::close_normal(&mut batch, 1, &tx, &mut steps, &mut durability);
+    test_set_fail_clone(false);
+    assert_eq!((counts.ok, counts.failed), (0, 2), "no clone means no confirm");
+    assert_eq!(retry.len(), 2, "every unconfirmed source is offered again");
+    assert_eq!(test_syncfs_count(), 0, "a refused clone never syncfs: {:?}", test_order());
+    assert_eq!(durability.held_len(), 0, "a failed clone drains the held set");
+    assert!(durability.flush_dirs().is_err(), "the clone failure stays sticky");
+    drop(tx);
+    for msg in rx.iter() {
+        if let crate::backend::opsreq::OpMsg::Item { ok: false, err, .. } = msg {
+            assert_eq!(err, DIR_UNCONFIRMED, "unconfirmed batch: {err}");
+        }
+    }
+    for n in 0..2 {
+        assert!(srcdir.join(format!("f{n}.txt")).exists(), "the source stays whole");
+        assert!(out.join(format!("f{n}.txt")).exists(), "the landed copy stays beside it");
+    }
+    test_reset();
+}
+
+// A syncfs refused on the held-file clone keeps every source; injected, never a kernel EIO proof.
+#[test]
+fn clone_syncfs_failure_keeps_every_batch_source() {
+    use std::sync::mpsc::channel;
+    test_reset();
+    let d = TestDir::new("durable-clone-syncfs-fail");
+    let srcdir = d.dir("src");
+    let out = d.dir("out");
+    test_mark_durable(&out);
+    test_set_fake_mountinfo(Some(&vfat_body_for(&out)));
+    let mut durability = Durability::begin(&out);
+    test_set_fake_mountinfo(None);
+    assert!(durability.batch_syncfs, "a fake vfat stick batches");
+    let flag = std::sync::atomic::AtomicBool::new(false);
+    let settled = std::sync::atomic::AtomicU64::new(0);
+    let mut batch = crate::backend::movebatch::MoveBatch::new();
+    let (tx, _rx) = channel();
+    let mut steps = Vec::new();
+    for n in 0..2 {
+        let src = srcdir.join(format!("f{n}.txt"));
+        std::fs::write(&src, "body").unwrap();
+        let source = crate::backend::undo::ItemIdentity::inspect(&src).expect("source recorded");
+        let name = src.file_name().unwrap().to_string_lossy().to_string();
+        match crate::backend::movebatch::stage_copy(1, n, &name, &src, &out.join(format!("f{n}.txt")), source, &flag, &tx, &settled, &mut steps, &mut durability, &mut batch) {
+            crate::backend::movebatch::MoveOutcome::Deferred => {}
+            crate::backend::movebatch::MoveOutcome::Done(r) => panic!("staging copies, got {:?}", r.map(|_| "ok")),
+        }
+    }
+    test_set_fail_syncfs(true);
+    let (counts, retry) = crate::backend::movebatch::close_normal(&mut batch, 1, &tx, &mut steps, &mut durability);
+    test_set_fail_syncfs(false);
+    assert_eq!((counts.ok, counts.failed), (0, 2), "a refused syncfs confirms nothing");
+    assert_eq!(retry.len(), 2, "every unconfirmed source is offered again");
+    assert_eq!(test_syncfs_count(), 0, "a failed syncfs never counts: {:?}", test_order());
+    assert_eq!(durability.held_len(), 0, "a failed confirm drains the held set");
+    let order = test_order();
+    assert!(order.contains(&"clone".to_string()), "the clone precedes the refused syncfs: {:?}", order);
+    drop(tx);
+    for n in 0..2 {
+        assert!(srcdir.join(format!("f{n}.txt")).exists(), "the source stays whole");
+    }
+    test_reset();
+}

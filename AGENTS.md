@@ -2914,6 +2914,8 @@ e41 R5/R6 records execution provenance without moving production: `tests/js/colu
 
 e41 R7 integration records tests/js/columns.js at 618, retaining all e39 neighbour, e47 real Qt guard and focus checks alongside the actual PaneWire failure callbacks. The controller resolved metadata and budget unions only; production and test logic remain Muse authored.
 
+w64 R2 moves two ceilings, each re-derived with `wc -l`: `src/backend/durable.rs` 631 to 661 for the held-file clone baseline (the first held file is cloned once before any close, sharing its pre-write description, then originals close in parallel, syncfs runs on the clone and the clone drops on every path, with clone failure sticky unconfirmed); `src/backend/durable_tests.rs` 1121 to 1248 for the clone lifetime, clone-failure and clone-syncfs-failure pins. `src/backend/movebatch.rs` keeps 469 and `src/backend/movebatch_tests.rs` keeps 751 with no added line.
+
 ## The key table is generated
 
 `keys.toml` at the repository root is the single source of truth for every binding.
