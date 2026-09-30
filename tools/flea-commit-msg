@@ -30,25 +30,23 @@ def repo_config(key):
 # Sample input (a hook file body): "fix(a): b\n\nBody.\n# Please enter the commit message\n"
 # One canonical form for every cleanup mode, so any later cleanup stores exactly these bytes.
 def normalize(text, comment):
-    lines = text.split("\n")
+    lines = [l.rstrip() for l in text.split("\n")]
+    marker = comment + " ------------------------ >8 ------------------------"
+    cut = next((i for i, l in enumerate(lines) if l == marker), None)
+    if cut is not None:
+        lines = lines[:cut]
+    lines = [l for l in lines if not l.startswith(comment)]
     while lines and lines[0].strip() == "":
         lines.pop(0)
     while lines and lines[-1].strip() == "":
         lines.pop()
     out, prev_blank = [], False
-    for line in (l.rstrip() for l in lines):
+    for line in lines:
         if line.strip() == "" and prev_blank:
             continue
         out.append(line)
         prev_blank = line.strip() == ""
-    marker = comment + " ------------------------ >8 ------------------------"
-    cut = next((i for i, l in enumerate(out) if l == marker), None)
-    if cut is not None:
-        out = out[:cut]
-        while out and out[-1].strip() == "":
-            out.pop()
-    kept = [l for l in out if not l.startswith(comment)]
-    return "\n".join(kept) + ("\n" if kept else "")
+    return "\n".join(out) + ("\n" if out else "")
 
 
 # Sample input (a message path): ".git/COMMIT_EDITMSG"
@@ -128,12 +126,14 @@ def main():
         cn, ce = split_ident("GIT_COMMITTER_IDENT", cn_raw.stdout)
     except UnicodeDecodeError as e:
         die(f"git var output is not valid UTF-8: {e}")
-    cleanup = repo_config("commit.cleanup") or "strip"
-    if cleanup not in ("verbatim", "whitespace", "strip", "scissors"):
+    cleanup = repo_config("commit.cleanup") or "default"
+    if cleanup not in ("default", "verbatim", "whitespace", "strip", "scissors"):
         die(f"commit.cleanup {cleanup!r} cannot be applied safely")
-    comment = repo_config("core.commentChar") or "#"
-    if len(comment) != 1 or comment == "auto":
-        die(f"core.commentChar {comment!r} cannot be applied safely")
+    comment = repo_config("core.commentString")
+    if comment is None:
+        comment = repo_config("core.commentChar") or "#"
+    if not comment or "\x00" in comment or "\n" in comment or comment == "auto":
+        die(f"core.commentString or core.commentChar {comment!r} cannot be applied safely")
     full = normalize(text, comment)
     fails = rules.check_one("proposed", an, ae, cn, ce, "", full)
     for one in fails:

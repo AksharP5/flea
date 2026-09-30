@@ -54,9 +54,7 @@ def guard():
     for hit in names(git(["ls-files", "--others", "--exclude-standard", "-z"])):
         if relevant(hit):
             refuse(hit)
-    # Ignored inputs bypass the query above but not the compiler: an ignored src module or an
-    # ignored .cargo config is still read. Runtime artifacts live under these two and are skipped,
-    # which also keeps the hook's own OUTDIR from refusing the next commit.
+    # Ignored relevant inputs still refuse, except runtime target/ and .flea-local/ artifacts.
     for hit in names(git(["ls-files", "--others", "--ignored", "--exclude-standard", "-z"])):
         if relevant(hit) and hit.split("/", 1)[0] not in ("target", ".flea-local"):
             refuse(hit)

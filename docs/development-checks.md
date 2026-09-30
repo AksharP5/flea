@@ -85,17 +85,21 @@ GM as author and committer, a conventional subject of at most 60 chars with a
 description as short as one nonspace char, a body of
 2 to 4 lines after one blank line, and no AI attribution, em dash, or emoji. At most one
 trailing `(cherry picked from commit ...)` line is excluded; further ones count
-as body. Attribution is phrase-scoped: a provider name beside authorship wording
-fails, while a technical mention of CLAUDE.md, Claude, Anthropic, Codex or provider
-tools in ordinary prose passes. Emoji follows frozen Unicode 17 Emoji_Presentation
+as body. Attribution is phrase-scoped on word boundaries: a provider name beside
+authorship wording fails, while a technical mention of CLAUDE.md, Claude, Anthropic, Codex or provider
+tools in ordinary prose passes, and a human name that merely contains one stays human.
+Compound machine names fail whole: every token AI means AI credit. Emoji follows frozen Unicode 17 Emoji_Presentation
 ranges, so the watch fails while supplementary CJK, digits, `#` and `*` stay text. Old
 history has no exception. Trailing `Co-authored-by: Name <email>` lines are human
 credit and sit outside the 2 to 4 prose lines; a misshapen, AI, or bot credit
 fails, as does credit anywhere but the trailers. The range log holds seven-field NUL-terminated records
 with no empties, judged 0 pass, 1 fail, 2 unjudgeable. The adapter reduces the file
 to one canonical form whatever the repo cleanup says: comment lines and the exact
-scissors section go, space trims, edge blanks go, and only then is it judged. Modes
-are validated but never select a normalization; `auto` and unknown modes refuse rather
+scissors section go, space trims, edge blanks go, and only then is it judged. Comment
+precedence is git's: `core.commentString` wins over `core.commentChar`, including a
+multi-character prefix git honors; empty, newline-carrying and `auto` values refuse.
+`commit.cleanup=default` is accepted as git accepts it. Modes
+are validated but never select a normalization; unknown modes refuse rather
 than guess. A passed message is written back to the file, so the bytes git stores
 under any CLI cleanup are exactly the bytes judged; a refused message is left untouched. The CLI cleanup
 flag is invisible to the hook, so this fixed point is what keeps `git commit -F`,
