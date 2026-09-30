@@ -225,8 +225,8 @@ fn a_flag_set_while_compress_runs_cancels_and_cleans_up() {
         let result = compress(&f, &parent, &["a.txt".to_string()], "zip", &parent.join("out.zip"), &worker);
         (result, last_cpu())
     });
-    // Past spawn, inside the tool: its argv names this job's directory while the flag is still clear.
-    wait_for_tool_with_dir(d.path(), Duration::from_secs(10));
+    // Past spawn, inside the tool: the job's own inner tool runs while the flag is still clear.
+    wait_for_compress_with_dir(d.path(), Duration::from_secs(10));
     assert!(!flag.load(Ordering::Relaxed), "the tool never ran before the cancel was set");
     flag.store(true, Ordering::Relaxed);
     let done = Instant::now() + Duration::from_secs(20);
@@ -237,8 +237,29 @@ fn a_flag_set_while_compress_runs_cancels_and_cleans_up() {
     assert!(e.msg.contains("cancelled"), "a cancelled compress must say so: {}", e.msg);
     assert_eq!(cap, Some(None), "compress must run its jail without a CPU cap");
     assert!(!dest.exists(), "a cancelled compress published a destination");
-    assert!(!tool_with_dir(&d.path().to_string_lossy()), "the cancelled tool outlived its cancel");
+    assert!(!compress_running_with_dir(d.path()), "the cancelled tool outlived its cancel");
     assert_eq!(work_litter(d.path()), 0, "a cancelled compress left its staging directory behind");
+}
+
+// A dir-bearing launcher with no inner tool is not a running compressor: needle in argv, argv0 never sleep.
+#[test]
+fn a_launcher_without_an_inner_tool_is_not_a_running_compressor() {
+    let d = TestDir::new("archquitwitnessctl");
+    let work = Work::new(d.path(), "arc").expect("work");
+    assert!(work_litter(d.path()) > 0, "the control needs a Work dir to stand beside");
+    let mut launcher = std::process::Command::new("/usr/bin/python3")
+        .arg("-c")
+        .arg("import time; time.sleep(30)")
+        .arg(d.path())
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .expect("lookalike launcher did not start");
+    assert!(!compress_running_with_dir(d.path()), "a launcher without an inner tool counted as running");
+    let _ = launcher.kill();
+    let _ = launcher.wait();
+    drop(work);
 }
 
 // A flag set while convert already runs cancels the child and cleans the stage.
@@ -314,6 +335,36 @@ fn work_litter(dir: &Path) -> usize {
         .count()
 }
 
+// True once the job's own inner tool runs: a sleep whose launcher names the job's directory.
+fn compress_running_with_dir(dir: &Path) -> bool {
+    let needle = dir.to_string_lossy().to_string();
+    if needle.is_empty() { return false; }
+    let own = std::process::id();
+    std::fs::read_dir("/proc").map(|entries| entries.flatten().any(|entry| {
+        if entry.file_name().to_string_lossy().parse::<u32>().ok() == Some(own) { return false; }
+        // Inner executable identity: the blocking compressor is /usr/bin/sleep, never the launcher.
+        let cmdline = std::fs::read(entry.path().join("cmdline")).unwrap_or_default();
+        if cmdline.is_empty() { return false; }
+        let argv0 = cmdline.split(|b| *b == 0).next().unwrap_or_default();
+        if argv0 != b"/usr/bin/sleep" { return false; }
+        // Unique job identity: the tool's own launcher carries the job's directory.
+        let stat = std::fs::read_to_string(entry.path().join("stat")).unwrap_or_default();
+        let Some(ppid) = ppid_of_stat(&stat) else { return false; };
+        if ppid == own { return false; }
+        std::fs::read(format!("/proc/{ppid}/cmdline")).map(|parent| {
+            String::from_utf8_lossy(&parent).contains(needle.as_str())
+        }).unwrap_or(false)
+    })).unwrap_or(false)
+}
+
+// Sample /proc/<pid>/stat: "123 (sleep) R 456 ..." so the ppid follows the last ")".
+fn ppid_of_stat(text: &str) -> Option<u32> {
+    let after = text.rsplit_once(')')?.1;
+    let mut fields = after.split_whitespace();
+    fields.next()?;
+    fields.next()?.parse::<u32>().ok()
+}
+
 // A tool is running once its argv names this job's directory, so a startup-only cancel cannot fake it.
 fn wait_for_tool_with_dir(dir: &Path, bound: Duration) {
     let start = Instant::now();
@@ -322,6 +373,16 @@ fn wait_for_tool_with_dir(dir: &Path, bound: Duration) {
         std::thread::sleep(Duration::from_millis(10));
     }
     panic!("the tool never ran under {}", dir.display());
+}
+
+// The inner tool is exec'd, not merely the launcher: a bwrap-only state answers false here.
+fn wait_for_compress_with_dir(dir: &Path, bound: Duration) {
+    let start = Instant::now();
+    while start.elapsed() < bound {
+        if compress_running_with_dir(dir) { return; }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    panic!("the compressor never ran under {}", dir.display());
 }
 
 // True while a process other than this one names the job's directory; the TestDir path is unique per test.
