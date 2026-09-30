@@ -4,6 +4,8 @@
 .import "../../ui/js/Swap.js" as Swap
 .import "../../ui/js/Picker.js" as Picker
 .import "../../ui/js/Nav.js" as Nav
+.import "../../ui/js/Errors.js" as Errors
+.import "../../ui/js/Ops.js" as Ops
 .import "sourcefixture.js" as Source
 
 // Below about 659 px of window the four fixed columns claimed the whole row and the filename had a
@@ -424,6 +426,9 @@ function runColumnMenu(check) {
         var m = {opened: [], openBackground: function (at) { m.opened.push(at) }}
         return {pane: p, menu: m}
     }
+    var sampleMenu = {opened: 0, openBackground: function () { sampleMenu.opened++ }}
+    check("the sample opens the shown folder where it stands", ColumnMenu.routeBackground({path: "/a"}, "/a", {x: 1}, sampleMenu), "opened")
+    check("through the real menu entrance", sampleMenu.opened, 1)
     var idle = bgRoute({starts: true})
     check("an idle hop arms and navigates", ColumnMenu.routeBackground(idle.pane, "/b", {x: 1, y: 2}, idle.menu), "navigating")
     check("with the drawn target stored", idle.pane.pendingBackground, "/b")
@@ -492,6 +497,63 @@ function runColumnMenu(check) {
     check("with nothing left to open on", failed.pendingBackgroundAt, null)
     Nav.applyPendingBackground(bg)
     check("a consumed intent never opens twice", bg.opened.length, 1)
+    // The actual PaneWire onFailed callback, compiled from shipped source and run under realistic doubles: the only execution noticing a dropped return or an if(true).
+    // Sample input: the shipped onFailed compiles and a stale failure keeps "/b" pending.
+    var onFailedMark = "function onFailed(where, input, message, mode) {"
+    var onFailedAt = Source.source("ui/PaneWire.qml").indexOf(onFailedMark)
+    if (onFailedAt < 0)
+        throw new Error("sourcefixture: missing onFailed")
+    var onFailedSrc = Source.source("ui/PaneWire.qml")
+    var scanAt = onFailedAt + onFailedMark.length, depth = 1, quote = "", lineComment = false
+    while (depth > 0 && scanAt < onFailedSrc.length) {
+        var ch = onFailedSrc.charAt(scanAt)
+        if (lineComment) {
+            if (ch === "\n") lineComment = false
+        } else if (quote.length > 0) {
+            if (ch === quote) quote = ""
+        } else if (ch === "/" && onFailedSrc.charAt(scanAt + 1) === "/") lineComment = true
+        else if (ch === '"' || ch === "'") quote = ch
+        else if (ch === "{") depth += 1
+        else if (ch === "}") depth -= 1
+        scanAt += 1
+    }
+    if (depth > 0)
+        throw new Error("sourcefixture: unterminated onFailed")
+    var onFailed = eval("(function (pane, root, where, input, message, mode) {"
+        + onFailedSrc.substring(onFailedAt + onFailedMark.length, scanAt - 1) + "})")
+    function failedDoubles() {
+        var p = {path: "/a", listingPath: "/b", listInFlight: true, listedSeen: true,
+            pendingMenu: true, pendingBackground: "/b", pendingBackgroundAt: {x: 1, y: 1},
+            total: 5, held: 0, rows: [], kindNames: [], cursorIndex: 0, renamingIndex: -1,
+            renameRequest: null, renamePending: false, renameKeepsPointerRow: false, renameError: "",
+            transfer: {id: 0}, searchMode: "", clipPending: null, pathsPending: null,
+            listingState: "loading", stateMessage: "", lockedMode: 0, said: [], stuck: []}
+        p.message = function (t) { p.said.push(t) }
+        p.sticky = function (t) { p.stuck.push(t) }
+        p.swap = {drop: function () {}}
+        p.backend = {heldListing: 0}
+        var r = {renameOnArrival: "", stale: false, anchor: null, retryId: 0, retryPaths: [],
+            retryFolder: "", retryListing: "", retrySelectionText: ""}
+        return {pane: p, root: r}
+    }
+    var staleFailed = failedDoubles()
+    onFailed(staleFailed.pane, staleFailed.root, "stale", "trash [0]", "rows out of date", 0)
+    check("a stale failure keeps the background intent", staleFailed.pane.pendingBackground, "/b")
+    check("and keeps the row intent with it", staleFailed.pane.pendingMenu, true)
+    check("and leaves the armed listing in flight", staleFailed.pane.listInFlight, true)
+    var sortFailed = failedDoubles()
+    onFailed(sortFailed.pane, sortFailed.root, "sort", "mode", "no such order", 0)
+    check("a refused sort keeps both intents too", sortFailed.pane.pendingBackground, "/b")
+    check("and the row one beside it", sortFailed.pane.pendingMenu, true)
+    var scanFailed = failedDoubles()
+    onFailed(scanFailed.pane, scanFailed.root, "scan", "/b", "permission denied", 0)
+    check("an actual list failure drops the background intent", scanFailed.pane.pendingBackground, "")
+    check("and the row intent with it", scanFailed.pane.pendingMenu, false)
+    check("and ends the listing", scanFailed.pane.listInFlight, false)
+    var deadBackend = failedDoubles()
+    onFailed(deadBackend.pane, deadBackend.root, "backend", "", "child is gone", 0)
+    check("a dead backend drops both intents at once", deadBackend.pane.pendingBackground, "")
+    check("with the row one beside it", deadBackend.pane.pendingMenu, false)
     function bgListing() {
         var p = {listInFlight: false, path: "/a", listingPath: "", pendingBackground: "", pendingBackgroundAt: null,
             searchMode: "", filterQuery: "", filterTyping: false, listingState: "ready", stateMessage: "", lockedMode: 0,

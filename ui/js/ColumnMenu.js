@@ -85,7 +85,7 @@ function applyPendingBackground(pane) {
 }
 
 // Routes one neighbour background for the columns view: busy refuses before any intent is stored, the shown folder opens its menu where it stands, and any other target navigates with the menu waiting on its rows. Answers opened, navigating, ignored or refused:<reason>.
-// Sample input: routeBackground({path: "/a"}, "/b", {x: 1}, {openBackground: function () {}}) is "navigating".
+// Sample input: routeBackground({path: "/a"}, "/a", {x: 1}, {openBackground: function () {}}) is "opened".
 function routeBackground(pane, base, scenePoint, menu) {
     if (!pane || !base || base.length === 0 || !scenePoint)
         return "ignored"
