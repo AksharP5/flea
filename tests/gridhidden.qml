@@ -149,6 +149,23 @@ ShellRoot {
         scrolledTimer.start()
     }
 
+    // Edge contact is offscreen: exact touches miss, one-pixel overlaps hit, via real coversCursor.
+    function checkBoundaries() {
+        var h = grid.cellHeightPx, H = grid.height, cols = Math.max(1, grid.columns)
+        var r = Math.ceil(H / h), view = r * cols, top = r * h, y = grid.contentY
+        if (view >= root.rowCount) { root.fail("boundary row out of range"); grid.contentY = y; return }
+        grid.contentY = top + h; var topTouch = grid.coversCursor(view)
+        grid.contentY = top - H; var bottomTouch = grid.coversCursor(view)
+        grid.contentY = top + h - 1; var topPixel = grid.coversCursor(view)
+        grid.contentY = top - H + 1; var bottomPixel = grid.coversCursor(view)
+        grid.contentY = y
+        if (grid.restoreMaxTurns !== 60) root.fail("restore bound is " + grid.restoreMaxTurns + ", want 60")
+        if (topTouch !== false) root.fail("top touch covers, want false")
+        if (bottomTouch !== false) root.fail("bottom touch covers, want false")
+        if (topPixel !== true) root.fail("top pixel misses, want true")
+        if (bottomPixel !== true) root.fail("bottom pixel misses, want true")
+    }
+
     // Scrolled to the cursor, then hidden with drift queued and a dirsize pending.
     function measureScrolled() {
         var at = root.delegateAt(root.cursorRow)
@@ -157,6 +174,7 @@ ShellRoot {
         else if (at.cursor !== true)
             root.fail("scrolled draws cursor false on " + root.cursorRow)
         if (root.failures.length > 0) { root.report(); return }
+        root.checkBoundaries()
         root.baseWindow = root.stubBackend.windowCalls
         root.baseMenu = root.stubMenu.closeCalls
         root.baseCancel = root.stubBackend.dirsizescancelCalls

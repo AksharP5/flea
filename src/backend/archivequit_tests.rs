@@ -345,6 +345,7 @@ fn compress_running_with_dir(dir: &Path) -> bool {
         // Inner executable identity: the blocking compressor is /usr/bin/sleep, never the launcher.
         let cmdline = std::fs::read(entry.path().join("cmdline")).unwrap_or_default();
         if cmdline.is_empty() { return false; }
+        // Sample /proc cmdline: "/usr/bin/sleep\0" followed by NUL-separated argument bytes.
         let argv0 = cmdline.split(|b| *b == 0).next().unwrap_or_default();
         if argv0 != b"/usr/bin/sleep" { return false; }
         // Unique job identity: the tool's own launcher carries the job's directory.

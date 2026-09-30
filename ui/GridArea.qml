@@ -283,17 +283,19 @@ GridView {
         root.restoreY = root.contentY
         root.deferRestore()
     }
-    // The parked check the return asserts through: the cursor tile is inside the viewport.
+    // Restore gives up after this many turns, the bound the hidden return waits on.
+    readonly property int restoreMaxTurns: 60
+    // The parked check the return asserts through: the cursor tile overlaps the viewport.
     function coversCursor(view) {
         var row = Math.floor(view / Math.max(1, root.columns))
         var top = row * root.cellHeightPx
-        return root.contentY <= top + root.cellHeightPx && root.contentY + root.height >= top
+        return top < root.contentY + root.height && top + root.cellHeightPx > root.contentY
     }
     // One more loop turn, with a deadlock guard that ends the hold rather than keeping it.
     function deferRestore() {
         if (!root.visible)
             return
-        if (root.restoreTicks >= 60) {
+        if (root.restoreTicks >= root.restoreMaxTurns) {
             root.hiddenHeld = false
             root.restoreY = -1
             root.restoreTicks = 0
