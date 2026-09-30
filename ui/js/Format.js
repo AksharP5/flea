@@ -168,7 +168,6 @@ function msUntilMidnight(nowMs) {
     return new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).getTime() - nowMs
 }
 
-// Name elision and cell widths, shared by every row and the Grid-only caption split.
 // Elides in the middle so the extension stays visible; truncation costs a slice, never a relayout.
 // Sample input: "screenshot-2026-08-30-final-review-for-gm-after-the-bench-v3.png", 49.
 
