@@ -4,8 +4,8 @@ import Quickshell
 import Quickshell.Io
 import qs.Commons
 import "js/Density.js" as Density
+import "js/Format.js" as Format
 import "js/Keymap.js" as Keymap
-import "js/RecentDates.js" as RecentDates
 import "js/Settings.js" as Settings
 import "js/TextSize.js" as TextSize
 import "js/UiState.js" as UiState
@@ -84,22 +84,22 @@ QtObject {
     readonly property bool highlightToday: root.state.highlightToday === true
 
     // Rows compare one number and never build a Date.
-    property double todayStart: RecentDates.dayStart(Date.now())
+    property double todayStart: Format.dayStart(Date.now())
 
     // One timer steps to the next local midnight while the switch is on, in minute steps so a suspend still lands the day within a minute of resume; rows never tick.
     property var midnightTimer: Timer {
         repeat: true
         running: root.highlightToday
-        interval: Math.min(RecentDates.MINUTE_MS, RecentDates.msUntilMidnight(Date.now()))
+        interval: Math.min(Format.MINUTE_MS, Format.msUntilMidnight(Date.now()))
         onTriggered: {
-            root.todayStart = RecentDates.dayStart(Date.now())
-            root.midnightTimer.interval = Math.min(RecentDates.MINUTE_MS, RecentDates.msUntilMidnight(Date.now()))
+            root.todayStart = Format.dayStart(Date.now())
+            root.midnightTimer.interval = Math.min(Format.MINUTE_MS, Format.msUntilMidnight(Date.now()))
             root.midnightTimer.running = root.highlightToday
         }
     }
     onHighlightTodayChanged: {
-        root.todayStart = RecentDates.dayStart(Date.now())
-        root.midnightTimer.interval = Math.min(RecentDates.MINUTE_MS, RecentDates.msUntilMidnight(Date.now()))
+        root.todayStart = Format.dayStart(Date.now())
+        root.midnightTimer.interval = Math.min(Format.MINUTE_MS, Format.msUntilMidnight(Date.now()))
         root.midnightTimer.running = root.highlightToday
     }
 

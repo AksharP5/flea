@@ -1,5 +1,4 @@
 .import "../../ui/js/Format.js" as Format
-.import "../../ui/js/RecentDates.js" as RecentDates
 
 // Sample input: at(2026, 3, 8, 12, 0, 0) is noon on the spring-forward day in the zone the harness sets.
 function at(y, mo, d, h, mi, s) {
@@ -36,15 +35,15 @@ function run(check, suite) {
     check("and puts the evening before on the day before",
           Format.compactDate(1793503800), "2026-10-31")
 
-    // RecentDates builds midnights from components, so a daylight-saving night arms 23 or 25 hours and still lands on midnight.
+    // Format builds midnights from components, so a daylight-saving night arms 23 or 25 hours and still lands on midnight.
     check("spring forward makes a 23 h day",
-          RecentDates.dayStart(at(2026, 3, 9, 12, 0, 0)) - RecentDates.dayStart(at(2026, 3, 8, 12, 0, 0)), 23 * 60 * 60 * 1000)
+          Format.dayStart(at(2026, 3, 9, 12, 0, 0)) - Format.dayStart(at(2026, 3, 8, 12, 0, 0)), 23 * 60 * 60 * 1000)
     check("fall back makes a 25 h day",
-          RecentDates.dayStart(at(2026, 11, 2, 12, 0, 0)) - RecentDates.dayStart(at(2026, 11, 1, 12, 0, 0)), 25 * 60 * 60 * 1000)
+          Format.dayStart(at(2026, 11, 2, 12, 0, 0)) - Format.dayStart(at(2026, 11, 1, 12, 0, 0)), 25 * 60 * 60 * 1000)
     check("midnight before spring forward arms 23 hours",
-          RecentDates.msUntilMidnight(at(2026, 3, 8, 0, 0, 0)), 23 * 60 * 60 * 1000)
+          Format.msUntilMidnight(at(2026, 3, 8, 0, 0, 0)), 23 * 60 * 60 * 1000)
     check("midnight before fall back arms 25 hours",
-          RecentDates.msUntilMidnight(at(2026, 11, 1, 0, 0, 0)), 25 * 60 * 60 * 1000)
+          Format.msUntilMidnight(at(2026, 11, 1, 0, 0, 0)), 25 * 60 * 60 * 1000)
 }
 
 function runEdmonton(check) {

@@ -5,7 +5,6 @@ import "js/Format.js" as Format
 import "js/Icons.js" as Icons
 import "js/Match.js" as Match
 import "js/Names.js" as Names
-import "js/RecentDates.js" as RecentDates
 import "." as Flea
 
 Item {
@@ -330,7 +329,7 @@ Item {
         width: root.dateShown ? root.dateWidth : 0
         text: root.dateShown ? root.dateText() : ""
         // Short-circuit on the switch first, so with the switch off no row enters the library.
-        color: (ViewState.highlightToday && RecentDates.isRecent(root.row ? root.row.m : null, ViewState.todayStart)) ? root.dimmed(Theme.color.foreground) : root.cellInk
+        color: (ViewState.highlightToday && Format.isRecent(root.row ? root.row.m : null, ViewState.todayStart)) ? root.dimmed(Theme.color.foreground) : root.cellInk
         font.family: Theme.font.family
         font.pixelSize: Theme.font.caption
         horizontalAlignment: Text.AlignRight

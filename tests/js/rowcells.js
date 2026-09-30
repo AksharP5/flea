@@ -46,11 +46,11 @@ function run(check) {
     // Only the date cell may lift today; the drawn color with the switch off and on is pinned in tests/rowcost.qml.
     var dateColor = cellBlock(row, "modified")
     check("the date keeps the today lift",
-        dateColor.indexOf("(ViewState.highlightToday && RecentDates.isRecent(") >= 0, true)
+        dateColor.indexOf("(ViewState.highlightToday && Format.isRecent(") >= 0, true)
     check("no inverted switch survives", dateColor.indexOf("!ViewState.highlightToday") < 0, true)
-    check("no negated recency survives", dateColor.indexOf("!RecentDates.isRecent") < 0, true)
+    check("no negated recency survives", dateColor.indexOf("!Format.isRecent") < 0, true)
     check("the date passes no switch into the library", dateColor.indexOf("isRecent(true,") < 0, true)
-    check("and only the date lifts it", countRe(row, /RecentDates\.isRecent/g), 1)
+    check("and only the date lifts it", countRe(row, /Format\.isRecent/g), 1)
     // The pixels are the same tokens: caption type, right elide, plain text, right-aligned numerics, and the by-key cell() lookup.
     var cells = ["mode", "size", "modified", "kind"]
     check("every cell keeps caption type", cells.every(function (id) { return cellBlock(row, id).indexOf("font.pixelSize: Theme.font.caption") >= 0 }), true)
