@@ -404,8 +404,7 @@ assert_theme() {
         || fail "this window paints foreground '$seen', not the live theme's $real_foreground, so no shot or colour claim from it is real"
 }
 
-# Theme reads exactly these four files, and they are copied rather than symlinked so that nothing
-# inside a sandbox this suite rm -rf's ever points back out at the operator's home.
+# Fixture copies the launcher's real theme inputs as regular bytes, absence kept.
 fixture_home_make() {
     local home="$1" theme="$1/.local/state/omarchy/current"
     sandbox_scratch "$home"
@@ -413,6 +412,9 @@ fixture_home_make() {
     cp "$real_state_dir/theme/colors.toml" "$theme/theme/colors.toml"
     cp "$real_state_dir/theme/shell.toml" "$theme/theme/shell.toml"
     cp "$real_state_dir/theme.name" "$theme/theme.name"
+    if [[ -f "$real_state_dir/theme/icons.theme" ]]; then
+        cp "$real_state_dir/theme/icons.theme" "$theme/theme/icons.theme"
+    fi
     # A box with no user shell.toml really does render at 12, so its absence is copied faithfully too.
     if [[ -f "$real_user_shell_toml" ]]; then
         mkdir -p "$home/.config/omarchy"
