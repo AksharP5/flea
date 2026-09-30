@@ -46,6 +46,7 @@ Item {
     readonly property int clipPx: 12
     // The column hands one budget for every row, with ElideMiddle as the backstop.
     property int nameBudget: -1
+    property real paintWidth: 0 // Caller view width; fills paint to it under the lane, content keeps rowWidth.
 
     // Truthiness, like the two readers below: ui/ColumnPane.qml hands this rows[index] raw, so a
     // listing that shrank leaves a surviving delegate holding undefined, which is not null.
@@ -58,7 +59,8 @@ Item {
     implicitHeight: Theme.fileRowHeight
 
     Rectangle {
-        anchors.fill: parent
+        width: root.paintWidth > 0 ? root.paintWidth : parent.width
+        height: parent.height
         // Match the active listing's cursor and marked-selection roles.
         color: root.cursor ? Style.selectedAccentFill
              : root.selected ? Style.selectionFill
@@ -78,7 +80,8 @@ Item {
     Loader {
         id: washLoader
         active: root.dropTarget
-        anchors.fill: parent
+        width: root.paintWidth > 0 ? root.paintWidth : parent.width
+        height: parent.height
         // The board's accent hairline over a faint wash at the hover rung's alpha: the token wins over the mock's own 0.07.
         sourceComponent: Rectangle {
             anchors.fill: parent

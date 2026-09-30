@@ -71,7 +71,8 @@ ListView {
         // ui/Row.qml is left unselected here and the picker paints its own mark behind it.
         Rectangle {
             visible: cell.isMarked
-            anchors.fill: parent
+            width: root.width
+            height: parent.height
             color: Style.selectedAccentFill
         }
 
@@ -84,6 +85,7 @@ ListView {
 
         Flea.Row {
             anchors.fill: parent
+            paintWidth: root.width
             leadingSlot: root.checkSize + Theme.spacing.gap
             compactDate: true
             foregroundMetadata: true

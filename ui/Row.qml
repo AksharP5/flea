@@ -57,6 +57,7 @@ Item {
     readonly property var nameRun: Match.run(root.displayName, root.searchQuery)
     // Assigned by List.qml's shared budgets; -2 keeps the local geometry default for PickerList and drop-target rows.
     property int assignedNameBudget: -2
+    property real paintWidth: 0 // Caller view width; fills paint to it under the lane, content keeps rowWidth.
     // Local measured geometry for PickerList, drop targets and unlaid rows; a function so ordinary rows pay no floor.
     function localNameBudget() { return Theme.bodyAdvance > 0 && name.width > 0 ? Math.floor(name.width / Theme.bodyAdvance) : -1 }
     // Ordinary List rows share; drop targets keep local measured geometry with the label's own reserve.
@@ -100,7 +101,8 @@ Item {
     Accessible.description: root.compactDate && root.row && root.row.m !== null ? Format.date(root.row.m) : ""
 
     Rectangle {
-        anchors.fill: parent
+        width: root.paintWidth > 0 ? root.paintWidth : parent.width
+        height: parent.height
         // The cursor uses accent ink; marked rows keep the OEM's distinct selection rung.
         color: root.cursor && root.paneFocused ? Style.selectedAccentFill
              : root.selected && root.paneFocused ? Style.selectionFill
@@ -128,7 +130,8 @@ Item {
             // The board's accent hairline over a faint wash at the hover rung's alpha: the token wins over the mock's own 0.07.
             Rectangle {
                 visible: root.dropTarget
-                anchors.fill: parent
+                width: root.paintWidth > 0 ? root.paintWidth : parent.width
+                height: parent.height
                 color: Util.alpha(Theme.color.accent, Style.hoverFillAlpha)
                 border.width: Theme.spacing.hairline
                 border.color: Theme.color.accent

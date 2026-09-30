@@ -89,6 +89,7 @@ ListView {
         readonly property int listingIndex: Filter.at(root.pane.shown, index)
         // The scroll lane stays clear so rows never reflow under the bar.
         width: root.rowWidth
+        paintWidth: root.width
         row: root.pane.rowFor(listingIndex)
         cursor: listingIndex === root.pane.cursorIndex
         paneFocused: root.pane.paneFocused

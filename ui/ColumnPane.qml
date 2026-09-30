@@ -215,6 +215,7 @@ Item {
             readonly property int listingIndex: root.pane ? Filter.at(root.pane.shown, index) : index
             // Each column keeps the scroll lane clear, the same rule ui/List.qml follows.
             width: Scroll.contentWidth(view.width, Theme.spacing.rowPaddingX)
+            paintWidth: view.width
             // A shrunk listing subscripts out of range under a delegate not yet released, and QML
             // hands that back as undefined; every row reader in the tree tests against a real null.
             row: root.pane ? root.pane.rowFor(listingIndex) : root.rows[index] !== undefined ? root.rows[index] : null
