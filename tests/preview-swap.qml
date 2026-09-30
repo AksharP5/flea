@@ -29,6 +29,9 @@ ShellRoot {
     readonly property bool folderGuard: Quickshell.env("PREVIEW_SWAP_FOLDERGUARD") === "1"
     // Swap.HOLD_MS is 150, so the real cap fires inside this wait; the positive control proves it.
     readonly property int guardWaitMs: 600
+    // Guard loaders settle a frame after kickoff, so the start retries briefly before failing loud.
+    readonly property int guardRetryLimit: 20
+    readonly property int guardRetryMs: 50
     property int guardTries: 0
     property bool guardCapDone: false
     property bool guardPositiveDone: false
@@ -202,7 +205,7 @@ ShellRoot {
     function guardStart() {
         if (!guardCheckLoader.item || !guardCapLoader.item || !guardPositiveLoader.item) {
             shell.guardTries += 1
-            if (shell.guardTries > 20) {
+            if (shell.guardTries > shell.guardRetryLimit) {
                 shell.log("FOLDERGUARD FAIL no guard item to drive")
                 shell.quit()
                 return
@@ -248,7 +251,7 @@ ShellRoot {
 
     Timer {
         id: guardRetry
-        interval: 50
+        interval: shell.guardRetryMs
         repeat: false
         onTriggered: shell.guardStart()
     }

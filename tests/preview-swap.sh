@@ -99,7 +99,13 @@ judge() {
 
 # Sample input, one harness line: 'PREVIEWSWAP FOLDERGUARD DONE check=held cap=held positive=expired'.
 run_folderguard() {
-    local log="$swap_root/folderguard.log" status
+    # Offscreen platform mask warning is the platform's, never the guard's.
+    local platform_warning='This plugin does not support setting window masks'
+    local log="$swap_root/folderguard.log"
+    local status
+    local done_count
+    local fail_count
+    local warnings
     ( env -u DISPLAY -u WAYLAND_DISPLAY -u HYPRLAND_INSTANCE_SIGNATURE \
         HOME="$swap_work/home" XDG_RUNTIME_DIR="$swap_work/runtime" TMPDIR="$swap_work/tmp" \
         XDG_CONFIG_HOME="$swap_work/home/.config" XDG_STATE_HOME="$swap_work/home/.local/state" \
@@ -110,8 +116,13 @@ run_folderguard() {
         PREVIEW_SWAP_DIRECT="0" PREVIEW_SWAP_FOLDERGUARD="1" \
         timeout 90 qs -p "$swap_work/config" > "$log" 2>&1; exit $? ) 2>/dev/null
     status=$?
-    if grep -q 'FOLDERGUARD FAIL' "$log" || ! grep -q 'FOLDERGUARD DONE' "$log"; then
-        bad "folderguard: the real swap did not hold (qs exit $status): $(grep -a 'FOLDERGUARD FAIL' "$log" | head -1)"
+    done_count=$(grep -a -c 'FOLDERGUARD DONE' "$log")
+    fail_count=$(grep -a -c 'FOLDERGUARD FAIL' "$log")
+    warnings=$(grep -aE 'TypeError|ReferenceError|ERROR|WARN|Cannot|is not a type|failed to load' "$log" | grep -vF "$platform_warning" || true)
+    if [ "$done_count" -ne 1 ] || [ "$fail_count" -ne 0 ] || [ -n "$warnings" ]; then
+        bad "folderguard: want one DONE, no FAIL and no warnings (qs exit $status, done=$done_count fail=$fail_count)"
+        printf '%s\n' "$warnings"
+        cat "$log"
         return
     fi
     ok "folderguard: held check and held cap stayed holding, positive control expired"
