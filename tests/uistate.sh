@@ -503,12 +503,24 @@ check "and never more temps than there were kills" "1" "$([ "$temps" -le "$kills
 kill_floor=24
 echo "     the sweep killed $kills of 120 rounds, floor $kill_floor"
 check "the kill sweep killed a fifth of its rounds at least" "1" "$([ "$kills" -ge "$kill_floor" ] && echo 1 || echo 0)"
-# The positive control for the line below, which passes vacuously on a sweep that never reached the
-# write: a kill during process startup satisfies kills>0 and enters nothing, while a temp survives
-# only when the kill landed between write_new's exclusive create and the rename, so the count
-# printed above IS the count of rounds killed inside the write window and 0 of them proves nothing.
-check "and a kill landed inside the write window at all" "1" "$([ "$temps" -ge 1 ] && echo 1 || echo 0)"
+# A 0-temp timed sweep proves nothing about the write window, so its temp count stays diagnostic.
+echo "     the sweep left $temps write-window temp(s), diagnostic only"
 check "no kill ever left a partial state file" "0" "$partial"
+
+# The barrier holds the owned tmp inside its first write, so SIGKILL lands in the window by design.
+DET="$FIXTURE_ROOT/flea-uistate-det-$$"
+sandbox_make "$DET" || exit 1
+# Sample input: `deterministic receipt 12345 7 /…/flea/ui.json.12345.tmp` plus the sha256 line.
+if python3 tests/uistate-deterministic.py "$DET" "$BIN" >"$DET/det.log" 2>&1; then
+  check "deterministic interrupted publication kept the seeded bytes" "1" "$(grep -c 'interrupted publication kept' "$DET/det.log")"
+  check "released barrier published the exact expected state" "1" "$(grep -c 'released barrier published' "$DET/det.log")"
+  echo "     deterministic hit 1 of 1 killed inside the write window, timed kills $kills of 120 separate"
+else
+  echo "FAIL deterministic interrupted publication proof"
+  cat "$DET/det.log"
+  fail=1
+fi
+sandbox_remove "$DET" || exit 1
 
 sandbox_remove "$SANDBOX" || exit 1
 
