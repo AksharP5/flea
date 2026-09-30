@@ -25,6 +25,15 @@ ShellRoot {
     property int seq: 0
     // A column folder move holds by data: the old color stays until the peek lands.
     property string pendingFolder: ""
+    // Folder-guard execution: when set, the move plan is skipped and the real swap proves its returns.
+    readonly property bool folderGuard: Quickshell.env("PREVIEW_SWAP_FOLDERGUARD") === "1"
+    // Swap.HOLD_MS is 150, so the real cap fires inside this wait; the positive control proves it.
+    readonly property int guardWaitMs: 600
+    property int guardTries: 0
+    property bool guardCapDone: false
+    property bool guardPositiveDone: false
+    property int guardCapFb0: 0
+    property int guardPositiveFb0: 0
 
     function log(line) { console.log("PREVIEWSWAP " + line) }
     function quit() { Quickshell.execDetached(["kill", String(Quickshell.processId)]) }
@@ -78,6 +87,35 @@ ShellRoot {
                 id: qlPanes
                 anchors.fill: parent
                 visible: shell.surfaceKind === "quicklook"
+            }
+
+            // Folder-guard fixtures: three isolated swaps, so the readiness guard cannot mask the cap.
+            Loader {
+                id: guardCheckLoader
+                x: 0
+                y: 0
+                width: 10
+                height: 10
+                active: shell.folderGuard
+                source: shell.folderGuard ? "file://" + shell.uiDir + "/PreviewSwap.qml" : ""
+            }
+            Loader {
+                id: guardCapLoader
+                x: 10
+                y: 0
+                width: 10
+                height: 10
+                active: shell.folderGuard
+                source: shell.folderGuard ? "file://" + shell.uiDir + "/PreviewSwap.qml" : ""
+            }
+            Loader {
+                id: guardPositiveLoader
+                x: 20
+                y: 0
+                width: 10
+                height: 10
+                active: shell.folderGuard
+                source: shell.folderGuard ? "file://" + shell.uiDir + "/PreviewSwap.qml" : ""
             }
         }
     }
@@ -160,11 +198,102 @@ ShellRoot {
         onTriggered: shell.next()
     }
 
+    // The held check and the held cap stay holding; the unheld positive control must expire.
+    function guardStart() {
+        if (!guardCheckLoader.item || !guardCapLoader.item || !guardPositiveLoader.item) {
+            shell.guardTries += 1
+            if (shell.guardTries > 20) {
+                shell.log("FOLDERGUARD FAIL no guard item to drive")
+                shell.quit()
+                return
+            }
+            guardRetry.restart()
+            return
+        }
+        var checkItem = guardCheckLoader.item
+        checkItem.folderHold = true
+        checkItem.holding = true
+        checkItem.started = true
+        checkItem.ready = true
+        checkItem.check()
+        if (checkItem.holding !== true) {
+            shell.log("FOLDERGUARD FAIL held check released, want holding")
+            shell.quit()
+            return
+        }
+        var capItem = guardCapLoader.item
+        capItem.folderHold = true
+        capItem.holding = true
+        capItem.started = true
+        capItem.ready = true
+        shell.guardCapFb0 = capItem.fallbacks
+        capItem.start(false)
+        var positiveItem = guardPositiveLoader.item
+        positiveItem.folderHold = false
+        positiveItem.holding = true
+        positiveItem.started = true
+        positiveItem.ready = false
+        shell.guardPositiveFb0 = positiveItem.fallbacks
+        positiveItem.start(false)
+        guardCapTimer.restart()
+        guardPositiveTimer.restart()
+    }
+
+    function guardFinish() {
+        if (!shell.guardCapDone || !shell.guardPositiveDone)
+            return
+        shell.log("FOLDERGUARD DONE check=held cap=held positive=expired")
+        shell.quit()
+    }
+
+    Timer {
+        id: guardRetry
+        interval: 50
+        repeat: false
+        onTriggered: shell.guardStart()
+    }
+
+    Timer {
+        id: guardCapTimer
+        interval: shell.guardWaitMs
+        repeat: false
+        onTriggered: {
+            var capItem = guardCapLoader.item
+            if (!capItem || capItem.holding !== true || capItem.fallbacks !== shell.guardCapFb0) {
+                shell.log("FOLDERGUARD FAIL held cap expired, want holding with fallbacks unchanged")
+                shell.quit()
+                return
+            }
+            shell.guardCapDone = true
+            shell.guardFinish()
+        }
+    }
+
+    Timer {
+        id: guardPositiveTimer
+        interval: shell.guardWaitMs
+        repeat: false
+        onTriggered: {
+            var positiveItem = guardPositiveLoader.item
+            if (!positiveItem || positiveItem.holding !== false || positiveItem.fallbacks !== shell.guardPositiveFb0 + 1) {
+                shell.log("FOLDERGUARD FAIL positive control saw no expiry, want released with one fallback")
+                shell.quit()
+                return
+            }
+            shell.guardPositiveDone = true
+            shell.guardFinish()
+        }
+    }
+
     Timer {
         id: kickoff
         interval: 400
         repeat: false
         onTriggered: {
+            if (shell.folderGuard) {
+                shell.guardStart()
+                return
+            }
             if (!shell.swap) {
                 shell.log("FAIL no swap item to drive")
                 shell.quit()

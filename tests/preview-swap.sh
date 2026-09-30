@@ -97,10 +97,31 @@ judge() {
     [ -f "$out/settled.png" ] || bad "$surface: the settled grab never landed"
 }
 
+# Sample input, one harness line: 'PREVIEWSWAP FOLDERGUARD DONE check=held cap=held positive=expired'.
+run_folderguard() {
+    local log="$swap_root/folderguard.log" status
+    ( env -u DISPLAY -u WAYLAND_DISPLAY -u HYPRLAND_INSTANCE_SIGNATURE \
+        HOME="$swap_work/home" XDG_RUNTIME_DIR="$swap_work/runtime" TMPDIR="$swap_work/tmp" \
+        XDG_CONFIG_HOME="$swap_work/home/.config" XDG_STATE_HOME="$swap_work/home/.local/state" \
+        XDG_CACHE_HOME="$swap_work/home/.cache" \
+        QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software QT_QPA_UPDATE_IDLE_TIME=16 \
+        QT_FORCE_STDERR_LOGGING=1 \
+        PREVIEW_SWAP_UI="$PWD/ui" PREVIEW_SWAP_SURFACE="column" PREVIEW_SWAP_OUT="$swap_work/frames-column" \
+        PREVIEW_SWAP_DIRECT="0" PREVIEW_SWAP_FOLDERGUARD="1" \
+        timeout 90 qs -p "$swap_work/config" > "$log" 2>&1; exit $? ) 2>/dev/null
+    status=$?
+    if grep -q 'FOLDERGUARD FAIL' "$log" || ! grep -q 'FOLDERGUARD DONE' "$log"; then
+        bad "folderguard: the real swap did not hold (qs exit $status): $(grep -a 'FOLDERGUARD FAIL' "$log" | head -1)"
+        return
+    fi
+    ok "folderguard: held check and held cap stayed holding, positive control expired"
+}
+
 run_surface column 0
 run_surface quicklook 0
 run_surface column 1
 run_surface quicklook 1
+run_folderguard
 
 printf 'preview-swap: %s check(s), %s failed\n' "$((pass + fail))" "$fail"
 [ "$fail" -eq 0 ]

@@ -316,19 +316,20 @@ function runFolderHold(check) {
     check("the wait follows the unanswered folder", area.indexOf("folderWaiting: Columns.folderDataHold(root.cursorIsDir, root.answered(root.childPath))") >= 0, true)
     check("the swap holds it", area.indexOf("folderHold: root.folderWaiting") >= 0, true)
     var swap = Source.source("ui/PreviewSwap.qml")
-    check("a held check releases nothing", Source.slice(swap, "function check()", "function release").indexOf("if (root.folderHold)") >= 0, true)
-    check("an expired cap releases nothing held", Source.slice(swap, "id: cap", "One frame later").indexOf("if (root.folderHold)") >= 0, true)
-    // Structural oracle: the QML guard runs no JS here, so the return before the next arm is the behaviour.
+    check("structural: check() names the folder guard", Source.slice(swap, "function check()", "function release").indexOf("if (root.folderHold)") >= 0, true)
+    check("structural: cap names the folder guard", Source.slice(swap, "id: cap", "One frame later").indexOf("if (root.folderHold)") >= 0, true)
+    // Structural ordering only: a comment or string still saying return passes these; tests/preview-swap.qml proves the returns run.
     var checkBody = Source.slice(swap, "function check()", "function release")
     var checkGuard = checkBody.indexOf("if (root.folderHold)")
     var checkReturn = checkGuard >= 0 ? checkBody.indexOf("return", checkGuard) : -1
     var checkNext = checkGuard >= 0 ? checkBody.indexOf("if (root.holding", checkGuard) : -1
-    check("source: a held check returns before its release arm", checkGuard >= 0 && checkReturn > checkGuard && checkReturn < checkNext, true)
+    check("structural: check() orders guard before release arm", checkGuard >= 0 && checkReturn > checkGuard && checkReturn < checkNext, true)
     var capBody = Source.slice(swap, "id: cap", "One frame later")
     var capGuard = capBody.indexOf("if (root.folderHold)")
     var capReturn = capGuard >= 0 ? capBody.indexOf("return", capGuard) : -1
     var capNext = capGuard >= 0 ? capBody.indexOf("if (!root.holding", capGuard) : -1
-    check("source: an expired cap returns before its fallback arm", capGuard >= 0 && capReturn > capGuard && capReturn < capNext, true)
+    check("structural: cap orders guard before fallback arm", capGuard >= 0 && capReturn > capGuard && capReturn < capNext, true)
+    check("the folder guard runs under Qt in preview-swap", Source.source("tests/preview-swap.qml").indexOf('Quickshell.env("PREVIEW_SWAP_FOLDERGUARD")') >= 0, true)
 }
 
 // w8 colroot: at / no ancestor repeats the active column, so the slot stays blank and Left stays a no-op.
