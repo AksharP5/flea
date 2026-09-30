@@ -45,7 +45,7 @@ src/uischema.rs 421
 src/uistate.rs 625
 src/uistore.rs 540
 src/vulkan.rs 728
-tests/js/columns.js 482
+tests/js/columns.js 533
 tests/js/focus.js 456
 tests/js/mounts.js 383
 tests/js/network.js 306
@@ -64,7 +64,7 @@ ui/NetworkMounts.qml 838
 ui/OpenWithDialog.qml 592
 ui/Pane.qml 735
 ui/PaneMenuActions.qml 404
-ui/PaneWire.qml 463
+ui/PaneWire.qml 468
 ui/PermissionsDialog.qml 432
 ui/PickerWindow.qml 706
 ui/PreviewColumn.qml 499

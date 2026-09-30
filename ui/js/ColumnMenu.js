@@ -83,3 +83,29 @@ function applyPendingBackground(pane) {
         return
     pane.openBackgroundMenu(at)
 }
+
+// Routes one neighbour background for the columns view: busy refuses before any intent is stored, the shown folder opens its menu where it stands, and any other target navigates with the menu waiting on its rows. Answers opened, navigating, ignored or refused:<reason>.
+// Sample input: routeBackground({path: "/a"}, "/b", {x: 1}, {openBackground: function () {}}) is "navigating".
+function routeBackground(pane, base, scenePoint, menu) {
+    if (!pane || !base || base.length === 0 || !scenePoint)
+        return "ignored"
+    var busy = canArm(pane)
+    if (busy.length > 0) {
+        if (busy === "loading")
+            pane.message("A directory is already loading.", false)
+        return "refused:" + busy
+    }
+    if (directOpen(base, pane.path)) {
+        menu.openBackground(scenePoint)
+        return "opened"
+    }
+    pane.pendingBackground = base
+    pane.pendingBackgroundAt = scenePoint
+    pane.open(base)
+    if (!pane.listInFlight) {
+        pane.pendingBackground = ""
+        pane.pendingBackgroundAt = null
+        return "refused:not-started"
+    }
+    return "navigating"
+}

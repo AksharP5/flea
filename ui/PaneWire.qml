@@ -378,12 +378,14 @@ Item {
         }
 
         function onFailed(where, input, message, mode) {
-            // A listing that failed cannot seat the row a peeked right click asked for, so its menu intent dies here.
-            pane.pendingMenu = false
-            Nav.clearPendingBackground(pane)
             if (pane.path.length === 0 && input.length > 0) pane.path = input
             var text = Errors.sentence(where, message, input && input !== pane.path ? Ops.leaf(input) : "")
             var terminal = where === "backend" || where === "read"
+            // A dead backend ends every listing, so no deferred menu can ever land on one.
+            if (terminal) {
+                pane.pendingMenu = false
+                Nav.clearPendingBackground(pane)
+            }
             var request = pane.renameRequest
             var renamePath = request && (input === request.source || input === request.destination
                 || (where === "rename" && (input.length === 0 || input.indexOf(request.source + "/") === 0
@@ -420,6 +422,9 @@ Item {
                 pane.message(text, true)
                 return
             }
+            // The target listing actually ended, so neither deferred menu can land on it; a stale or refused sort never reaches here.
+            pane.pendingMenu = false
+            Nav.clearPendingBackground(pane)
             // Neither the child nor its stream comes back, so the listing it produced stops being true.
             // Only these two mean the refresh will never deliver rows. An editor left armed past that
             // would open over whatever row the cursor happens to hold in some later listing.

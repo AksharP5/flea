@@ -2900,6 +2900,10 @@ w34-r2 holds those ceilings with comment joins only and no logic change; the fix
 e41 adds neighbour background-menu intent and landing guards. Re-derived integration ceilings: tests/js/columns.js 482, ui/ColumnsArea.qml 476, ui/Pane.qml 735, ui/PaneWire.qml 463; the recorded ColumnsArea ceiling 483 covers the unit variant, and the merged head is 476. The existing e39 gate checks remain alongside the new ColumnMenu checks.
 w36 moves one ceiling, re-derived with `wc -l`: `tests/js/focus.js` 451 to 456 on integration for the Pane railHidden wire pin (Source import with the handler line, labeled wire pin not execution); `tests/listcost.qml` 245 to 254, `tests/rowcost.qml` 314 to 334, `tests/columnscost.qml` 394 to 416 and `tests/js/names.js` 219 to 222 stay inside their caps. R2 uses the actual drawn glyphs (Row direct-Glyph match, ColumnRow markItem) so glyph and markSlot opacity mutants RED.
 
+e41 records its ceilings, each re-derived with `wc -l`: neighbour-column backgrounds navigate to the drawn directory and open its background menu once the rows land. `ui/ColumnPane.qml` keeps 353 over the soft budget and under the hard cap for the peek background signal and its route; `ui/ColumnsArea.qml` keeps 459 inside its recorded 483 with the routing delegated to the tested decision; `ui/Pane.qml` keeps 735 for the pending intent and its one-line opener; `ui/PaneWire.qml` 463 to 468 for dropping both deferred menus only at the terminal-listing boundary; `ui/js/Nav.js` keeps 290 over soft with the thin consume/clear wrappers and the unrelated-hop drop guard; the decisions live in the new `ui/js/ColumnMenu.js` at 111 inside both budgets; `tests/js/columns.js` 467 to 518 for the executed routing, stale-keeps/failure-drops lifecycle and wiring-order pins; `tests/ui-columns-background.sh` at 166 carries the five live New Folder surfaces.
+
+e41-r4 integration records tests/js/columns.js 533 and ui/ColumnsArea.qml 456, retaining the existing neighbour gate and focus checks alongside the new routing and failure-boundary tests.
+
 ## The key table is generated
 
 `keys.toml` at the repository root is the single source of truth for every binding.

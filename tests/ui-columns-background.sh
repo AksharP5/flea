@@ -2,6 +2,10 @@
 # Neighbour-column backgrounds (e41): a peek column's empty space navigates to its drawn directory and opens its background menu once the rows land.
 # shellcheck disable=SC2034,SC2154 # ui.sh supplies the launch, ipc and click helpers.
 
+# One IPC round trip costs hundreds of ms under load, so the menu wait polls 300 tries at 0.05 s rather than sleeping past the 4 s transient.
+columnsbg_poll_tries=300
+columnsbg_poll_s=0.05
+
 # Click empty space in a neighbour column: x off a real row centre in that column, y at the window middle, well below the few rows the fixture draws.
 columnsbg_click_column() {
     local centre="$1" cx cy
@@ -29,11 +33,11 @@ columnsbg_choose_new_folder() {
 
 columnsbg_wait_menu_on() {
     local want_path="$1" path=unavailable opened=unavailable
-    for _attempt in $(seq 1 300); do
+    for _attempt in $(seq 1 "$columnsbg_poll_tries"); do
         path=$(ipc path 2>/dev/null || printf unavailable)
         opened=$(ipc contextMenuVisible 2>/dev/null || printf unavailable)
         if [[ "$path" == "$want_path" && "$opened" == "true" ]]; then return 0; fi
-        sleep 0.05
+        sleep "$columnsbg_poll_s"
     done
     fail "columnsbackground: no background menu on $want_path (path=$path opened=$opened entries=$(ipc contextMenuEntries))"
 }

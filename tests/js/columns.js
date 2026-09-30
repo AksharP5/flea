@@ -1,6 +1,7 @@
 .import "../../ui/js/Columns.js" as Columns
 .import "../../ui/js/ColumnMenu.js" as ColumnMenu
 .import "../../ui/js/ColumnFit.js" as ColumnFit
+.import "../../ui/js/Swap.js" as Swap
 .import "../../ui/js/Picker.js" as Picker
 .import "../../ui/js/Nav.js" as Nav
 .import "sourcefixture.js" as Source
@@ -393,6 +394,32 @@ function runColumnMenu(check) {
     check("the shown folder opens where it stands", ColumnMenu.directOpen("/a", "/a/"), true)
     check("another folder navigates instead", ColumnMenu.directOpen("/a", "/b"), false)
     check("no target navigates nowhere", ColumnMenu.directOpen("", "/b"), false)
+    function bgRoute(overrides) {
+        var p = {path: "/a", listInFlight: false, pendingBackground: "", pendingBackgroundAt: null, said: [], opened: [], asked: []}
+        p.message = function (t) { p.said.push(t) }
+        p.open = function (base) { p.asked.push(base); if (overrides && overrides.starts === true) p.listInFlight = true }
+        var m = {opened: [], openBackground: function (at) { m.opened.push(at) }}
+        return {pane: p, menu: m}
+    }
+    var idle = bgRoute({starts: true})
+    check("an idle hop arms and navigates", ColumnMenu.routeBackground(idle.pane, "/b", {x: 1, y: 2}, idle.menu), "navigating")
+    check("with the drawn target stored", idle.pane.pendingBackground, "/b")
+    check("and the listing asked for", idle.pane.asked.join("|"), "/b")
+    var busyRoute = bgRoute()
+    busyRoute.pane.listInFlight = true
+    check("a busy hop refuses before storing anything", ColumnMenu.routeBackground(busyRoute.pane, "/b", {x: 1, y: 2}, busyRoute.menu), "refused:loading")
+    check("leaving no intent behind", busyRoute.pane.pendingBackground, "")
+    check("and asking for no listing", busyRoute.pane.asked.length, 0)
+    check("while the refusal says to wait", busyRoute.pane.said.join("|"), "A directory is already loading.")
+    var same = bgRoute()
+    check("the shown folder opens where it stands", ColumnMenu.routeBackground(same.pane, "/a/", {x: 3, y: 4}, same.menu), "opened")
+    check("leaving the listing alone", same.pane.asked.length, 0)
+    check("at the stored point", same.menu.opened.length, 1)
+    var unstated = bgRoute()
+    check("a targetless tap is ignored", ColumnMenu.routeBackground(unstated.pane, "", {x: 1, y: 2}, unstated.menu), "ignored")
+    var unstarted = bgRoute()
+    check("an open that never starts is refused", ColumnMenu.routeBackground(unstarted.pane, "/b", {x: 1, y: 2}, unstarted.menu), "refused:not-started")
+    check("clearing the intent it just stored", unstarted.pane.pendingBackground, "")
     check("a ready listing opens its pending menu", ColumnMenu.shouldOpen("/a", "/a", "ready"), true)
     check("an empty listing opens too", ColumnMenu.shouldOpen("/a", "/a/", "empty"), true)
     check("a locked listing drops it", ColumnMenu.shouldOpen("/a", "/a", "locked"), false)
@@ -418,6 +445,24 @@ function runColumnMenu(check) {
     Nav.applyPendingBackground(locked)
     check("an unreadable listing drops without opening", locked.opened.length, 0)
     check("and leaves nothing pending", locked.pendingBackground, "")
+    var flight = {swap: {drop: function () {}}, listInFlight: true, listedSeen: true}
+    check("a stale error ends only its own request", Swap.failListing(flight, "stale"), false)
+    check("leaving the armed listing in flight", flight.listInFlight, true)
+    var armed = {path: "/b", listingState: "ready", searchMode: "", trash: {},
+        pendingBackground: "/b", pendingBackgroundAt: {x: 9, y: 9}, opened: []}
+    armed.openBackgroundMenu = function (at) { armed.opened.push(at) }
+    Nav.applyPendingBackground(armed)
+    check("the armed menu still opens on its own rows", armed.opened.length, 1)
+    Nav.applyPendingBackground(armed)
+    check("and only once", armed.opened.length, 1)
+    var failedFlight = {swap: {drop: function () {}}, listInFlight: true, listedSeen: true}
+    check("an actual list failure ends the listing", Swap.failListing(failedFlight, "scan"), true)
+    var doomed = {path: "/b", listingState: "ready", searchMode: "", trash: {},
+        pendingBackground: "/b", pendingBackgroundAt: {x: 1, y: 1}, opened: []}
+    doomed.openBackgroundMenu = function (at) { doomed.opened.push(at) }
+    Nav.clearPendingBackground(doomed)
+    Nav.applyPendingBackground(doomed)
+    check("a failed listing drops the intent before any rows", doomed.opened.length, 0)
     var failed = {pendingBackground: "/b", pendingBackgroundAt: {x: 1, y: 2}}
     Nav.clearPendingBackground(failed)
     check("a failed listing clears the intent", failed.pendingBackground, "")
@@ -456,10 +501,7 @@ function runColumnMenu(check) {
     var area = Source.source("ui/ColumnsArea.qml")
     check("the area navigates a neighbour background", area.indexOf("function menuOnNeighbourBackground(base, eventPoint)") >= 0, true)
     var helper = Source.slice(area, "function menuOnNeighbourBackground", "function parentItemAt")
-    check("and rejects busy before arming any intent", helper.indexOf("ColumnMenu.canArm(root.pane)") >= 0, true)
-    var armAt = helper.indexOf("root.pane.pendingBackground = base")
-    check("and arms the drawn target before opening it", armAt >= 0 && helper.indexOf("ColumnMenu.canArm(root.pane)") < armAt, true)
-    check("and drops an open that never started", helper.indexOf("if (!root.pane.listInFlight)") >= 0, true)
+    check("the helper delegates to the executed routing", helper.indexOf("ColumnMenu.routeBackground(root.pane, base,") >= 0, true)
     check("the parent routes its drawn directory", area.indexOf("menuOnNeighbourBackground(root.parentPath, eventPoint)") >= 0, true)
     check("the parent stays gated on its shown ancestor", area.indexOf("if (root.showParent && root.parentShown)") >= 0, true)
     check("the grandparent routes its own", area.indexOf("menuOnNeighbourBackground(root.grandparentPath, eventPoint)") >= 0, true)
@@ -473,6 +515,15 @@ function runColumnMenu(check) {
     check("and a file preview offers no directory", childBody.indexOf("root.shownIsDir") >= 0, true)
     var wire = Source.source("ui/PaneWire.qml")
     check("a failed listing drops the intent", wire.indexOf("Nav.clearPendingBackground(pane)") >= 0, true)
+    var failedHead = Source.slice(wire, "function onFailed(where, input, message, mode) {", "var terminal =")
+    check("unrelated errors keep the intent until the listing ends",
+        failedHead.indexOf("pendingMenu") < 0 && failedHead.indexOf("clearPendingBackground") < 0, true)
+    var deadBackend = Source.slice(wire, "A dead backend ends every listing", "var request = pane.renameRequest")
+    check("a dead backend still drops both deferred menus",
+        deadBackend.indexOf("pane.pendingMenu = false") >= 0 && deadBackend.indexOf("Nav.clearPendingBackground(pane)") >= 0, true)
+    var failedTail = Source.slice(wire, "if (!Swap.failListing(pane, where)) {", "Neither the child")
+    check("the ended listing drops both deferred menus",
+        failedTail.indexOf("pane.pendingMenu = false") >= 0 && failedTail.indexOf("Nav.clearPendingBackground(pane)") >= 0, true)
     var nav = Source.source("ui/js/Nav.js")
     check("a landed listing consumes it by identity", nav.indexOf("ColumnMenu.applyPendingBackground(pane)") >= 0, true)
     check("a hop elsewhere drops the waiting intent", nav.indexOf("ColumnMenu.samePath(newPath, pane.pendingBackground)") >= 0, true)

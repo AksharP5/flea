@@ -194,29 +194,9 @@ Item {
         root.pane.open(base)
     }
 
-    // A neighbour column's empty space: the DRAWN directory (the peek's own path, never pending childPath; a file preview draws none) becomes the listing and its background menu opens once the rows land.
+    // A neighbour column's empty space delegates to the tested routing: busy refuses before any intent, the shown folder opens where it stands, and any other drawn target navigates with its menu waiting on the rows.
     function menuOnNeighbourBackground(base, eventPoint) {
-        if (!base || base.length === 0)
-            return
-        if (!eventPoint || eventPoint.scenePosition === undefined)
-            return
-        var busy = ColumnMenu.canArm(root.pane)
-        if (busy.length > 0) {
-            if (busy === "loading")
-                root.pane.message("A directory is already loading.", false)
-            return
-        }
-        if (ColumnMenu.directOpen(base, root.pane.path)) {
-            root.menu.openBackground(eventPoint.scenePosition)
-            return
-        }
-        root.pane.pendingBackground = base
-        root.pane.pendingBackgroundAt = eventPoint.scenePosition
-        root.pane.open(base)
-        if (!root.pane.listInFlight) {
-            root.pane.pendingBackground = ""
-            root.pane.pendingBackgroundAt = null
-        }
+        ColumnMenu.routeBackground(root.pane, base, eventPoint ? eventPoint.scenePosition : null, root.menu)
     }
 
     // For ui/Ipc.qml: the peek columns' rows and the child's empty tile; the two eldest answer null while their Loader is unbuilt.
