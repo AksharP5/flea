@@ -32,7 +32,8 @@ pass_count=$(printf '%s\n' "$output" | grep -c 'COLUMNCOST PASS')
 fail_count=$(printf '%s\n' "$output" | grep -c 'COLUMNCOST FAIL')
 if [ "$pass_count" -ne 1 ] || [ "$fail_count" -ne 0 ]; then
     printf 'FAIL the columns view builds a pane it never shows, or a row grew\n'
-    printf '%s\n' "$output" | grep -aE 'COLUMNCOST|ERROR|error' | head -20
+    printf '%s\n' "$output" | grep -aE 'COLUMNCOST|ERROR|error'
+    printf '%s\n' "$output"
     exit 1
 fi
 printf '%s\n' "$output" | grep -o 'COLUMNCOST PASS.*'

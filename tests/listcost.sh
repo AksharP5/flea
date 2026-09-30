@@ -34,7 +34,8 @@ fail_count=$(printf '%s\n' "$output" | grep -c 'LISTCOST FAIL')
 if [ "$pass_count" -ne 1 ] || [ "$fail_count" -ne 0 ]; then
     printf 'FAIL the list builds a width, an array or a mark call per row, or it keeps its lookup\n'
     printf '%s\n' "$output" | grep -a 'LISTCOST'
-    printf '%s\n' "$output" | grep -aiE 'ERROR|error' | head -20
+    printf '%s\n' "$output" | grep -aiE 'ERROR|error'
+    printf '%s\n' "$output"
     exit 1
 fi
 printf '%s\n' "$output" | grep -o 'LISTCOST PASS.*'

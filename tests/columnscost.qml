@@ -294,6 +294,22 @@ ShellRoot {
             root.fail("the drop wash paints above the row content")
     }
 
+    // Effective ink, so an added opacity double-dims instead of passing on color.a alone.
+    function effectiveAlpha(item) {
+        var a = item.color.a, cur = item
+        while (cur !== null) { if (cur.opacity !== undefined) a *= cur.opacity; if (cur === root) break; cur = cur.parent }
+        return a
+    }
+
+    // A cut dims ink, name and mark together; the thumbnail keeps its own opacity branch.
+    function checkColumnDim(row, wantDim) {
+        var want = wantDim ? Flea.Theme.disabledOpacity : 1
+        if (Flea.Theme.disabledOpacity <= 0.05 || Flea.Theme.disabledOpacity >= 0.95) root.fail("disabledOpacity reads " + Flea.Theme.disabledOpacity + ", want a real dim")
+        if (Math.abs(row.ink.a - want) > 0.01) root.fail("a column row inks at " + row.ink.a + ", want " + want)
+        if (Math.abs(root.effectiveAlpha(row.nameItem()) - want) > 0.01) root.fail("a column row names at " + root.effectiveAlpha(row.nameItem()) + ", want " + want)
+        if (Math.abs(root.effectiveAlpha(row.markItem()) - want) > 0.01) root.fail("a column row marks dim through its glyph, want " + want)
+    }
+
     function populateAncestors() {
         var next = {}
         next[area.peekKey(area.parentPath)] = root.ancestorRows
@@ -314,6 +330,12 @@ ShellRoot {
         root.checkClip()
         root.checkStacking()
         root.checkDividers()
+        root.checkColumnDim(probeRow, false)
+        probeRow.clipMark = "scissors"
+        root.checkColumnDim(probeRow, true)
+        probeRow.clipMark = ""
+        root.checkColumnDim(probeRow, false)
+        root.checkColumnDim(probeMarked, false)
         if (root.failures.length > 0) { root.report(); return }
         root.stubPane.path = "/a/b/c/d"
         Flea.ViewState.state = { columnsLimit: 5 }

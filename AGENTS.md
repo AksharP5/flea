@@ -2898,6 +2898,7 @@ w34 moves one ceiling, re-derived with `wc -l`: `ui/Row.qml` 468 to 472 for the 
 w34-r2 holds those ceilings with comment joins only and no logic change; the fixture builds its pinned-20 mode through TextSize.nearest with a baseSize 20 assert, switches density tight with density and densityRatio asserts, and escapes the wide-glyph codepoint instead of emitting it.
 
 e41 adds neighbour background-menu intent and landing guards. Re-derived integration ceilings: tests/js/columns.js 482, ui/ColumnsArea.qml 476, ui/Pane.qml 735, ui/PaneWire.qml 463; the recorded ColumnsArea ceiling 483 covers the unit variant, and the merged head is 476. The existing e39 gate checks remain alongside the new ColumnMenu checks.
+w36 moves one ceiling, re-derived with `wc -l`: `tests/js/focus.js` 451 to 456 on integration for the Pane railHidden wire pin (Source import with the handler line, labeled wire pin not execution); `tests/listcost.qml` 245 to 254, `tests/rowcost.qml` 314 to 334, `tests/columnscost.qml` 394 to 416 and `tests/js/names.js` 219 to 222 stay inside their caps. R2 uses the actual drawn glyphs (Row direct-Glyph match, ColumnRow markItem) so glyph and markSlot opacity mutants RED.
 
 ## The key table is generated
 

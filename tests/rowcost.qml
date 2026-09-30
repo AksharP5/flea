@@ -149,18 +149,38 @@ ShellRoot {
         clipProbe.start()
     }
 
+    // Effective ink, so an added opacity double-dims instead of passing on color.a alone.
+    function effectiveAlpha(item) {
+        var a = item.color.a
+        var cur = item
+        while (cur !== null) { if (cur.opacity !== undefined) a *= cur.opacity; if (cur === root) break; cur = cur.parent }
+        return a
+    }
+
+    // The drawn mark is the one direct Glyph matching the row's own name and color contract.
+    function markGlyph() {
+        var found = null, n = 0
+        var kids = probeRow.children || []
+        for (var i = 0; i < kids.length; i++) { var o = kids[i]; if (o && o.name !== undefined && o.color !== undefined && o.name === probeRow.glyphName && String(o.color) === String(probeRow.markColor())) { found = o; n += 1 } }
+        if (n !== 1) failures.push("a row draws " + n + " mark glyphs, want 1")
+        return found
+    }
+
     // Cut dims drawn colours, copy stays bright, and clearing restores idle objects and ink.
     function checkDrawnDim(wantDim) {
         var want = wantDim ? Flea.Theme.disabledOpacity : 1
-        var nameA = probeRow.nameItem().color.a
+        // A trivial token makes every dim check vacuous, so the baseline must stay a real dim.
+        if (Flea.Theme.disabledOpacity <= 0.05 || Flea.Theme.disabledOpacity >= 0.95)
+            failures.push("disabledOpacity reads " + Flea.Theme.disabledOpacity + ", want a real dim")
+        var nameA = root.effectiveAlpha(probeRow.nameItem())
         if (Math.abs(nameA - want) > 0.01)
             failures.push("a row draws its name at " + nameA + ", want " + want)
-        var sizeA = probeRow.cell("size").color.a
+        var sizeA = root.effectiveAlpha(probeRow.cell("size"))
         if (Math.abs(sizeA - want) > 0.01)
             failures.push("a row draws its size at " + sizeA + ", want " + want)
-        var markA = probeRow.markColor().a
-        if (Math.abs(markA - want) > 0.01)
-            failures.push("a row draws its mark at " + markA + ", want " + want)
+        var markA = -1, glyph = root.markGlyph()
+        if (glyph === null) failures.push("a row draws no mark glyph, want one")
+        else { markA = root.effectiveAlpha(glyph); if (Math.abs(markA - want) > 0.01) failures.push("a row draws its mark at " + markA + ", want " + want) }
     }
 
     function measureClip() {

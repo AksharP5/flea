@@ -2,6 +2,7 @@
 .import "../../ui/js/Eject.js" as Eject
 .import "../../ui/js/Keymap.js" as Keymap
 .import "filterfixture.js" as Fixture
+.import "sourcefixture.js" as Source
 
 // Focus.lookup is where a key is discarded for being meaningless in the current state, and a wrong
 // gate there is silent: the key simply does nothing, and no suite but this one would notice.
@@ -425,6 +426,10 @@ function run(check) {
     settled.listArea = { focused: false, forceActiveFocus: function () { this.focused = true } }
     if (typeof Focus.railHidden === "function") Focus.railHidden(settled)
     check("a hide with the list focused moves nothing", settled.focusView + "|" + settled.listArea.focused, "list|false")
+    // Wire pin, not execution: the helper checks above prove the behavior, this proves Pane calls it.
+    var paneSrc = Source.source("ui/Pane.qml")
+    check("wire pin: Pane forwards railHidden changes to Focus.railHidden", paneSrc.indexOf("onRailHiddenChanged: if (root.railHidden) Focus.railHidden(root)") >= 0, true)
+    check("wire pin: Pane imports the Focus library it forwards through", paneSrc.indexOf('import "js/Focus.js" as Focus') >= 0, true)
     check("tab with a hidden rail stays in the list", Focus.next("list", false), "list")
     check("tab with an auto-hide rail reveals it", Focus.next("list", true), "rail")
 

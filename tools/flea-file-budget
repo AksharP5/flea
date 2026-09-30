@@ -46,7 +46,7 @@ src/uistate.rs 625
 src/uistore.rs 540
 src/vulkan.rs 728
 tests/js/columns.js 482
-tests/js/focus.js 451
+tests/js/focus.js 456
 tests/js/mounts.js 383
 tests/js/network.js 306
 tests/js/ops.js 390

@@ -12,6 +12,8 @@ ShellRoot {
 
     property var failures: []
     property int markedCalls: 0
+    // Snapshot after copied before clear, so the cleared phase proves no per-row library call.
+    property int copiedCalls: -1
     // The follow value the hoist probe writes through list.rowWidth, so a per-row recompute stays behind it.
     property real hoistProbe: -1
 
@@ -187,14 +189,19 @@ ShellRoot {
         if (ClipMarks.markCalls - root.markedCalls < n)
             root.fail("copied costs " + (ClipMarks.markCalls - root.markedCalls) + " calls over " + n + " delegates, want at least one a row")
         if (root.failures.length > 0) { root.report(); return }
+        root.copiedCalls = ClipMarks.markCalls
         root.stubPane.clipboard = root.emptyBoard
         clearedTimer.start()
     }
 
     function measureCleared() {
+        var n = root.checkDelegates("cleared")
+        // Empty short-circuits before the library, so clearing frees the cache with no per-row call.
+        if (ClipMarks.markCalls !== root.copiedCalls)
+            root.fail("cleared costs " + (ClipMarks.markCalls - root.copiedCalls) + " library calls over " + n + " delegates, want 0")
         for (var i = 0; i < root.sampleRows.length; i++) {
             var d = root.delegateAt(i)
-            if (d === null) continue
+            if (d === null) { root.fail("cleared builds no delegate at " + i); continue }
             if (d.clipMark !== "")
                 root.fail("cleared keeps " + d.clipMark + " on " + root.sampleRows[i].n + ", want no mark")
         }
@@ -206,11 +213,12 @@ ShellRoot {
     }
 
     function measureDual() {
+        root.checkDelegates("dual")
         if (list.rowHiddenCols.indexOf("mode") < 0 || list.rowHiddenCols.indexOf("kind") < 0)
             root.fail("dual hides " + JSON.stringify(list.rowHiddenCols) + ", want mode and kind")
         for (var i = 0; i < root.sampleRows.length; i++) {
             var d = root.delegateAt(i)
-            if (d === null) continue
+            if (d === null) { root.fail("dual builds no delegate at " + i); continue }
             if (d.hiddenCols !== list.rowHiddenCols)
                 root.fail("dual builds a hidden array per row instead of sharing one")
             if (d.width !== list.rowWidth)
@@ -224,9 +232,10 @@ ShellRoot {
     }
 
     function measureHoist() {
+        root.checkDelegates("hoist")
         for (var i = 0; i < root.sampleRows.length; i++) {
             var d = root.delegateAt(i)
-            if (d === null) continue
+            if (d === null) { root.fail("hoist builds no delegate at " + i); continue }
             if (d.width !== root.hoistProbe)
                 root.fail("delegate recomputes its width instead of reading the hoisted rowWidth; got " + d.width + ", want " + root.hoistProbe)
         }

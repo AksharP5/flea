@@ -32,7 +32,8 @@ pass_count=$(printf '%s\n' "$output" | grep -c 'ROWCOST PASS')
 fail_count=$(printf '%s\n' "$output" | grep -c 'ROWCOST FAIL')
 if [ "$pass_count" -ne 1 ] || [ "$fail_count" -ne 0 ]; then
     printf 'FAIL a delegate built more than its ceiling, or its rename wiring broke\n'
-    printf '%s\n' "$output" | grep -aE 'ROWCOST|ERROR|error' | head -20
+    printf '%s\n' "$output" | grep -aE 'ROWCOST|ERROR|error'
+    printf '%s\n' "$output"
     exit 1
 fi
 printf '%s\n' "$output" | grep -o 'ROWCOST PASS.*'
