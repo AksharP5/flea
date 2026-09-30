@@ -422,6 +422,7 @@ Item {
 
         Flea.CardScroll {
             id: scroll
+            gutter: 0 // Menus keep no scroll gutter; the bar overlays.
             anchors.fill: parent
             anchors.topMargin: Theme.spacing.rowPaddingY
             anchors.bottomMargin: Theme.spacing.rowPaddingY
@@ -487,6 +488,7 @@ Item {
 
         Flea.CardScroll {
             id: subScroll
+            gutter: 0 // Menus keep no scroll gutter; the bar overlays.
             anchors.fill: parent
             anchors.topMargin: Theme.spacing.rowPaddingY
             anchors.bottomMargin: Theme.spacing.rowPaddingY

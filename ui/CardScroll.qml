@@ -11,6 +11,10 @@ Flickable {
     readonly property real wanted: holder.childrenRect.height
 
     clip: true
+    // The lane kept clear at the right edge; menus pass 0 so rows use the whole frame.
+    property real gutter: Theme.spacing.rowPaddingX
+    // The holder's drawn width, so a probe reads the reserve without walking children.
+    readonly property real holderWidth: holder.width
     contentWidth: width
     contentHeight: root.wanted
     boundsBehavior: Flickable.StopAtBounds
@@ -55,6 +59,6 @@ Flickable {
     Item {
         id: holder
         // The scroll lane stays clear at the right edge, the same rule every listing follows.
-        width: Math.max(0, root.width - Theme.spacing.rowPaddingX)
+        width: Math.max(0, root.width - root.gutter)
     }
 }
