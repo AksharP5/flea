@@ -10,7 +10,7 @@ if ! command -v qs >/dev/null; then
 fi
 
 sandbox_root_ok
-test_root=$(mktemp -d "${TMPDIR:-$SANDBOX_ROOT}/flea-statusbar-hint.XXXXXX") || exit 1
+test_root=$(mktemp -d "$SANDBOX_ROOT/flea-statusbar-hint.XXXXXX") || exit 1
 sandbox_require "$test_root" || exit 1
 : > "$test_root/$SANDBOX_MARKER" || exit 1
 cleanup() { sandbox_remove "$test_root"; }
