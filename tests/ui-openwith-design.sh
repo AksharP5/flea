@@ -140,3 +140,66 @@ case_openwithdesign() (
     menus_equal 'the card restores listing focus' list "$(ipc focusView)"
     printf 'OPENWITH flyout=flush default=first card=630 list=315 write=own-config\n'
 )
+
+case_openwithmulti() (
+    local menu_box listing config data state name first_index second_index initial settled selected snapshot_id owned_pid box
+    local menus_checks=0 openwith_flyout_rows=0
+    sandbox_require "$fixture_root"
+    menu_box=$(mktemp -d "$fixture_root/openwith-multi.XXXXXXXX") || fail 'openwithmulti: owned fixture creation failed'
+    printf 'native Open with multi fixture\n' > "$menu_box/.flea-test-sandbox"
+    listing="$menu_box/listing"; config="$menu_box/config"; data="$menu_box/data"; state="$menu_box/state"
+    for name in "$listing" "$config" "$data" "$data/applications"; do
+        menus_guard "$name"
+        mkdir -p "$name" || fail 'openwithmulti: fixture directory creation failed'
+    done
+    # The fixture entry execs /bin/true, so an Open that reaches the launcher starts nothing.
+    menus_guard "$data/applications/zzflea-openwith.desktop"
+    printf '[Desktop Entry]\nType=Application\nName=Zzflea Fixture\nExec=/bin/true %%f\nIcon=text-x-generic\nMimeType=text/plain;\n' \
+        > "$data/applications/zzflea-openwith.desktop"
+    # No cache means the default silently does not take, so the database is built.
+    update-desktop-database "$data/applications" 2>/dev/null \
+        || fail 'openwithmulti: the fixture desktop database could not be built'
+    menus_guard "$config/mimeapps.list"
+    printf '[Default Applications]\ntext/plain=zzflea-openwith.desktop\n' > "$config/mimeapps.list"
+    export XDG_CONFIG_HOME="$config" XDG_DATA_HOME="$data"
+    # The system roots stay on the path: the shared mime database names the kind.
+    export XDG_DATA_DIRS="$data:/usr/local/share:/usr/share"
+    menus_guard "$listing/notes.txt"
+    printf 'a note with real bytes in it\n' > "$listing/notes.txt"
+    menus_guard "$listing/a.txt"
+    printf 'alpha\n' > "$listing/a.txt"
+    menus_guard "$listing/b.txt"
+    printf 'beta\n' > "$listing/b.txt"
+    seed_ui_state "$state" '{"view":"list","keys":"default","preview":{"column":false,"thumbnails":"off"},"menu":{"hidden":[]}}'
+    trap 'kill_flea' EXIT
+    launch "$listing"
+    wait_listing 3
+    # Single-file positive proves discovery reached the fixture registry.
+    openwith_open_flyout notes.txt
+    menus_expect menuState '[.entries[] | select(.action == "openWith") | .submenu[]][0] | .id == "zzflea-openwith.desktop"' 'single-file names the fixture default'
+    key -k Escape >/dev/null
+    key -k Escape >/dev/null
+    # Two-item selection mirrors ui-menus.sh multi-selection eligibility.
+    first_index=$(row_index_of a.txt)
+    second_index=$(row_index_of b.txt)
+    click_row "$first_index" left
+    menus_expect dualState ".panes[.focused].selected == [$first_index]" 'plain click selects a.txt alone'
+    click_row "$second_index" left --mods ctrl
+    menus_expect selectionCount '. == 2' 'Ctrl-click selects a.txt and b.txt'
+    menus_expect dualState ".panes[.focused].selected == [$first_index,$second_index]" 'selected identities are a.txt and b.txt'
+    click_row "$(row_index_of a.txt)" right
+    menus_expect menuState '.opened and .snapshotReady and .hasRow and (.snapshotId > 0)' 'multi snapshot accepted'
+    menus_expect providerState '(.refreshing | not) and (.taildrop.checking | not) and (.dropbox == null or (.dropbox.checking | not))' 'provider entry refresh finishes'
+    initial=$(ipc menuState)
+    selected=$(ipc selectionCount)
+    snapshot_id=$(ipc menuState | jq -r .snapshotId)
+    owned_pid=$(flea_pid)
+    box=$(window_box)
+    assert_focus
+    # Provider settling bounds the menu; the Node callback test is the no-query oracle.
+    menus_expect menuState '.opened and .hasRow and .snapshotReady and (.snapshotId > 0) and any(.entries[]; .action == "openWith" and (.disabled == true))' 'multi-selection keeps Open with visible disabled'
+    settled=$(ipc menuState)
+    printf 'OPENWITHMULTI selected=%s snapshot=%s window=%s box=%q initial=%q settled=%q\n' "$selected" "$snapshot_id" "$owned_pid" "$box" "$initial" "$settled"
+    key -k Escape >/dev/null
+    key -k Escape >/dev/null
+)

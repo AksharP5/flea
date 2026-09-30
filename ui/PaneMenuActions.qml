@@ -331,7 +331,8 @@ Loader {
                     if (root.pendingActivation) root.validateActivation()
                     else root.show(root.pendingAction)
                 }
-                if (root.ready && root.pane.contextMenu().opened && root.pane.contextMenu().hasRow)
+                // Multi-selection has no registry: the backend refuses it, so discovery stays single-item.
+                if (root.ready && message.count === 1 && root.pane.contextMenu().opened && root.pane.contextMenu().hasRow)
                     // No installed flag: the flyout draws the registry alone, and asking for the
                     // whole catalogue here walked every applications directory on every right-click.
                     root.pane.backend.send({c: "menuaction", op: "applications", id: root.requestId})
