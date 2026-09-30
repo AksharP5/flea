@@ -61,7 +61,8 @@ GridView {
     focus: true
     // Whichever view is up owns the keyboard, and Focus.handleKey is the one route all three take.
     Keys.onPressed: function (event) { event.accepted = Focus.handleKey(event, root.pane, root.pane.sidebar) }
-    model: pane.shownTotal
+    // Hidden holds no delegates; an edit in flight keeps its own per RenameField.qml.
+    model: (root.visible || root.pane.renamingIndex >= 0) ? pane.shownTotal : 0
     clip: true
     // One gap of bare ground along the left and the top; GridTile's hairline inset stays.
     leftMargin: Theme.spacing.gap
@@ -165,6 +166,9 @@ GridView {
     }
 
     onContentYChanged: {
+        // Hidden geometry and a restore in flight move no shared state.
+        if (!root.visible || root.hiddenHeld)
+            return
         root.menu.close()
         if (DirSizes.hasPending(root.pane.dirSizeState)) {
             root.pane.backend.dirsizecancel()
@@ -195,8 +199,8 @@ GridView {
     function primeSettle() { settle.interval = root.pane.firstSettleMs }
 
     function requestIfDrifted() {
-        // Not while a listing is out: the backend answers a window for the directory asked for, not the tiles held.
-        if (root.pane.total === 0 || root.pane.shown !== null || root.pane.listInFlight)
+        // No window while hidden, while a filter narrows rows already held, nor while a listing is out, whose windows are the directory asked for.
+        if (!root.visible || root.pane.total === 0 || root.pane.shown !== null || root.pane.listInFlight)
             return
         var range = root.visibleRange()
         if (root.pane.rows.length === 0) {
@@ -224,6 +228,80 @@ GridView {
             first: view.first * root.columns,
             last: Math.min(root.pane.shownTotal - 1, (view.last + 1) * root.columns - 1)
         }
+    }
+
+    // Returning parks the view on the shared cursor once the reset rows land.
+    property bool hiddenHeld: false
+    // Last parked contentY and loop turns spent; only a value stable across turns ends the hold.
+    property real restoreY: -1
+    property int restoreTicks: 0
+    onVisibleChanged: {
+        if (!root.visible) {
+            coalesce.stop()
+            settle.stop()
+            root.hiddenHeld = true
+            root.restoreY = -1
+            root.restoreTicks = 0
+            return
+        }
+        if (root.hiddenHeld)
+            root.restoreCursorView()
+    }
+    onCountChanged: {
+        if (root.hiddenHeld && root.visible && root.count > 0)
+            root.restoreCursorView()
+    }
+    function restoreCursorView() {
+        // A queued turn arriving after the hold ended is stale.
+        if (!root.hiddenHeld || !root.visible)
+            return
+        if (!root.pane) {
+            root.hiddenHeld = false
+            return
+        }
+        // The model reset may still be landing; a later turn retries.
+        if (root.count === 0 && root.pane.shownTotal > 0) {
+            root.deferRestore()
+            return
+        }
+        // An empty listing and a filtered-away cursor have no view to park, so the hold ends here.
+        var view = Filter.viewOf(root.pane.shown, root.pane.cursorIndex)
+        if (root.count === 0 || view < 0) {
+            root.hiddenHeld = false
+            return
+        }
+        root.forceLayout()
+        root.positionViewAtIndex(view, GridView.Contain)
+        // Only a value stable across turns ends the hold; an optimistic position never releases it.
+        if (root.coversCursor(view) && root.contentY === root.restoreY) {
+            root.hiddenHeld = false
+            root.restoreY = -1
+            root.restoreTicks = 0
+            settle.restart()
+            return
+        }
+        root.restoreY = root.contentY
+        root.deferRestore()
+    }
+    // The parked check the return asserts through: the cursor tile is inside the viewport.
+    function coversCursor(view) {
+        var row = Math.floor(view / Math.max(1, root.columns))
+        var top = row * root.cellHeightPx
+        return root.contentY <= top + root.cellHeightPx && root.contentY + root.height >= top
+    }
+    // One more loop turn, with a deadlock guard that ends the hold rather than keeping it.
+    function deferRestore() {
+        if (!root.visible)
+            return
+        if (root.restoreTicks >= 60) {
+            root.hiddenHeld = false
+            root.restoreY = -1
+            root.restoreTicks = 0
+            settle.restart()
+            return
+        }
+        root.restoreTicks += 1
+        Qt.callLater(root.restoreCursorView)
     }
 
     Connections {
