@@ -2803,6 +2803,8 @@ list columns each added their tokens.
 
 The 0.3.7 replay onto the 0.3.6 head moves 8 ceilings, each re-derived with `wc -l`: `ui/ContextMenu.qml` 578 to 579, `ui/Ipc.qml` 813 to 818, `ui/Pane.qml` 724 to 728, `ui/js/Settings.js` 431 to 432, `ui/js/Menu.js` 335 to 338, `ui/js/Focus.js` 359 to 365, `ui/ChromeBar.qml` 468 to 477, `ui/Theme.qml` 401 to 405. Later work leaves `ui/js/Menu.js` at 337, `ui/js/Focus.js` at 364 and `ui/Theme.qml` at 415, each re-derived with `wc -l`.
 
+w59 R2 takes `ui/Theme.qml` 415 to 414, re-derived with `wc -l`: `bodySmallGlyphMetrics` carried byte-identical inputs to `glyphMetrics`, so `bodySmallAdvance` aliases `root.glyphAdvance` and the second `TextMetrics` goes, with the token and every Grid and row output unchanged.
+
 f037jump moves one ceiling, re-derived with `wc -l`: `ui/ChromeBar.qml` 477 to 478 for the one-line comment on the editor frame's single-hairline bottom inset, which centres the field in the strip so the folder-jump dropdown sits flush under it the way the Jump board draws it. The comment-style pass leaves it at 477.
 
 f037logic moves three ceilings, each re-derived with `wc -l`: `src/uistate.rs` 518 to 554 for the per-entry folderSorts healing on read, the whole-pixel width rule and the tests pinning both, `ui/Backend.qml` 425 to 426 for the `hiddenLast` the peek request carries, and `src/backend/proto.rs` 285 to 287, under the hard cap, for the same field parsed off the wire.
