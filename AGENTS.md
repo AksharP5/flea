@@ -6898,3 +6898,5 @@ e39 final integration records tests/js/columns.js 544 and ui/ColumnsArea.qml 459
 w34-r3 holds Row 472 and List 320 untouched and takes tests/listnamebudget.qml 280 to 331 for the search execution probe (searching rows hide the ordinary name and draw the search loader's own decoratedName, Row.qml:240,257,270) and the pass marker reporting the stored checked-400 budget.
 
 w34-r4 removes the resized-sync timing claim root falsified (a per-delegate floor passes it, so values cannot pin recomputation) and takes tests/listnamebudget.qml 331 to 316 with the structural guard in tests/js/listbudget.js at 31: List floors once, Row's ordinary path reads the assignment and floors nothing, laziness is structural with the fallback kept, and the exact seed root.localNameBudget() goes red 3 of 10 natively.
+
+e47 takes tests/js/columns.js 544 to 555 for the folder-hold early-return pins (a held check returns before its release arm, an expired cap returns before its fallback arm, each a structural oracle honestly labelled source since the QML guard runs no JS).
