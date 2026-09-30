@@ -2907,6 +2907,8 @@ e41-r4 integration records tests/js/columns.js 533 and ui/ColumnsArea.qml 456, r
 
 e43 records one ceiling outside the tool's own scan, re-derived with `wc -l`: `tests/hook-gate.sh` at 595 lines, over the 400 hard cap the `.rs`/`.qml`/`.js` scan applies. The scan does not read shell suites, so this is a recorded rationale rather than an exception entry: one file holds every hook-gate case (commit rules, message adapter with normalization agreement, guard, installer, stub clippy transports with concurrency, and real git/hk wiring), because scattering them across per-checker suites would re-create the uninvoked-suite defect `tests/run-all.sh` exists to close. `tools/flea-commit-msg` stands at 153 lines; the scan reads no extensionless tool, so that count is stated, not budgeted. The r10 canonical rewrite leaves both counts re-derived with `wc -l`: `tests/hook-gate.sh` at 613 lines for the cleanup matrix and stored-agreement pins. The r13 attribution repair leaves `tests/hook-gate.sh` at 684 lines for the compound-credit, generated-by and overlapping-stream pins with `tools/flea-commit-rules` at 214 lines for the word-boundary verbs and exact-name credits, each re-derived with `wc -l`.
 
+w34-r5 answers the cold review (identifier presence admits a comma-call arm and a condition-only arm) and takes tests/js/listbudget.js 31 to 77 with a scoped ternary parser pinning each arm exactly: drop tests dropTarget with only the measured fallback, the inner test names the assignment, the assigned arm is the bare assignment, the fallback stays measured; both R2 branch mutants go red on that one check and the baseline holds 13 of 13.
+
 ## The key table is generated
 
 `keys.toml` at the repository root is the single source of truth for every binding.
