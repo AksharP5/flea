@@ -40,7 +40,11 @@ function middleElide(name, maxCells) {
     var text = String(name), max = Math.max(0, Math.floor(maxCells))
     // A non-finite budget names no width, so the name goes through untouched.
     if (!isFinite(max)) return text
-    var st = isFastText(text) ? fastStoreOf(text) : storeOf(charsOf(text))
+    // One scan serves the fit check and the store below, so a fitting fast name builds nothing.
+    var fast = isFastText(text)
+    // A fast name counts one cell a char, so a short one already fits untouched.
+    if (fast && text.length <= max) return text
+    var st = fast ? fastStoreOf(text) : storeOf(charsOf(text))
     if (rangeCells(st, 0, st.n) <= max) return text
     // The head takes the odd cell, so a 49-wide board keeps 24 and 24.
     var h = spanFrom(st, 0, Math.ceil((max - 1) / 2)), t = tailSpan(st, Math.floor((max - 1) / 2))
@@ -233,10 +237,15 @@ function gridCaption(name, perLine, lines) {
     var text = String(name), per = Math.floor(perLine), count = Math.floor(lines)
     // A dead or non-finite width budgets nothing: hand Qt the whole name and let ElideRight say so.
     if (!isFinite(per) || !isFinite(count) || !(per >= 1) || !(count >= 1)) return text
-    var st = isFastText(text) ? fastStoreOf(text) : storeOf(charsOf(text))
+    // One scan serves the fit check and the store below, so a fitting fast name builds nothing.
+    var isFast = isFastText(text)
+    var capacity = per * count
+    // A fast name counts one cell a char, so one fitting line needs no elide and no wrap.
+    // A one-cell caption still elides below, so the early return keeps that mark.
+    if (isFast && capacity > 1 && text.length <= per) return text
+    var st = isFast ? fastStoreOf(text) : storeOf(charsOf(text))
     if (st.n === 0) return text
     // A wide glyph never straddles a line and wastes a cell, so elide until Flea's own wrap holds every char.
-    var capacity = per * count
     if (st.widths === null) {
         var fast = elideCore(st, capacity, per).join("")
         while (capacity > 1 && wrapCore(fastStoreOf(fast), per, count).join("") !== fast)
