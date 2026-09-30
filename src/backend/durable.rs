@@ -195,7 +195,7 @@ impl Durability {
         let had = !self.held.is_empty();
         if !had {
             if self.unsettled {
-                return Err(std::io::Error::new(std::io::ErrorKind::Other, "unconfirmed batch"));
+                return Err(std::io::Error::other("unconfirmed batch"));
             }
             return Ok(());
         }
@@ -212,14 +212,14 @@ impl Durability {
         if FAIL_CLONE.with(|v| v.get()) {
             self.release_held();
             self.unsettled = true;
-            return Err(std::io::Error::new(std::io::ErrorKind::Other, "unconfirmed batch"));
+            return Err(std::io::Error::other("unconfirmed batch"));
         }
         let clone = match self.held.first().and_then(|f| f.try_clone().ok()) {
             Some(c) => c,
             None => {
                 self.release_held();
                 self.unsettled = true;
-                return Err(std::io::Error::new(std::io::ErrorKind::Other, "unconfirmed batch"));
+                return Err(std::io::Error::other("unconfirmed batch"));
             }
         };
         #[cfg(test)]
