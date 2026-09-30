@@ -99,7 +99,7 @@ Item {
     // each, so the centre stays put however long the count or the disk line gets.
     readonly property real zoneSpan: Math.max(0, root.width - 2 * Theme.spacing.rowPaddingX)
     readonly property real zoneWidth: Math.round(root.zoneSpan / 3)
-    readonly property real hintWidth: hintMetrics.width
+    readonly property real hintWidth: hintMetrics.advanceWidth // Advance keeps the hint's edge space; bounding width drops it, 114 against 115.
     signal transferCancelRequested(int id)
     implicitHeight: Theme.chromeHeight + detailView.height
 
