@@ -48,6 +48,8 @@ Item {
     // The swap's answer for the third column: the folder's rows in, or the file's preview whole.
     readonly property bool thirdReady: root.shownIsDir ? root.answered(root.shownChildPath)
         : (!root.shownHasRow || !ViewState.previewColumn || preview.ready)
+    // True while an unanswered folder waits under the live picture: the file work's readiness and cap stay out of the swap.
+    readonly property bool folderWaiting: Columns.folderDataHold(root.cursorIsDir, root.answered(root.childPath))
 
     // The raw stored value, so cappedLimit reads a missing key or a hand-edited false or "" as the shipped default instead of the 0 an int property coerces.
     readonly property var columnsLimit: ViewState.state.columnsLimit
@@ -426,6 +428,7 @@ Item {
             height: parent.height
             burstEnds: true
             ready: root.thirdReady
+            folderHold: root.folderWaiting
             ground: Theme.color.background
 
             Flea.ColumnPane {

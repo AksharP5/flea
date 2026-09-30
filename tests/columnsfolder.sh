@@ -30,11 +30,12 @@ output=$(env -u DISPLAY -u WAYLAND_DISPLAY -u HYPRLAND_INSTANCE_SIGNATURE \
 
 # Sample input, one probe line: "  INFO qml: COLUMNSFOLDER PASS folder=data-held preview=kept file=reshown empty=settled w25=kept-landed-bounded"
 pass_count=$(printf '%s\n' "$output" | grep -c 'COLUMNSFOLDER PASS')
+manual_count=$(printf '%s\n' "$output" | grep -c 'COLUMNSFOLDER MANUAL')
 fail_count=$(printf '%s\n' "$output" | grep -c 'COLUMNSFOLDER FAIL')
-if [ "$pass_count" -ne 1 ] || [ "$fail_count" -ne 0 ]; then
+if [ "$pass_count" -ne 1 ] || [ "$manual_count" -ne 1 ] || [ "$fail_count" -ne 0 ]; then
     printf 'FAIL the folder data hold blanks, holds, or animates its landing\n'
-    printf '%s\n' "$output" | grep -a 'COLUMNSFOLDER FAIL'
-    printf '%s\n' "$output" | grep -aE 'ERROR|error' | head -5
+    printf '%s\n' "$output"
     exit 1
 fi
 printf '%s\n' "$output" | grep -o 'COLUMNSFOLDER PASS.*'
+printf '%s\n' "$output" | grep -o 'COLUMNSFOLDER MANUAL.*'

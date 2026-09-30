@@ -113,7 +113,12 @@ Item {
         root.check()
     }
 
+    // True while an unanswered folder waits under the live picture: its own fallback bounds the wait.
+    property bool folderHold: false
+
     function check() {
+        if (root.folderHold)
+            return
         if (root.holding && root.started && root.ready)
             root.release("landed", false)
     }
@@ -205,6 +210,8 @@ Item {
         id: cap
         repeat: false
         onTriggered: {
+            if (root.folderHold)
+                return
             if (!root.holding && !root.capturing)
                 return
             root.fallbacks += 1

@@ -128,6 +128,7 @@ function run(check) {
     runColRoot(check)
     runNeighbourAsks(check)
     runColumnMenu(check)
+    runFolderHold(check)
 }
 
 // ColumnsWidth board (#167, #69): the columns count follows the window width, 2 below 900 up to 5 from 2300, capped by the View limit shipping at 3.
@@ -307,6 +308,16 @@ function runNeighbourAsks(check) {
     check("and reads no stale show gate there", refreshBody.indexOf("showParent") < 0 && refreshBody.indexOf("parentShown") < 0, true)
     var moveBody = Source.slice(area, "Columns.folderDataHold(root.cursorIsDir", "folderFallback.stop()")
     check("a folder wait stops the old work cap first", moveBody.indexOf("thirdSwap.stopCap()") >= 0, true)
+}
+
+// e39 folder hold: the unanswered wait owns the bound, so file readiness and the old cap stay out of the swap.
+function runFolderHold(check) {
+    var area = Source.source("ui/ColumnsArea.qml")
+    check("the wait follows the unanswered folder", area.indexOf("folderWaiting: Columns.folderDataHold(root.cursorIsDir, root.answered(root.childPath))") >= 0, true)
+    check("the swap holds it", area.indexOf("folderHold: root.folderWaiting") >= 0, true)
+    var swap = Source.source("ui/PreviewSwap.qml")
+    check("a held check releases nothing", Source.slice(swap, "function check()", "function release").indexOf("if (root.folderHold)") >= 0, true)
+    check("an expired cap releases nothing held", Source.slice(swap, "id: cap", "One frame later").indexOf("if (root.folderHold)") >= 0, true)
 }
 
 // w8 colroot: at / no ancestor repeats the active column, so the slot stays blank and Left stays a no-op.

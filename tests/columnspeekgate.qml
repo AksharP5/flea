@@ -124,8 +124,8 @@ ShellRoot {
 
     // An empty path asks nothing, so the next step names its own parent.
     function phasePathBase() {
-        if (root.asked("/x"))
-            root.fail("empty path asks /x, want nothing")
+        if (root.stubBackend.peekLog.length !== 0)
+            root.fail("empty path asks " + root.stubBackend.peekLog.join(",") + ", want nothing")
         if (root.failures.length > 0) { root.report(); return }
         root.stubPane.path = "/x/y"
         pathCheckTimer.start()
@@ -147,19 +147,18 @@ ShellRoot {
         if (root.stubBackend.peekLog.length !== 0)
             root.fail("path /x/y to / asks " + root.stubBackend.peekLog.join(",") + ", want nothing")
         if (root.failures.length > 0) { root.report(); return }
+        area.width = 1100
         area.visible = false
-        area.width = 800
+        root.stubBackend.peekLog = []
         root.stubPane.path = "/p/q"
         hiddenTimer.start()
     }
 
-    // A hidden view asks nothing, whatever width and path steps land while it is hidden.
+    // A hidden view asks nothing, though the width shows the parent and the path names one.
     function phaseHidden() {
         if (root.stubBackend.peekLog.length !== 0)
             root.fail("hidden view asks " + root.stubBackend.peekLog.join(",") + ", want nothing")
         if (root.failures.length > 0) { root.report(); return }
-        root.stubBackend.peekLog = []
-        area.width = 1100
         area.visible = true
         hiddenOnTimer.start()
     }

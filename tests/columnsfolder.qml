@@ -4,10 +4,9 @@ import QtQuick
 import Quickshell
 import "flea" as Flea
 import "flea/js/PreviewSwap.js" as WorkCap
+import "flea/js/Swap.js" as SwapCap
 
-// w24 folder data hold through the real ColumnsArea over a stub pane: an unanswered folder waits by
-// data, j hands a live hold to that wait, back reshows the file, and empty lands settled with no entrance.
-// w25 the folder's wait owns the bound: a handed-over live picture outlasts the old work cap until landing or fallback.
+// Real ColumnsArea over a stub pane: unanswered folders hold data and the handed picture until landing or fallback, back reshows the file, and empty lands settled with no entrance.
 ShellRoot {
     id: root
 
@@ -154,13 +153,13 @@ ShellRoot {
     Timer { id: folderShownTimer; interval: 250; repeat: false; onTriggered: root.phaseFolderShown() }
     Timer { id: backMetaTimer; interval: 400; repeat: false; onTriggered: root.phaseBackMeta() }
     Timer { id: backReadyTimer; interval: 400; repeat: false; onTriggered: root.phaseBackReady() }
-    Timer { id: wFileTimer; repeat: false; onTriggered: root.phaseWFile() }
-    Timer { id: wKeptTimer; interval: 90; repeat: false; onTriggered: root.phaseWKept() }
+    Timer { id: wManualPoll; interval: 20; repeat: true; property int polls: 0; property bool seen: false; onTriggered: root.pollManual() }
     Timer { id: wLandTimer; interval: 40; repeat: false; onTriggered: root.phaseWLanded() }
     Timer { id: wBackTimer; repeat: false; onTriggered: root.phaseWBack() }
-    Timer { id: wThirdTimer; interval: 40; repeat: false; onTriggered: root.phaseWThird() }
-    Timer { id: wKept2Timer; interval: 80; repeat: false; onTriggered: root.phaseWKept2() }
-    Timer { id: wFinalTimer; interval: 160; repeat: false; onTriggered: root.phaseWFinal() }
+    Timer { id: wThirdTimer; interval: 70; repeat: false; onTriggered: root.phaseWThird() }
+    // The check lands past the first move's deadline and before the restarted one, so start() standing in for restart() reddens.
+    Timer { id: wKept2Timer; interval: SwapCap.HOLD_MS - wThirdTimer.interval + 30; repeat: false; onTriggered: root.phaseWKept2() }
+    Timer { id: wFinalTimer; interval: SwapCap.HOLD_MS + 90; repeat: false; onTriggered: root.phaseWFinal() }
 
     // a) launch-shaped null first show, then the cursor lands on an unanswered folder.
     function phaseNull() {
@@ -283,33 +282,35 @@ ShellRoot {
         if (area.shownIsDir !== false)
             root.fail("c) back on the file keeps the folder, want the file")
         if (root.failures.length > 0) { root.report(); return }
-        root.stubPane.rows = [root.fileA, root.fileB, root.fileC, root.fileD, root.folderW1, root.folderW2, root.folderW3]
-        root.stubPane.cursorIndex = 0
         root.stubPane.cursorIndex = 2
-        // The move fires past the file's own settle, so its load ran and the old work cap is armed with 60 left.
-        wFileTimer.interval = root.stubPane.settleMs + WorkCap.capMs(false) - 60
-        wFileTimer.start()
+        root.stubPane.rows = [root.fileC, root.folderW1]
+        root.stubPane.storageClass = "network"
+        root.stubPane.cursorIndex = 0
+        area.loadSelection()
+        if (root.swap().capturing !== true) { root.fail("w25) Ctrl+Space starts no capture"); root.report(); return }
+        root.stubPane.cursorIndex = 1
+        wManualPoll.polls = 0
+        wManualPoll.start()
     }
 
-    // w25 the folder move runs 60 before the old work cap expires; the kept assert lands 30 past it.
-    function phaseWFile() {
-        if (root.swap().holding !== true) { root.fail("w25) no frozen picture before the folder move"); root.report(); return }
-        root.keepUnderlying()
-        if (root.failures.length > 0) { root.report(); return }
-        root.stubPane.cursorIndex = 4
-        wKeptTimer.start()
+    // The manual frame stays ready across the cursor move, so aggregate ready is honestly true mid-wait.
+    function pollManual() {
+        wManualPoll.polls += 1
+        var s = root.swap()
+        if (s.holding === true) wManualPoll.seen = true
+        if (wManualPoll.seen && s.holding !== true) { wManualPoll.stop(); root.fail("w25) manual wait released mid-wait"); root.report(); return }
+        if (s.holding === true && area.folderWaiting === true && root.preview().ready === true) { wManualPoll.stop(); root.manualLanded(); return }
+        if (wManualPoll.polls > 7) { wManualPoll.stop(); root.fail("w25) manual wait never formed"); root.report(); return }
     }
 
-    // The old work cap fires inside this wait on the pre-fix tree, dropping the picture early.
-    function phaseWKept() {
-        root.assertHeld("w25) the old work cap")
-        if (root.keptUnderlying() !== root.keptName)
-            root.fail("w25) the old cap clears " + root.keptName + ", want the old preview kept")
-        if (area.shownIsDir !== false)
-            root.fail("w25) the waiting folder shows early, want the old column kept")
-        if (area.answered(area.childPath) !== false)
-            root.fail("w25) the waiting folder answers before its peek, want it unanswered")
-        if (root.failures.length > 0) { root.report(); return }
+    function manualLanded() {
+        var held = root.swap().holding === true
+        var begun = root.preview().swap.started === true
+        var manual = root.preview().manualHold === true
+        var loaded = root.preview().loadedIndex
+        var cursor = root.stubPane.cursorIndex
+        console.log("COLUMNSFOLDER MANUAL loaded=" + loaded + " cursor=" + cursor + " ready=" + (root.preview().ready === true) + " waiting=" + (area.folderWaiting === true) + " manual=" + manual + " holding=" + held + " started=" + begun)
+        if (!manual || !begun || !held || loaded !== 0 || cursor !== 1) { root.fail("w25) manual wait misformed"); root.report(); return }
         root.answerPeek([root.kidRow])
         wLandTimer.start()
     }
@@ -329,7 +330,9 @@ ShellRoot {
             root.fail("w25) a landed folder keeps its preview data, want the hidden preview cleared")
         root.assertIdle("w25) a landed folder peek")
         if (root.failures.length > 0) { root.report(); return }
-        root.stubPane.cursorIndex = 3
+        root.stubPane.storageClass = "local"
+        root.stubPane.rows = [root.fileC, root.fileD, root.folderW2, root.folderW3]
+        root.stubPane.cursorIndex = 1
         wBackTimer.interval = root.stubPane.settleMs + WorkCap.capMs(false) - 60
         wBackTimer.start()
     }
@@ -339,14 +342,14 @@ ShellRoot {
         if (root.swap().holding !== true) { root.fail("w25) no frozen picture before the second folder move"); root.report(); return }
         root.keepUnderlying()
         if (root.failures.length > 0) { root.report(); return }
-        root.stubPane.cursorIndex = 5
+        root.stubPane.cursorIndex = 2
         wThirdTimer.start()
     }
 
     // A second pending folder move restarts the bound instead of starving it.
     function phaseWThird() {
         root.assertHeld("w25) the first pending folder move")
-        root.stubPane.cursorIndex = 6
+        root.stubPane.cursorIndex = 3
         wKept2Timer.start()
     }
 
