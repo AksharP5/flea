@@ -29,6 +29,9 @@ pub struct Formats {
     // Test seam: with the probe set, compress() itself runs the RLIMIT_CPU check (see K1).
     #[cfg(test)]
     probe: bool,
+    // Test seam: with the block set, compress() itself runs a tool that stays alive to be cancelled.
+    #[cfg(test)]
+    block: bool,
 }
 
 fn on_path(prog: &str) -> bool {
@@ -57,13 +60,21 @@ impl Formats {
         Formats { names, have_bsdtar, have_7z,
             #[cfg(test)]
             probe: false,
+            #[cfg(test)]
+            block: false,
         }
     }
 
     // A Formats whose compressor is the RLIMIT_CPU probe, so the uncapped-jail pin drives compress() itself.
     #[cfg(test)]
     pub fn test_probe() -> Formats {
-        Formats { names: vec!["zip".to_string()], have_bsdtar: true, have_7z: false, probe: true }
+        Formats { names: vec!["zip".to_string()], have_bsdtar: true, have_7z: false, probe: true, block: false }
+    }
+
+    // A Formats whose compressor blocks until killed, so a mid-run cancel always has a live child.
+    #[cfg(test)]
+    pub fn test_block() -> Formats {
+        Formats { names: vec!["zip".to_string()], have_bsdtar: true, have_7z: false, probe: false, block: true }
     }
 
     // Exactly the table, which is what the compress submenu draws; an empty one self-hides the entry.
@@ -82,6 +93,11 @@ impl Formats {
     pub fn compress_argv(&self, format: &str, dest: &Path, parent: &Path, names: &[String]) -> Option<Vec<String>> {
         if !self.offers(format) {
             return None;
+        }
+        // Test seam: with the block set, the compressor stays alive until the cancel stops it.
+        #[cfg(test)]
+        if self.block {
+            return Some(vec!["/usr/bin/sleep".to_string(), "30".to_string()]);
         }
         // Test seam: with the probe set, the compressor is the RLIMIT_CPU probe.
         #[cfg(test)]

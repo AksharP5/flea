@@ -223,7 +223,8 @@ fn run_boxed_cancellable_inner(what: &str, inner: Vec<String>, read_only: &Path,
             }
             let name = work.dir.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
             work.keep();
-            return Err(op_err(what, "", &format!("cancelled; the archive tool did not exit, so its work folder {name} was left in place")));
+            // The sentence names the caller, so a convert timeout says convert and not archive.
+            return Err(op_err(what, "", &format!("cancelled; the {what} tool did not exit, so its work folder {name} was left in place")));
         }
         match jailed.child.try_wait() {
             Ok(Some(status)) => {
@@ -247,6 +248,14 @@ fn run_boxed_cancellable_inner(what: &str, inner: Vec<String>, read_only: &Path,
 fn run_boxed_cancellable_observed(what: &str, inner: Vec<String>, read_only: &Path, work: &mut Work,
                                   cancel: &AtomicBool, started: &AtomicU32) -> Result<(), FleaError> {
     run_boxed_cancellable_inner(what, inner, read_only, work, cancel, Some(started), None)
+}
+
+// The convert runner with its own CPU cap and a spawn witness, so a timeout test cancels a live child.
+#[cfg(test)]
+pub(crate) fn run_boxed_cancellable_capped_observed(what: &str, inner: Vec<String>, read_only: &Path,
+                                                   work: &mut Work, cancel: &AtomicBool,
+                                                   started: &AtomicU32) -> Result<(), FleaError> {
+    run_boxed_cancellable_inner(what, inner, read_only, work, cancel, Some(started), Some(sandbox::CPU_SECONDS))
 }
 
 pub fn is_empty_dir(dir: &Path) -> bool {

@@ -1,7 +1,8 @@
 // A quit cancels each detached compress and convert under one shutdown budget, and a job leaves the quit registry when its line is written.
 use super::{archivedone_line, compress, convert_one, run_archive, run_convert};
 use crate::backend::archive::Formats;
-use crate::backend::archivework::{drain_secs, last_cpu, Work, WORK_PREFIX};
+use crate::backend::archivework::{drain_secs, last_cpu, run_boxed_cancellable_capped_observed,
+    set_drain_secs, set_reader_hold_ms, Work, WORK_PREFIX, CANCEL_DRAIN_SECS};
 use crate::backend::convert;
 use crate::backend::dirsizeworker::Worker;
 use crate::backend::events::Event;
@@ -14,7 +15,7 @@ use crate::backend::thumbcache::Cache;
 use crate::backend::thumbs::{Done, Outcome, Pool};
 use crate::backend::testdir::TestDir;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, Sender};
 use std::time::{Duration, Instant};
@@ -213,21 +214,20 @@ fn a_convert_without_a_cancel_is_never_answered_cancelled() {
 #[test]
 fn a_flag_set_while_compress_runs_cancels_and_cleans_up() {
     if crate::backend::sandboxprobe::skipped() { return; }
-    if !have_bsdtar() { return; }
     let d = TestDir::new("archquitmidcompress");
-    let fifo = d.join("stall.bin");
-    crate::backend::fifotest::mkfifo(&fifo);
     let dest = d.join("out.zip");
     let flag = Arc::new(AtomicBool::new(false));
     let worker = Arc::clone(&flag);
     let parent = d.path().to_path_buf();
     let handle = std::thread::spawn(move || {
-        let f = Formats::from_tools(true, true);
-        let result = compress(&f, &parent, &["stall.bin".to_string()], "zip", &parent.join("out.zip"), &worker);
+        // A blocking compressor through the real route: bsdtar exits on a fifo without reading it.
+        let f = Formats::test_block();
+        let result = compress(&f, &parent, &["a.txt".to_string()], "zip", &parent.join("out.zip"), &worker);
         (result, last_cpu())
     });
-    // Past registration, inside the runner: the stage exists and the tool is blocked on the fifo.
-    wait_for_work_dir(d.path(), Duration::from_secs(10));
+    // Past spawn, inside the tool: its argv names this job's directory while the flag is still clear.
+    wait_for_tool_with_dir(d.path(), Duration::from_secs(10));
+    assert!(!flag.load(Ordering::Relaxed), "the tool never ran before the cancel was set");
     flag.store(true, Ordering::Relaxed);
     let done = Instant::now() + Duration::from_secs(20);
     while !handle.is_finished() && Instant::now() < done { std::thread::sleep(Duration::from_millis(50)); }
@@ -237,6 +237,7 @@ fn a_flag_set_while_compress_runs_cancels_and_cleans_up() {
     assert!(e.msg.contains("cancelled"), "a cancelled compress must say so: {}", e.msg);
     assert_eq!(cap, Some(None), "compress must run its jail without a CPU cap");
     assert!(!dest.exists(), "a cancelled compress published a destination");
+    assert!(!tool_with_dir(&d.path().to_string_lossy()), "the cancelled tool outlived its cancel");
     assert_eq!(work_litter(d.path()), 0, "a cancelled compress left its staging directory behind");
 }
 
@@ -253,8 +254,9 @@ fn a_flag_set_while_convert_runs_cancels_and_cleans_up() {
     let worker = Arc::clone(&flag);
     let (fifo_in, dest_in) = (fifo.clone(), dest.clone());
     let handle = std::thread::spawn(move || (convert_one(&fifo_in, &dest_in, false, &worker), last_cpu()));
-    // Past the early check, inside the runner: the stage exists and the tool is blocked on the fifo.
-    wait_for_work_dir(d.path(), Duration::from_secs(10));
+    // Past spawn, inside the tool: its argv names this job's directory while the flag is still clear.
+    wait_for_tool_with_dir(d.path(), Duration::from_secs(10));
+    assert!(!flag.load(Ordering::Relaxed), "the tool never ran before the cancel was set");
     flag.store(true, Ordering::Relaxed);
     let done = Instant::now() + Duration::from_secs(20);
     while !handle.is_finished() && Instant::now() < done { std::thread::sleep(Duration::from_millis(50)); }
@@ -264,7 +266,45 @@ fn a_flag_set_while_convert_runs_cancels_and_cleans_up() {
     assert!(e.msg.contains("cancelled"), "a cancelled convert must say so: {}", e.msg);
     assert_eq!(cap, Some(Some(sandbox::CPU_SECONDS)), "convert_one must run its jail under the finite CPU cap");
     assert!(!dest.exists(), "a cancelled convert published a destination");
+    assert!(!tool_with_dir(&d.path().to_string_lossy()), "the cancelled tool outlived its cancel");
     assert_eq!(work_litter(d.path()), 0, "a cancelled convert left its staging directory behind");
+}
+
+// A convert cancel past the drain bound keeps its folder and names convert, the archive twin beside it.
+#[test]
+fn a_convert_cancel_past_the_drain_bound_keeps_naming_its_work_folder() {
+    if crate::backend::sandboxprobe::skipped() { return; }
+    let d = TestDir::new("archcancelkeepcvt");
+    let mut work = Work::new(d.path(), "kp").expect("work");
+    let name = work.dir.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    let inner = vec!["/usr/bin/sleep".to_string(), "30".to_string()];
+    let cancel = Arc::new(AtomicBool::new(false));
+    let flag = Arc::clone(&cancel);
+    let started = Arc::new(AtomicU32::new(0));
+    let child_pid = Arc::clone(&started);
+    let notifier = std::thread::spawn(move || {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while child_pid.load(Ordering::SeqCst) == 0 && Instant::now() < deadline {
+            std::thread::yield_now();
+        }
+        assert_ne!(child_pid.load(Ordering::SeqCst), 0, "the convert fixture never exposed its child pid");
+        assert!(!flag.load(Ordering::Relaxed), "the child never ran before the cancel was set");
+        flag.store(true, Ordering::Relaxed);
+    });
+    set_reader_hold_ms(2000);
+    set_drain_secs(1);
+    let began = Instant::now();
+    let result = run_boxed_cancellable_capped_observed("convert", inner, d.path(), &mut work, &cancel, &started);
+    set_reader_hold_ms(0);
+    set_drain_secs(CANCEL_DRAIN_SECS);
+    let error = result.unwrap_err();
+    notifier.join().expect("the cancellation notifier finished");
+    assert_eq!(error.msg, format!("cancelled; the convert tool did not exit, so its work folder {name} was left in place"));
+    assert!(began.elapsed() < Duration::from_secs(2), "a cancelled job waited past its bound");
+    // The folder outlives the guard: asserting while work is still in scope cannot tell keep from leak.
+    let kept = work.dir.clone();
+    drop(work);
+    assert!(kept.is_dir(), "the kept folder was removed under a live writer");
 }
 
 // How many staging folders a directory holds; every destructive test funnels through here.
@@ -274,17 +314,24 @@ fn work_litter(dir: &Path) -> usize {
         .count()
 }
 
-// The job is past registration once its stage exists; a flag set then lands mid-run.
-fn wait_for_work_dir(dir: &Path, bound: Duration) {
+// A tool is running once its argv names this job's directory, so a startup-only cancel cannot fake it.
+fn wait_for_tool_with_dir(dir: &Path, bound: Duration) {
     let start = Instant::now();
     while start.elapsed() < bound {
-        if work_litter(dir) > 0 { return; }
+        if tool_with_dir(&dir.to_string_lossy()) { return; }
         std::thread::sleep(Duration::from_millis(10));
     }
-    panic!("the job never reached its work directory");
+    panic!("the tool never ran under {}", dir.display());
 }
 
-// bsdtar builds the stall fixture, so without it the mid-run compress test proves nothing.
-fn have_bsdtar() -> bool {
-    std::process::Command::new("bsdtar").arg("--version").output().map(|o| o.status.success()).unwrap_or(false)
+// True while a process other than this one names the job's directory; the TestDir path is unique per test.
+fn tool_with_dir(needle: &str) -> bool {
+    // Sample /proc/<pid>/cmdline: NUL-separated argv, so the job's directory matches by substring.
+    if needle.is_empty() { return false; }
+    let own = std::process::id().to_string();
+    std::fs::read_dir("/proc").map(|entries| entries.flatten().any(|entry| {
+        if entry.file_name().to_string_lossy() == own { return false; }
+        let cmdline = std::fs::read(entry.path().join("cmdline")).unwrap_or_default();
+        !cmdline.is_empty() && String::from_utf8_lossy(&cmdline).contains(needle)
+    })).unwrap_or(false)
 }
