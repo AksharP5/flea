@@ -37,6 +37,10 @@ Item {
     readonly property int nameBudgetChevron: Theme.bodyAdvance > 0 ? Math.max(0, Math.floor((Scroll.contentWidth(root.width, Theme.spacing.rowPaddingX) - Theme.spacing.rowPaddingX - Theme.iconSize - Theme.spacing.gap - Theme.spacing.rowPaddingX - Theme.font.caption - (root.showsSize ? Theme.column.size + 2 * Theme.spacing.gap : 0)) / Theme.bodyAdvance)) : -1
     // True for every shown pane but the rightmost one; the line sits on the pane edge and changes no width.
     property bool showDivider: false
+    // Empty short-circuits before the library, the same rule ui/List.qml carries.
+    property bool clipEmpty: ClipMarks.isEmpty(root.pane ? root.pane.clipboard : null)
+    // The short-circuit above is the only release while empty, so a cut of a large directory frees its lookup here.
+    onClipEmptyChanged: { if (root.clipEmpty) ClipMarks.release() }
 
     // isDir says which of the two things a neighbour column's row is: a directory the pane opens as
     // its own listing, or a file it hands to the opener. See keys.toml's [[pointer]] table.
@@ -223,8 +227,8 @@ Item {
             showSize: root.showsSize
             dirSize: root.pane !== null ? DirSizes.sizeFor(root.pane.dirSizeState, listingIndex) : null
             cursor: root.selectedIndex >= 0 && listingIndex === root.selectedIndex
-            // The clipboard mark is looked up only on the pane's own column.
-            clipMark: root.pane !== null ? ClipMarks.markForRow(root.pane, cell.row ? cell.row.n : "", root.pane.clipboard) : ""
+            // The clipboard mark is looked up only on the pane's own column, and never while it is empty.
+            clipMark: root.clipEmpty ? "" : (root.pane !== null ? ClipMarks.markForRow(root.pane, cell.row ? cell.row.n : "", root.pane.clipboard) : "")
             // The list and the grid both mark a selection member apart from the cursor; so does this.
             selected: root.pane !== null && root.pane.isSelected(listingIndex)
             dropTarget: dragSession.dropIndex >= 0 && listingIndex === dragSession.dropIndex
