@@ -322,11 +322,15 @@ Loader {
             if (message.op === "snapshot") {
                 root.ready = message.ok === true && root.identity === root.pane.menuSelectionIdentity
                 if (!root.ready) {
+                    // A late snapshot answers no dismissed menu with nothing awaiting it; an open one keeps its refusal.
+                    var retired = message.ok === true && !root.pane.contextMenu().opened && !root.opened
+                            && !root.pendingAction && !root.pendingActivation
                     root.pendingAction = ""
                     root.pendingActivation = false
                     root.providersRefreshing = false
                     root.identity = ""
-                    root.pane.message(message.error || "Selected items changed; reopen the menu.", true)
+                    if (!retired)
+                        root.pane.message(message.error || "Selected items changed; reopen the menu.", true)
                 } else if (root.pendingAction) {
                     if (root.pendingActivation) root.validateActivation()
                     else root.show(root.pendingAction)
