@@ -108,7 +108,8 @@ try:
     raise AssertionError("boom control did not raise, so honest diagnostics prove nothing")
 except RuntimeError as e:
     assert "boom" in str(e), f"boom control misfired: {e}"
-    assert _boom.poll() is not None, "boom child still owned after drain"
+    # Cached returncode performs no reap, so a drain that skipped its wait reads None here.
+    assert _boom.returncode is not None, "boom child still owned after drain"
     print("ok   unexpected error kept its reason and drained its child", flush=True)
 finally:
     if _boom.poll() is None:
