@@ -7,14 +7,14 @@ import "flea" as Flea
 import "flea/js/ClipMarks.js" as ClipMarks
 import "flea/js/TextSize.js" as TextSize
 
-// w34 listnamebudget: a real ui/List.qml shares plain/clip budgets off exact drawn geometry, Picker/drop keeping local.
-// tests/listnamebudget.sh drives it offscreen; the controller pins the counts.
+// w34 listnamebudget: a real ui/List.qml shares plain/clip budgets off exact drawn geometry with Picker/drop keeping local for the controller's offscreen run.
 ShellRoot {
     id: root
 
     property var failures: []
     property int plainBefore: -99
     property real slotBefore: -1
+    property int resizedBudget: -99
 
     property var sampleRows: [
         { n: "a.txt", d: false, i: "text-x-generic", p: 420, s: 13, m: 1758835200, t: false, k: 0, v: 0 },
@@ -135,6 +135,7 @@ ShellRoot {
     Timer { id: t4; interval: 600; repeat: false; onTriggered: root.phaseHidden() }
     Timer { id: t5; interval: 600; repeat: false; onTriggered: root.phaseFilter() }
     Timer { id: t6; interval: 600; repeat: false; onTriggered: root.phaseFallback() }
+    Timer { id: t7; interval: 600; repeat: false; onTriggered: root.phaseSearch() }
 
     function fail(text) { root.failures.push(text) }
     function delegateAt(i) { return list.itemAtIndex(i) }
@@ -157,6 +158,7 @@ ShellRoot {
             var d = root.delegateAt(i)
             if (d === null) { root.fail(label + " builds no delegate at " + i); continue }
             if (d.dropTarget) continue
+            // SOURCE PIN (branch): ordinary rows take the List-assigned branch, so the one floor lives in List alone.
             var want = d.clipMark.length > 0 ? list.nameBudgetClip : list.nameBudgetPlain
             if (d.assignedNameBudget !== want)
                 root.fail(label + " row " + i + " assigns " + d.assignedNameBudget + ", want shared " + want)
@@ -207,6 +209,7 @@ ShellRoot {
         if (list.nameBudgetPlain === root.plainBefore)
             root.fail("resized keeps budget " + list.nameBudgetPlain + ", want a new one for width 400")
         if (root.failures.length > 0) { root.report(); return }
+        root.resizedBudget = list.nameBudgetPlain
         list.width = 700
         root.stubPane.dualMode = true
         t3.start()
@@ -233,6 +236,39 @@ ShellRoot {
         checkShared("hidden-density-textsize")
         if (root.failures.length > 0) { root.report(); return }
         Flea.ViewState.state = {}
+        // Search draws its own loader off searchSlot, never the ordinary name (Row.qml:240,257,270); shared budgets stay supplied but undrawn.
+        root.stubPane.searchMode = "files"
+        root.stubPane.searchQuery = "avery"
+        t7.start()
+    }
+
+    function phaseSearch() {
+        var d = root.delegateAt(1)
+        if (d === null || d.row === null)
+            root.fail("search builds no delegate for the long row")
+        else {
+            if (d.searching !== true)
+                root.fail("search leaves the ordinary row standing on " + d.displayName)
+            if (d.nameItem().visible !== false)
+                root.fail("search still draws the ordinary name on " + d.displayName)
+            if (!(d.nameRun.start >= 0))
+                root.fail("search marks no run on " + d.displayName)
+            if (d.elidedName !== d.decoratedName)
+                root.fail("search elides a marked run, want full " + d.decoratedName)
+            if (!(d.searchSlot > 0))
+                root.fail("search holds no slot of its own on " + d.displayName)
+        }
+        for (var i = 0; i < root.sampleRows.length; i++) {
+            var o = root.delegateAt(i)
+            if (o === null || o.row === null) continue
+            if (o.searching !== true)
+                root.fail("search leaves row " + i + " ordinary")
+            if (o.nameItem().visible !== false)
+                root.fail("search draws the ordinary name on row " + i)
+        }
+        if (root.failures.length > 0) { root.report(); return }
+        root.stubPane.searchMode = ""
+        root.stubPane.searchQuery = ""
         // Filter keeps its run: a marked long name stays whole instead of eliding.
         root.stubPane.filterQuery = "averylong"
         root.stubPane.shown = [1]
@@ -268,7 +304,7 @@ ShellRoot {
         if (!dropRow.dropBuilt())
             root.fail("drop builds no frame for its fallback")
         if (root.failures.length === 0)
-            console.log("LISTNAMEBUDGET PASS rows=" + root.sampleRows.length + " plain=" + root.plainBefore + " resized=" + list.nameBudgetPlain)
+            console.log("LISTNAMEBUDGET PASS rows=" + root.sampleRows.length + " plain=" + root.plainBefore + " resized=" + root.resizedBudget)
         root.report()
     }
 

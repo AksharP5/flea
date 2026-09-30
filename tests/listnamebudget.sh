@@ -28,7 +28,7 @@ output=$(env -u DISPLAY -u WAYLAND_DISPLAY -u HYPRLAND_INSTANCE_SIGNATURE \
     QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1 \
     timeout 30 qs -p "$test_root/config" 2>&1)
 
-# Sample input, one probe line: "  INFO qml: LISTNAMEBUDGET PASS rows=6 plain=42 resized=18"
+# Sample input, one probe line: "  INFO qml: LISTNAMEBUDGET PASS rows=6 plain=42 resized=18", resized the checked 400 width.
 pass_count=$(printf '%s\n' "$output" | grep -c 'LISTNAMEBUDGET PASS')
 fail_count=$(printf '%s\n' "$output" | grep -c 'LISTNAMEBUDGET FAIL')
 if [ "$pass_count" -ne 1 ] || [ "$fail_count" -ne 0 ]; then
