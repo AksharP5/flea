@@ -1787,7 +1787,7 @@ failure fails the check rather than passing it.
   this through the real bar, offscreen.
 - `keys.toml` is the one key table, and `tools/flea-keymap-gen` turns it into `Keymap.js`.
 - `ui/js/Keymap.js` is the generated key-to-action lookup and imports no QML.
-- `ui/js/Format.js` is the pure size, date and permission formatter.
+- `ui/js/Format.js` is the pure size, date, permission and name-elision formatter.
 - `ui/js/Errors.js` turns a backend failure into the one sentence the status bar shows, and
   imports no QML; it was lifted out of `Pane.qml` at the hard cap and has no behaviour of
   its own.
@@ -6924,3 +6924,5 @@ e52-r3 transfers the verdict repair onto the real wrapper with no geometry chang
 e62 moves Grid-only captions behind the existing Grid loader with no output change: ui/js/Names.js 259 to 142 for keeping middleElide and the shared Unicode/store/span helpers alone, the new ui/js/GridNames.js at 122 for the Grid-exclusive extension/elide/wrap/caption/last-line code importing Names with Names never importing it back, ui/GridTile.qml keeps 208 for the GridNames import with its two call swaps, tests/js/names.js 222 to 250 for executing both real libraries against the frozen reference over the full corpus with import-direction and Row/ColumnRow laziness pins, each re-derived with wc -l; tests/js/namesreference.js keeps 205 frozen.
 
 w56 hoists the empty clipboard check in ColumnPane.qml (358 lines after scrollbar integration), skips per-row lookups while empty and releases the cache when cleared. tests/columnclip-empty.qml (250 lines) drives real delegates through empty, copy, cut, clear and viewport movement; its clear baseline is recorded after cut. The shell wrapper is 41 lines. Native proof uses the actual Qt library counter and marks, with no timing claim.
+
+w57 folds the shared Names library into the already-loaded Format and deletes it: ui/js/Format.js 169 to 296 for the shared elide/Unicode/store/span block moved byte-identical, ui/js/GridNames.js 122 to 138 for the Format import with the array-cell helpers over the common store, ui/js/Names.js deleted at 142, ui/Row.qml 474 to 473 and ui/ColumnRow.qml 253 to 252 for dropping the second library import, tests/js/names.js 250 to 257 for the Format/GridNames rewiring with the removed-library pins, tests/columnrow-geom.qml keeps 409 for the Format import swap; Format stays under the 300 hard cap because the array-cell helpers live in the Grid split, and GridNames imports Format once with no shared-to-Grid edge, each count re-derived with wc -l.

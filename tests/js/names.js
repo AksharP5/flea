@@ -1,4 +1,4 @@
-.import "../../ui/js/Names.js" as Names
+.import "../../ui/js/Format.js" as Format
 .import "../../ui/js/GridNames.js" as GridNames
 .import "sourcefixture.js" as Source
 .import "namesreference.js" as Ref
@@ -7,38 +7,38 @@
 function run(check) {
     var full = "screenshot-2026-08-30-final-review-for-gm-after-the-bench-v3.png"
     check("the board sample elides to the board string",
-          Names.middleElide(full, 49), "screenshot-2026-08-30-fi…m-after-the-bench-v3.png")
+          Format.middleElide(full, 49), "screenshot-2026-08-30-fi…m-after-the-bench-v3.png")
     check("the board sample keeps its extension",
-          Names.middleElide(full, 49).slice(-4), ".png")
+          Format.middleElide(full, 49).slice(-4), ".png")
     check("a name shorter than the width is untouched",
-          Names.middleElide("IMG_4121.jpg", 49), "IMG_4121.jpg")
+          Format.middleElide("IMG_4121.jpg", 49), "IMG_4121.jpg")
     check("a name exactly at the width is untouched",
-          Names.middleElide("1234567890", 10), "1234567890")
+          Format.middleElide("1234567890", 10), "1234567890")
     check("a name without an extension still elides in the middle",
-          Names.middleElide("a-very-long-filename-with-no-extension-at-all", 20),
+          Format.middleElide("a-very-long-filename-with-no-extension-at-all", 20),
           "a-very-lon…on-at-all")
     check("a dotfile shorter than the width keeps its full ink",
-          Names.middleElide(".bashrc", 20), ".bashrc")
+          Format.middleElide(".bashrc", 20), ".bashrc")
     check("a long dotfile keeps its leading dot",
-          Names.middleElide(".a-very-long-hidden-config-name", 20)[0], ".")
+          Format.middleElide(".a-very-long-hidden-config-name", 20)[0], ".")
     check("a long dotfile still elides in the middle",
-          Names.middleElide(".a-very-long-hidden-config-name", 20),
+          Format.middleElide(".a-very-long-hidden-config-name", 20),
           ".a-very-lo…nfig-name")
     check("an empty name stays empty",
-          Names.middleElide("", 20), "")
+          Format.middleElide("", 20), "")
     check("a multi-byte name never splits a surrogate pair",
-          Names.middleElide("photo-📷-2026-08-30-final-review-v3.png", 20),
+          Format.middleElide("photo-📷-2026-08-30-final-review-v3.png", 20),
           "photo-📷-2…ew-v3.png")
     check("a CJK name elides to its cell budget",
-          Names.cellsOf(Names.charsOf(Names.middleElide("写".repeat(30) + ".jpg", 20))) <= 20, true)
+          GridNames.cellsOf(Format.charsOf(Format.middleElide("写".repeat(30) + ".jpg", 20))) <= 20, true)
     check("a pair straddling the cut stays whole",
-          Names.middleElide("ab📷cdefghij", 6), "ab…ij")
+          Format.middleElide("ab📷cdefghij", 6), "ab…ij")
     check("a combining mark rides with its base through the cut",
-          GridNames.elideChars(Names.charsOf("abcde\u0301x"), 5, 16).join(""), "ab…e\u0301x")
+          GridNames.elideChars(Format.charsOf("abcde\u0301x"), 5, 16).join(""), "ab…e\u0301x")
     check("a tiny width keeps one character each side",
-          Names.middleElide("abcdefghij", 3), "a…j")
+          Format.middleElide("abcdefghij", 3), "a…j")
     check("a two-wide budget keeps the head and the mark",
-          Names.middleElide("abcdefghij", 2), "a…")
+          Format.middleElide("abcdefghij", 2), "a…")
     runGridCaption(check)
     runEquivalence(check)
     runNonFinite(check)
@@ -55,7 +55,7 @@ function runGridCaption(check) {
     function fits(caption, per) {
         var out = linesOf(caption)
         for (var i = 0; i < out.length; i++)
-            if (Names.cellsOf(Names.charsOf(out[i])) > per)
+            if (GridNames.cellsOf(Format.charsOf(out[i])) > per)
                 return false
         return true
     }
@@ -93,21 +93,21 @@ function runGridCaption(check) {
     check("a CJK stem keeps its extension on the last line",
           linesOf(cjk)[linesOf(cjk).length - 1].slice(-4), ".pdf")
     check("no CJK line exceeds its cells", fits(cjk, 16), true)
-    check("a wide glyph counts two cells", Names.cellWidthOf("🎉"), 2)
-    check("a CJK glyph counts two cells", Names.cellWidthOf("中"), 2)
-    check("a narrow glyph counts one cell", Names.cellWidthOf("a"), 1)
+    check("a wide glyph counts two cells", Format.cellWidthOf("🎉"), 2)
+    check("a CJK glyph counts two cells", Format.cellWidthOf("中"), 2)
+    check("a narrow glyph counts one cell", Format.cellWidthOf("a"), 1)
     check("the last line counts its cells, not its chars",
           GridNames.lastLineCells("ab\nc🎉"), 3)
     check("a dead width hands the whole name back",
           GridNames.gridCaption(full, 0, 2), full)
     check("a dead line count hands the whole name back",
           GridNames.gridCaption(full, 16, 0), full)
-    check("gridBudget is gone", typeof Names.gridBudget, "undefined")
+    check("gridBudget is gone", typeof Format.gridBudget, "undefined")
     var tile = Source.source("ui/GridTile.qml")
     check("the caption breaks through the wrap-safe helper",
           tile.indexOf("GridNames.gridCaption") >= 0, true)
     check("the wrap guess is gone",
-          tile.indexOf("Names.gridBudget") >= 0, false)
+          tile.indexOf("Format.gridBudget") >= 0, false)
     check("the caption budgets off the face it draws",
           tile.indexOf("Theme.bodySmallAdvance") >= 0, true)
     check("the caption no longer budgets off the body face",
@@ -128,7 +128,7 @@ function runGridCaption(check) {
     for (var w = 0; w < wide.length; w++) {
         var cap = GridNames.gridCaption(wide[w][0], wide[w][1], 2), parts = cap.split("\n")
         check("a straddling wide name keeps " + wide[w][2], parts[parts.length - 1].slice(-wide[w][2].length), wide[w][2])
-        check("and every line fits its cells for " + wide[w][2], parts.every(function (l) { return Names.cellsOf(Names.charsOf(l)) <= wide[w][1] }), true)
+        check("and every line fits its cells for " + wide[w][2], parts.every(function (l) { return GridNames.cellsOf(Format.charsOf(l)) <= wide[w][1] }), true)
     }
 }
 
@@ -175,7 +175,7 @@ function runEquivalence(check) {
     }
     for (var n = 0; n < names.length; n++) {
         for (var b = 0; b < budgets.length; b++)
-            same(Names.middleElide(names[n], budgets[b]), Ref.middleElide(names[n], budgets[b]), "middleElide")
+            same(Format.middleElide(names[n], budgets[b]), Ref.middleElide(names[n], budgets[b]), "middleElide")
         for (var p = 0; p < pers.length; p++)
             for (var c = 0; c < counts.length; c++)
                 same(GridNames.gridCaption(names[n], pers[p], counts[c]), Ref.gridCaption(names[n], pers[p], counts[c]), "gridCaption")
@@ -188,9 +188,9 @@ function runEquivalence(check) {
 
 // A non-finite budget names no width, so both paths hand the name through untouched.
 function runNonFinite(check) {
-    check("middleElide hands NaN through", Names.middleElide("abcdef", NaN), "abcdef")
-    check("middleElide hands undefined through", Names.middleElide("abcdef", undefined), "abcdef")
-    check("middleElide hands Infinity through", Names.middleElide("a".repeat(40), Infinity), "a".repeat(40))
+    check("middleElide hands NaN through", Format.middleElide("abcdef", NaN), "abcdef")
+    check("middleElide hands undefined through", Format.middleElide("abcdef", undefined), "abcdef")
+    check("middleElide hands Infinity through", Format.middleElide("a".repeat(40), Infinity), "a".repeat(40))
     check("gridCaption hands a NaN width through", GridNames.gridCaption("abcdef", NaN, 2), "abcdef")
     check("gridCaption hands a NaN line count through", GridNames.gridCaption("abcdef", 16, NaN), "abcdef")
     check("gridCaption hands Infinity through", GridNames.gridCaption("a".repeat(40), Infinity, 2), "a".repeat(40))
@@ -223,28 +223,35 @@ function runColumnRowCost(check) {
         list.indexOf("id: clipLoader") < 0 && list.indexOf("x: name.x + Math.min(name.implicitWidth") >= 0, true)
 }
 
-// Grid-only code sits behind the Grid loader; Row and ColumnRow never import it.
+// The common library is already loaded everywhere; Grid-only code sits behind the Grid loader.
 function runLaziness(check) {
-    check("Names keeps the shared middle elide", typeof Names.middleElide, "function")
-    check("Names no longer answers a grid caption", typeof Names.gridCaption, "undefined")
-    check("Names no longer answers the last line", typeof Names.lastLineCells, "undefined")
-    check("Names no longer answers the grid elide", typeof Names.elideChars, "undefined")
+    check("Format keeps the shared middle elide", typeof Format.middleElide, "function")
+    check("Format answers no grid caption", typeof Format.gridCaption, "undefined")
+    check("Format answers no last line", typeof Format.lastLineCells, "undefined")
+    check("Format answers no grid elide", typeof Format.elideChars, "undefined")
+    check("Format answers no array-cell tail", typeof Format.tailByCells, "undefined")
     check("GridNames answers the grid caption", typeof GridNames.gridCaption, "function")
     check("GridNames answers the last line", typeof GridNames.lastLineCells, "function")
-    var shared = Source.source("ui/js/Names.js")
-    check("Names never imports its Grid split", shared.indexOf("GridNames") < 0, true)
-    check("Names holds no grid caption", shared.indexOf("gridCaption") < 0, true)
-    check("Names holds no last-line helper", shared.indexOf("lastLineCells") < 0, true)
+    check("GridNames answers the array-cell helpers", typeof GridNames.cellsOf, "function")
+    var shared = Source.source("ui/js/Format.js")
+    check("Format never imports the Grid split", shared.indexOf("GridNames") < 0, true)
+    check("Format holds no grid caption", shared.indexOf("gridCaption") < 0, true)
+    check("Format holds no last-line helper", shared.indexOf("lastLineCells") < 0, true)
     var split = Source.source("ui/js/GridNames.js")
-    check("the split imports the shared library", split.indexOf('.import "Names.js"') >= 0, true)
+    check("the split imports the common library", split.indexOf('.import "Format.js"') >= 0, true)
+    check("the split imports no removed library", split.indexOf('.import "Names.js"') < 0, true)
     check("the split holds the grid caption", split.indexOf("function gridCaption") >= 0, true)
     var tile = Source.source("ui/GridTile.qml")
     check("the tile loads the Grid split", tile.indexOf('js/GridNames.js') >= 0, true)
-    check("the tile no longer loads the shared names", tile.indexOf('js/Names.js') < 0, true)
+    check("the tile loads no removed library", tile.indexOf('js/Names.js') < 0, true)
     var row = Source.source("ui/Row.qml")
     check("a list row never loads the Grid split", row.indexOf("GridNames") < 0, true)
+    check("a list row loads no removed library", row.indexOf('js/Names.js') < 0, true)
+    check("a list row elides through the common library", row.indexOf("Format.middleElide") >= 0, true)
     check("a list row never calls a grid caption", row.indexOf("gridCaption") < 0, true)
     var column = Source.source("ui/ColumnRow.qml")
     check("a column row never loads the Grid split", column.indexOf("GridNames") < 0, true)
+    check("a column row loads no removed library", column.indexOf('js/Names.js') < 0, true)
+    check("a column row elides through the common library", column.indexOf("Format.middleElide") >= 0, true)
     check("a column row never calls a grid caption", column.indexOf("gridCaption") < 0, true)
 }

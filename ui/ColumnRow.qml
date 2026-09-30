@@ -4,7 +4,6 @@ import "." as Flea
 import "js/Drag.js" as DragOps
 import "js/Icons.js" as Icons
 import "js/Format.js" as Format
-import "js/Names.js" as Names
 
 // One row of a Miller column: a mark, a name, and the chevron a chosen directory carries. Simpler
 // than a list row on purpose, because a column has no size, date, mode or kind to draw.
@@ -131,7 +130,7 @@ Item {
         anchors.right: sizeCell.left
         anchors.rightMargin: (root.showSize ? Theme.spacing.gap : 0) + (root.clipMark.length > 0 ? Theme.spacing.gap + root.clipPx : 0)
         anchors.verticalCenter: parent.verticalCenter
-        text: root.row && root.nameBudget >= 0 ? Names.middleElide(root.row.n, Math.max(0, root.nameBudget - (root.clipMark.length > 0 ? Math.ceil((Theme.spacing.gap + root.clipPx) / Theme.bodyAdvance) : 0))) : (root.row ? root.row.n : "")
+        text: root.row && root.nameBudget >= 0 ? Format.middleElide(root.row.n, Math.max(0, root.nameBudget - (root.clipMark.length > 0 ? Math.ceil((Theme.spacing.gap + root.clipPx) / Theme.bodyAdvance) : 0))) : (root.row ? root.row.n : "")
         color: root.ink
         font.family: Theme.font.family
         font.pixelSize: Theme.font.body

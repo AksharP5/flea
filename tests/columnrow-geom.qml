@@ -3,7 +3,7 @@
 import QtQuick
 import Quickshell
 import "flea" as Flea
-import "flea/js/Names.js" as Names
+import "flea/js/Format.js" as Format
 
 // Column-row geometry through a real ColumnPane: the handed budget fits, a clip fits, and a short name draws whole.
 ShellRoot {
@@ -247,7 +247,7 @@ ShellRoot {
             }
             adjust = Math.ceil((Flea.Theme.spacing.gap + delegate.clipPx) / Flea.Theme.bodyAdvance)
         }
-        var want = Names.middleElide(name, Math.max(0, budget - adjust))
+        var want = Format.middleElide(name, Math.max(0, budget - adjust))
         var got = delegate.displayText()
         if (got !== want)
             root.fail(label + " draws " + got + ", want " + want)
@@ -255,7 +255,7 @@ ShellRoot {
         if (ni.implicitWidth > ni.width)
             root.fail(label + " overflows its slot: implicit " + ni.implicitWidth + " over " + ni.width)
         if (ni.truncated === true)
-            root.fail(label + " is truncated by Qt after Names elided it")
+            root.fail(label + " is truncated by Qt after Format elided it")
     }
 
     // The budget is the largest that fits: one more cell would overflow the slot.
@@ -282,7 +282,7 @@ ShellRoot {
             root.fail(label + " has no drawn name for the tight check")
             return
         }
-        budgetProbe.text = Names.middleElide(name, budget + 1)
+        budgetProbe.text = Format.middleElide(name, budget + 1)
         if (!(budgetProbe.implicitWidth > ni.width))
             root.fail(label + " budget " + budget + " is not tight: budget+1 still fits at " + budgetProbe.implicitWidth + " over " + ni.width)
     }
@@ -383,7 +383,7 @@ ShellRoot {
             } else {
                 if (root.dynamicTextChanges !== 1)
                     root.fail("a handed-budget row re-sets its text " + root.dynamicTextChanges + " times, want 1")
-                var want = Names.middleElide(root.longName, activeNarrow.nameBudgetPlain)
+                var want = Format.middleElide(root.longName, activeNarrow.nameBudgetPlain)
                 var got = null
                 try { got = root.dynamicRow.displayText() } catch (e) {
                     root.fail("a dynamic row text read threw " + e)

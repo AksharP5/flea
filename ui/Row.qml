@@ -4,7 +4,6 @@ import "js/Drag.js" as DragOps
 import "js/Format.js" as Format
 import "js/Icons.js" as Icons
 import "js/Match.js" as Match
-import "js/Names.js" as Names
 import "." as Flea
 
 Item {
@@ -62,7 +61,7 @@ Item {
     function localNameBudget() { return Theme.bodyAdvance > 0 && name.width > 0 ? Math.floor(name.width / Theme.bodyAdvance) : -1 }
     // Ordinary List rows share; drop targets keep local measured geometry with the label's own reserve.
     readonly property int nameBudget: root.dropTarget ? root.localNameBudget() : (root.assignedNameBudget > -2 ? root.assignedNameBudget : root.localNameBudget())
-    readonly property string elidedName: root.nameRun.start < 0 && root.nameBudget >= 0 ? Names.middleElide(root.decoratedName, root.nameBudget) : root.decoratedName
+    readonly property string elidedName: root.nameRun.start < 0 && root.nameBudget >= 0 ? Format.middleElide(root.decoratedName, root.nameBudget) : root.decoratedName
     // A long name would otherwise hide the location entirely, and the location is what tells two matches apart.
     readonly property real nameShare: 0.66
     // What the name and location share: the row less its padding, the mark, their own gap, and the size column while it is drawn.
