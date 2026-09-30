@@ -69,7 +69,8 @@ Item {
                                                 - (root.sizeShown ? root.sizeWidth + Theme.spacing.gap : 0))
 
     // The columns this row's width affords. A column that is not drawn takes neither its width nor its gap, so the chain collapses onto its right neighbour.
-    readonly property var cols: root.dualMode ? Theme.dualColumns(root.width, root.hiddenCols) : Theme.columns(root.width, root.hiddenCols, root.dateWidth)
+    property var assignedCols: null // Set by List.qml; null keeps the local default below.
+    readonly property var cols: root.assignedCols !== null ? root.assignedCols : (root.dualMode ? Theme.dualColumns(root.width, root.hiddenCols) : Theme.columns(root.width, root.hiddenCols, root.dateWidth))
     readonly property bool modeShown: !root.searching && root.cols.mode
     // The search column set keeps Size and drops the other three, so only this one ignores searching.
     readonly property bool sizeShown: root.cols.size

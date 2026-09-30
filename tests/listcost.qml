@@ -16,6 +16,8 @@ ShellRoot {
     property int copiedCalls: -1
     // The follow value the hoist probe writes through list.rowWidth, so a per-row recompute stays behind it.
     property real hoistProbe: -1
+    // The shared set before the narrowing probe, so followers must redraw from it rather than their own width.
+    property var colsBefore: ""
 
     property var sampleRows: [
         { n: "a.txt", d: false, i: "text-x-generic", p: 420, s: 13, m: 1758835200, t: false, k: 0, v: 0 },
@@ -137,6 +139,20 @@ ShellRoot {
         onTriggered: root.measureHoist()
     }
 
+    Timer {
+        id: colsTimer
+        interval: 600
+        repeat: false
+        onTriggered: root.measureCols()
+    }
+
+    Timer {
+        id: colsFollowTimer
+        interval: 600
+        repeat: false
+        onTriggered: root.measureColsFollow()
+    }
+
     function fail(text) { root.failures.push(text) }
 
     function delegateAt(i) { return list.itemAtIndex(i) }
@@ -241,6 +257,40 @@ ShellRoot {
         }
         if (list.rowWidth !== root.hoistProbe)
             root.fail("list lost its hoisted rowWidth")
+        if (root.failures.length > 0) { root.report(); return }
+        colsTimer.start()
+    }
+
+    // Every delegate draws the shared set: identity proves the wire, derived flags prove the cells.
+    function sameSet(label) {
+        for (var i = 0; i < root.sampleRows.length; i++) {
+            var d = root.delegateAt(i)
+            if (d === null) { root.fail(label + " builds no delegate at " + i); continue }
+            if (d.cols !== list.listCols)
+                root.fail(label + " delegate " + i + " holds its own set instead of the shared one")
+            if (JSON.stringify(d.cols) !== JSON.stringify(list.listCols))
+                root.fail(label + " delegate " + i + " draws " + JSON.stringify(d.cols) + ", want " + JSON.stringify(list.listCols))
+            if (d.modeShown !== list.listModeShown || d.sizeShown !== list.listSizeShown
+                    || d.dateShown !== list.listDateShown || d.kindShown !== list.listKindShown)
+                root.fail(label + " delegate " + i + " cells disagree with the shared set")
+        }
+    }
+
+    function measureCols() {
+        root.checkDelegates("cols")
+        root.sameSet("cols")
+        if (root.failures.length > 0) { root.report(); return }
+        // A real shared input narrows, so followers redraw from it rather than their own width.
+        root.colsBefore = JSON.stringify(list.listCols)
+        list.rowWidth = 200
+        colsFollowTimer.start()
+    }
+
+    function measureColsFollow() {
+        root.checkDelegates("colsfollow")
+        if (JSON.stringify(list.listCols) === root.colsBefore)
+            root.fail("a narrowed view keeps " + root.colsBefore + ", want a smaller set")
+        root.sameSet("colsfollow")
         if (root.failures.length === 0)
             console.log("LISTCOST PASS delegates=" + root.sampleRows.length + " calls=" + ClipMarks.markCalls)
         root.report()

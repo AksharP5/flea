@@ -96,6 +96,8 @@ ListView {
         paneFocused: root.pane.paneFocused
         dualMode: root.pane.dualMode
         hiddenCols: root.rowHiddenCols
+        // One Columns.set per List state, shared by every delegate; Row keeps its local default for PickerList and drop targets.
+        assignedCols: root.listCols
         hovered: hover.hovered
         thumb: root.thumbFor(listingIndex)
         selected: root.pane.isSelected(listingIndex)

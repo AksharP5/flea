@@ -126,6 +126,20 @@ ShellRoot {
             failures.push("row cell() no longer answers all four cells")
         if (probeRow.dropBuilt())
             failures.push("a row at rest builds its drop frame")
+        // No assigned set reaches a standalone row, so the fallback computes the draw from its own inputs.
+        if (probeRow.assignedCols !== null)
+            failures.push("a standalone row arrives with a shared set instead of the local default")
+        var wideCols = JSON.stringify(probeRow.cols)
+        probeRow.hiddenCols = ["size"]
+        if (probeRow.cols.size !== false)
+            failures.push("a fallback row keeps its size column after hiding size")
+        if (probeRow.cell("size").visible !== false)
+            failures.push("a fallback row keeps its size cell after hiding size")
+        if (probeRow.cols.mode !== true || probeRow.cell("mode").visible !== true)
+            failures.push("a fallback row drops more than the hidden column")
+        probeRow.hiddenCols = []
+        if (JSON.stringify(probeRow.cols) !== wideCols)
+            failures.push("a fallback row restores " + JSON.stringify(probeRow.cols) + ", want " + wideCols)
         root.rowIdleCount = rowCount
         root.gridIdleCount = gridCount
         probeTile.renaming = true
