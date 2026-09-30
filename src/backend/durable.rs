@@ -450,7 +450,8 @@ fn syncfs_fd(file: &std::fs::File) -> std::io::Result<()> {
     Ok(())
 }
 
-// One filesystem-wide confirm after a batch's closes, so vfat's per-close flush never runs.
+// Test-only path probe; production confirms on the held-file clone.
+#[cfg(test)]
 pub fn syncfs_dir(path: &Path) -> std::io::Result<()> {
     let file = std::fs::File::open(path)?;
     syncfs_fd(&file)
