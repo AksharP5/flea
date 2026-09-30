@@ -1,13 +1,14 @@
 .pragma library
 
-.import "Sort.js" as Sort
+// Owned here so Backend.qml loads no sort closure at startup.
+var ORDERS = ["name", "size", "mtime", "kind"]
 
 // Written only on a user sort in that folder, read once per listing, oldest first.
 
 // The cap ui.json holds, oldest first; setting past it drops the folders sorted longest ago.
 var MAX = 500
 
-// Settings stores Modified as "date" while Sort.ORDERS and the backend spell it "mtime".
+// Settings stores Modified as "date" while ORDERS and the backend spell it "mtime".
 function liveKey(key) {
     return key === "date" ? "mtime" : key
 }
@@ -15,7 +16,7 @@ function liveKey(key) {
 // Sample input: {"/home/gm/Work": {"key": "size", "reverse": true}}.
 function get(sorts, path) {
     var entry = sorts ? sorts[path] : null
-    if (!entry || Sort.ORDERS.indexOf(liveKey(entry.key)) < 0)
+    if (!entry || ORDERS.indexOf(liveKey(entry.key)) < 0)
         return null
     return { key: liveKey(entry.key), reverse: entry.reverse === true }
 }
@@ -69,6 +70,6 @@ function orderFor(sorts, path, fallback, remember) {
     }
     fallback = fallback || {}
     var key = liveKey(fallback.key)
-    return { key: Sort.ORDERS.indexOf(key) >= 0 ? key : "name",
+    return { key: ORDERS.indexOf(key) >= 0 ? key : "name",
              reverse: fallback.reverse === true }
 }

@@ -34,6 +34,9 @@ function sortPane(path, sorts) {
 }
 
 function run(check) {
+    // One key table: Sort.ORDERS is the same array FolderSorts owns, in backend order.
+    check("Sort.ORDERS is the same array FolderSorts owns", Sort.ORDERS === FolderSorts.ORDERS, true)
+    check("the supported order stays name,size,mtime,kind", Sort.ORDERS.join(","), "name,size,mtime,kind")
     // The map holds a folder's sort by path, and nothing else.
     check("a folder with no entry has no sort", FolderSorts.get({}, "/a"), null)
     check("and neither does a missing map", FolderSorts.get(null, "/a"), null)

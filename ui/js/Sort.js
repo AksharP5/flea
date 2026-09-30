@@ -1,6 +1,7 @@
 .pragma library
 
 .import "DirSizes.js" as DirSizes
+.import "FolderSorts.js" as FolderSorts
 .import "Thumbs.js" as Thumbs
 
 // What the header's click and the s and S keys do, taking ui/Pane.qml's root the way Nav.js and
@@ -10,8 +11,8 @@
 
 // The orders the backend can actually produce, in the order s steps through them, and the only keys
 // that may move the recorded order. It is not the list of what gets refused: docs/protocol.md "sort"
-// refuses every other key by name, and the backend is the one that says so, see ui/js/Errors.js.
-var ORDERS = ["name", "size", "mtime", "kind"]
+// refuses every other key by name, and the backend is the one that says so, see ui/js/Errors.js, aliased from FolderSorts.ORDERS, the one key table.
+var ORDERS = FolderSorts.ORDERS
 
 // The three sort decisions, kept apart from what a pane does with them: the chooser makes the same ones over its narrower list.
 
