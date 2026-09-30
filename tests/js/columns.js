@@ -498,7 +498,7 @@ function runColumnMenu(check) {
     Nav.applyPendingBackground(bg)
     check("a consumed intent never opens twice", bg.opened.length, 1)
     // The actual PaneWire onFailed callback, compiled from shipped source and run under realistic doubles: the only execution noticing a dropped return or an if(true).
-    // Sample input: the shipped onFailed compiles and a stale failure keeps "/b" pending.
+    // Sample input: "function onFailed(where, input, message, mode) {" opens the brace scan at depth 1.
     var onFailedMark = "function onFailed(where, input, message, mode) {"
     var onFailedAt = Source.source("ui/PaneWire.qml").indexOf(onFailedMark)
     if (onFailedAt < 0)
