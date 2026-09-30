@@ -166,6 +166,58 @@ zrec "$SHA" GM gianmarcomorales@icloud.com GM gianmarcomorales@icloud.com "" "$G
 check "commit-rules rejects generated-by prose" 1 $?
 expect_grep "commit-rules names the generated-by prose" "$root/fix/genby.out" "attribution 'chatgpt'"
 
+GENUSING_B=$'fix(hooks): gate credit\n\nGenerated using Codex.\nSecond body line.'
+zrec "$SHA" GM gianmarcomorales@icloud.com GM gianmarcomorales@icloud.com "" "$GENUSING_B" > "$root/fix/genusing.z"
+"$repo/tools/flea-commit-rules" "$root/fix/genusing.z" "$root/out" > "$root/fix/genusing.out" 2>&1
+check "commit-rules rejects generated-using prose" 1 $?
+expect_grep "commit-rules names the generated-using prose" "$root/fix/genusing.out" "attribution 'codex'"
+
+BILLING_B=$'fix(openai): display remaining API credits\n\nFirst body line.\nSecond body line.'
+zrec "$SHA" GM gianmarcomorales@icloud.com GM gianmarcomorales@icloud.com "" "$BILLING_B" > "$root/fix/billing.z"
+"$repo/tools/flea-commit-rules" "$root/fix/billing.z" "$root/out" > "$root/fix/billing.out" 2>&1
+check "commit-rules passes billing prose" 0 $?
+
+CLAUDETTE_B=$'fix(hooks): validate Claudette author identities\n\nFirst body line.\nSecond body line.'
+zrec "$SHA" GM gianmarcomorales@icloud.com GM gianmarcomorales@icloud.com "" "$CLAUDETTE_B" > "$root/fix/claudette.z"
+"$repo/tools/flea-commit-rules" "$root/fix/claudette.z" "$root/out" > "$root/fix/claudette.out" 2>&1
+check "commit-rules passes a Claudette subject" 0 $?
+
+PAREN_B=$'fix(hooks): gate human credit\n\nFirst body line.\nSecond body line.\nCo-authored-by: ChatGPT (OpenAI) <noreply@openai.com>'
+zrec "$SHA" GM gianmarcomorales@icloud.com GM gianmarcomorales@icloud.com "" "$PAREN_B" > "$root/fix/paren.z"
+"$repo/tools/flea-commit-rules" "$root/fix/paren.z" "$root/out" > "$root/fix/paren.out" 2>&1
+check "commit-rules rejects a parenthesized AI credit" 1 $?
+expect_grep "commit-rules names the parenthesized credit" "$root/fix/paren.out" "names an AI author"
+
+CLICREDIT_B=$'fix(hooks): gate human credit\n\nFirst body line.\nSecond body line.\nCo-authored-by: OpenAI Codex CLI <noreply@openai.com>'
+zrec "$SHA" GM gianmarcomorales@icloud.com GM gianmarcomorales@icloud.com "" "$CLICREDIT_B" > "$root/fix/clicredit.z"
+"$repo/tools/flea-commit-rules" "$root/fix/clicredit.z" "$root/out" > "$root/fix/clicredit.out" 2>&1
+check "commit-rules rejects a qualified machine credit" 1 $?
+expect_grep "commit-rules names the machine credit" "$root/fix/clicredit.out" "names an AI author"
+
+for brand in "ChatGPT CLI" "Codex CLI" "Claude Code"; do
+  slug=$(printf '%s' "$brand" | tr 'A-Z ' 'a-z-')
+  brand_b=$(printf 'fix(hooks): gate human credit\n\nFirst body line.\nSecond body line.\nCo-authored-by: %s <bot@example.com>\n' "$brand")
+  zrec "$SHA" GM gianmarcomorales@icloud.com GM gianmarcomorales@icloud.com "" "$brand_b" > "$root/fix/brand-$slug.z"
+  "$repo/tools/flea-commit-rules" "$root/fix/brand-$slug.z" "$root/out" > "$root/fix/brand-$slug.out" 2>&1
+  check "commit-rules rejects a $brand credit" 1 $?
+  expect_grep "commit-rules names the $brand credit" "$root/fix/brand-$slug.out" "names an AI author"
+done
+
+JANE_B=$'fix(hooks): gate human credit\n\nFirst body line.\nSecond body line.\n\nCo-authored-by: Jane Doe <jane@anthropic.com>'
+zrec "$SHA" GM gianmarcomorales@icloud.com GM gianmarcomorales@icloud.com "" "$JANE_B" > "$root/fix/jane.z"
+"$repo/tools/flea-commit-rules" "$root/fix/jane.z" "$root/out" > "$root/fix/jane.out" 2>&1
+check "commit-rules accepts a company-email human credit" 0 $?
+
+MACHINE_B=$'fix(hooks): gate credit\n\nBuilt with OpenAI Codex CLI.\nSecond body line.'
+zrec "$SHA" GM gianmarcomorales@icloud.com GM gianmarcomorales@icloud.com "" "$MACHINE_B" > "$root/fix/machine.z"
+"$repo/tools/flea-commit-rules" "$root/fix/machine.z" "$root/out" > "$root/fix/machine.out" 2>&1
+check "commit-rules rejects qualified machine prose" 1 $?
+
+BUILTIN_B=$'fix(hooks): gate credit\n\nShipped built-in Codex support.\nSecond body line.'
+zrec "$SHA" GM gianmarcomorales@icloud.com GM gianmarcomorales@icloud.com "" "$BUILTIN_B" > "$root/fix/builtin.z"
+"$repo/tools/flea-commit-rules" "$root/fix/builtin.z" "$root/out" > "$root/fix/builtin.out" 2>&1
+check "commit-rules passes built-in provider prose" 0 $?
+
 BRACKET_B=$'fix(hooks): gate human credit\n\nFirst body line.\nSecond body line.\nCo-authored-by: Ada <ada@example.com>>'
 zrec "$SHA" GM gianmarcomorales@icloud.com GM gianmarcomorales@icloud.com "" "$BRACKET_B" > "$root/fix/bracket.z"
 "$repo/tools/flea-commit-rules" "$root/fix/bracket.z" "$root/out" > "$root/fix/bracket.out" 2>&1

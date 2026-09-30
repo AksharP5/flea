@@ -85,10 +85,14 @@ GM as author and committer, a conventional subject of at most 60 chars with a
 description as short as one nonspace char, a body of
 2 to 4 lines after one blank line, and no AI attribution, em dash, or emoji. At most one
 trailing `(cherry picked from commit ...)` line is excluded; further ones count
-as body. Attribution is phrase-scoped on word boundaries: a provider name beside
-authorship wording fails, while a technical mention of CLAUDE.md, Claude, Anthropic, Codex or provider
-tools in ordinary prose passes, and a human name that merely contains one stays human.
-Compound machine names fail whole: every token AI means AI credit. Emoji follows frozen Unicode 17 Emoji_Presentation
+as body. Attribution is phrase-scoped on complete word tokens: generated with, by or
+using beside a provider name fails, while billing nouns, API credit displays and other
+technical mentions of CLAUDE.md, Claude, Anthropic, Codex or provider
+tools in ordinary prose pass, and a human name that merely contains one stays human.
+A credit naming a machine brand fails whatever qualifier follows it: ChatGPT and Codex
+alone, the Claude Code and OpenAI Codex compounds, one exact AI name, or two AI
+tokens; a company email address never classifies its holder, and a human word
+beside one AI token stays human. Emoji follows frozen Unicode 17 Emoji_Presentation
 ranges, so the watch fails while supplementary CJK, digits, `#` and `*` stay text. Old
 history has no exception. Trailing `Co-authored-by: Name <email>` lines are human
 credit and sit outside the 2 to 4 prose lines; a misshapen, AI, or bot credit
