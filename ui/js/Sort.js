@@ -39,6 +39,9 @@ function column(pane, key) {
     if (key === "__default__") {
         if (pane.backend && pane.backend.forgetFolderSort)
             pane.backend.forgetFolderSort(pane.path)
+        // A preserved pane skips the reset a list would do, so refresh here or it keeps its old order.
+        if (pane.backend && pane.backend.resetSort)
+            pane.backend.resetSort(pane.path)
         pane.openWithoutHistory(pane.path)
         return
     }

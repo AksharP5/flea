@@ -113,6 +113,34 @@ function run(check) {
     check("the flyout's forget row forgets its folder", picked.forgotten.join(","), "/a")
     check("and lists the folder again on the default", picked.sent.join(","), "list /a")
 
+    // A preserved pane skips the reset a list would do, so forget refreshes before it lists.
+    var dualStore = { "/a": { key: "size", reverse: true }, "/b": { key: "size", reverse: true } }
+    var dualDefault = { key: "name", reverse: false }
+    function dualPane(path) {
+        var p = { path: path, sent: [] }
+        p.backend = {
+            sortBy: "size", sortDesc: true, preserveSort: true, hasListed: true,
+            forgetFolderSort: function (folder) { dualStore = FolderSorts.forget(dualStore, folder) },
+            resetSort: function (folder) { var o = FolderSorts.orderFor(dualStore, folder, dualDefault, true); this.sortBy = o.key; this.sortDesc = o.reverse === true }
+        }
+        // Sample input: list "/a" with preserveSort skips reset, so by/desc are the backend's own.
+        p.openWithoutHistory = function (next) {
+            if (!p.backend.preserveSort || !p.backend.hasListed)
+                p.backend.resetSort(next)
+            p.backend.hasListed = true
+            p.sent.push("list " + next + " by=" + p.backend.sortBy + " desc=" + p.backend.sortDesc)
+            p.path = next
+        }
+        return p
+    }
+    var focused = dualPane("/a")
+    var peer = dualPane("/b")
+    Sort.column(focused, "__default__")
+    check("a preserved forget lists the default, not the old order", focused.sent.join(","), "list /a by=name desc=false")
+    check("the saved entry is gone", FolderSorts.has(dualStore, "/a"), false)
+    check("the peer keeps its entry", FolderSorts.has(dualStore, "/b"), true)
+    check("and the peer keeps its order", peer.backend.sortBy + ":" + peer.backend.sortDesc, "size:true")
+
     // The flyout gains its forget row only where the folder has its own sort, and marks nothing.
     var plain = Menu.sortEntries(false)
     check("without a folder sort the flyout lists the four orders alone",
