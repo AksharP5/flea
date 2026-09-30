@@ -38,18 +38,39 @@ static void publish_entered(int fd, const char *target) {
     const char *path = getenv("FLEA_TEST_UIS_ENTERED");
     if (!path || !path[0])
         return;
-    // One line the driver matches against the actual child pid and tmp path.
-    int out = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    // Atomic publish: existence means ready, so complete bytes must land via rename.
+    char sib[PATH_MAX + 64];
+    int sl = snprintf(sib, sizeof sib, "%s.%d.part", path, (int)getpid());
+    if (sl <= 0 || sl >= (int)sizeof sib)
+        return;
+    int out = open(sib, O_WRONLY | O_CREAT | O_TRUNC, 0600);
     if (out < 0)
         return;
     char line[PATH_MAX + 64];
     int len = snprintf(line, sizeof line, "%d %d %s\n", (int)getpid(), fd, target);
-    if (len > 0) {
-        ssize_t (*real_write)(int, const void *, size_t) = dlsym(RTLD_NEXT, "write");
-        if (real_write)
-            real_write(out, line, (size_t)len);
+    ssize_t (*real_write)(int, const void *, size_t) = dlsym(RTLD_NEXT, "write");
+    int ok = 0;
+    // A truncated line is a malformed receipt, so length inside the buffer is checked first.
+    if (len > 0 && len < (int)sizeof line && real_write && real_write(out, line, (size_t)len) == len)
+        ok = 1;
+    if (close(out) != 0)
+        ok = 0;
+    if (ok) {
+        if (rename(sib, path) != 0) {
+            int e = errno;
+            unlink(sib);
+            // The driver fails closed on the missing receipt; this names the publication failure.
+            char msg[PATH_MAX + 128];
+            int ml = snprintf(msg, sizeof msg, "flea-test: receipt publish %s failed (%s)\n", path, strerror(e));
+            if (ml > 0 && real_write) {
+                if (ml >= (int)sizeof msg)
+                    ml = (int)sizeof msg - 1;
+                real_write(STDERR_FILENO, msg, (size_t)ml);
+            }
+        }
+    } else {
+        unlink(sib);
     }
-    close(out);
 }
 
 static void wait_for_release(void) {

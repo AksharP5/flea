@@ -13,7 +13,6 @@ assert root.name.startswith("flea-uistate-det-")
 assert (root / ".flea-test-sandbox").is_file()
 assert not root.is_relative_to(Path.home().resolve())
 assert Path(binary).is_file()
-# Sample input: 7d2f…  /tmp/…/ui.json.12345.tmp receipt line `12345 7 /…/ui.json.12345.tmp`.
 library = root / "write-block.so"
 subprocess.run(["cc", "-shared", "-fPIC", "-o", str(library),
                 str(Path(__file__).with_name("uistate-write-block.c")), "-ldl"], check=True)
@@ -38,18 +37,113 @@ def wait_path(path, deadline_s, label):
 def read_bytes(path):
     return Path(path).read_bytes()
 
+# Bounded budgets: reap wait, fake-child length, and fake-child timeout.
+REAP_TIMEOUT = 10
+FAKE_SLEEP_SECS = 30
+FAKE_TIMEOUT = 0.2
+
+def reap_owned(proc, label):
+    try:
+        proc.wait(timeout=REAP_TIMEOUT)
+    except Exception as e:
+        raise AssertionError(f"{label} reap failed after timeout: {e!r}") from None
+
+def communicate_owned(proc, timeout, label):
+    try:
+        return proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        if proc.poll() is None:
+            try:
+                proc.kill()
+            except OSError:
+                pass
+        reap_owned(proc, label)
+        raise AssertionError(f"{label} timed out, owned child killed/reaped") from None
+    except BaseException:
+        if proc.poll() is None:
+            try:
+                proc.kill()
+            except OSError:
+                pass
+            try:
+                proc.wait(timeout=REAP_TIMEOUT)
+            except Exception:
+                pass
+        raise
+    finally:
+        for stream in (proc.stdout, proc.stderr):
+            try:
+                if stream is not None:
+                    stream.close()
+            except Exception:
+                pass
+
+def run_once(state, config, patch, label):
+    proc = run_flea(state, config, patch, {})
+    out, err = communicate_owned(proc, 10, label)
+    assert proc.returncode == 0, f"{label} failed: {proc.returncode} {err}"
+    return out
+
+# Bounded fake-child control: a timeout on an owned sleep leaves no owned process behind.
+_fake = subprocess.Popen(["sleep", str(FAKE_SLEEP_SECS)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+try:
+    communicate_owned(_fake, FAKE_TIMEOUT, "fake sleep")
+    raise AssertionError("fake sleep exited early, so the timeout control proves nothing")
+except AssertionError as e:
+    assert "timed out" in str(e), f"fake control misfired: {e}"
+    assert _fake.poll() is not None, "fake child still owned after kill/reap"
+    print("ok   timeout control reaped its owned sleep", flush=True)
+finally:
+    if _fake.poll() is None:
+        _fake.kill()
+        _fake.wait(timeout=REAP_TIMEOUT)
+
+# Unexpected-error control: an odd communicate failure keeps its own reason while draining.
+_boom = subprocess.Popen(["sleep", str(FAKE_SLEEP_SECS)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+def _boom_fail(*args, **kwargs):
+    raise RuntimeError("boom")
+_boom.communicate = _boom_fail
+try:
+    communicate_owned(_boom, 10, "boom control")
+    raise AssertionError("boom control did not raise, so honest diagnostics prove nothing")
+except RuntimeError as e:
+    assert "boom" in str(e), f"boom control misfired: {e}"
+    assert _boom.poll() is not None, "boom child still owned after drain"
+    print("ok   unexpected error kept its reason and drained its child", flush=True)
+finally:
+    if _boom.poll() is None:
+        _boom.kill()
+        _boom.wait(timeout=REAP_TIMEOUT)
+
+# Reap-error control: a timeout plus a wait that cannot reap is reported, never swallowed.
+_stuck = subprocess.Popen(["sleep", str(FAKE_SLEEP_SECS)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+_real_stuck_wait = _stuck.wait
+def _stuck_comm(*args, **kwargs):
+    raise subprocess.TimeoutExpired("sleep", FAKE_TIMEOUT)
+def _stuck_wait(*args, **kwargs):
+    raise OSError("cannot reap")
+_stuck.communicate = _stuck_comm
+_stuck.wait = _stuck_wait
+try:
+    communicate_owned(_stuck, FAKE_TIMEOUT, "stuck control")
+    raise AssertionError("stuck control did not raise, so reap honesty proves nothing")
+except AssertionError as e:
+    assert "reap failed" in str(e), f"stuck control misfired: {e}"
+    print("ok   reap failure reported instead of claimed killed", flush=True)
+finally:
+    _stuck.wait = _real_stuck_wait
+    if _stuck.poll() is None:
+        _stuck.kill()
+        _stuck.wait(timeout=REAP_TIMEOUT)
+
 # Reference run without barrier gives the exact complete expected state.
 ref_state = root / "ref" / "state"
 ref_config = root / "ref" / "config"
 ref_state.mkdir(parents=True)
 ref_config.mkdir(parents=True)
 ref_ui = ref_state / "flea" / "ui.json"
-p = run_flea(ref_state, ref_config, '{"view":"list"}', {})
-out, err = p.communicate(timeout=10)
-assert p.returncode == 0, f"reference seed failed: {p.returncode} {err}"
-p = run_flea(ref_state, ref_config, '{"view":"grid"}', {})
-out, err = p.communicate(timeout=10)
-assert p.returncode == 0, f"reference patch failed: {p.returncode} {err}"
+run_once(ref_state, ref_config, '{"view":"list"}', "reference seed")
+run_once(ref_state, ref_config, '{"view":"grid"}', "reference patch")
 expected = read_bytes(ref_ui)
 assert b'"view": "grid"' in expected, f"reference state incomplete: {expected[:200]!r}"
 
@@ -59,9 +153,7 @@ state = case / "state"
 config = case / "config"
 (state / "flea").mkdir(parents=True)
 (config).mkdir(parents=True)
-p = run_flea(state, config, '{"view":"list"}', {})
-out, err = p.communicate(timeout=10)
-assert p.returncode == 0, f"killed seed failed: {p.returncode} {err}"
+run_once(state, config, '{"view":"list"}', "killed seed")
 before = read_bytes(state / "flea" / "ui.json")
 before_ino = (state / "flea" / "ui.json").stat().st_ino
 entered = case / "entered"
@@ -79,6 +171,7 @@ try:
     wait_path(entered, 10, "barrier receipt")
     receipt = entered.read_text().strip()
     print(f"deterministic receipt {receipt}", flush=True)
+    # Sample input: receipt line `12345 7 /run/…/flea/ui.json.12345.tmp`.
     parts = receipt.split(" ", 2)
     assert len(parts) == 3, f"receipt shape: {receipt!r}"
     assert parts[0] == str(child.pid), f"receipt pid {parts[0]} != child {child.pid}"
@@ -97,7 +190,7 @@ try:
     assert live == before, "ui.json moved before the kill"
     child.kill()
     try:
-        child.wait(timeout=10)
+        child.wait(timeout=REAP_TIMEOUT)
     except subprocess.TimeoutExpired:
         child.kill()
         raise AssertionError("killed child did not reap")
@@ -109,7 +202,7 @@ try:
 finally:
     if child.poll() is None:
         child.kill()
-        child.wait(timeout=10)
+        child.wait(timeout=REAP_TIMEOUT)
     try:
         child.stdout.close()
     except Exception:
@@ -125,9 +218,7 @@ state2 = case2 / "state"
 config2 = case2 / "config"
 (state2 / "flea").mkdir(parents=True)
 config2.mkdir(parents=True)
-p = run_flea(state2, config2, '{"view":"list"}', {})
-p.communicate(timeout=10)
-assert p.returncode == 0
+run_once(state2, config2, '{"view":"list"}', "released seed")
 seed2 = read_bytes(state2 / "flea" / "ui.json")
 seed2_ino = (state2 / "flea" / "ui.json").stat().st_ino
 entered2 = case2 / "entered"
@@ -145,6 +236,7 @@ try:
     wait_path(entered2, 10, "released barrier receipt")
     receipt2 = entered2.read_text().strip()
     print(f"released receipt {receipt2}", flush=True)
+    # Sample input: receipt line `12345 7 /run/…/flea/ui.json.12345.tmp`.
     parts2 = receipt2.split(" ", 2)
     assert len(parts2) == 3, f"receipt shape: {receipt2!r}"
     assert parts2[0] == str(child2.pid), f"receipt pid {parts2[0]} != child {child2.pid}"
@@ -173,6 +265,6 @@ try:
 finally:
     if child2.poll() is None:
         child2.kill()
-        child2.wait(timeout=10)
+        child2.wait(timeout=REAP_TIMEOUT)
 
 print("deterministic ui-state proof: 2 checks passed", flush=True)
