@@ -2,7 +2,7 @@ import QtQuick
 import "flea"
 import "flea" as Flea
 import "flea/js/Filter.js" as Filter
-
+import "flea/js/Ops.js" as Ops
 // The real GridArea and GridTile must retain and contain a bottom editor through global cell reflow.
 Window {
     id: probe
@@ -48,6 +48,9 @@ Window {
         property var shown: null
         property int cursorIndex: 0
         property int renamingIndex: -1
+        property string path: "/fixture"
+        property string renameSource: ""
+        property int renameMenuId: 0
         property string renameError: ""
         property var renameRequest: null
         readonly property bool renamePending: renameRequest !== null
@@ -71,6 +74,7 @@ Window {
         property var backend: QtObject { function window(start, count) {} }
         onRenamingIndexChanged: if (renamingIndex < 0) renameError = ""
         function rowFor(index) { return {n: "f" + ("0000" + (index - 2)).slice(-4) + ".txt", d: false, i: "file", p: 0} }
+        function join(base, name) { return base + "/" + name }
         function isSelected(index) { return false }
         function setCursor(index) { Filter.setCursor(editPane, index) }
         function showRow(index) { view.positionViewAtIndex(index, ListView.Contain); view.restartCoalesce() }
@@ -123,11 +127,9 @@ Window {
             }
             if (probe.step === 1) {
                 probe.check(view.itemAtIndex(1201) !== null, "End draws actual last tile")
-                probe.geometry("before")
                 editPane.renamingIndex = 1201
             }
             if (probe.step === 2) {
-                probe.geometry("begun")
                 var field = probe.editor()
                 probe.check(editPane.renamingIndex === 1201 && field && field.begun && field.inputItem.activeFocus,
                     "bottom begin retains editor ownership and focus")
@@ -144,6 +146,7 @@ Window {
                 probe.check(field.inputItem.selectionStart === 2 && field.inputItem.selectionEnd === 9
                     && field.inputItem.cursorPosition === 2, "draft starts with a reversed selection before replacement")
                 var oldField = field
+                view.currentIndex = 0
                 view.contentY = 0
                 editPane.setCursor(1201)
                 field = probe.editor()
@@ -194,6 +197,7 @@ Window {
                 pending.inputItem.select(4, 4)
                 probe.check(pending.inputItem.readOnly && !pending.commit(), "pending submit is guarded before scroll")
                 var pendingPredecessor = pending
+                view.currentIndex = 0
                 view.contentY = 0
                 editPane.setCursor(1201)
                 pending = probe.editor()

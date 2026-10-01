@@ -30,6 +30,10 @@ Item {
     readonly property int clipPx: 12
     readonly property string editorText: renameLoader.item ? renameLoader.item.current : ""
     readonly property Item editorField: renameLoader.item as Item
+    // Keep an uninitialized Loader visible; a begun editor's captured index survives retirement.
+    visible: !root.renaming || !renameLoader.item
+        || renameLoader.item.editIndex < 0 || !renameLoader.item.viewport
+        || renameLoader.item.viewport.renameEditor === renameLoader.item
     readonly property real editorExtraHeight: root.renaming && renameLoader.item ? Math.max(0, renameLoader.item.implicitHeight - Math.max(Theme.grid.captionHeight, Math.ceil(nameLabel.contentHeight)) - Density.gridPadY(Theme.spacing.rowPaddingX, ViewState.density)) : 0
     property real renameExtraHeight: 0
     // Grid layout can pool this Loader while reading its implicit height. Defer and coalesce per tile.
@@ -168,8 +172,11 @@ Item {
         id: renameLoader
         active: root.renaming
         anchors { top: nameLabel.top; left: nameLabel.left; right: nameLabel.right }
+        // A normal editor's expansion starts and stays zero, so no height-change signal measures it.
+        onLoaded: Qt.callLater(root.applyRenameHeight)
         sourceComponent: Flea.RenameField {
             height: implicitHeight
+            editorHost: root
             pane: root.renamePane
             viewport: root.GridView.view
             containOnBegin: true

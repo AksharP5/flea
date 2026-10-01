@@ -52,6 +52,17 @@ GridView {
     property Item renameEditor: null
     property real renameExtraHeight: 0
     property var renameRetirement: null
+
+    // Grid pooling can leave itemAtIndex pointing at a superseded same-row tile.
+    function currentRenameTile(expectedPane) {
+        var editor = root.renameEditor
+        var host = editor ? editor.editorHost : null
+        return editor && editor.visible && root.visible && !root.hiddenHeld
+            && editor.pane === expectedPane && editor.viewport === root && editor.ownsEdit()
+            && host && host.visible && host.renaming && host.editorField === editor ? host : null
+    }
+
+    onPaneChanged: { root.renameRetirement = null; root.queueRenameLayout() }
     // Editor replacement and destruction must not reenter Grid layout through its cell height.
     onRenameEditorChanged: {
         if (root.renameEditor) root.renameRetirement = null
@@ -65,9 +76,14 @@ GridView {
     }
     function settleRenameEditor() {
         var retirement = root.renameRetirement
-        root.renameRetirement = null
-        if (retirement && !root.renameEditor && root.pane && root.pane === retirement.pane
-                && root.pane.renamingIndex === retirement.index && !root.pane.renamePending)
+        var sameEdit = retirement && !root.renameEditor && root.pane && root.pane === retirement.pane
+            && root === retirement.viewport && root.pane.renamingIndex === retirement.index
+        var row = sameEdit ? root.pane.rowFor(retirement.index) : null
+        // A pending write can outlive its Loader. Keep only its values until that exact edit returns.
+        var keep = sameEdit && row && row.n.split("/").pop() === retirement.name
+            && root.pane.renamePending && root.pane.renameRequest === retirement.request
+        if (!keep) root.renameRetirement = null
+        if (sameEdit && !root.pane.renamePending)
             root.pane.renamingIndex = -1
         var editor = root.renameEditor
         if (editor && root.pane && root.pane.renamingIndex >= 0 && editor.extraHeight < 0) return
@@ -85,6 +101,7 @@ GridView {
     Keys.onPressed: function (event) { event.accepted = Focus.handleKey(event, root.pane, root.pane.sidebar) }
     // Hidden holds no delegates; an edit in flight keeps its own per RenameField.qml.
     model: (root.visible || root.pane.renamingIndex >= 0) ? pane.shownTotal : 0
+    currentIndex: Filter.viewOf(root.pane.shown, root.pane.renamingIndex >= 0 ? root.pane.renamingIndex : root.pane.cursorIndex)
     clip: true
     // One gap of bare ground along the left and the top; GridTile's hairline inset stays.
     leftMargin: Theme.spacing.gap
@@ -331,6 +348,7 @@ GridView {
     Connections {
         target: root.pane
         function onRenamingIndexChanged() { root.renameRetirement = null; root.queueRenameLayout() }
+        function onRenameRequestChanged() { root.queueRenameLayout() }
         function onFilterQueryChanged() {
             if (!root.visible) return
             var work = Filter.cut({ask: [], drop: []}, root.pane.shown, root.pane.thumbState)

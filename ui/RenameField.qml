@@ -16,6 +16,7 @@ Item {
     property string name: ""
     property var pane: null
     property var viewport: null
+    property Item editorHost: null
     property bool containOnBegin: false
     // GridTile supplies the first measurement later; zero would collapse an expanded predecessor.
     property real extraHeight: -1
@@ -54,6 +55,11 @@ Item {
             && (!root.containOnBegin || !root.viewport || root.viewport.renameEditor === root)
     }
 
+    function viewportOwnsFocus() {
+        return root.containOnBegin && root.viewport && root.viewport.activeFocus
+            && root.viewport.visible && !root.viewport.hiddenHeld
+    }
+
     function begin() {
         if (root.begun && root.containOnBegin && root.viewport && root.viewport.renameEditor
                 && root.viewport.renameEditor !== root) return
@@ -68,11 +74,11 @@ Item {
             var input = previous.inputItem
             handoff = {text: input.text, cursor: input.cursorPosition,
                 anchor: input.cursorPosition === input.selectionStart ? input.selectionEnd : input.selectionStart,
-                focused: input.activeFocus}
+                focused: input.activeFocus || root.viewportOwnsFocus()}
         }
         if (!continuing && !previous && retirement && root.pane === retirement.pane
                 && root.viewport === retirement.viewport && root.pane.renamingIndex === retirement.index
-                && root.name === retirement.name) handoff = retirement
+                && root.name === retirement.name && root.pane.renameRequest === retirement.request) handoff = retirement
         lifecycle.stop()
         root.editIndex = root.pane ? root.pane.renamingIndex : -1
         root.editName = root.name
@@ -84,7 +90,7 @@ Item {
         if (root.containOnBegin && root.viewport) root.viewport.renameEditor = root
         if (!continuing) field.text = handoff ? handoff.text : root.name
         // A menu or rail that already took focus keeps it; the lifecycle timer judges that departure.
-        if (!handoff || handoff.focused) field.forceActiveFocus()
+        if (!handoff || (handoff.focused && root.viewportOwnsFocus())) field.forceActiveFocus()
         // The stem alone, which is the part a rename usually changes.
         var cut = root.name.lastIndexOf(".")
         if (handoff) field.select(handoff.anchor, handoff.cursor)
@@ -132,7 +138,8 @@ Item {
             var retirement = root.ownsEdit() ? {pane: root.editPane, viewport: root.editViewport,
                 index: root.editIndex, name: root.editName, text: field.text, cursor: field.cursorPosition,
                 anchor: field.cursorPosition === field.selectionStart ? field.selectionEnd : field.selectionStart,
-                focused: field.activeFocus} : null
+                focused: field.activeFocus || root.viewportOwnsFocus(),
+                request: root.editPane ? root.editPane.renameRequest : null} : null
             root.begun = false
             root.editViewport.retireRenameEditor(root, retirement)
         } else {
@@ -223,6 +230,8 @@ Item {
         font.pixelSize: Theme.font.body
         clip: true
         readOnly: root.pending
+        // Grid can drop child focus before pooling; preserve the selection its replacement inherits.
+        persistentSelection: root.containOnBegin
 
         // Both keys are handled and accepted here rather than through onAccepted, because an
         // unaccepted Return goes on to the list's own Keys handler, which reads it as "open" and

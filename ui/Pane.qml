@@ -409,7 +409,7 @@ FocusScope {
         // The columns view draws one editor over its active column rather than one inside each row.
         if (root.viewMode === "columns")
             return root.columnsArea && root.columnsArea.activeColumn().renaming ? root.columnsArea.activeColumn() : null
-        var item = root.visibleItemFor(root.renamingIndex)
+        var item = root.viewMode === "grid" ? (root.listArea ? root.listArea.currentRenameTile(root) : null) : root.visibleItemFor(root.renamingIndex)
         return item && item.renaming ? item : null
     }
 
