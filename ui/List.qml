@@ -169,8 +169,8 @@ ListView {
         // Hidden geometry and a restore in flight move no shared state.
         if (!root.visible || root.hiddenHeld)
             return
-        // The wheel moves the view and not the cursor, so the cursor follows the viewport here.
-        var first = Math.floor(root.contentY / Theme.fileRowHeight)
+        // Qt shifts originY when expanded delegates collapse; row offsets start at that origin.
+        var first = Math.floor((root.contentY - root.originY) / Theme.fileRowHeight)
         var last = Math.min(root.pane.shownTotal - 1, first + root.pane.visibleRows - 1)
         if (root.pane.renamingIndex >= 0) {
             var range = root.visibleRange()
@@ -191,7 +191,7 @@ ListView {
     }
 
     function visibleRange() {
-        var fallback = Thumbs.viewport(root.contentY, Theme.fileRowHeight, root.pane.visibleRows, root.pane.shownTotal)
+        var fallback = Thumbs.viewport(root.contentY - root.originY, Theme.fileRowHeight, root.pane.visibleRows, root.pane.shownTotal)
         // The retained error caption expands one row; query actual delegates while it is present.
         if (root.pane.renamingIndex >= 0) {
             var first = root.indexAt(0, root.contentY)
@@ -257,7 +257,7 @@ ListView {
     }
     // The parked check the return asserts through: the cursor row is inside the viewport.
     function coversCursor(view) {
-        var top = view * Theme.fileRowHeight
+        var top = root.originY + view * Theme.fileRowHeight
         return root.contentY <= top + Theme.fileRowHeight && root.contentY + root.height >= top
     }
     // One more loop turn, with a deadlock guard that ends the hold rather than keeping it.
@@ -374,7 +374,7 @@ ListView {
         // No window while hidden, while a filter narrows rows already held, nor while a listing is out, whose windows are the directory asked for.
         if (!root.visible || root.pane.total === 0 || root.pane.shown !== null || root.pane.listInFlight)
             return
-        var firstVisible = Math.floor(root.contentY / Theme.fileRowHeight)
+        var firstVisible = Math.floor((root.contentY - root.originY) / Theme.fileRowHeight)
         var lastVisible = firstVisible + root.pane.visibleRows
         if (root.pane.renamingIndex >= 0) {
             var range = root.visibleRange()

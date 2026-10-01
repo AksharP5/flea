@@ -15,6 +15,9 @@ Item {
 
     property string name: ""
     property var pane: null
+    property var viewport: null
+    property bool containOnBegin: false
+    property real extraHeight: 0
     readonly property string errorText: pane ? pane.renameError : ""
     readonly property bool pending: pane ? pane.renamePending : false
     readonly property real errorHeight: errorText.length > 0 ? errorLabel.implicitHeight + Theme.spacing.gap : 0
@@ -34,40 +37,75 @@ Item {
 
     // Set by begin(), so a hide can only abandon an edit that began; see onVisibleChanged below.
     property bool begun: false
+    property int editIndex: -1
+    property string editName: ""
+    property var editPane: null
+    property var editViewport: null
+    property bool containmentQueued: false
+    property bool containing: false
+
+    function ownsEdit() {
+        return root.begun && root.name === root.editName
+            && root.pane === root.editPane && root.viewport === root.editViewport
+            && (!root.pane || root.pane.renamingIndex === root.editIndex)
+            && (!root.containOnBegin || !root.viewport || root.viewport.renameEditor === root)
+    }
 
     function begin() {
+        if (root.begun && root.containOnBegin && root.viewport && root.viewport.renameEditor
+                && root.viewport.renameEditor !== root) return
+        var continuing = root.ownsEdit()
+        lifecycle.stop()
+        root.editIndex = root.pane ? root.pane.renamingIndex : -1
+        root.editName = root.name
+        root.editPane = root.pane
+        root.editViewport = root.viewport
+        root.containmentQueued = false
         root.begun = true
-        field.text = root.name
+        // A recycled same-row delegate can begin before its predecessor has lost focus or died.
+        if (root.containOnBegin && root.viewport) root.viewport.renameEditor = root
+        if (!continuing) field.text = root.name
         field.forceActiveFocus()
         // The stem alone, which is the part a rename usually changes.
         var cut = root.name.lastIndexOf(".")
-        field.select(0, cut > 0 ? cut : root.name.length)
+        if (!continuing) field.select(0, cut > 0 ? cut : root.name.length)
+        if (root.containOnBegin || root.errorText.length > 0) root.queueContainment()
     }
 
     // File validation belongs to the pane; rail labels retain their existing empty-submit behavior.
     function commit() {
-        if (root.pending) return false
+        if (!root.ownsEdit() || !root.visible || root.pending) return false
         var next = field.text.trim()
         if ((!root.pane && next.length === 0) || field.text === root.name || next === root.name) {
-            root.abandoned()
+            root.abandon()
             return false
         }
         root.committed(next)
         return true
     }
 
-    function revealError() {
-        if (!root.visible || !root.pane || root.errorText.length === 0) return
-        root.pane.setCursor(root.pane.renamingIndex)
-        field.forceActiveFocus()
+    function queueContainment() {
+        if (!root.begun || root.containmentQueued) return
+        root.containmentQueued = true
+        lifecycle.restart()
+    }
+    function revealEditor() {
+        if (!root.ownsEdit() || !root.visible || !root.pane || !field.activeFocus) return
+        if (root.viewport && (!root.viewport.visible || root.viewport.hiddenHeld)) return
+        root.containing = true
+        // Grid height changes reposition every tile. Contain its final position, not the old layout.
+        if (root.containOnBegin && root.viewport) root.viewport.forceLayout()
+        if (root.ownsEdit() && root.visible && field.activeFocus) root.pane.setCursor(root.editIndex)
+        root.containing = false
     }
     // Let the expanded row and Grid cell height settle before containing the complete error editor.
-    onErrorTextChanged: if (root.visible && root.errorText.length > 0) Qt.callLater(root.revealError)
+    onErrorTextChanged: if (root.visible && root.errorText.length > 0) root.queueContainment()
 
     // The editor arms itself rather than leaving it to each row that draws one: an Item built with
     // visible already true writes true over true and emits no visibleChanged, so a delegate
     // constructed mid-rename came up empty with nothing holding the caret.
-    Component.onCompleted: if (root.visible) root.begin()
+    Component.onCompleted: if (root.visible && !root.begun) root.begin()
+    Component.onDestruction: root.abandon()
 
     // Hiding is abandoning. Qt drops effective visibility before it emits this, so the focus handler
     // below can never see the case, and a hidden editor left renamingIndex set with nothing alive to
@@ -77,16 +115,47 @@ Item {
             root.begin()
             return
         }
-        // A Loader that builds this field inside a pooled, hidden row hides it as it is created, and
-        // that hide abandoned the one real editor; measured by tests/ui.sh renamelife after a restart.
-        if (!root.begun) return
+        if (root.begun) lifecycle.restart()
+    }
+
+    function abandon() {
+        if (!root.ownsEdit() || root.pending) return
+        root.begun = false
         // The enclosing ListView is a focus scope and remembers this field as its focused child, so
         // giving up what begin() took is what lets the scope itself take the keys again.
         field.focus = false
-        // Escape and focus loss both refuse to abandon an in-flight rename; a row scrolled out of the
-        // cache buffer or a view switch is the same case, and it was throwing the draft away.
-        if (root.pending) return
         root.abandoned()
+    }
+
+    // Child timers recheck ownership after layout and die with the field, so stale editors cannot cancel or refocus replacements.
+    Timer {
+        id: lifecycle
+        interval: 0
+        onTriggered: {
+            var contain = root.containmentQueued
+            root.containmentQueued = false
+            if (!root.ownsEdit()) return
+            if (!root.visible || !field.activeFocus) {
+                if (!root.visible) field.focus = false
+                root.abandon()
+                return
+            }
+            if (contain) root.revealEditor()
+            if (!root.ownsEdit() || root.pending || !root.viewport || !root.viewport.visible
+                    || root.viewport.hiddenHeld) return
+            var top = root.mapToItem(root.viewport, 0, 0).y
+            if (top + root.height > 0 && top < root.viewport.height) return
+            root.abandon()
+        }
+    }
+    function queueDeparture() {
+        if (!root.ownsEdit() || root.pending || !root.viewport || !root.viewport.visible
+                || root.viewport.hiddenHeld || root.containing) return
+        lifecycle.restart()
+    }
+    Connections {
+        target: root.viewport
+        function onContentYChanged() { root.queueDeparture() }
     }
 
     Rectangle {
@@ -125,7 +194,7 @@ Item {
         // tries to open the row under a name the rename has just taken away.
         Keys.onPressed: function (event) {
             if (event.key === Qt.Key_Escape) {
-                if (!root.pending) root.abandoned()
+                root.abandon()
                 event.accepted = true
                 return
             }
@@ -138,7 +207,7 @@ Item {
         // Losing Qt focus while the editor is up abandons, which is the rail's own field and the
         // context menu, which takes focus as it opens. A click on another row never lands here,
         // because a TapHandler moves no focus; ui/js/Tap.js commits that case explicitly.
-        onActiveFocusChanged: if (!activeFocus && root.visible && !root.pending) root.abandoned()
+        onActiveFocusChanged: if (!activeFocus && root.begun) lifecycle.restart()
     }
 
     Text {

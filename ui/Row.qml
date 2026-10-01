@@ -217,7 +217,6 @@ Item {
     signal renameCommitted(string newName)
     signal renameAbandoned()
 
-    // The editor takes the name column's own box, so the row does not change shape when it opens.
     // Built only while renaming; a Loader destroys it without a hide, so RenameField's begun guard owns the abandon.
     Loader {
         id: renameLoader
@@ -230,6 +229,7 @@ Item {
         sourceComponent: Flea.RenameField {
             height: implicitHeight
             pane: root.renamePane
+            viewport: root.ListView.view
             name: root.displayName
             onCommitted: function (newName) { root.renameCommitted(newName) }
             onAbandoned: root.renameAbandoned()

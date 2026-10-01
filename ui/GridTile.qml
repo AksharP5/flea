@@ -30,7 +30,22 @@ Item {
     readonly property int clipPx: 12
     readonly property string editorText: renameLoader.item ? renameLoader.item.current : ""
     readonly property Item editorField: renameLoader.item as Item
-    readonly property real renameExtraHeight: root.renaming && renameLoader.item ? Math.max(0, renameLoader.item.implicitHeight - Math.max(Theme.grid.captionHeight, Math.ceil(nameLabel.contentHeight)) - Density.gridPadY(Theme.spacing.rowPaddingX, ViewState.density)) : 0
+    readonly property real editorExtraHeight: root.renaming && renameLoader.item ? Math.max(0, renameLoader.item.implicitHeight - Math.max(Theme.grid.captionHeight, Math.ceil(nameLabel.contentHeight)) - Density.gridPadY(Theme.spacing.rowPaddingX, ViewState.density)) : 0
+    property real renameExtraHeight: 0
+    // Grid layout can pool this Loader while reading its implicit height. Publish outside that binding.
+    onEditorExtraHeightChanged: renameHeight.restart()
+    Timer {
+        id: renameHeight
+        interval: 0
+        onTriggered: root.applyRenameHeight()
+    }
+    function applyRenameHeight() {
+        if (renameLoader.item) {
+            renameLoader.item.queueContainment()
+            renameLoader.item.extraHeight = root.editorExtraHeight
+        }
+        root.renameExtraHeight = root.editorExtraHeight
+    }
     signal renameCommitted(string newName)
     signal renameAbandoned()
     function commitEditor() { return renameLoader.item ? renameLoader.item.commit() : false }
@@ -161,6 +176,8 @@ Item {
         sourceComponent: Flea.RenameField {
             height: implicitHeight
             pane: root.renamePane
+            viewport: root.GridView.view
+            containOnBegin: true
             name: root.row ? root.row.n.split("/").pop() : ""
             onCommitted: function(newName) { root.renameCommitted(newName) }
             onAbandoned: root.renameAbandoned()

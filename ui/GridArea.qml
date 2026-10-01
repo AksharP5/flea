@@ -49,10 +49,10 @@ GridView {
                                         Math.ceil(Theme.grid.captionHeight),
                                         Density.gridPadY(Theme.spacing.rowPaddingX, ViewState.density))
                                         + renameExtraHeight
+    property Item renameEditor: null
     readonly property real renameExtraHeight: {
         if (!root.pane || root.pane.renamingIndex < 0) return 0
-        var cell = root.itemAtIndex(Filter.viewOf(root.pane.shown, root.pane.renamingIndex))
-        return cell ? cell.renameExtraHeight : 0
+        return root.renameEditor ? root.renameEditor.extraHeight : 0
     }
     readonly property int visibleTileRows: Math.max(1, Math.ceil(root.height / root.cellHeightPx))
     onColumnsChanged: if (root.visible) settle.restart()
