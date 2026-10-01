@@ -1,17 +1,17 @@
 # Flea 0.3.7
 
-- Tight row density fits more rows, while Compact stays the default (#154, muellan).
-- Grid gains Huge and Largest thumbnail sizes, and grid names follow Omarchy text size (#147, calebhat; #81, aholbreich).
-- Copied and cut rows are marked in the listing (#169, MISTERNEGATIVE21).
-- Today's dates can be tinted, off by default (#132, PowerSerg10).
-- Hidden files can sort last, off by default, and each folder remembers its sort (#70, TyRichards; #179, zm14).
-- Columns view counts its columns from the window width (#167, wanghailei; #69, TyRichards).
-- Large archive extracts and compression jobs no longer stop at the 30 s CPU cap (#211, Auxxed; #218, itsmunzir).
-- Flea starts on OpenGL when all Vulkan GPUs need Mesa's hasvk driver, with a diagnostic (#160, davidhbigelow).
-- Folder sizes walk only where a size is drawn (#66, jesedv).
-- dd trashes the focused row after clicking another row and moving with the keyboard (#222, mubshrx).
-- Columns at / no longer duplicate the root, and Left stays at / (#221, mubshrx).
-- Picker filter chips take room before the path, so the path cannot squeeze them out (#224, mubshrx).
+- Tight row density fits more rows, while Compact stays the default (#154, @muellan).
+- Grid gains Huge and Largest thumbnail sizes, and grid names follow Omarchy text size (#147, @calebhat; #81, @aholbreich).
+- Copied and cut rows are marked in the listing (#169, @MISTERNEGATIVE21).
+- Today's dates can be tinted, off by default (#132, @PowerSerg10).
+- Hidden files can sort last, off by default, and each folder remembers its sort (#70, @TyRichards; #179, @zm14).
+- Columns view counts its columns from the window width (#167, @wanghailei; #69, @TyRichards).
+- Large archive extracts and compression jobs no longer stop at the 30 s CPU cap (#211, @Auxxed; #218, @itsmunzir).
+- Flea starts on OpenGL when all Vulkan GPUs need Mesa's hasvk driver, with a diagnostic (#160, @davidhbigelow).
+- Folder sizes walk only where a size is drawn (#66, @jesedv).
+- dd trashes the focused row after clicking another row and moving with the keyboard (#222, @mubshrx).
+- Columns at / no longer duplicate the root, and Left stays at / (#221, @mubshrx).
+- Picker filter chips take room before the path, so the path cannot squeeze them out (#224, @mubshrx).
 - A double click on a file in the picker accepts it like Enter (requested on X).
 - Arrow keys regain listing focus after using the sidebar (requested on X).
 - Drives with no filesystem no longer leave an unusable sidebar row (requested on X).
@@ -38,6 +38,6 @@ Known issues
 - The existing automatic-hide sidebar focus problem and a 2-3 ms cached image-folder revisit cost remain for 0.3.8.
 - The driven navigation workload uses 52-84 ms more CPU on minipc and 29-37 ms more on the VPS than 0.3.6; backend PSS is 61-103 KiB higher after that workload. Investigation is deferred to 0.3.8.
 
-Thanks to muellan, calebhat, aholbreich, MISTERNEGATIVE21, PowerSerg10, TyRichards, zm14, wanghailei, Auxxed, itsmunzir, davidhbigelow, jesedv and mubshrx.
+Thanks to @muellan, @calebhat, @aholbreich, @MISTERNEGATIVE21, @PowerSerg10, @TyRichards, @zm14, @wanghailei, @Auxxed, @itsmunzir, @davidhbigelow, @jesedv and @mubshrx.
 
-Source revision: 18d0503266776eb973e9a5ac90c5e58962445330 (v0.3.7).
+Source revision: f92415220a520bc0c966d8eb69e0cc0db01cb8b7 (v0.3.7).
