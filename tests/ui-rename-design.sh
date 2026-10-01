@@ -180,7 +180,13 @@ case_renamedesign() (
         menus_guard "$menu_box/retained-$mode.md"
         menus_guard "$menu_dir/a-original.md"
         mv -- "$menu_box/retained-$mode.md" "$menu_dir/a-original.md" || fail 'rename: original fixture restore failed'
-        menus_visit "$menu_dir" 1202
+        # The successful rename left a selection, which defers the watch. Same-path Enter is a no-op.
+        key -k Escape >/dev/null || fail 'rename: restored fixture selection release failed'
+        menus_expect selectionCount '. == 0' "$mode fixture restore releases the watch"
+        menus_expect renameState '.index == -1 and (.loading | not) and .cursorName == "a-original.md"' "$mode directory watch lands the restored name"
+        wait_listing 1202
+        menus_equal "$mode restored fixture preserves original bytes" 'original bytes' "$(cat "$menu_dir/a-original.md")"
+        menus_equal "$mode retired fixture preserves replacement bytes" 'replacement bytes' "$(cat "$menu_box/accepted-$mode.md")"
 
         rename_design_open r a-original.md
         rename_design_draft b-existing.md

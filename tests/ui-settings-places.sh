@@ -221,6 +221,9 @@ places_drag_row() {
 places_concurrent() (
     local dir="$1" expected="$2" first_pid first_id second_pid="" second_id="" second_address=""
     local instance pid address attempt rows width cursor active permissions_checks=0
+    local addition="$dir/rail-add"
+    sandbox_require "$addition"
+    mkdir "$addition" || fail "places: distinct rail identity fixture creation failed"
     first_pid=$(flea_pid)
     first_id=$(qs list --all --json | jq -er --arg path "$flea_ui/boot/shell.qml" --argjson pid "$first_pid" '.[] | select(.config_path == $path and .pid == $pid) | .id')
     key -M ctrl -k n -m ctrl >/dev/null
@@ -351,6 +354,10 @@ places_concurrent() (
         places_wait_records "$expected"
     }
     local group target original_target target_path
+    # Beta is already saved. Use an unfavourited folder so each add moves the rail by one row.
+    places_use "$second_id" "$second_pid"
+    key -M ctrl -k l -m ctrl "$addition" -k Return >/dev/null
+    wait_path "$addition"; wait_listing 0
     for group in network device; do
         places_use "$first_id" "$first_pid"
         target=$(ipc railEntries | jq -er --arg group "$group" \
@@ -363,9 +370,12 @@ places_concurrent() (
         [[ "$(ipc settingsOpen)" == true ]] || { settings_open_key; settle; }
         settings_section places
         settings_focus_row addFavourite
+        [[ "$(ipc path)" == "$addition" ]] || fail "places: rail identity Add names another folder"
+        jq -e --arg path "$addition" 'all(.[]; .path? != $path)' <<< "$expected" >/dev/null \
+            || fail "places: rail identity Add would repeat an existing favourite"
         places_require_store
         key -k Return >/dev/null; settle
-        expected=$(jq -c --arg path "$dir/listing/Beta" '. + [{label:"Beta",path:$path}]' <<< "$expected")
+        expected=$(jq -c --arg path "$addition" '. + [{label:"rail-add",path:$path}]' <<< "$expected")
         places_wait_records "$expected"
         places_use "$first_id" "$first_pid"
         places_wait_records "$expected"
@@ -464,6 +474,13 @@ places_external_failure() {
     places_wait_records "$expected"
     cmp "$doc.broken" "$dir/malformed.original" || fail "places: native recovery did not retain the exact malformed backup"
 
+    # The retry must add a new place, rather than ask the writer to deduplicate the listing again.
+    key -k Escape >/dev/null; settle
+    key -M ctrl -k l -m ctrl "$dir/listing/Beta" -k Return >/dev/null
+    wait_path "$dir/listing/Beta"; wait_listing 0
+    settings_open_key; settle
+    settings_section places
+    settings_focus_row addFavourite
     mode=$(stat -c %a "$doc")
     cp "$doc" "$dir/readable.original"
     places_require_store
@@ -505,7 +522,7 @@ places_external_failure() {
     settings_section places
     settings_focus_row addFavourite
     key -k Return >/dev/null; settle
-    expected=$(jq -c '. + .' <<< "$expected")
+    expected=$(jq -c --arg path "$dir/listing/Beta" '. + [{label:"Beta",path:$path}]' <<< "$expected")
     places_wait_records "$expected"
     shot places-read-failure-recovery
     printf 'PLACES_FAILURE missing-retention empty-retention malformed-retention exact-backup unreadable-refusal native-retry=ok\n'
@@ -537,7 +554,7 @@ case_settingsplaces() {
     initial=$(jq -cn --arg path "$dir/listing" '[{label:"listing",path:$path}]')
     places_wait_records "$initial"
     key -k Return >/dev/null; settle
-    expected=$(jq -c '. + .' <<< "$initial")
+    expected="$initial"
     places_wait_records "$expected"
     key -k Escape >/dev/null; settle
 
@@ -558,7 +575,11 @@ case_settingsplaces() {
     key -k Escape >/dev/null; settle
     click_background; settle
     places_click_menu 'Add to Favorites'
-    expected=$(jq -c --arg path "$dir/listing" '. + [{label:"listing",path:$path}]' <<< "$expected")
+    places_wait_records "$expected"
+    seek_row_named Beta
+    click_row "$(ipc cursor)" right; settle
+    places_click_menu 'Add to Favorites'
+    expected=$(jq -c --arg path "$dir/listing/Beta" '. + [{label:"Beta",path:$path}]' <<< "$expected")
     places_wait_records "$expected"
     shot places-listing-add
 
@@ -674,7 +695,7 @@ case_settingsplaces() {
     wait_listing 0
     settings_focus_row addFavourite
     key -k Return >/dev/null; settle
-    expected=$(jq -c --arg path "$dir/listing/Alpha" '. + [{label:"Alpha",path:$path}]' <<< "$records")
+    expected="$records"
     places_wait_records "$expected"
     key -k Escape >/dev/null; settle
     launch "$dir/listing"; wait_listing 3

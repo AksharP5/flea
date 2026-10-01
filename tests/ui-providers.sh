@@ -100,7 +100,35 @@ providers_ready() {
 }
 
 providers_open() {
-    menus_file_menu "${1:-b-cursor.txt}" "${2:-key}"
+    local name="${1:-b-cursor.txt}" input="${2:-key}" search base index step quoted_base quoted_path
+    search=$(ipc keyDeliveryState | jq -er '.searchMode | strings') || fail 'providers: Search mode observation failed'
+    if [[ "$search" == results ]]; then
+        # A plain Search-result click reveals its folder. Select by keys before opening its menu.
+        menus_expect keyDeliveryState '.searchMode == "results" and (.searchRunning | not)' 'provider Search settles before menu input'
+        menus_expect listInFlight '. == false' 'provider Search rows settle before menu input'
+        base=$(ipc path) || fail 'providers: Search base observation failed'
+        index=$(row_index_of "$name") || fail "providers: Search result is absent: $name"
+        [[ "$index" =~ ^[0-9]+$ ]] || fail 'providers: Search row index is not numeric'
+        quoted_base=$(jq -cn --arg path "$base" '$path') || fail 'providers: Search base encoding failed'
+        quoted_path=$(jq -cn --arg path "${base%/}/$name" '$path') || fail 'providers: Search path encoding failed'
+        key -k Home >/dev/null || fail 'providers: Search first-row key failed'
+        for ((step = 0; step < index; step++)); do
+            key -k Down >/dev/null || fail 'providers: Search row movement failed'
+        done
+        providers_expect ".path == $quoted_base and .cursor == $index and .cursorPath == $quoted_path" 'provider Search pins the actual base and result before menu input'
+        menus_expect keyDeliveryState '.searchMode == "results" and (.searchRunning | not)' 'provider row selection retains Search'
+        case "$input" in
+            key) key -M shift -k F10 -m shift >/dev/null ;;
+            menu-key) key -k Menu >/dev/null ;;
+            menu-letter) key m >/dev/null ;;
+            *) click_row "$index" right ;;
+        esac || fail 'providers: Search menu input failed'
+        menus_expect menuState '.opened and .hasRow and (.forRail | not) and .snapshotReady and .snapshotId > 0' "file menu opens and snapshots by $input"
+        menus_expect keyDeliveryState '.searchMode == "results" and (.searchRunning | not)' 'provider menu retains Search'
+        providers_expect ".path == $quoted_base and .cursor == $index and .cursorPath == $quoted_path" 'provider menu retains the captured Search result'
+    else
+        menus_file_menu "$name" "$input"
+    fi
     providers_expect '(.refreshing | not) and (.taildrop.checking | not) and (.dropbox.checking | not)' 'provider entry refresh finishes'
 }
 
