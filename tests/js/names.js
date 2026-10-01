@@ -220,7 +220,10 @@ function runColumnRowCost(check) {
         row.indexOf("elide: Text.ElideMiddle") >= 0, true)
     var list = Source.source("ui/Row.qml")
     check("a list row with an empty clipboard reads no name geometry",
-        list.indexOf("id: clipLoader") < 0 && list.indexOf("x: name.x + Math.min(name.implicitWidth") >= 0, true)
+        list.indexOf("id: clipLoader") < 0
+            && list.indexOf("x: root.clipMark.length > 0 ? root.nameItem().x + Math.min(root.nameItem().implicitWidth") >= 0, true)
+    check("the mark reads the filename item, not the Glyph's own name property",
+        list.indexOf("x: name.x + Math.min(name.implicitWidth") < 0, true)
 }
 
 // The common library is already loaded everywhere; Grid-only code sits behind the Grid loader.
