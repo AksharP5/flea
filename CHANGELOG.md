@@ -41,4 +41,4 @@ Known issues
 
 Thanks to @muellan, @calebhat, @aholbreich, @MISTERNEGATIVE21, @PowerSerg10, @TyRichards, @zm14, @wanghailei, @Auxxed, @itsmunzir, @davidhbigelow, @jesedv and @mubshrx.
 
-Source revision: f92415220a520bc0c966d8eb69e0cc0db01cb8b7 (v0.3.7).
+Source revision: ae9419c8de789ac4f8b25a5d3c7a3fa727ae4196 (v0.3.7).
