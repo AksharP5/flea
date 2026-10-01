@@ -20,7 +20,8 @@
 - Neighbour columns open their background menu, and Locked tiles explain why no menu can open.
 - New Folder works from a side column, and popup keys and provider navigation work again.
 - Grid captions stay inside the tile, and hidden Grid and List views release viewport work and restore the cursor.
-- Inline rename errors retain the draft, and scrolling restores listing focus without abandoning a pending write.
+- Inline rename errors retain the visible draft and caret through Grid reflow; scrolling restores listing focus without abandoning a pending write.
+- Context menus reserve no scrollbar gap, and row highlights reach the edge of the listing.
 - Scroll lanes stay invisible until used, and the footer keeps its complete dismissal hint.
 - Counts, fonts and layouts stay consistent across listings, dialogs and menus.
 - Startup removes Flea's dead Quickshell entries and stale links, reducing registry work after repeated launches.
@@ -35,7 +36,8 @@ Known issues
 - USB folders rank third for GUI PSS and fifth for anonymous memory among seven managers; memory optimization is deferred to 0.3.8.
 - The NAS backend uses about 120 KiB more file-backed executable PSS than 0.3.6, with no measured increase in anonymous memory; investigation continues in 0.3.8.
 - The existing automatic-hide sidebar focus problem and a 2-3 ms cached image-folder revisit cost remain for 0.3.8.
+- The driven navigation workload uses 52-84 ms more CPU on minipc and 29-37 ms more on the VPS than 0.3.6; backend PSS is 61-103 KiB higher after that workload. Investigation is deferred to 0.3.8.
 
 Thanks to muellan, calebhat, aholbreich, MISTERNEGATIVE21, PowerSerg10, TyRichards, zm14, wanghailei, Auxxed, itsmunzir, davidhbigelow, jesedv and mubshrx.
 
-Source revision: e88ceedbb44eaade2252798f42d52d1c917f5464 (v0.3.7).
+Source revision: 18d0503266776eb973e9a5ac90c5e58962445330 (v0.3.7).
