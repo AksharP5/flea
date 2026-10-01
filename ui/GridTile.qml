@@ -32,13 +32,8 @@ Item {
     readonly property Item editorField: renameLoader.item as Item
     readonly property real editorExtraHeight: root.renaming && renameLoader.item ? Math.max(0, renameLoader.item.implicitHeight - Math.max(Theme.grid.captionHeight, Math.ceil(nameLabel.contentHeight)) - Density.gridPadY(Theme.spacing.rowPaddingX, ViewState.density)) : 0
     property real renameExtraHeight: 0
-    // Grid layout can pool this Loader while reading its implicit height. Publish outside that binding.
-    onEditorExtraHeightChanged: renameHeight.restart()
-    Timer {
-        id: renameHeight
-        interval: 0
-        onTriggered: root.applyRenameHeight()
-    }
+    // Grid layout can pool this Loader while reading its implicit height. Defer and coalesce per tile.
+    onEditorExtraHeightChanged: Qt.callLater(root.applyRenameHeight)
     function applyRenameHeight() {
         if (renameLoader.item) {
             renameLoader.item.queueContainment()
