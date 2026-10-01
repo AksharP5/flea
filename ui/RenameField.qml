@@ -17,7 +17,8 @@ Item {
     property var pane: null
     property var viewport: null
     property bool containOnBegin: false
-    property real extraHeight: 0
+    // GridTile supplies the first measurement later; zero would collapse an expanded predecessor.
+    property real extraHeight: -1
     readonly property string errorText: pane ? pane.renameError : ""
     readonly property bool pending: pane ? pane.renamePending : false
     readonly property real errorHeight: errorText.length > 0 ? errorLabel.implicitHeight + Theme.spacing.gap : 0
@@ -43,6 +44,8 @@ Item {
     property var editViewport: null
     property bool containmentQueued: false
     property bool containing: false
+    onExtraHeightChanged: if (root.containOnBegin && root.viewport && root.viewport.queueRenameLayout)
+        root.viewport.queueRenameLayout()
 
     function ownsEdit() {
         return root.begun && root.name === root.editName
@@ -57,14 +60,19 @@ Item {
         var continuing = root.ownsEdit()
         var handoff = null
         var previous = root.containOnBegin && root.viewport ? root.viewport.renameEditor : null
-        if (!continuing && previous && previous !== root && previous.ownsEdit()
+        var retirement = root.containOnBegin && root.viewport ? root.viewport.renameRetirement : null
+        if (!continuing && previous && previous !== root
                 && root.pane && previous.editPane === root.pane && previous.editViewport === root.viewport
-                && previous.editIndex === root.pane.renamingIndex && previous.editName === root.name) {
+                && previous.editIndex === root.pane.renamingIndex && previous.editName === root.name
+                && previous.ownsEdit()) {
             var input = previous.inputItem
             handoff = {text: input.text, cursor: input.cursorPosition,
                 anchor: input.cursorPosition === input.selectionStart ? input.selectionEnd : input.selectionStart,
                 focused: input.activeFocus}
         }
+        if (!continuing && !previous && retirement && root.pane === retirement.pane
+                && root.viewport === retirement.viewport && root.pane.renamingIndex === retirement.index
+                && root.name === retirement.name) handoff = retirement
         lifecycle.stop()
         root.editIndex = root.pane ? root.pane.renamingIndex : -1
         root.editName = root.name
@@ -117,7 +125,22 @@ Item {
     // visible already true writes true over true and emits no visibleChanged, so a delegate
     // constructed mid-rename came up empty with nothing holding the caret.
     Component.onCompleted: if (root.visible && !root.begun) root.begin()
-    Component.onDestruction: root.abandon()
+    Component.onDestruction: {
+        lifecycle.stop()
+        if (root.containOnBegin && root.editViewport && root.editViewport.retireRenameEditor) {
+            // The viewport retains values only, never a method or context belonging to this field.
+            var retirement = root.ownsEdit() ? {pane: root.editPane, viewport: root.editViewport,
+                index: root.editIndex, name: root.editName, text: field.text, cursor: field.cursorPosition,
+                anchor: field.cursorPosition === field.selectionStart ? field.selectionEnd : field.selectionStart,
+                focused: field.activeFocus} : null
+            root.begun = false
+            root.editViewport.retireRenameEditor(root, retirement)
+        } else {
+            root.abandon()
+            if (root.containOnBegin && root.editViewport && root.editViewport.renameEditor === root)
+                root.editViewport.renameEditor = null
+        }
+    }
 
     // Hiding is abandoning. Qt drops effective visibility before it emits this, so the focus handler
     // below can never see the case, and a hidden editor left renamingIndex set with nothing alive to

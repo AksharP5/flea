@@ -50,9 +50,31 @@ GridView {
                                         Density.gridPadY(Theme.spacing.rowPaddingX, ViewState.density))
                                         + renameExtraHeight
     property Item renameEditor: null
-    readonly property real renameExtraHeight: {
-        if (!root.pane || root.pane.renamingIndex < 0) return 0
-        return root.renameEditor ? root.renameEditor.extraHeight : 0
+    property real renameExtraHeight: 0
+    property var renameRetirement: null
+    // Editor replacement and destruction must not reenter Grid layout through its cell height.
+    onRenameEditorChanged: {
+        if (root.renameEditor) root.renameRetirement = null
+        root.queueRenameLayout()
+    }
+    function queueRenameLayout() { Qt.callLater(root.settleRenameEditor) }
+    function retireRenameEditor(editor, retirement) {
+        if (root.renameEditor !== editor) return
+        root.renameRetirement = retirement
+        root.renameEditor = null
+    }
+    function settleRenameEditor() {
+        var retirement = root.renameRetirement
+        root.renameRetirement = null
+        if (retirement && !root.renameEditor && root.pane && root.pane === retirement.pane
+                && root.pane.renamingIndex === retirement.index && !root.pane.renamePending)
+            root.pane.renamingIndex = -1
+        var editor = root.renameEditor
+        if (editor && root.pane && root.pane.renamingIndex >= 0 && editor.extraHeight < 0) return
+        var height = root.pane && root.pane.renamingIndex >= 0 && editor ? editor.extraHeight : 0
+        if (height === root.renameExtraHeight) return
+        if (editor) editor.queueContainment()
+        root.renameExtraHeight = height
     }
     readonly property int visibleTileRows: Math.max(1, Math.ceil(root.height / root.cellHeightPx))
     onColumnsChanged: if (root.visible) settle.restart()
@@ -308,6 +330,7 @@ GridView {
 
     Connections {
         target: root.pane
+        function onRenamingIndexChanged() { root.renameRetirement = null; root.queueRenameLayout() }
         function onFilterQueryChanged() {
             if (!root.visible) return
             var work = Filter.cut({ask: [], drop: []}, root.pane.shown, root.pane.thumbState)

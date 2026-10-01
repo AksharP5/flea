@@ -13,6 +13,8 @@ Window {
     property int checks: 0
     property int failures: 0
     property int plainHeight: 0
+    property int heightChanges: 0
+    property int replacementChanges: 0
     property var pendingRequest: ({source: "/fixture/f1199.txt", destination: "/fixture/pending.md"})
     function check(ok, label) {
         checks++
@@ -79,10 +81,37 @@ Window {
         width: 1000
         height: 619
         pane: editPane
+        onCellHeightChanged: probe.heightChanges++
         menu: QtObject { function close() {} }
     }
     Item { id: menuFocus }
     Item { id: railFocus }
+    // A retired context cannot run its methods. Count attempts without hiding QML warnings.
+    Item {
+        id: retired
+        property var editPane: null
+        property var editViewport: null
+        property int editIndex: -1
+        property string editName: ""
+        property real extraHeight: 0
+        property int methodCalls: 0
+        function ownsEdit() { methodCalls++; return false }
+    }
+    function rejectRetiredPredecessors(field) {
+        var identities = ["pane", "viewport", "index", "name"]
+        for (var i = 0; i < identities.length; i++) {
+            retired.editPane = i === 0 ? menuFocus : editPane
+            retired.editViewport = i === 1 ? railFocus : view
+            retired.editIndex = i === 2 ? -2 : editPane.renamingIndex
+            retired.editName = i === 3 ? "retired.txt" : field.name
+            retired.methodCalls = 0
+            view.renameEditor = retired
+            field.begun = false
+            field.begin()
+            probe.check(retired.methodCalls === 0 && view.renameEditor === field && field.ownsEdit(),
+                "retired " + identities[i] + " identity is rejected before calling its method")
+        }
+    }
     Timer {
         interval: 80
         running: true
@@ -131,6 +160,7 @@ Window {
                 probe.check(field.inputItem.activeFocus, "stale duplicate visibility cannot retake focus")
                 // Destroy the old Loader with containment and focus checks still queued in its field.
                 oldField.parent.active = false
+                probe.check(view.renameEditor === field, "predecessor destruction preserves newer same-row owner")
                 editPane.renameError = "b-existing.md already exists. Choose another name to preserve both files."
             }
             if (probe.step === 3) {
@@ -218,12 +248,14 @@ Window {
                 tall.inputItem.text = "unrelated-row-draft.md"
                 tall.inputItem.select(3, 12)
                 // Queue departure, then replace that editor in the same turn. The queued check is stale.
+                probe.replacementChanges = probe.heightChanges
                 view.contentY = 0
                 editPane.renamingIndex = -1
                 editPane.setCursor(0)
                 editPane.renamingIndex = 0
             }
             if (probe.step === 12) {
+                probe.check(probe.heightChanges === probe.replacementChanges, "same-height row replacement never collapses global cells")
                 var replacement = probe.editor()
                 probe.check(editPane.renamingIndex === 0 && replacement && replacement.begun
                     && replacement.inputItem.activeFocus, "old queued departure cannot abandon replacement editor")
@@ -232,6 +264,8 @@ Window {
                     && replacement.inputItem.cursorPosition === replacement.stemEnd,
                     "different-row owner cannot pass its draft or selection to a fresh edit")
                 probe.check(probe.contained(), "replacement editor remains contained")
+                if (!replacement) { probe.finish(); return }
+                probe.rejectRetiredPredecessors(replacement)
                 view.hiddenHeld = true
                 view.contentY = view.contentHeight - view.height
             }
@@ -251,12 +285,17 @@ Window {
                 editPane.renameRequest = null
             }
             if (probe.step === 16) {
+                probe.replacementChanges = probe.heightChanges
+                var replacementHeight = view.cellHeight
                 editPane.renameError = "A refusal queued for the old editor."
                 editPane.renamingIndex = -1
+                probe.check(view.renameEditor === null && view.cellHeight === replacementHeight,
+                    "old destruction clears identity without synchronous global height reflow")
                 editPane.setCursor(1)
                 editPane.renamingIndex = 1
             }
             if (probe.step === 17) {
+                probe.check(probe.heightChanges === probe.replacementChanges, "later editor waits for measurement without intermediate cell reflow")
                 var newest = probe.editor()
                 probe.check(editPane.renamingIndex === 1 && newest && newest.inputItem.activeFocus,
                     "stale containment cannot move focus or release a later editor")
@@ -298,11 +337,52 @@ Window {
                 var doomed = probe.editor()
                 probe.check(doomed && doomed.inputItem.activeFocus, "owned editor exists before Loader destruction")
                 if (!doomed) { probe.finish(); return }
+                var doomedLoader = doomed.parent, retiringHeight = view.cellHeight
+                doomed.inputItem.text = "retirement-draft.md"
+                doomed.inputItem.select(12, 3)
                 doomed.queueContainment()
-                doomed.parent.active = false
+                doomedLoader.active = false
+                probe.check(view.renameEditor === null, "owned destruction clears viewport reference in the same turn")
+                probe.check(view.cellHeight === retiringHeight && editPane.renamingIndex === 1201,
+                    "current destruction defers height reflow and ownership judgment")
+                doomedLoader.active = true
+                var reborn = probe.editor()
+                probe.check(reborn && reborn !== doomed && reborn.ownsEdit() && reborn.inputItem.activeFocus,
+                    "real Loader recreation takes ownership after its predecessor is dead")
+                probe.check(reborn && reborn.current === "retirement-draft.md",
+                    "dead predecessor passes only copied unfinished draft to same-row replacement")
+                probe.check(reborn && reborn.inputItem.selectionStart === 3 && reborn.inputItem.selectionEnd === 12
+                    && reborn.inputItem.cursorPosition === 3, "dead predecessor preserves reversed selection and caret")
+                probe.check(view.renameRetirement === null && view.cellHeight === retiringHeight,
+                    "newer owner consumes retirement without reentering global layout")
+                doomedLoader.active = false
+                probe.check(view.renameEditor === null, "replacement destruction also clears callable identity immediately")
             }
             if (probe.step === 24) {
                 probe.check(editPane.renamingIndex === -1 && view.activeFocus, "owned destruction releases edit and queued work")
+                probe.check(view.renameRetirement === null && view.cellHeight === probe.plainHeight,
+                    "viewport settles unclaimed retirement and restores plain height")
+                editPane.setCursor(0)
+                editPane.renamingIndex = 0
+            }
+            if (probe.step === 25) {
+                var pendingDoomed = probe.editor()
+                probe.check(pendingDoomed && pendingDoomed.begun && view.renameEditor === pendingDoomed,
+                    "pending destruction starts with an owned editor")
+                if (!pendingDoomed) { probe.finish(); return }
+                editPane.renameRequest = probe.pendingRequest
+                var pendingHeight = view.cellHeight
+                pendingDoomed.queueContainment()
+                pendingDoomed.parent.active = false
+                probe.check(view.renameEditor === null, "pending destruction clears viewport reference in the same turn")
+                probe.check(view.cellHeight === pendingHeight && editPane.renameRequest === probe.pendingRequest,
+                    "pending retirement changes neither global height nor submitted write synchronously")
+            }
+            if (probe.step === 26) {
+                probe.check(editPane.renamingIndex === 0 && editPane.renameRequest === probe.pendingRequest,
+                    "pending destruction cannot emit abandonment or release backend write")
+                editPane.renameRequest = null
+                editPane.renamingIndex = -1
                 probe.finish()
             }
             probe.step++
