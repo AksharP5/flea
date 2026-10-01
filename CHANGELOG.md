@@ -26,6 +26,7 @@
 - Counts, fonts and layouts stay consistent across listings, dialogs and menus.
 - Startup removes Flea's dead Quickshell entries and stale links, reducing registry work after repeated launches.
 - Moves confirm once per batch, and USB, network and phone copies are still confirmed on the drive; final 1000-file USB synced move: 9.62 s.
+- This build, AUR 0.3.7-2, draws the copy and cut mark after the file name in List view, where the first 0.3.7 build clipped it at the row's left edge.
 
 Known issues
 
