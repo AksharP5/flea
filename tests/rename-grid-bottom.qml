@@ -161,8 +161,21 @@ Window {
                 if (!pending) { probe.check(false, "pending field exists"); probe.finish(); return }
                 pending.inputItem.text = "pending.md"
                 editPane.renameRequest = probe.pendingRequest
-                pending.inputItem.cursorPosition = 4
+                pending.inputItem.select(4, 4)
                 probe.check(pending.inputItem.readOnly && !pending.commit(), "pending submit is guarded before scroll")
+                var pendingPredecessor = pending
+                view.contentY = 0
+                editPane.setCursor(1201)
+                pending = probe.editor()
+                console.log("RENAME_GRID_BOTTOM pending-replacement predecessor=" + pendingPredecessor
+                    + " replacement=" + pending + " changed=" + (pending !== pendingPredecessor))
+                probe.check(pending && pending !== pendingPredecessor && editPane.renameRequest === probe.pendingRequest,
+                    "real Grid layout replaces same-row editor while write is pending")
+                probe.check(pending && pending.current === "pending.md", "pending replacement preserves submitted draft")
+                probe.check(pending && pending.inputItem.cursorPosition === 4
+                    && pending.inputItem.selectionStart === 4 && pending.inputItem.selectionEnd === 4,
+                    "pending replacement preserves collapsed caret")
+                probe.check(pending && pending.inputItem.readOnly && !pending.commit(), "pending replacement keeps submit guarded")
                 view.contentY = 0
             }
             if (probe.step === 7) {
@@ -174,10 +187,10 @@ Window {
             if (probe.step === 8) {
                 var retained = probe.editor()
                 probe.check(retained && retained.inputItem.readOnly && !retained.commit(), "pending submit guard survives real Grid scroll")
-                probe.check(retained && retained.current === "pending.md", "pending replacement preserves submitted draft")
+                probe.check(retained && retained.current === "pending.md", "pending scroll retains submitted draft")
                 probe.check(retained && retained.inputItem.cursorPosition === 4
                     && retained.inputItem.selectionStart === 4 && retained.inputItem.selectionEnd === 4,
-                    "pending replacement preserves collapsed caret")
+                    "pending scroll retains collapsed caret")
                 view.visible = false
                 view.contentY = 0
             }
