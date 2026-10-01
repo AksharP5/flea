@@ -309,20 +309,22 @@ jobs:
             useradd -m build
             mkdir /home/build/pkg && cp /pkg/PKGBUILD /home/build/pkg/ && chown -R build /home/build/pkg
             cd /home/build/pkg
+            # The package names carry the pkgrel of the PKGBUILD, which a rebuilt release raises past 1.
+            rel=$(sed -n "s/^pkgrel=//p" PKGBUILD)
             # makepkg refuses root; package() only installs files, so an aarch64 makepkg.conf builds it on this host.
             sed "s/^CARCH=.*/CARCH=\"aarch64\"/; s/^CHOST=.*/CHOST=\"aarch64-unknown-linux-gnu\"/" /etc/makepkg.conf > /home/build/makepkg-aarch64.conf
             su build -c "makepkg --nodeps --noconfirm --clean"
             su build -c "makepkg --nodeps --noconfirm --clean --config /home/build/makepkg-aarch64.conf"
             su build -c "makepkg --printsrcinfo" | tee .SRCINFO
             list() { bsdtar -tf "$1" | grep -v "^\." | sort; }
-            list "flea-bin-$VERSION-1-x86_64.pkg.tar.zst" > x86_64.list
-            list "flea-bin-$VERSION-1-aarch64.pkg.tar.zst" > aarch64.list
+            list "flea-bin-$VERSION-$rel-x86_64.pkg.tar.zst" > x86_64.list
+            list "flea-bin-$VERSION-$rel-aarch64.pkg.tar.zst" > aarch64.list
             diff x86_64.list aarch64.list
             need() { grep -qx "$1" x86_64.list || { echo "::error::flea-bin $VERSION packages no $1"; exit 1; }; }
             need usr/bin/flea
             need usr/share/flea/ui/boot/shell.qml
             echo "flea-bin $VERSION packages $(wc -l < x86_64.list) paths on both architectures"
-            /pkg/flea-default-check "flea-bin-$VERSION-1-x86_64.pkg.tar.zst"
+            /pkg/flea-default-check "flea-bin-$VERSION-$rel-x86_64.pkg.tar.zst"
           '
 
       # OPR's upstream.sh verifies the source tarball against this same manifest line, so both channels pin one checksum.
@@ -354,13 +356,14 @@ jobs:
             useradd -m build
             mkdir /home/build/pkg && cp /pkg/PKGBUILD /home/build/pkg/ && chown -R build /home/build/pkg
             cd /home/build/pkg
+            rel=$(sed -n "s/^pkgrel=//p" PKGBUILD)
             su build -c "makepkg --nodeps --nocheck --noconfirm --clean"
-            bsdtar -tf "flea-$VERSION-1-x86_64.pkg.tar.zst" | grep -v "^\." | sort > flea.list
+            bsdtar -tf "flea-$VERSION-$rel-x86_64.pkg.tar.zst" | grep -v "^\." | sort > flea.list
             need() { grep -qx "$1" flea.list || { echo "::error::flea $VERSION packages no $1"; exit 1; }; }
             need usr/bin/flea
             need usr/share/flea/ui/boot/shell.qml
             echo "flea $VERSION packages $(wc -l < flea.list) paths built from the published source tarball"
-            /pkg/flea-default-check "flea-$VERSION-1-x86_64.pkg.tar.zst"
+            /pkg/flea-default-check "flea-$VERSION-$rel-x86_64.pkg.tar.zst"
           '
 
       # What pkgver() prints on the tag itself; aur-push ignores this line when it decides whether flea-git changed.

@@ -5,7 +5,7 @@
 pkgname=flea-bin
 _pkgname=flea
 pkgver=0.3.7
-pkgrel=1
+pkgrel=2
 pkgdesc='Fast, keyboard-first file manager for Omarchy (prebuilt binary)'
 arch=('x86_64' 'aarch64')
 url='https://github.com/thisisgm/flea'
@@ -25,8 +25,9 @@ conflicts=("$_pkgname" "$_pkgname-git")
 # The release profile already stripped the binary, so there is nothing to strip and no debug package.
 options=('!strip' '!debug')
 # SKIP here keeps a version bump to one line; the release workflow pins both before the AUR ever sees them.
-source_x86_64=("$_pkgname-v$pkgver-linux-x86_64.tar.gz::$url/releases/download/v$pkgver/$_pkgname-v$pkgver-linux-x86_64.tar.gz")
-source_aarch64=("$_pkgname-v$pkgver-linux-aarch64.tar.gz::$url/releases/download/v$pkgver/$_pkgname-v$pkgver-linux-aarch64.tar.gz")
+# The local names carry pkgrel, so a rebuilt release is downloaded again, never read from a stale yay cache.
+source_x86_64=("$_pkgname-v$pkgver-$pkgrel-linux-x86_64.tar.gz::$url/releases/download/v$pkgver/$_pkgname-v$pkgver-linux-x86_64.tar.gz")
+source_aarch64=("$_pkgname-v$pkgver-$pkgrel-linux-aarch64.tar.gz::$url/releases/download/v$pkgver/$_pkgname-v$pkgver-linux-aarch64.tar.gz")
 sha256sums_x86_64=('SKIP')
 sha256sums_aarch64=('SKIP')
 
