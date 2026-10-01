@@ -197,11 +197,24 @@ ShellRoot {
         else { markA = root.effectiveAlpha(glyph); if (Math.abs(markA - want) > 0.01) failures.push("a row draws its mark at " + markA + ", want " + want) }
     }
 
+    // Read actual item bounds: a glyph's name must not shadow the filename label.
+    function checkClipboardPlacement() {
+        var label = probeRow.nameItem()
+        var right = probeRow.clipRight()
+        var left = right - probeRow.clipPx
+        var textRight = label.x + Math.min(label.width, label.implicitWidth)
+        if (!isFinite(textRight) || !isFinite(left) || left < textRight + Flea.Theme.spacing.gap - 0.01)
+            failures.push("clipboard mark is before the filename's right edge")
+        if (!isFinite(right) || right > probeRow.width - Flea.Theme.spacing.rowPaddingX + 0.01)
+            failures.push("clipboard mark is clipped beyond the row")
+    }
+
     function measureClip() {
         if (root.clipPhase === 0) {
             if (probeRow.dimOpacity === 1)
                 failures.push("a cut row shares no dim with its mark")
             root.checkDrawnDim(true)
+            root.checkClipboardPlacement()
             root.clipBuiltCount = root.countUnder(probeRow)
             if (root.clipBuiltCount <= root.rowIdleCount)
                 failures.push("a clipboard row builds no mark over the idle count")
@@ -214,6 +227,7 @@ ShellRoot {
             if (probeRow.dimOpacity !== 1)
                 failures.push("a copied row keeps the cut dim")
             root.checkDrawnDim(false)
+            root.checkClipboardPlacement()
             if (root.countUnder(probeRow) <= root.rowIdleCount)
                 failures.push("a copy mark builds nothing over the idle count")
             probeRow.clipMark = ""
@@ -260,6 +274,7 @@ ShellRoot {
             return
         }
         if (root.dropPhase === 5) {
+            root.checkClipboardPlacement()
             if (!probeRow.dropBuilt())
                 failures.push("a clipboard drop target builds no drop frame")
             if (probeRow.dropLabelText() !== "copy here")

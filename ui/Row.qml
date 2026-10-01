@@ -155,7 +155,7 @@ Item {
                 visible: root.clipMark.length > 0 && !root.renaming && !root.searching
                 width: root.clipPx
                 height: root.clipPx
-                x: name.x + Math.min(name.implicitWidth, name.width) + Theme.spacing.gap
+                x: root.nameItem().x + Math.min(root.nameItem().implicitWidth, root.nameItem().width) + Theme.spacing.gap
                 anchors.verticalCenter: parent.verticalCenter
                 anchors.verticalCenterOffset: -1
                 name: root.clipMark
