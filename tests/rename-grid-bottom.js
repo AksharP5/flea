@@ -72,6 +72,6 @@ fs.writeFileSync(path.join(testRoot, "probe.log"), output);
 console.log(`rename-grid-bottom evidence: ${testRoot}`);
 console.log(output.trim());
 assert.equal(result.status, 0);
-assert.equal(output.split("RENAME_GRID_BOTTOM CHECKS=32").length - 1, 1);
+assert.equal(output.split("RENAME_GRID_BOTTOM CHECKS=42").length - 1, 1);
 assert.equal(output.split("RENAME_GRID_BOTTOM DONE failures=0").length - 1, 1);
 assert.doesNotMatch(output, /\bFAIL\b|\bWARN(?:ING)?\b|Error|error:|Binding loop|failed to load|Unable to assign|Cannot assign/i);

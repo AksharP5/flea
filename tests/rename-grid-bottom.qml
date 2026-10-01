@@ -110,6 +110,10 @@ Window {
                     return
                 }
                 // Real GridView pooling recreates the same row while its old focused field still lives. Returning in this turn leaves the row visible, so neither delegate may cancel the edit.
+                field.inputItem.text = "b-existing.md"
+                field.inputItem.select(9, 2)
+                probe.check(field.inputItem.selectionStart === 2 && field.inputItem.selectionEnd === 9
+                    && field.inputItem.cursorPosition === 2, "draft starts with a reversed selection before replacement")
                 var oldField = field
                 view.contentY = 0
                 editPane.setCursor(1201)
@@ -118,13 +122,15 @@ Window {
                 probe.check(editPane.renamingIndex === 1201 && field && field.inputItem.activeFocus,
                     "stale same-row focus loss cannot release the replacement")
                 if (!field) { probe.finish(); return }
+                probe.check(field.current === "b-existing.md", "same-row replacement preserves unfinished draft")
+                probe.check(field.inputItem.selectionStart === 2 && field.inputItem.selectionEnd === 9
+                    && field.inputItem.cursorPosition === 2, "same-row replacement preserves selection and caret direction")
                 oldField.queueContainment()
                 oldField.visible = false
                 oldField.visible = true
                 probe.check(field.inputItem.activeFocus, "stale duplicate visibility cannot retake focus")
                 // Destroy the old Loader with containment and focus checks still queued in its field.
                 oldField.parent.active = false
-                field.inputItem.text = "b-existing.md"
                 editPane.renameError = "b-existing.md already exists. Choose another name to preserve both files."
             }
             if (probe.step === 3) {
@@ -155,6 +161,7 @@ Window {
                 if (!pending) { probe.check(false, "pending field exists"); probe.finish(); return }
                 pending.inputItem.text = "pending.md"
                 editPane.renameRequest = probe.pendingRequest
+                pending.inputItem.cursorPosition = 4
                 probe.check(pending.inputItem.readOnly && !pending.commit(), "pending submit is guarded before scroll")
                 view.contentY = 0
             }
@@ -167,6 +174,10 @@ Window {
             if (probe.step === 8) {
                 var retained = probe.editor()
                 probe.check(retained && retained.inputItem.readOnly && !retained.commit(), "pending submit guard survives real Grid scroll")
+                probe.check(retained && retained.current === "pending.md", "pending replacement preserves submitted draft")
+                probe.check(retained && retained.inputItem.cursorPosition === 4
+                    && retained.inputItem.selectionStart === 4 && retained.inputItem.selectionEnd === 4,
+                    "pending replacement preserves collapsed caret")
                 view.visible = false
                 view.contentY = 0
             }
@@ -191,6 +202,8 @@ Window {
                     "begin reflow never synchronously abandons bottom editor")
                 probe.check(probe.contained(), "begin reflow contains complete bottom editor")
                 if (!tall) { probe.finish(); return }
+                tall.inputItem.text = "unrelated-row-draft.md"
+                tall.inputItem.select(3, 12)
                 // Queue departure, then replace that editor in the same turn. The queued check is stale.
                 view.contentY = 0
                 editPane.renamingIndex = -1
@@ -201,6 +214,10 @@ Window {
                 var replacement = probe.editor()
                 probe.check(editPane.renamingIndex === 0 && replacement && replacement.begun
                     && replacement.inputItem.activeFocus, "old queued departure cannot abandon replacement editor")
+                probe.check(replacement && replacement.current === editPane.rowFor(0).n
+                    && replacement.inputItem.selectionStart === 0 && replacement.inputItem.selectionEnd === replacement.stemEnd
+                    && replacement.inputItem.cursorPosition === replacement.stemEnd,
+                    "different-row owner cannot pass its draft or selection to a fresh edit")
                 probe.check(probe.contained(), "replacement editor remains contained")
                 view.hiddenHeld = true
                 view.contentY = view.contentHeight - view.height
@@ -236,21 +253,33 @@ Window {
             if (probe.step === 18) {
                 probe.check(editPane.renamingIndex === -1 && editPane.renameError === "", "nonpending hide still abandons")
                 view.visible = true
-                editPane.setCursor(0)
-                editPane.renamingIndex = 0
+                editPane.setCursor(1201)
+                editPane.renamingIndex = 1201
             }
             if (probe.step === 19) {
                 probe.check(probe.editor() && probe.editor().inputItem.activeFocus, "fresh editor begins before menu focus loss")
+                var menuPredecessor = probe.editor()
                 menuFocus.forceActiveFocus()
+                view.contentY = 0
+                editPane.setCursor(1201)
+                probe.check(probe.editor() && probe.editor() !== menuPredecessor, "Grid replaces same-row editor after menu takes focus")
+                probe.check(menuFocus.activeFocus, "same-row replacement cannot steal menu focus")
             }
             if (probe.step === 20) {
                 probe.check(editPane.renamingIndex === -1 && menuFocus.activeFocus, "real menu focus loss cancels without reclaiming focus")
-                editPane.renamingIndex = 0
+                editPane.renamingIndex = 1201
             }
-            if (probe.step === 21) { railFocus.forceActiveFocus() }
+            if (probe.step === 21) {
+                var railPredecessor = probe.editor()
+                railFocus.forceActiveFocus()
+                view.contentY = 0
+                editPane.setCursor(1201)
+                probe.check(probe.editor() && probe.editor() !== railPredecessor, "Grid replaces same-row editor after rail takes focus")
+                probe.check(railFocus.activeFocus, "same-row replacement cannot steal rail focus")
+            }
             if (probe.step === 22) {
                 probe.check(editPane.renamingIndex === -1 && railFocus.activeFocus, "real rail focus loss cancels without reclaiming focus")
-                editPane.renamingIndex = 0
+                editPane.renamingIndex = 1201
             }
             if (probe.step === 23) {
                 var doomed = probe.editor()

@@ -55,6 +55,16 @@ Item {
         if (root.begun && root.containOnBegin && root.viewport && root.viewport.renameEditor
                 && root.viewport.renameEditor !== root) return
         var continuing = root.ownsEdit()
+        var handoff = null
+        var previous = root.containOnBegin && root.viewport ? root.viewport.renameEditor : null
+        if (!continuing && previous && previous !== root && previous.ownsEdit()
+                && root.pane && previous.editPane === root.pane && previous.editViewport === root.viewport
+                && previous.editIndex === root.pane.renamingIndex && previous.editName === root.name) {
+            var input = previous.inputItem
+            handoff = {text: input.text, cursor: input.cursorPosition,
+                anchor: input.cursorPosition === input.selectionStart ? input.selectionEnd : input.selectionStart,
+                focused: input.activeFocus}
+        }
         lifecycle.stop()
         root.editIndex = root.pane ? root.pane.renamingIndex : -1
         root.editName = root.name
@@ -64,11 +74,13 @@ Item {
         root.begun = true
         // A recycled same-row delegate can begin before its predecessor has lost focus or died.
         if (root.containOnBegin && root.viewport) root.viewport.renameEditor = root
-        if (!continuing) field.text = root.name
-        field.forceActiveFocus()
+        if (!continuing) field.text = handoff ? handoff.text : root.name
+        // A menu or rail that already took focus keeps it; the lifecycle timer judges that departure.
+        if (!handoff || handoff.focused) field.forceActiveFocus()
         // The stem alone, which is the part a rename usually changes.
         var cut = root.name.lastIndexOf(".")
-        if (!continuing) field.select(0, cut > 0 ? cut : root.name.length)
+        if (handoff) field.select(handoff.anchor, handoff.cursor)
+        else if (!continuing) field.select(0, cut > 0 ? cut : root.name.length)
         if (root.containOnBegin || root.errorText.length > 0) root.queueContainment()
     }
 
