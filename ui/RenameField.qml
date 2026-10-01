@@ -39,6 +39,7 @@ Item {
 
     // Set by begin(), so a hide can only abandon an edit that began; see onVisibleChanged below.
     property bool begun: false
+    property bool beginning: false
     property int editIndex: -1
     property string editName: ""
     property var editPane: null
@@ -60,9 +61,22 @@ Item {
             && root.viewport.visible && !root.viewport.hiddenHeld
     }
 
-    function begin() {
+    // A retained delegate can be visible yet culled from Grid's scene graph. Resolve its live slot.
+    function layoutHost() {
+        if (!root.containOnBegin || !root.viewport || !root.editorHost) return root.editorHost
+        var current = root.viewport.currentItem
+        var slot = current && current.renaming ? current : root.editorHost
+        var host = root.viewport.itemAt(slot.x + slot.width / 2, slot.y + slot.height / 2)
+        var editor = host ? host.editorField : null
+        return editor && host.renaming && editor.pane === root.pane && editor.viewport === root.viewport
+            && editor.name === root.name ? host : null
+    }
+
+    function begin(fromLayout) {
+        if (root.beginning) return
         if (root.begun && root.containOnBegin && root.viewport && root.viewport.renameEditor
-                && root.viewport.renameEditor !== root) return
+                && root.viewport.renameEditor !== root
+                && !(fromLayout && root.layoutHost() === root.editorHost)) return
         var continuing = root.ownsEdit()
         var handoff = null
         var previous = root.containOnBegin && root.viewport ? root.viewport.renameEditor : null
@@ -79,6 +93,7 @@ Item {
         if (!continuing && !previous && retirement && root.pane === retirement.pane
                 && root.viewport === retirement.viewport && root.pane.renamingIndex === retirement.index
                 && root.name === retirement.name && root.pane.renameRequest === retirement.request) handoff = retirement
+        root.beginning = true
         lifecycle.stop()
         root.editIndex = root.pane ? root.pane.renamingIndex : -1
         root.editName = root.name
@@ -96,6 +111,7 @@ Item {
         if (handoff) field.select(handoff.anchor, handoff.cursor)
         else if (!continuing) field.select(0, cut > 0 ? cut : root.name.length)
         if (root.containOnBegin || root.errorText.length > 0) root.queueContainment()
+        root.beginning = false
     }
 
     // File validation belongs to the pane; rail labels retain their existing empty-submit behavior.
@@ -177,6 +193,14 @@ Item {
             var contain = root.containmentQueued
             root.containmentQueued = false
             if (!root.ownsEdit()) return
+            if (root.containOnBegin && root.editorHost && root.viewport
+                    && root.viewport.visible && !root.viewport.hiddenHeld) {
+                var host = root.layoutHost()
+                if (host && host !== root.editorHost) {
+                    host.editorField.begin(true)
+                    return
+                }
+            }
             if (!root.visible || !field.activeFocus) {
                 if (!root.visible) field.focus = false
                 root.abandon()

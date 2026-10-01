@@ -57,9 +57,9 @@ GridView {
     function currentRenameTile(expectedPane) {
         var editor = root.renameEditor
         var host = editor ? editor.editorHost : null
-        return editor && editor.visible && root.visible && !root.hiddenHeld
+        return editor && editor.visible && root.visible && !root.hiddenHeld && host && host.visible
             && editor.pane === expectedPane && editor.viewport === root && editor.ownsEdit()
-            && host && host.visible && host.renaming && host.editorField === editor ? host : null
+            && host === editor.layoutHost() && host.renaming && host.editorField === editor ? host : null
     }
 
     onPaneChanged: { root.renameRetirement = null; root.queueRenameLayout() }

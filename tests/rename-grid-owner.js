@@ -1,6 +1,7 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
+const paint = require("./rename-grid-focus.js");
 
 // Sample input: "    function renameEditor() {\n    }".
 function injectPane(fixture, source) {
@@ -13,8 +14,12 @@ function injectPane(fixture, source) {
     // Sample input: "        function onFailed(where, input, message, mode) {\n        }".
     const failed = wire.match(/^        function onFailed\(where, input, message, mode\) \{[\s\S]*?^        \}/m);
     assert.ok(failed, "PaneWire.onFailed source is missing");
+    paint.registerPaintProof(path.resolve(process.argv.slice(2).find(arg => !arg.startsWith("--")) || path.join(__dirname, "..")));
+    fixture = fixture.replace("    function finish()", paint.paintStep.toString() + "\n    function finish()");
     return fixture.replace('import "flea/js/Ops.js" as Ops', 'import "flea/js/Ops.js" as Ops\nimport "flea/js/Tap.js" as Tap\nimport "flea/js/Errors.js" as Errors')
-        .replace("    property int step: 0", `    property Item oldTile: null
+        .replace("    property int step: 0", `    property Item retainedLoader: null
+    property Item liveLoader: null
+    property Item oldTile: null
     property Item oldField: null
     property Item currentTile: null
     property Item currentField: null
@@ -215,7 +220,8 @@ function ownerStep(turn) {
             && probe.currentField.inputItem.activeFocus && probe.currentField.current === "click-away-current.md"
             && editPane.renamePending && editPane.submissions === 1,
             "stale tile hiding cannot cancel or refocus the registered pending draft")
-        probe.oldField.parent.active = false
+        probe.retainedLoader = probe.oldField.parent
+        probe.retainedLoader.active = false
         probe.check(view.renameEditor === probe.currentField && editPane.renameEditor() === probe.currentTile,
             "superseded Loader teardown cannot replace current lookup")
         probe.currentField.visible = false
@@ -249,7 +255,8 @@ function ownerStep(turn) {
             && editPane.renameEditor() === probe.currentTile,
             "actual Grid restore returns its registered current tile after hidden hold settles")
         if (!probe.currentField) { probe.finish(); return }
-        probe.currentField.parent.active = false
+        probe.liveLoader = probe.currentField.parent
+        probe.liveLoader.active = false
         probe.check(view.renameEditor === null && editPane.renameEditor() === null,
             "destroyed current Loader returns null despite stale same-row lookup")
         editPane.listArea = null
@@ -259,8 +266,9 @@ function ownerStep(turn) {
         probe.check(editPane.renameEditor() === null, "closed edit retains existing null guard")
         probe.check(view.renameEditor === null && view.renameRetirement === null,
             "teardown clears registered owner and copied retirement")
-        probe.finish()
+        probe.paintStep(9)
     }
+    if (turn >= 10) probe.paintStep(turn)
 }
 
-module.exports = {injectPane, ownerStep, checks: 49};
+module.exports = {injectPane, ownerStep, checks: 61};
