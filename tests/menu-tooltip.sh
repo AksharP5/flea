@@ -25,8 +25,10 @@ if ! printf '%s\n' "$output" | grep -Eq 'MENU_TOOLTIP DONE [1-9][0-9]* checks, 0
     printf '%s\n' "$output"
     exit 1
 fi
-warnings=$(printf '%s\n' "$output" | grep -E 'TypeError|ReferenceError|WARN' \
-    | grep -vF 'This plugin does not support setting window masks' || true)
+# Offscreen has no compositor; Omarchy's Style imports the Hyprland connector.
+warnings=$(printf '%s\n' "$output" | grep -E 'TypeError|ReferenceError|WARN|ERROR' \
+    | grep -vF 'This plugin does not support setting window masks' \
+    | grep -vF 'WARN: $HYPRLAND_INSTANCE_SIGNATURE is unset. Cannot connect to hyprland.' || true)
 if [ -n "$warnings" ]; then
     printf '%s\n' "$warnings"
     exit 1
