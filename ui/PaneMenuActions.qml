@@ -190,7 +190,7 @@ Loader {
         if (deleting || survivorId) { pane.message("The deletion is still finishing.", false); return }
         // Wait for the old reply before sending a fresh snapshot; the backend bounds its queue.
         if (copyingPath || afterCopyPath) {
-            afterCopyPath = { action: action, menuId: menuId }
+            afterCopyPath = { action: action, menuId: menuId, identity: pane.menuSelectionIdentity }
             copyingPath = false
             return
         }
@@ -333,6 +333,10 @@ Loader {
                 root.afterCopyPath = null
                 root.ready = false
                 root.identity = ""
+                if (next.action === "rename" && next.identity !== root.pane.menuSelectionIdentity) {
+                    root.pane.message("Selected items changed; reopen the menu.", true)
+                    return
+                }
                 if (next.copy) root.copyPath()
                 else root.open(next.action, next.menuId)
                 return

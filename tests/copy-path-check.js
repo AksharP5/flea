@@ -105,4 +105,31 @@ actions.onMenuResult({id: activatingId, op: 'activate', ok: true, action: 'copyp
 assert.equal(requests.length, beforeActivationReply + 1, 'activation reply starts the new snapshot');
 assert.equal(copied.length, 2, 'a superseded activation does not overwrite the clipboard');
 assert.deepEqual(Array.from(requests.at(-1).rows), [7, 8], 'the new snapshot retains the full selection');
+
+pane.picked = [];
+pane.cursorIndex = 2;
+pane.menuSelectionIdentity = 'cursor-2';
+for (const pending of ['snapshot', 'activate']) {
+    actions.copyPath();
+    const id = actions.requestId;
+    if (pending === 'activate') actions.onMenuResult({id, op: 'snapshot', ok: true});
+    actions.open('rename', 0);
+    const requestCount = requests.length;
+    const openCount = opened.length;
+    pane.cursorIndex += 1;
+    pane.menuSelectionIdentity = 'cursor-' + pane.cursorIndex;
+    pane.said = '';
+    actions.onMenuResult({id, op: pending, ok: true, action: 'copypath', paths: ['/fixture/picked.txt']});
+    assert.equal(requests.length, requestCount, 'a moved cursor cancels Rename queued behind copy ' + pending);
+    assert.equal(opened.length, openCount, 'the cancelled Rename cannot open an editor on another row');
+    assert.equal(pane.said, 'Selected items changed; reopen the menu.', 'the cancelled Rename reports its refusal');
+}
+
+actions.copyPath();
+const renameCopyId = actions.requestId;
+actions.open('rename', 0);
+actions.onMenuResult({id: renameCopyId, op: 'snapshot', ok: true});
+assert.deepEqual(Array.from(requests.at(-1).rows), [pane.cursorIndex], 'an unchanged queued Rename snapshots its requested row');
+actions.onMenuResult({id: actions.requestId, op: 'snapshot', ok: true});
+assert.equal(opened.at(-1), 'rename', 'an unchanged queued Rename still opens');
 console.log('copy path checks passed');

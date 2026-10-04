@@ -2027,9 +2027,10 @@ number.
 
 The Copy path shortcut keeps its snapshot and activation replies in the existing
 `ui/PaneMenuActions.qml` owner, raising that file's recorded ceiling from 407 to
-460 lines. The generated `ui/js/Keymap.js` gains one line, from 314 to 315;
+464 lines. The generated `ui/js/Keymap.js` gains one line, from 314 to 315;
 `ui/js/Focus.js` gains one, from 373 to 374, and `tests/js/focus.js` gains six,
 from 456 to 462. The ceilings were re-derived with `wc -l`; the global caps remain unchanged.
+A Rename queued behind Copy path is cancelled if its selection identity changes before the reply.
 
 `src/vulkan.rs` is 0.3.2's own exception, recorded rather than split. PR119's display-GPU pin took
 it from 472 to 604 lines, the growth being `icd_for_displays`, `display_pin` and the tests that
