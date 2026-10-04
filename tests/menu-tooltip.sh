@@ -14,12 +14,19 @@ ln -s "$(readlink -f ui/boot/Commons)" "$test_root/config/Commons"
 ln -s "$(readlink -f ui/boot/Ui)" "$test_root/config/Ui"
 cp tests/menu-tooltip.qml "$test_root/config/shell.qml"
 
+qs_status=0
 output=$( ( env -u DISPLAY -u WAYLAND_DISPLAY -u HYPRLAND_INSTANCE_SIGNATURE \
     HOME="$test_root/home" XDG_CONFIG_HOME="$test_root/config" XDG_STATE_HOME="$test_root/state" \
     XDG_CACHE_HOME="$test_root/cache" XDG_DATA_HOME="$test_root/data" XDG_RUNTIME_DIR="$test_root/runtime" \
     QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORMTHEME= QT_QUICK_BACKEND=software QT_QPA_UPDATE_IDLE_TIME=1 QT_FORCE_STDERR_LOGGING=1 \
-    timeout 20 qs -p "$test_root/config" 2>&1 ) 2>/dev/null ) || true
+    timeout 20 qs -p "$test_root/config" 2>&1 ) 2>/dev/null ) || qs_status=$?
 
+# The probe terminates itself with SIGTERM after DONE; a timeout or crash must fail.
+if [ "$qs_status" -ne 143 ]; then
+    printf 'FAIL qs exited %s, expected the probe self-termination (143) after DONE\n' "$qs_status"
+    printf '%s\n' "$output"
+    exit 1
+fi
 printf '%s\n' "$output" | grep -E 'MENU_TOOLTIP|ERROR|TypeError|ReferenceError' || true
 if ! printf '%s\n' "$output" | grep -Eq 'MENU_TOOLTIP DONE [1-9][0-9]* checks, 0 failed'; then
     printf '%s\n' "$output"
